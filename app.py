@@ -1,0 +1,1164 @@
+"""Gold Drop Biomass Inventory & Extraction Tracking System."""
+import os
+import csv
+import io
+import json
+from datetime import datetime, date, timedelta
+from functools import wraps
+
+from flask import (Flask, render_template, request, redirect, url_for, flash,
+                   jsonify, Response, session)
+from flask_login import (LoginManager, login_user, logout_user, login_required,
+                         current_user)
+from sqlalchemy import func, desc, and_
+from werkzeug.security import generate_password_hash
+
+from models import (db, User, Supplier, Purchase, PurchaseLot, Run, RunInput,
+                    KpiTarget, SystemSetting, AuditLog)
+
+app = Flask(__name__)
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "gold-drop-dev-key-change-in-prod")
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///golddrop.db")
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
+
+db.init_app(app)
+login_manager = LoginManager(app)
+login_manager.login_view = "login"
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    return db.session.get(User, user_id)
+
+
+def admin_required(f):
+    @wraps(f)
+    @login_required
+    def decorated(*args, **kwargs):
+        if not current_user.is_super_admin:
+            flash("Admin access required.", "error")
+            return redirect(url_for("dashboard"))
+        return f(*args, **kwargs)
+    return decorated
+
+
+def editor_required(f):
+    @wraps(f)
+    @login_required
+    def decorated(*args, **kwargs):
+        if not current_user.can_edit:
+            flash("Edit access required.", "error")
+            return redirect(url_for("dashboard"))
+        return f(*args, **kwargs)
+    return decorated
+
+
+def log_audit(action, entity_type, entity_id, details=None):
+    entry = AuditLog(
+        user_id=current_user.id if current_user.is_authenticated else None,
+        action=action, entity_type=entity_type,
+        entity_id=str(entity_id), details=details
+    )
+    db.session.add(entry)
+
+
+# ── Auth Routes ──────────────────────────────────────────────────────────────
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for("dashboard"))
+    if request.method == "POST":
+        user = User.query.filter_by(username=request.form.get("username", "").strip().lower()).first()
+        if user and user.check_password(request.form.get("password", "")):
+            login_user(user, remember=True)
+            session.permanent = True
+            return redirect(request.args.get("next") or url_for("dashboard"))
+        flash("Invalid username or password.", "error")
+    return render_template("login.html")
+
+
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for("login"))
+
+
+# ── Dashboard ────────────────────────────────────────────────────────────────
+
+@app.route("/")
+@login_required
+def dashboard():
+    # Time period
+    period = request.args.get("period", "30")
+    if period == "today":
+        start_date = date.today()
+    elif period == "7":
+        start_date = date.today() - timedelta(days=7)
+    elif period == "90":
+        start_date = date.today() - timedelta(days=90)
+    elif period == "all":
+        start_date = date(2020, 1, 1)
+    else:
+        start_date = date.today() - timedelta(days=30)
+
+    # Query runs in period
+    runs = Run.query.filter(Run.run_date >= start_date).all()
+
+    # Calculate KPI actuals
+    kpi_actuals = {}
+    if runs:
+        yields = [r.overall_yield_pct for r in runs if r.overall_yield_pct]
+        thca_yields = [r.thca_yield_pct for r in runs if r.thca_yield_pct]
+        hte_yields = [r.hte_yield_pct for r in runs if r.hte_yield_pct]
+        costs = [r.cost_per_gram_combined for r in runs if r.cost_per_gram_combined]
+        total_lbs = sum(r.bio_in_reactor_lbs or 0 for r in runs)
+        total_dry_thca = sum(r.dry_thca_g or 0 for r in runs)
+        total_dry_hte = sum(r.dry_hte_g or 0 for r in runs)
+
+        kpi_actuals["thca_yield_pct"] = sum(thca_yields) / len(thca_yields) if thca_yields else None
+        kpi_actuals["hte_yield_pct"] = sum(hte_yields) / len(hte_yields) if hte_yields else None
+        kpi_actuals["overall_yield_pct"] = sum(yields) / len(yields) if yields else None
+        kpi_actuals["cost_per_gram_combined"] = sum(costs) / len(costs) if costs else None
+
+        # Weekly throughput (average lbs/week in period)
+        days_in_period = max((date.today() - start_date).days, 1)
+        weeks = max(days_in_period / 7, 1)
+        kpi_actuals["weekly_throughput"] = total_lbs / weeks
+
+        # Days of supply
+        daily_target = SystemSetting.get_float("daily_throughput_target", 500)
+        on_hand_statuses = ("delivered", "in_testing", "available", "processing", "complete")
+        on_hand = db.session.query(func.sum(PurchaseLot.remaining_weight_lbs)).join(Purchase).filter(
+            PurchaseLot.remaining_weight_lbs > 0,
+            Purchase.status.in_(on_hand_statuses)
+        ).scalar() or 0
+        kpi_actuals["days_of_supply"] = on_hand / daily_target if daily_target > 0 else 0
+
+        # Cost per potency point - average across purchases in period
+        purchases_in_period = Purchase.query.filter(Purchase.purchase_date >= start_date).all()
+        potency_costs = []
+        for p in purchases_in_period:
+            if p.price_per_lb and p.stated_potency_pct and p.stated_potency_pct > 0:
+                potency_costs.append(p.price_per_lb / p.stated_potency_pct)
+        kpi_actuals["cost_per_potency_point"] = sum(potency_costs) / len(potency_costs) if potency_costs else None
+
+    # Get KPI targets
+    kpis = KpiTarget.query.all()
+    kpi_cards = []
+    for kpi in kpis:
+        actual = kpi_actuals.get(kpi.kpi_name)
+        color = kpi.evaluate(actual)
+        kpi_cards.append({
+            "name": kpi.display_name,
+            "target": kpi.target_value,
+            "actual": actual,
+            "color": color,
+            "unit": kpi.unit or "",
+            "direction": kpi.direction,
+        })
+
+    # Summary stats
+    total_runs = len(runs)
+    total_lbs = sum(r.bio_in_reactor_lbs or 0 for r in runs)
+    total_dry_output = sum((r.dry_hte_g or 0) + (r.dry_thca_g or 0) for r in runs)
+    on_hand = db.session.query(func.sum(PurchaseLot.remaining_weight_lbs)).join(Purchase).filter(
+        PurchaseLot.remaining_weight_lbs > 0,
+        Purchase.status.in_(("delivered", "in_testing", "available", "processing", "complete"))
+    ).scalar() or 0
+
+    return render_template("dashboard.html",
+                           kpi_cards=kpi_cards, period=period,
+                           total_runs=total_runs, total_lbs=total_lbs,
+                           total_dry_output=total_dry_output, on_hand=on_hand)
+
+
+# ── Runs ─────────────────────────────────────────────────────────────────────
+
+@app.route("/runs")
+@login_required
+def runs_list():
+    page = request.args.get("page", 1, type=int)
+    sort = request.args.get("sort", "run_date")
+    order = request.args.get("order", "desc")
+    search = request.args.get("search", "").strip()
+
+    query = Run.query
+    if search:
+        query = query.join(RunInput, isouter=True).join(PurchaseLot, isouter=True).filter(
+            db.or_(PurchaseLot.strain_name.ilike(f"%{search}%"),
+                   Run.notes.ilike(f"%{search}%"))
+        ).distinct()
+
+    sort_col = getattr(Run, sort, Run.run_date)
+    if order == "asc":
+        query = query.order_by(sort_col.asc())
+    else:
+        query = query.order_by(sort_col.desc())
+
+    pagination = query.paginate(page=page, per_page=25, error_out=False)
+    return render_template("runs.html", runs=pagination.items, pagination=pagination,
+                           sort=sort, order=order, search=search)
+
+
+@app.route("/runs/new", methods=["GET", "POST"])
+@editor_required
+def run_new():
+    if request.method == "POST":
+        return _save_run(None)
+
+    lots = PurchaseLot.query.filter(PurchaseLot.remaining_weight_lbs > 0).all()
+    return render_template("run_form.html", run=None, lots=lots, today=date.today())
+
+
+@app.route("/runs/<run_id>/edit", methods=["GET", "POST"])
+@editor_required
+def run_edit(run_id):
+    run = db.session.get(Run, run_id)
+    if not run:
+        flash("Run not found.", "error")
+        return redirect(url_for("runs_list"))
+
+    if request.method == "POST":
+        return _save_run(run)
+
+    lots = PurchaseLot.query.filter(
+        db.or_(PurchaseLot.remaining_weight_lbs > 0,
+               PurchaseLot.id.in_([i.lot_id for i in run.inputs]))
+    ).all()
+    return render_template("run_form.html", run=run, lots=lots, today=date.today())
+
+
+def _save_run(existing_run):
+    try:
+        if existing_run:
+            run = existing_run
+            # Restore lot weights from previous inputs before recalculating
+            for inp in run.inputs:
+                lot = db.session.get(PurchaseLot, inp.lot_id)
+                if lot:
+                    lot.remaining_weight_lbs += inp.weight_lbs
+            RunInput.query.filter_by(run_id=run.id).delete()
+        else:
+            run = Run()
+
+        run.run_date = datetime.strptime(request.form["run_date"], "%Y-%m-%d").date()
+        run.reactor_number = int(request.form["reactor_number"])
+        run.is_rollover = "is_rollover" in request.form
+        run.bio_in_reactor_lbs = float(request.form.get("bio_in_reactor_lbs") or 0)
+        run.bio_in_house_lbs = float(request.form.get("bio_in_house_lbs") or 0) or None
+        run.butane_in_house_lbs = float(request.form.get("butane_in_house_lbs") or 0) or None
+        run.solvent_ratio = float(request.form.get("solvent_ratio") or 0) or None
+        run.system_temp = float(request.form.get("system_temp") or 0) or None
+        run.wet_hte_g = float(request.form.get("wet_hte_g") or 0) or None
+        run.wet_thca_g = float(request.form.get("wet_thca_g") or 0) or None
+        run.dry_hte_g = float(request.form.get("dry_hte_g") or 0) or None
+        run.dry_thca_g = float(request.form.get("dry_thca_g") or 0) or None
+        run.decarb_sample_done = "decarb_sample_done" in request.form
+        run.fuel_consumption = float(request.form.get("fuel_consumption") or 0) or None
+        run.notes = request.form.get("notes", "").strip() or None
+        run.run_type = request.form.get("run_type", "standard")
+
+        if not existing_run:
+            run.created_by = current_user.id
+
+        run.calculate_yields()
+
+        if not existing_run:
+            db.session.add(run)
+        db.session.flush()
+
+        # Process lot inputs
+        lot_ids = request.form.getlist("lot_ids[]")
+        lot_weights = request.form.getlist("lot_weights[]")
+        for lid, lw in zip(lot_ids, lot_weights):
+            if lid and lw:
+                weight = float(lw)
+                if weight > 0:
+                    inp = RunInput(run_id=run.id, lot_id=lid, weight_lbs=weight)
+                    db.session.add(inp)
+                    lot = db.session.get(PurchaseLot, lid)
+                    if lot:
+                        lot.remaining_weight_lbs = max(0, lot.remaining_weight_lbs - weight)
+
+        run.calculate_cost()
+        log_audit("update" if existing_run else "create", "run", run.id)
+        db.session.commit()
+        flash("Run saved successfully.", "success")
+        return redirect(url_for("runs_list"))
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error saving run: {str(e)}", "error")
+        lots = PurchaseLot.query.filter(PurchaseLot.remaining_weight_lbs > 0).all()
+        return render_template("run_form.html", run=existing_run, lots=lots, today=date.today())
+
+
+@app.route("/runs/<run_id>/delete", methods=["POST"])
+@editor_required
+def run_delete(run_id):
+    run = db.session.get(Run, run_id)
+    if run:
+        # Restore lot weights
+        for inp in run.inputs:
+            lot = db.session.get(PurchaseLot, inp.lot_id)
+            if lot:
+                lot.remaining_weight_lbs += inp.weight_lbs
+        log_audit("delete", "run", run.id)
+        db.session.delete(run)
+        db.session.commit()
+        flash("Run deleted.", "success")
+    return redirect(url_for("runs_list"))
+
+
+# ── Inventory ────────────────────────────────────────────────────────────────
+
+@app.route("/inventory")
+@login_required
+def inventory():
+    # On-hand lots: only from purchases that have actually arrived
+    on_hand_statuses = ("delivered", "in_testing", "available", "processing", "complete")
+    on_hand = PurchaseLot.query.join(Purchase).filter(
+        PurchaseLot.remaining_weight_lbs > 0,
+        Purchase.status.in_(on_hand_statuses)
+    ).all()
+
+    # In-transit purchases
+    in_transit = Purchase.query.filter(Purchase.status.in_(["ordered", "in_transit"])).all()
+
+    # Summary
+    total_on_hand = sum(l.remaining_weight_lbs for l in on_hand)
+    total_in_transit = sum(p.stated_weight_lbs for p in in_transit)
+    daily_target = SystemSetting.get_float("daily_throughput_target", 500)
+    days_supply = total_on_hand / daily_target if daily_target > 0 else 0
+
+    return render_template("inventory.html", on_hand=on_hand, in_transit=in_transit,
+                           total_on_hand=total_on_hand, total_in_transit=total_in_transit,
+                           days_supply=days_supply)
+
+
+# ── Purchases ────────────────────────────────────────────────────────────────
+
+@app.route("/purchases")
+@login_required
+def purchases_list():
+    page = request.args.get("page", 1, type=int)
+    status_filter = request.args.get("status", "")
+    query = Purchase.query
+    if status_filter:
+        query = query.filter_by(status=status_filter)
+    pagination = query.order_by(Purchase.purchase_date.desc()).paginate(page=page, per_page=25)
+    return render_template("purchases.html", purchases=pagination.items, pagination=pagination,
+                           status_filter=status_filter)
+
+
+@app.route("/purchases/new", methods=["GET", "POST"])
+@editor_required
+def purchase_new():
+    if request.method == "POST":
+        return _save_purchase(None)
+    suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
+    rate = SystemSetting.get_float("potency_rate", 1.50)
+    return render_template("purchase_form.html", purchase=None, suppliers=suppliers,
+                           rate=rate, today=date.today())
+
+
+@app.route("/purchases/<purchase_id>/edit", methods=["GET", "POST"])
+@editor_required
+def purchase_edit(purchase_id):
+    purchase = db.session.get(Purchase, purchase_id)
+    if not purchase:
+        flash("Purchase not found.", "error")
+        return redirect(url_for("purchases_list"))
+    if request.method == "POST":
+        return _save_purchase(purchase)
+    suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
+    rate = SystemSetting.get_float("potency_rate", 1.50)
+    return render_template("purchase_form.html", purchase=purchase, suppliers=suppliers,
+                           rate=rate, today=date.today())
+
+
+def _save_purchase(existing):
+    try:
+        p = existing or Purchase()
+        p.supplier_id = request.form["supplier_id"]
+        p.purchase_date = datetime.strptime(request.form["purchase_date"], "%Y-%m-%d").date()
+        dd = request.form.get("delivery_date", "").strip()
+        p.delivery_date = datetime.strptime(dd, "%Y-%m-%d").date() if dd else None
+        p.status = request.form.get("status", "ordered")
+        p.stated_weight_lbs = float(request.form.get("stated_weight_lbs") or 0)
+        aw = request.form.get("actual_weight_lbs", "").strip()
+        p.actual_weight_lbs = float(aw) if aw else None
+        sp = request.form.get("stated_potency_pct", "").strip()
+        p.stated_potency_pct = float(sp) if sp else None
+        tp = request.form.get("tested_potency_pct", "").strip()
+        p.tested_potency_pct = float(tp) if tp else None
+        ppl = request.form.get("price_per_lb", "").strip()
+        p.price_per_lb = float(ppl) if ppl else None
+        p.clean_or_dirty = request.form.get("clean_or_dirty") or None
+        p.indoor_outdoor = request.form.get("indoor_outdoor") or None
+        hd = request.form.get("harvest_date", "").strip()
+        p.harvest_date = datetime.strptime(hd, "%Y-%m-%d").date() if hd else None
+        p.notes = request.form.get("notes", "").strip() or None
+
+        # Auto-calculate price if potency provided and price empty
+        if p.stated_potency_pct and not p.price_per_lb:
+            rate = SystemSetting.get_float("potency_rate", 1.50)
+            p.price_per_lb = rate * p.stated_potency_pct
+
+        # Calculate total cost
+        weight = p.actual_weight_lbs or p.stated_weight_lbs
+        if weight and p.price_per_lb:
+            p.total_cost = weight * p.price_per_lb
+
+        # True-up
+        if p.tested_potency_pct and p.stated_potency_pct and p.actual_weight_lbs:
+            rate = SystemSetting.get_float("potency_rate", 1.50)
+            p.true_up_amount = (p.tested_potency_pct - p.stated_potency_pct) * rate * p.actual_weight_lbs
+            if not p.true_up_status:
+                p.true_up_status = "pending"
+
+        if not existing:
+            db.session.add(p)
+        db.session.flush()
+
+        # Process lots
+        if not existing:
+            lot_strains = request.form.getlist("lot_strains[]")
+            lot_weights = request.form.getlist("lot_weights[]")
+            for strain, weight in zip(lot_strains, lot_weights):
+                if strain and weight:
+                    lot = PurchaseLot(
+                        purchase_id=p.id, strain_name=strain.strip(),
+                        weight_lbs=float(weight), remaining_weight_lbs=float(weight)
+                    )
+                    db.session.add(lot)
+
+        log_audit("update" if existing else "create", "purchase", p.id)
+        db.session.commit()
+        flash("Purchase saved.", "success")
+        return redirect(url_for("purchases_list"))
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error: {str(e)}", "error")
+        suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
+        rate = SystemSetting.get_float("potency_rate", 1.50)
+        return render_template("purchase_form.html", purchase=existing, suppliers=suppliers,
+                               rate=rate, today=date.today())
+
+
+# ── Suppliers ────────────────────────────────────────────────────────────────
+
+@app.route("/suppliers")
+@login_required
+def suppliers_list():
+    suppliers = Supplier.query.order_by(Supplier.name).all()
+
+    # Enrich with performance stats
+    supplier_stats = []
+    for s in suppliers:
+        # All-time stats
+        runs_q = db.session.query(
+            func.avg(Run.overall_yield_pct),
+            func.avg(Run.thca_yield_pct),
+            func.avg(Run.hte_yield_pct),
+            func.avg(Run.cost_per_gram_combined),
+            func.count(Run.id),
+            func.sum(Run.bio_in_reactor_lbs),
+            func.sum(Run.dry_thca_g),
+            func.sum(Run.dry_hte_g),
+        ).join(RunInput, Run.id == RunInput.run_id
+        ).join(PurchaseLot, RunInput.lot_id == PurchaseLot.id
+        ).join(Purchase, PurchaseLot.purchase_id == Purchase.id
+        ).filter(Purchase.supplier_id == s.id, Run.is_rollover == False)
+
+        all_time = runs_q.first()
+
+        # 90-day stats
+        cutoff_90 = date.today() - timedelta(days=90)
+        ninety = runs_q.filter(Run.run_date >= cutoff_90).first()
+
+        # Last batch
+        last_run = db.session.query(Run).join(
+            RunInput, Run.id == RunInput.run_id
+        ).join(PurchaseLot, RunInput.lot_id == PurchaseLot.id
+        ).join(Purchase, PurchaseLot.purchase_id == Purchase.id
+        ).filter(Purchase.supplier_id == s.id, Run.is_rollover == False
+        ).order_by(Run.run_date.desc()).first()
+
+        supplier_stats.append({
+            "supplier": s,
+            "all_time": {
+                "yield": all_time[0], "thca": all_time[1], "hte": all_time[2],
+                "cpg": all_time[3], "runs": all_time[4], "lbs": all_time[5] or 0,
+                "total_thca": all_time[6] or 0, "total_hte": all_time[7] or 0,
+            },
+            "ninety_day": {
+                "yield": ninety[0], "thca": ninety[1], "hte": ninety[2],
+                "cpg": ninety[3], "runs": ninety[4],
+            },
+            "last_batch": {
+                "yield": last_run.overall_yield_pct if last_run else None,
+                "thca": last_run.thca_yield_pct if last_run else None,
+                "hte": last_run.hte_yield_pct if last_run else None,
+                "cpg": last_run.cost_per_gram_combined if last_run else None,
+                "date": last_run.run_date if last_run else None,
+            },
+        })
+
+    # Get KPI targets for color coding
+    yield_kpi = KpiTarget.query.filter_by(kpi_name="overall_yield_pct").first()
+    thca_kpi = KpiTarget.query.filter_by(kpi_name="thca_yield_pct").first()
+
+    return render_template("suppliers.html", supplier_stats=supplier_stats,
+                           yield_kpi=yield_kpi, thca_kpi=thca_kpi)
+
+
+@app.route("/suppliers/new", methods=["GET", "POST"])
+@editor_required
+def supplier_new():
+    if request.method == "POST":
+        s = Supplier(
+            name=request.form["name"].strip(),
+            contact_name=request.form.get("contact_name", "").strip() or None,
+            contact_phone=request.form.get("contact_phone", "").strip() or None,
+            contact_email=request.form.get("contact_email", "").strip() or None,
+            location=request.form.get("location", "").strip() or None,
+            notes=request.form.get("notes", "").strip() or None,
+        )
+        db.session.add(s)
+        log_audit("create", "supplier", s.id)
+        db.session.commit()
+        flash("Supplier added.", "success")
+        return redirect(url_for("suppliers_list"))
+    return render_template("supplier_form.html", supplier=None)
+
+
+@app.route("/suppliers/<sid>/edit", methods=["GET", "POST"])
+@editor_required
+def supplier_edit(sid):
+    s = db.session.get(Supplier, sid)
+    if not s:
+        flash("Supplier not found.", "error")
+        return redirect(url_for("suppliers_list"))
+    if request.method == "POST":
+        s.name = request.form["name"].strip()
+        s.contact_name = request.form.get("contact_name", "").strip() or None
+        s.contact_phone = request.form.get("contact_phone", "").strip() or None
+        s.contact_email = request.form.get("contact_email", "").strip() or None
+        s.location = request.form.get("location", "").strip() or None
+        s.notes = request.form.get("notes", "").strip() or None
+        s.is_active = "is_active" in request.form
+        log_audit("update", "supplier", s.id)
+        db.session.commit()
+        flash("Supplier updated.", "success")
+        return redirect(url_for("suppliers_list"))
+    return render_template("supplier_form.html", supplier=s)
+
+
+# ── Strain Performance ───────────────────────────────────────────────────────
+
+@app.route("/strains")
+@login_required
+def strains_list():
+    """Strain performance view grouped by strain name."""
+    view = request.args.get("view", "all")
+
+    query = db.session.query(
+        PurchaseLot.strain_name,
+        Supplier.name.label("supplier_name"),
+        func.avg(Run.overall_yield_pct).label("avg_yield"),
+        func.avg(Run.thca_yield_pct).label("avg_thca"),
+        func.avg(Run.hte_yield_pct).label("avg_hte"),
+        func.avg(Run.cost_per_gram_combined).label("avg_cpg"),
+        func.count(Run.id).label("run_count"),
+        func.sum(Run.bio_in_reactor_lbs).label("total_lbs"),
+        func.sum(Run.dry_thca_g).label("total_thca_g"),
+        func.sum(Run.dry_hte_g).label("total_hte_g"),
+    ).join(RunInput, PurchaseLot.id == RunInput.lot_id
+    ).join(Run, RunInput.run_id == Run.id
+    ).join(Purchase, PurchaseLot.purchase_id == Purchase.id
+    ).join(Supplier, Purchase.supplier_id == Supplier.id
+    ).filter(Run.is_rollover == False)
+
+    if view == "90":
+        query = query.filter(Run.run_date >= date.today() - timedelta(days=90))
+
+    results = query.group_by(PurchaseLot.strain_name, Supplier.name
+    ).order_by(desc("avg_yield")).all()
+
+    yield_kpi = KpiTarget.query.filter_by(kpi_name="overall_yield_pct").first()
+    thca_kpi = KpiTarget.query.filter_by(kpi_name="thca_yield_pct").first()
+
+    return render_template("strains.html", results=results, view=view,
+                           yield_kpi=yield_kpi, thca_kpi=thca_kpi)
+
+
+# ── Settings (Admin) ─────────────────────────────────────────────────────────
+
+@app.route("/settings", methods=["GET", "POST"])
+@admin_required
+def settings():
+    if request.method == "POST":
+        form_type = request.form.get("form_type")
+
+        if form_type == "system":
+            settings_map = {
+                "potency_rate": "Potency Rate ($/lb/%pt)",
+                "num_reactors": "Number of Reactors",
+                "reactor_capacity": "Reactor Capacity (lbs)",
+                "runs_per_day": "Runs Per Day Target",
+                "operating_days": "Operating Days Per Week",
+                "daily_throughput_target": "Daily Throughput Target (lbs)",
+                "weekly_throughput_target": "Weekly Throughput Target (lbs)",
+            }
+            for key, desc in settings_map.items():
+                val = request.form.get(key, "").strip()
+                if val:
+                    existing = db.session.get(SystemSetting, key)
+                    if existing:
+                        existing.value = val
+                    else:
+                        db.session.add(SystemSetting(key=key, value=val, description=desc))
+            db.session.commit()
+            flash("System settings updated.", "success")
+
+        elif form_type == "kpi":
+            kpi_ids = request.form.getlist("kpi_ids[]")
+            for kid in kpi_ids:
+                kpi = db.session.get(KpiTarget, kid)
+                if kpi:
+                    kpi.target_value = float(request.form.get(f"target_{kid}", kpi.target_value))
+                    kpi.green_threshold = float(request.form.get(f"green_{kid}", kpi.green_threshold))
+                    kpi.yellow_threshold = float(request.form.get(f"yellow_{kid}", kpi.yellow_threshold))
+                    kpi.updated_by = current_user.id
+            db.session.commit()
+            flash("KPI targets updated.", "success")
+
+        elif form_type == "user":
+            username = request.form.get("new_username", "").strip().lower()
+            password = request.form.get("new_password", "").strip()
+            display = request.form.get("new_display", "").strip()
+            role = request.form.get("new_role", "viewer")
+            if username and password and display:
+                if User.query.filter_by(username=username).first():
+                    flash("Username already exists.", "error")
+                else:
+                    u = User(username=username, display_name=display, role=role)
+                    u.set_password(password)
+                    db.session.add(u)
+                    db.session.commit()
+                    flash(f"User '{display}' created.", "success")
+
+        return redirect(url_for("settings"))
+
+    system_settings = {s.key: s.value for s in SystemSetting.query.all()}
+    kpis = KpiTarget.query.all()
+    users = User.query.all()
+    return render_template("settings.html", system_settings=system_settings,
+                           kpis=kpis, users=users)
+
+
+# ── CSV Import/Export ────────────────────────────────────────────────────────
+
+@app.route("/export/<entity>")
+@login_required
+def export_csv(entity):
+    """Export data as CSV."""
+    si = io.StringIO()
+    writer = csv.writer(si)
+
+    if entity == "runs":
+        writer.writerow(["Date", "Reactor", "Rollover", "Source", "Lbs Ran", "Grams Ran",
+                         "Wet HTE", "Wet THCA", "Dry HTE", "Dry THCA", "Overall Yield %",
+                         "THCA Yield %", "HTE Yield %", "Cost/Gram", "Notes"])
+        for r in Run.query.order_by(Run.run_date.desc()).all():
+            writer.writerow([r.run_date, r.reactor_number, r.is_rollover, r.source_display,
+                             r.bio_in_reactor_lbs, r.grams_ran, r.wet_hte_g, r.wet_thca_g,
+                             r.dry_hte_g, r.dry_thca_g,
+                             f"{r.overall_yield_pct:.2f}" if r.overall_yield_pct else "",
+                             f"{r.thca_yield_pct:.2f}" if r.thca_yield_pct else "",
+                             f"{r.hte_yield_pct:.2f}" if r.hte_yield_pct else "",
+                             f"{r.cost_per_gram_combined:.2f}" if r.cost_per_gram_combined else "",
+                             r.notes or ""])
+    elif entity == "purchases":
+        writer.writerow(["Date", "Supplier", "Status", "Stated Lbs", "Actual Lbs",
+                         "Stated Potency", "Tested Potency", "Price/Lb", "Total Cost",
+                         "True-Up", "Strains"])
+        for p in Purchase.query.order_by(Purchase.purchase_date.desc()).all():
+            strains = ", ".join([l.strain_name for l in p.lots])
+            writer.writerow([p.purchase_date, p.supplier_name, p.status,
+                             p.stated_weight_lbs, p.actual_weight_lbs,
+                             p.stated_potency_pct, p.tested_potency_pct,
+                             p.price_per_lb, p.total_cost, p.true_up_amount, strains])
+    elif entity == "inventory":
+        writer.writerow(["Strain", "Supplier", "Weight (lbs)", "Remaining (lbs)",
+                         "Potency %", "Milled", "Location"])
+        for l in PurchaseLot.query.filter(PurchaseLot.remaining_weight_lbs > 0).all():
+            writer.writerow([l.strain_name, l.supplier_name, l.weight_lbs,
+                             l.remaining_weight_lbs, l.potency_pct, l.milled, l.location])
+    else:
+        return "Unknown entity", 404
+
+    output = si.getvalue()
+    return Response(output, mimetype="text/csv",
+                    headers={"Content-Disposition": f"attachment; filename={entity}_{date.today()}.csv"})
+
+
+@app.route("/import", methods=["GET", "POST"])
+@editor_required
+def import_csv():
+    if request.method == "POST":
+        file = request.files.get("csv_file")
+        if not file or not file.filename.endswith(".csv"):
+            flash("Please upload a CSV file.", "error")
+            return redirect(url_for("import_csv"))
+
+        content = file.stream.read().decode("utf-8-sig")
+        reader = csv.DictReader(io.StringIO(content))
+        rows = list(reader)
+
+        # Filter out header-like rows (from the repeating header pattern in the Google Sheet)
+        data_rows = [r for r in rows if not any(
+            v and v.strip().lower() in ("date", "bio in house", "lbs ran")
+            for v in r.values()
+        )]
+
+        # Store in session for dedup review
+        session["import_data"] = json.dumps(data_rows[:500])  # Limit to 500 rows
+        session["import_columns"] = list(rows[0].keys()) if rows else []
+
+        flash(f"Loaded {len(data_rows)} data rows (filtered {len(rows) - len(data_rows)} header rows). Review below.", "info")
+        return render_template("import_review.html", rows=data_rows[:50],
+                               columns=session["import_columns"],
+                               total=len(data_rows))
+
+    return render_template("import.html")
+
+
+@app.route("/import/confirm", methods=["POST"])
+@editor_required
+def import_confirm():
+    """Process confirmed import."""
+    data = json.loads(session.get("import_data", "[]"))
+    if not data:
+        flash("No data to import.", "error")
+        return redirect(url_for("import_csv"))
+
+    imported = 0
+    skipped = 0
+    errors = 0
+
+    # Build supplier lookup
+    suppliers = {s.name.lower(): s for s in Supplier.query.all()}
+
+    for row in data:
+        try:
+            # Map columns from Google Sheet format
+            source = (row.get("Source") or row.get("source") or "").strip()
+            strain = (row.get("Strain") or row.get("strain") or "").strip()
+            run_date_str = (row.get("Date") or row.get("date") or "").strip()
+
+            if not run_date_str or not strain:
+                skipped += 1
+                continue
+
+            # Parse date (handle various formats)
+            run_date = _parse_date(run_date_str)
+            if not run_date:
+                skipped += 1
+                continue
+
+            # Check for duplicate
+            existing = Run.query.join(RunInput).join(PurchaseLot).filter(
+                Run.run_date == run_date,
+                PurchaseLot.strain_name == strain,
+            ).first()
+            if existing:
+                skipped += 1
+                continue
+
+            # Get or create supplier
+            supplier = suppliers.get(source.lower())
+            if not supplier and source:
+                supplier = Supplier(name=source)
+                db.session.add(supplier)
+                db.session.flush()
+                suppliers[source.lower()] = supplier
+
+            # Get or create purchase/lot
+            if supplier:
+                purchase = Purchase.query.filter_by(
+                    supplier_id=supplier.id
+                ).order_by(Purchase.purchase_date.desc()).first()
+
+                if not purchase:
+                    purchase = Purchase(
+                        supplier_id=supplier.id,
+                        purchase_date=run_date,
+                        status="complete",
+                        stated_weight_lbs=0,
+                    )
+                    price = row.get("Price") or row.get("price") or ""
+                    price = price.replace("$", "").replace(",", "").strip()
+                    if price:
+                        try:
+                            purchase.price_per_lb = float(price)
+                        except ValueError:
+                            pass
+                    db.session.add(purchase)
+                    db.session.flush()
+
+                lot = PurchaseLot.query.filter_by(
+                    purchase_id=purchase.id,
+                    strain_name=strain,
+                ).first()
+                if not lot:
+                    lot = PurchaseLot(
+                        purchase_id=purchase.id,
+                        strain_name=strain,
+                        weight_lbs=0,
+                        remaining_weight_lbs=0,
+                    )
+                    db.session.add(lot)
+                    db.session.flush()
+
+            # Create run
+            lbs_ran = _parse_float(row.get("LBS Ran") or row.get("lbs_ran") or "")
+            grams_ran = _parse_float(row.get("Grams Ran") or row.get("grams_ran") or "")
+
+            run = Run(
+                run_date=run_date,
+                reactor_number=1,
+                is_rollover=False,
+                bio_in_house_lbs=_parse_float(row.get("Bio in house") or ""),
+                bio_in_reactor_lbs=lbs_ran,
+                grams_ran=grams_ran or (lbs_ran * 454 if lbs_ran else None),
+                butane_in_house_lbs=_parse_float(row.get("Butane IN HOUSE") or ""),
+                solvent_ratio=_parse_float(row.get("Solvent Ratio") or ""),
+                wet_hte_g=_parse_float(row.get("Wet HTE") or ""),
+                wet_thca_g=_parse_float(row.get("Wet THCa") or ""),
+                dry_hte_g=_parse_float(row.get("DRY THCA") or row.get("Dry HTE") or ""),
+                dry_thca_g=_parse_float(row.get("DRY THCA") or ""),
+                run_type="standard",
+            )
+
+            # Fix: map columns correctly
+            dry_hte = _parse_float(row.get("Dry HTE") or row.get("DRY HTE") or "")
+            dry_thca = _parse_float(row.get("DRY THCA") or row.get("Dry THCA") or "")
+            run.dry_hte_g = dry_hte
+            run.dry_thca_g = dry_thca
+
+            run.calculate_yields()
+            db.session.add(run)
+            db.session.flush()
+
+            # Link run to lot
+            if supplier and lot and lbs_ran:
+                inp = RunInput(run_id=run.id, lot_id=lot.id, weight_lbs=lbs_ran)
+                db.session.add(inp)
+                lot.weight_lbs += lbs_ran
+                run.calculate_cost()
+
+            imported += 1
+
+        except Exception as e:
+            errors += 1
+            continue
+
+    db.session.commit()
+    session.pop("import_data", None)
+    session.pop("import_columns", None)
+    flash(f"Import complete: {imported} imported, {skipped} skipped, {errors} errors.", "success")
+    return redirect(url_for("runs_list"))
+
+
+def _parse_date(s):
+    """Parse various date formats from the Google Sheet."""
+    s = s.strip().replace("_", "/")
+    for fmt in ("%m/%d", "%m-%d", "%m/%d/%Y", "%m-%d-%Y", "%m/%d/%y", "%Y-%m-%d"):
+        try:
+            d = datetime.strptime(s, fmt).date()
+            if d.year == 1900:  # Default year for mm/dd format
+                d = d.replace(year=2025)
+            return d
+        except ValueError:
+            continue
+    return None
+
+
+def _parse_float(s):
+    """Safely parse a float from string."""
+    if not s:
+        return None
+    s = str(s).replace(",", "").replace("$", "").replace("%", "").strip()
+    try:
+        val = float(s)
+        return val if val != 0 else None
+    except (ValueError, TypeError):
+        return None
+
+
+# ── Lots management ──────────────────────────────────────────────────────────
+
+@app.route("/purchases/<purchase_id>/lots/new", methods=["POST"])
+@editor_required
+def lot_new(purchase_id):
+    purchase = db.session.get(Purchase, purchase_id)
+    if not purchase:
+        flash("Purchase not found.", "error")
+        return redirect(url_for("purchases_list"))
+
+    lot = PurchaseLot(
+        purchase_id=purchase_id,
+        strain_name=request.form["strain_name"].strip(),
+        weight_lbs=float(request.form["weight_lbs"]),
+        remaining_weight_lbs=float(request.form["weight_lbs"]),
+        potency_pct=float(request.form.get("potency_pct") or 0) or None,
+        milled="milled" in request.form,
+        location=request.form.get("location", "").strip() or None,
+    )
+    db.session.add(lot)
+    log_audit("create", "lot", lot.id)
+    db.session.commit()
+    flash("Lot added.", "success")
+    return redirect(url_for("purchase_edit", purchase_id=purchase_id))
+
+
+# ── API endpoints for AJAX ───────────────────────────────────────────────────
+
+@app.route("/api/lots/available")
+@login_required
+def api_lots_available():
+    lots = PurchaseLot.query.filter(PurchaseLot.remaining_weight_lbs > 0).all()
+    return jsonify([{
+        "id": l.id,
+        "strain": l.strain_name,
+        "supplier": l.supplier_name,
+        "remaining": l.remaining_weight_lbs,
+        "label": l.display_label,
+    } for l in lots])
+
+
+# ── Initialize ───────────────────────────────────────────────────────────────
+
+def init_db():
+    """Create tables and seed initial data."""
+    db.create_all()
+
+    # Create default admin if none exists
+    if not User.query.first():
+        admin = User(username="admin", display_name="Admin", role="super_admin")
+        admin.set_password("golddrop2026")
+        db.session.add(admin)
+
+        user = User(username="ops", display_name="VP Operations", role="user")
+        user.set_password("golddrop2026")
+        db.session.add(user)
+
+        viewer = User(username="viewer", display_name="Team Viewer", role="viewer")
+        viewer.set_password("golddrop2026")
+        db.session.add(viewer)
+
+    # Seed system settings
+    defaults = {
+        "potency_rate": ("1.50", "Potency Rate ($/lb/%pt)"),
+        "num_reactors": ("2", "Number of Reactors"),
+        "reactor_capacity": ("100", "Reactor Capacity (lbs)"),
+        "runs_per_day": ("5", "Runs Per Day Target"),
+        "operating_days": ("7", "Operating Days Per Week"),
+        "daily_throughput_target": ("500", "Daily Throughput Target (lbs)"),
+        "weekly_throughput_target": ("3500", "Weekly Throughput Target (lbs)"),
+    }
+    for key, (val, desc) in defaults.items():
+        if not db.session.get(SystemSetting, key):
+            db.session.add(SystemSetting(key=key, value=val, description=desc))
+
+    # Seed KPI targets
+    kpi_defaults = [
+        ("thca_yield_pct", "THCA Yield %", 7.0, 7.0, 6.0, "higher_is_better", "%"),
+        ("hte_yield_pct", "HTE Yield %", 5.0, 5.0, 4.0, "higher_is_better", "%"),
+        ("overall_yield_pct", "Overall Yield %", 12.0, 12.0, 10.0, "higher_is_better", "%"),
+        ("cost_per_potency_point", "Cost per Potency Point", 1.50, 1.35, 1.65, "lower_is_better", "$/lb/%pt"),
+        ("cost_per_gram_combined", "Cost per Gram", 5.0, 4.0, 6.0, "lower_is_better", "$/g"),
+        ("weekly_throughput", "Weekly Throughput", 3500, 3500, 3000, "higher_is_better", "lbs"),
+    ]
+    for name, display, target, green, yellow, direction, unit in kpi_defaults:
+        if not KpiTarget.query.filter_by(kpi_name=name).first():
+            db.session.add(KpiTarget(
+                kpi_name=name, display_name=display, target_value=target,
+                green_threshold=green, yellow_threshold=yellow,
+                direction=direction, unit=unit
+            ))
+
+    db.session.commit()
+
+    # Seed historical run data if database is empty
+    if Run.query.count() == 0:
+        _seed_historical_data()
+
+
+def _seed_historical_data():
+    """Import 43 runs from Gold Drop's Google Sheet (Jan 13 – Feb 6, 2026)."""
+    from datetime import datetime as dt
+
+    print("Seeding historical run data from Google Sheet...")
+
+    RAW = [
+        ("2/6","315","16","10.1","rockets x Humbolt 1 & 2","Farmlane","23.00","200","90800","3762","7627","","5710"),
+        ("2/5","400","20","10.1","Bubble Gum Gushers/ Rollover","Honey Pot/ Rollover","","200","90800","3224","9557","","7110"),
+        ("2/5","","","10.1","Coffee Creamer 1 & 2","Verde","","200","90800","5288","9007","","7550"),
+        ("2/5","386","10","10.1","ADL #1","Canndescent","","100","45400","4454","4637","","3810"),
+        ("2/4","","","10.1","Rockets x Humbolt","Farmlane/Rollover","","200","90800","4362","8107","","6490"),
+        ("2/4","809","14","10.1","Rockets x Humbolt","Farmlane","","200","90800","5062","11797","","9240"),
+        ("2/3","","","10.1","Rockets x Humbolt","Farmlane","","200","90800","4088","12857","","8670"),
+        ("2/3","955","18","","Rockets x Humbolt","Farmlane","","200","90800","4478","11857","4120","8330"),
+        ("2/2","","","","Rockets x Humbolt","Farmlane","","200","90800","5320","9777","4890","7870"),
+        ("2/2","1326","8","","Rockets x Humbolt","Farmlane","","200","90800","3676","8927","3240","7210"),
+        ("1/30","","","","Dosi Gelonade 4","7 Leaves","","100","45400","12772","0","",""),
+        ("1/30","","","","ACME 1","ACME","","100","45400","9220","0","",""),
+        ("1/30","","","","Dosi Gelonade 2&3","7 Leaves","","200","90800","4626","11067","4120","8400"),
+        ("1/30","","","","Oakland Runtz x Dosi Gelonade","Clock Tower x 7 Leaves","","200","90800","2392","9327","1980","7830"),
+        ("1/29","","16","","Oakland Runtz 1&2","Clock Tower","","200","90800","5262","12757","4030","9520"),
+        ("1/29","2328","16","","K-Train 4&5","SmGreenTech","","200","90800","4192","6587","3780","5540"),
+        ("1/28","","9","","K-Train 2&3","SmGreenTech","","200","90800","4884","7830","3726","6400"),
+        ("1/28","1017","15","","Spent 4 x K-Train 1","SmGreenTech/COT","","200","90800","4436","4070","3000","3620"),
+        ("1/27","","15","","Spent 2&3 COT","City of Trees","","200","90800","1816","1560","744","1430"),
+        ("1/27","","15","","K-Train 4 x Spent COT","SmGreenTech/COT","","200","90800","4716","6830","2912","5080"),
+        ("1/27","","15","","K-Train 2&3","SmGreenTech","","200","90800","6122","11520","5654","8380"),
+        ("1/26","","","","Gello x K-Train","SmGreenTech","","200","90800","4976","10060","4266","7880"),
+        ("1/26","","10","","Gello 3&4","SmGreenTech","","200","90800","6386","8270","6090","7330"),
+        ("1/23","","","","Gello 1&2","SmGreenTech","","200","90800","5194","10980","4830","7820"),
+        ("1/23","886","","","K-Whip 3&4","SmGreenTech","","200","90800","4512","10420","4002","7200"),
+        ("1/23","","","","K-Whip 1&2","SmGreenTech","","200","90800","5278","10370","4914","8200"),
+        ("1/23","1288","","","BJxHFCS 3&4","Canndescent","","200","90800","5084","8550","4942","6770"),
+        ("1/22","","","","BJxHFCS 1&2","Canndescent","","200","90800","2984","8600","2724","7290"),
+        ("1/22","1588","","","Citrus Project/Rollover","Rollover","","200","90800","6200","10870","5980","7090"),
+        ("1/21","691","11","","Apple Strudle x Mango Mintality","ACME","","200","90800","6010","8180","5870","6480"),
+        ("1/20","548","16","","Rollover","Rollover","","200","90800","4886","11790","4660","8290"),
+        ("1/19","","","","Purple Punch","City of Trees/Rollover","","200","90800","4424","13820","4220","11350"),
+        ("1/19","1050","","","Frosted Blue Runtz","Founding Fathers","","200","90800","5404","8960","5304","7330"),
+        ("1/17","1050","","","K Whip x Pinyatti 8&9","SmGreenTech","","200","90800","5714","12510","5208","8920"),
+        ("1/16","","","","K Whip x Pinyatti 7(pot pour)","SmGreenTech","","100","45400","6326","0","2621","2775"),
+        ("1/16","","","","K Whip x Pinyatti 5&6","SmGreenTech","","200","90800","5420","10030","4978","7540"),
+        ("1/16","1584","","","K Whip x Pinyatti 3&4","SmGreenTech","","200","90800","5230","10280","4888","8210"),
+        ("1/15","","","","K Whip x Pinyatti 1&2","SmGreenTech","","200","90800","5784","10630","5520","8390"),
+        ("1/15","1998","","","Cookies x Pink Gator 3&4","Farmlane","","200","90800","3654","9170","3354","7960"),
+        ("1/14","","","","Cookies x Pink Gator 1&2","Farmlane","","200","90800","4494","10240","4190","7510"),
+        ("1/14","2392","","","Pink Runtz X Gello 11&12","Canndescent","","200","90800","4210","9480","3870","7920"),
+        ("1/13","1244","","","Pink Runtz X Gello 9&10","Canndescent","","200","90800","3510","10670","3290","8410"),
+        ("1/13","1243","","","Pink Runtz X Gello 7&8","Canndescent","","200","90800","3160","9960","2650","7970"),
+    ]
+
+    SRC_MAP = {
+        "Farmlane": "Farmlane", "Farmlane/Rollover": "Farmlane",
+        "SmGreenTech": "SmGreenTech", "SmGreenTech/COT": "SmGreenTech",
+        "Canndescent": "Canndescent", "7 Leaves": "7 Leaves",
+        "ACME": "ACME", "Clock Tower": "Clock Tower",
+        "Clock Tower x 7 Leaves": "Clock Tower",
+        "City of Trees": "City of Trees", "City of Trees/Rollover": "City of Trees",
+        "Verde": "Verde", "Honey Pot/ Rollover": "Honey Pot",
+        "Founding Fathers": "Founding Fathers",
+        "Rollover": "Rollover (Blends)",
+    }
+
+    def pf(s):
+        if not s:
+            return None
+        try:
+            v = float(s.replace(",", ""))
+            return v if v != 0 else None
+        except (ValueError, TypeError):
+            return None
+
+    def pdate(s):
+        s = s.replace("-", "/")
+        try:
+            return dt.strptime(s, "%m/%d").date().replace(year=2026)
+        except ValueError:
+            return None
+
+    sup_objs = {}
+    for norm_name in set(SRC_MAP.values()):
+        s = Supplier(name=norm_name)
+        if norm_name == "Rollover (Blends)":
+            s.notes = "Auto-created for unattributed rollover runs"
+        db.session.add(s)
+        db.session.flush()
+        sup_objs[norm_name] = s
+
+    purch_objs = {}
+    for name, sup in sup_objs.items():
+        p = Purchase(supplier_id=sup.id, purchase_date=date(2026, 1, 13),
+                     status="complete", stated_weight_lbs=0)
+        db.session.add(p)
+        db.session.flush()
+        purch_objs[name] = p
+
+    lot_cache = {}
+    count = 0
+    for (dt_s, bio_house, butane, solvent, strain, source, price,
+         lbs_s, grams_s, w_hte, w_thca, d_hte, d_thca) in RAW:
+
+        run_date = pdate(dt_s)
+        lbs = pf(lbs_s)
+        if not run_date or not lbs:
+            continue
+
+        sup_name = SRC_MAP.get(source, "Rollover (Blends)")
+        is_rollover = "Rollover" in source or "Rollover" in strain
+
+        cache_key = (sup_name, strain)
+        if cache_key not in lot_cache:
+            lot = PurchaseLot(purchase_id=purch_objs[sup_name].id,
+                              strain_name=strain, weight_lbs=0, remaining_weight_lbs=0)
+            db.session.add(lot)
+            db.session.flush()
+            lot_cache[cache_key] = lot
+        lot = lot_cache[cache_key]
+        lot.weight_lbs += lbs
+        purch_objs[sup_name].stated_weight_lbs += lbs
+
+        grams = pf(grams_s) or (lbs * 454)
+        dry_hte = pf(d_hte)
+        dry_thca = pf(d_thca)
+        dry_total = (dry_hte or 0) + (dry_thca or 0)
+
+        run = Run(
+            run_date=run_date, reactor_number=1, is_rollover=is_rollover,
+            bio_in_house_lbs=pf(bio_house), bio_in_reactor_lbs=lbs,
+            grams_ran=grams, butane_in_house_lbs=pf(butane),
+            solvent_ratio=pf(solvent),
+            wet_hte_g=pf(w_hte), wet_thca_g=pf(w_thca),
+            dry_hte_g=dry_hte, dry_thca_g=dry_thca,
+            overall_yield_pct=(dry_total / grams * 100) if grams and dry_total else None,
+            thca_yield_pct=(dry_thca / grams * 100) if grams and dry_thca else None,
+            hte_yield_pct=(dry_hte / grams * 100) if grams and dry_hte else None,
+            run_type="standard",
+            notes=f"Imported from Google Sheet. Source: {source}",
+        )
+        db.session.add(run)
+        db.session.flush()
+
+        inp = RunInput(run_id=run.id, lot_id=lot.id, weight_lbs=lbs)
+        db.session.add(inp)
+
+        p_val = pf(price)
+        if p_val and not purch_objs[sup_name].price_per_lb:
+            purch_objs[sup_name].price_per_lb = p_val
+
+        run.calculate_cost()
+        count += 1
+
+    db.session.commit()
+    print(f"  Seeded {count} historical runs across {len(sup_objs)} suppliers.")
+
+
+with app.app_context():
+    init_db()
+
+
+if __name__ == "__main__":
+    app.run(debug=True, host="0.0.0.0", port=5000)

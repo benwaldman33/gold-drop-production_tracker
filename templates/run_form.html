@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% block title %}{% if run %}Edit Run{% else %}New Run{% endif %}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>{% if run %}Edit Run{% else %}Log New Run{% endif %}</h2>
+  <a href="{{ url_for('runs_list') }}" class="btn btn-secondary">← Back to Runs</a>
+</div>
+
+<div class="card">
+  <form method="POST">
+    <div class="form-section">
+      <h4>Run Details</h4>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Date *</label>
+          <input type="date" name="run_date" value="{{ run.run_date.strftime('%Y-%m-%d') if run and run.run_date else today }}" required>
+        </div>
+        <div class="form-group">
+          <label>Reactor # *</label>
+          <select name="reactor_number" required>
+            <option value="1" {% if run and run.reactor_number == 1 %}selected{% endif %}>Reactor 1</option>
+            <option value="2" {% if run and run.reactor_number == 2 %}selected{% endif %}>Reactor 2</option>
+            <option value="3" {% if run and run.reactor_number == 3 %}selected{% endif %}>Reactor 3</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Run Type</label>
+          <select name="run_type">
+            <option value="standard" {% if run and run.run_type == 'standard' %}selected{% endif %}>Standard</option>
+            <option value="kief" {% if run and run.run_type == 'kief' %}selected{% endif %}>Kief</option>
+            <option value="ld" {% if run and run.run_type == 'ld' %}selected{% endif %}>Liquid Diamond</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label><input type="checkbox" name="is_rollover" {% if run and run.is_rollover %}checked{% endif %}> This is a rollover/blend run</label>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h4>Source Material</h4>
+      <div id="lot-container" class="lot-inputs">
+        {% if run and run.inputs.count() > 0 %}
+          {% for inp in run.inputs %}
+          <div class="lot-row">
+            <select name="lot_ids[]">
+              <option value="">Select lot...</option>
+              {% for lot in lots %}
+              <option value="{{ lot.id }}" {% if lot.id == inp.lot_id %}selected{% endif %}>
+                {{ lot.display_label }}
+              </option>
+              {% endfor %}
+            </select>
+            <input type="number" name="lot_weights[]" value="{{ inp.weight_lbs }}" placeholder="Lbs" step="0.1">
+            <button type="button" class="remove-lot" onclick="this.parentElement.remove()">✕</button>
+          </div>
+          {% endfor %}
+        {% else %}
+        <div class="lot-row">
+          <select name="lot_ids[]">
+            <option value="">Select lot...</option>
+            {% for lot in lots %}
+            <option value="{{ lot.id }}">{{ lot.display_label }}</option>
+            {% endfor %}
+          </select>
+          <input type="number" name="lot_weights[]" placeholder="Lbs" step="0.1">
+          <button type="button" class="remove-lot" onclick="this.parentElement.remove()">✕</button>
+        </div>
+        {% endif %}
+      </div>
+      <button type="button" class="btn btn-secondary btn-sm mt-2" onclick="addLotRow()">+ Add Source Lot</button>
+    </div>
+
+    <div class="form-section">
+      <h4>Input</h4>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Lbs in Reactor *</label>
+          <input type="number" name="bio_in_reactor_lbs" value="{{ run.bio_in_reactor_lbs if run and run.bio_in_reactor_lbs else '' }}" step="0.1" required>
+        </div>
+        <div class="form-group">
+          <label>Bio in House (lbs)</label>
+          <input type="number" name="bio_in_house_lbs" value="{{ run.bio_in_house_lbs if run and run.bio_in_house_lbs else '' }}" step="0.1">
+        </div>
+        <div class="form-group">
+          <label>Butane in House (lbs)</label>
+          <input type="number" name="butane_in_house_lbs" value="{{ run.butane_in_house_lbs if run and run.butane_in_house_lbs else '' }}" step="0.1">
+        </div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Solvent Ratio</label>
+          <input type="number" name="solvent_ratio" value="{{ run.solvent_ratio if run and run.solvent_ratio else '' }}" step="0.1">
+        </div>
+        <div class="form-group">
+          <label>System Temp</label>
+          <input type="number" name="system_temp" value="{{ run.system_temp if run and run.system_temp else '' }}" step="0.1">
+        </div>
+        <div class="form-group">
+          <label>Fuel Consumption</label>
+          <input type="number" name="fuel_consumption" value="{{ run.fuel_consumption if run and run.fuel_consumption else '' }}" step="0.1">
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h4>Output</h4>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Wet HTE (g)</label>
+          <input type="number" name="wet_hte_g" value="{{ run.wet_hte_g if run and run.wet_hte_g else '' }}" step="0.1">
+        </div>
+        <div class="form-group">
+          <label>Wet THCA (g)</label>
+          <input type="number" name="wet_thca_g" value="{{ run.wet_thca_g if run and run.wet_thca_g else '' }}" step="0.1">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Dry HTE (g) *</label>
+          <input type="number" name="dry_hte_g" value="{{ run.dry_hte_g if run and run.dry_hte_g else '' }}" step="0.1">
+        </div>
+        <div class="form-group">
+          <label>Dry THCA (g) *</label>
+          <input type="number" name="dry_thca_g" value="{{ run.dry_thca_g if run and run.dry_thca_g else '' }}" step="0.1">
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h4>Other</h4>
+      <div class="form-group">
+        <label><input type="checkbox" name="decarb_sample_done" {% if run and run.decarb_sample_done %}checked{% endif %}> Decarb sample done</label>
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea name="notes" rows="3">{{ run.notes if run and run.notes else '' }}</textarea>
+      </div>
+    </div>
+
+    {% if run and run.overall_yield_pct %}
+    <div class="card" style="background:var(--dark);margin-bottom:16px;">
+      <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Calculated Values</h4>
+      <div class="form-row-3">
+        <div><span class="text-sm" style="color:var(--text-muted);">Overall Yield:</span> <strong class="text-mono">{{ "{:.2f}".format(run.overall_yield_pct) }}%</strong></div>
+        <div><span class="text-sm" style="color:var(--text-muted);">THCA Yield:</span> <strong class="text-mono">{{ "{:.2f}".format(run.thca_yield_pct) if run.thca_yield_pct else '—' }}%</strong></div>
+        <div><span class="text-sm" style="color:var(--text-muted);">HTE Yield:</span> <strong class="text-mono">{{ "{:.2f}".format(run.hte_yield_pct) if run.hte_yield_pct else '—' }}%</strong></div>
+      </div>
+      {% if run.cost_per_gram_combined %}
+      <div class="mt-2"><span class="text-sm" style="color:var(--text-muted);">Cost/Gram:</span> <strong class="text-mono">${{ "{:.2f}".format(run.cost_per_gram_combined) }}</strong></div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="form-actions">
+      {% if run %}
+      <form method="POST" action="{{ url_for('run_delete', run_id=run.id) }}" style="display:inline;" onsubmit="return confirm('Delete this run?');">
+        <button type="submit" class="btn btn-danger">Delete Run</button>
+      </form>
+      {% endif %}
+      <a href="{{ url_for('runs_list') }}" class="btn btn-secondary">Cancel</a>
+      <button type="submit" class="btn btn-primary">Save Run</button>
+    </div>
+  </form>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+function addLotRow() {
+  const container = document.getElementById('lot-container');
+  const firstSelect = container.querySelector('select');
+  const row = document.createElement('div');
+  row.className = 'lot-row';
+  row.innerHTML = `
+    <select name="lot_ids[]">${firstSelect ? firstSelect.innerHTML : '<option value="">No lots available</option>'}</select>
+    <input type="number" name="lot_weights[]" placeholder="Lbs" step="0.1">
+    <button type="button" class="remove-lot" onclick="this.parentElement.remove()">✕</button>
+  `;
+  container.appendChild(row);
+}
+</script>
+{% endblock %}

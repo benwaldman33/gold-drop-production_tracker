@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Runs{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Extraction Runs</h2>
+  <div class="btn-group">
+    <form method="GET" style="display:flex;gap:8px;">
+      <input type="text" name="search" value="{{ search }}" placeholder="Search strain..." 
+             style="padding:8px 12px;background:var(--dark);border:1px solid var(--dark-border);border-radius:var(--radius);color:var(--text-primary);font-size:0.85rem;width:200px;">
+      <button type="submit" class="btn btn-secondary">Search</button>
+    </form>
+    {% if current_user.can_edit %}
+    <a href="{{ url_for('run_new') }}" class="btn btn-primary">+ New Run</a>
+    {% endif %}
+    <a href="{{ url_for('export_csv', entity='runs') }}" class="btn btn-secondary">Export CSV</a>
+  </div>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th><a href="?sort=run_date&order={% if sort=='run_date' and order=='desc' %}asc{% else %}desc{% endif %}&search={{ search }}">Date</a></th>
+        <th>Rx</th>
+        <th>Source</th>
+        <th class="text-right">Lbs</th>
+        <th class="text-right">Wet HTE</th>
+        <th class="text-right">Wet THCA</th>
+        <th class="text-right">Dry HTE</th>
+        <th class="text-right">Dry THCA</th>
+        <th class="text-right">Yield %</th>
+        <th class="text-right">THCA %</th>
+        <th class="text-right">HTE %</th>
+        <th class="text-right">$/gram</th>
+        <th>Type</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for run in runs %}
+      <tr>
+        <td>{{ run.run_date.strftime('%m/%d/%y') if run.run_date else '—' }}</td>
+        <td class="text-center">{{ run.reactor_number }}</td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;">
+          {% if run.is_rollover %}<span class="badge badge-gold">Rollover</span>{% endif %}
+          {{ run.source_display }}
+        </td>
+        <td class="text-right text-mono">{{ "{:,.0f}".format(run.bio_in_reactor_lbs) if run.bio_in_reactor_lbs else '—' }}</td>
+        <td class="text-right text-mono">{{ "{:,.0f}".format(run.wet_hte_g) if run.wet_hte_g else '—' }}</td>
+        <td class="text-right text-mono">{{ "{:,.0f}".format(run.wet_thca_g) if run.wet_thca_g else '—' }}</td>
+        <td class="text-right text-mono">{{ "{:,.0f}".format(run.dry_hte_g) if run.dry_hte_g else '—' }}</td>
+        <td class="text-right text-mono">{{ "{:,.0f}".format(run.dry_thca_g) if run.dry_thca_g else '—' }}</td>
+        <td class="text-right text-mono {% if run.overall_yield_pct and run.overall_yield_pct >= 12 %}cell-green{% elif run.overall_yield_pct and run.overall_yield_pct >= 10 %}cell-yellow{% elif run.overall_yield_pct %}cell-red{% endif %}">
+          {{ "{:.1f}".format(run.overall_yield_pct) if run.overall_yield_pct else '—' }}
+        </td>
+        <td class="text-right text-mono">{{ "{:.1f}".format(run.thca_yield_pct) if run.thca_yield_pct else '—' }}</td>
+        <td class="text-right text-mono">{{ "{:.1f}".format(run.hte_yield_pct) if run.hte_yield_pct else '—' }}</td>
+        <td class="text-right text-mono">{{ "${:.2f}".format(run.cost_per_gram_combined) if run.cost_per_gram_combined else '—' }}</td>
+        <td><span class="badge badge-gray">{{ run.run_type }}</span></td>
+        <td>
+          {% if current_user.can_edit %}
+          <a href="{{ url_for('run_edit', run_id=run.id) }}" class="btn btn-secondary btn-sm">Edit</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="14" class="text-center cell-muted" style="padding:40px;">No runs recorded yet. <a href="{{ url_for('run_new') }}">Log your first run.</a></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if pagination.pages > 1 %}
+<div class="pagination">
+  {% if pagination.has_prev %}
+  <a href="?page={{ pagination.prev_num }}&sort={{ sort }}&order={{ order }}&search={{ search }}">← Prev</a>
+  {% endif %}
+  {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+    {% if p %}
+      <a href="?page={{ p }}&sort={{ sort }}&order={{ order }}&search={{ search }}" class="{% if p == pagination.page %}active{% endif %}">{{ p }}</a>
+    {% else %}
+      <span>…</span>
+    {% endif %}
+  {% endfor %}
+  {% if pagination.has_next %}
+  <a href="?page={{ pagination.next_num }}&sort={{ sort }}&order={{ order }}&search={{ search }}">Next →</a>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

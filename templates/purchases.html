@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Purchases{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Purchases</h2>
+  <div class="btn-group">
+    {% if current_user.can_edit %}
+    <a href="{{ url_for('purchase_new') }}" class="btn btn-primary">+ New Purchase</a>
+    {% endif %}
+    <a href="{{ url_for('export_csv', entity='purchases') }}" class="btn btn-secondary">Export CSV</a>
+  </div>
+</div>
+
+<div class="view-toggle">
+  <div class="btn-group">
+    <a href="?status=" class="btn {% if not status_filter %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">All</a>
+    <a href="?status=ordered" class="btn {% if status_filter == 'ordered' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">Ordered</a>
+    <a href="?status=in_transit" class="btn {% if status_filter == 'in_transit' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">In Transit</a>
+    <a href="?status=delivered" class="btn {% if status_filter == 'delivered' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">Delivered</a>
+    <a href="?status=complete" class="btn {% if status_filter == 'complete' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">Complete</a>
+  </div>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Supplier</th>
+        <th>Status</th>
+        <th class="text-right">Stated Lbs</th>
+        <th class="text-right">Actual Lbs</th>
+        <th class="text-right">Potency %</th>
+        <th class="text-right">$/lb</th>
+        <th class="text-right">Total Cost</th>
+        <th class="text-right">True-Up</th>
+        <th>Lots</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in purchases %}
+      <tr>
+        <td>{{ p.purchase_date.strftime('%m/%d/%y') if p.purchase_date else '—' }}</td>
+        <td><strong>{{ p.supplier_name }}</strong></td>
+        <td><span class="badge status-{{ p.status }}">{{ p.status.replace('_', ' ') }}</span></td>
+        <td class="text-right text-mono">{{ "{:,.0f}".format(p.stated_weight_lbs) if p.stated_weight_lbs else '—' }}</td>
+        <td class="text-right text-mono">{{ "{:,.0f}".format(p.actual_weight_lbs) if p.actual_weight_lbs else '—' }}</td>
+        <td class="text-right text-mono">
+          {{ "{:.1f}".format(p.stated_potency_pct) if p.stated_potency_pct else '—' }}
+          {% if p.tested_potency_pct %} → {{ "{:.1f}".format(p.tested_potency_pct) }}{% endif %}
+        </td>
+        <td class="text-right text-mono">{{ "${:,.2f}".format(p.price_per_lb) if p.price_per_lb else '—' }}</td>
+        <td class="text-right text-mono">{{ "${:,.2f}".format(p.total_cost) if p.total_cost else '—' }}</td>
+        <td class="text-right text-mono {% if p.true_up_amount and p.true_up_amount > 0 %}cell-red{% elif p.true_up_amount and p.true_up_amount < 0 %}cell-green{% endif %}">
+          {% if p.true_up_amount %}{{ "${:,.2f}".format(p.true_up_amount) }}{% else %}—{% endif %}
+        </td>
+        <td>{{ p.lots.count() }} lots</td>
+        <td>
+          {% if current_user.can_edit %}
+          <a href="{{ url_for('purchase_edit', purchase_id=p.id) }}" class="btn btn-secondary btn-sm">Edit</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="11" class="text-center cell-muted" style="padding:40px;">No purchases recorded yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if pagination.pages > 1 %}
+<div class="pagination">
+  {% if pagination.has_prev %}<a href="?page={{ pagination.prev_num }}&status={{ status_filter }}">← Prev</a>{% endif %}
+  {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+    {% if p %}<a href="?page={{ p }}&status={{ status_filter }}" class="{% if p == pagination.page %}active{% endif %}">{{ p }}</a>
+    {% else %}<span>…</span>{% endif %}
+  {% endfor %}
+  {% if pagination.has_next %}<a href="?page={{ pagination.next_num }}&status={{ status_filter }}">Next →</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

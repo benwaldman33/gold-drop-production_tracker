@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{% if supplier %}Edit Supplier{% else %}Add Supplier{% endif %}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>{% if supplier %}Edit Supplier{% else %}Add Supplier{% endif %}</h2>
+  <a href="{{ url_for('suppliers_list') }}" class="btn btn-secondary">← Back</a>
+</div>
+<div class="card">
+  <form method="POST">
+    <div class="form-row">
+      <div class="form-group">
+        <label>Farm / Supplier Name *</label>
+        <input type="text" name="name" value="{{ supplier.name if supplier else '' }}" required>
+      </div>
+      <div class="form-group">
+        <label>Contact Name</label>
+        <input type="text" name="contact_name" value="{{ supplier.contact_name if supplier and supplier.contact_name else '' }}">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Phone</label>
+        <input type="text" name="contact_phone" value="{{ supplier.contact_phone if supplier and supplier.contact_phone else '' }}">
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" name="contact_email" value="{{ supplier.contact_email if supplier and supplier.contact_email else '' }}">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Location</label>
+      <input type="text" name="location" value="{{ supplier.location if supplier and supplier.location else '' }}">
+    </div>
+    <div class="form-group">
+      <label>Notes</label>
+      <textarea name="notes" rows="3">{{ supplier.notes if supplier and supplier.notes else '' }}</textarea>
+    </div>
+    {% if supplier %}
+    <div class="form-group">
+      <label><input type="checkbox" name="is_active" {% if supplier.is_active %}checked{% endif %}> Active Supplier</label>
+    </div>
+    {% endif %}
+    <div class="form-actions">
+      <a href="{{ url_for('suppliers_list') }}" class="btn btn-secondary">Cancel</a>
+      <button type="submit" class="btn btn-primary">Save Supplier</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

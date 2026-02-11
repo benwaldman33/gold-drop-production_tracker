@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Gold Drop{% endblock %} — Biomass Tracker</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <div class="layout">
+    <nav class="sidebar">
+      <div class="sidebar-logo">
+        <h1>GOLD DROP</h1>
+        <small>Biomass Tracker</small>
+      </div>
+      <div class="sidebar-nav">
+        <a href="{{ url_for('dashboard') }}" class="{% if request.endpoint == 'dashboard' %}active{% endif %}">
+          <span class="icon">📊</span><span>Dashboard</span>
+        </a>
+        <a href="{{ url_for('runs_list') }}" class="{% if request.endpoint in ('runs_list', 'run_new', 'run_edit') %}active{% endif %}">
+          <span class="icon">⚗️</span><span>Runs</span>
+        </a>
+        <a href="{{ url_for('inventory') }}" class="{% if request.endpoint == 'inventory' %}active{% endif %}">
+          <span class="icon">📦</span><span>Inventory</span>
+        </a>
+        <a href="{{ url_for('purchases_list') }}" class="{% if request.endpoint in ('purchases_list', 'purchase_new', 'purchase_edit') %}active{% endif %}">
+          <span class="icon">💰</span><span>Purchases</span>
+        </a>
+        <a href="{{ url_for('suppliers_list') }}" class="{% if request.endpoint in ('suppliers_list', 'supplier_new', 'supplier_edit') %}active{% endif %}">
+          <span class="icon">🌿</span><span>Suppliers</span>
+        </a>
+        <a href="{{ url_for('strains_list') }}" class="{% if request.endpoint == 'strains_list' %}active{% endif %}">
+          <span class="icon">🧬</span><span>Strains</span>
+        </a>
+        {% if current_user.is_super_admin %}
+        <a href="{{ url_for('settings') }}" class="{% if request.endpoint == 'settings' %}active{% endif %}">
+          <span class="icon">⚙️</span><span>Settings</span>
+        </a>
+        {% endif %}
+        <a href="{{ url_for('import_csv') }}" class="{% if request.endpoint in ('import_csv', 'import_confirm') %}active{% endif %}">
+          <span class="icon">📥</span><span>Import</span>
+        </a>
+      </div>
+      <div class="sidebar-user">
+        <span>{{ current_user.display_name }}</span>
+        <span class="role">{{ current_user.role.replace('_', ' ') }}</span>
+      </div>
+      <div style="padding: 8px 16px 14px;">
+        <a href="{{ url_for('logout') }}" class="btn btn-secondary btn-sm w-full" style="justify-content:center;">Logout</a>
+      </div>
+    </nav>
+
+    <main class="main-content">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <div class="flash-messages">
+        {% for category, message in messages %}
+        <div class="flash flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

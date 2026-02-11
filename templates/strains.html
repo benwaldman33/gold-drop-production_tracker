@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Strain Performance{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Strain Performance</h2>
+  <div class="period-selector">
+    <a href="?view=all" class="{% if view == 'all' %}active{% endif %}">All Time</a>
+    <a href="?view=90" class="{% if view == '90' %}active{% endif %}">Last 90 Days</a>
+  </div>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Strain</th>
+        <th>Supplier</th>
+        <th class="text-right">Avg Yield %</th>
+        <th class="text-right">Avg THCA %</th>
+        <th class="text-right">Avg HTE %</th>
+        <th class="text-right">Avg $/gram</th>
+        <th class="text-right">Total Lbs</th>
+        <th class="text-right">Total THCA (g)</th>
+        <th class="text-right">Total HTE (g)</th>
+        <th class="text-right">Runs</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in results %}
+      <tr>
+        <td><strong>{{ r.strain_name }}</strong></td>
+        <td>{{ r.supplier_name }}</td>
+        <td class="text-right text-mono {% if yield_kpi %}{{ 'cell-green' if yield_kpi.evaluate(r.avg_yield) == 'green' else ('cell-yellow' if yield_kpi.evaluate(r.avg_yield) == 'yellow' else 'cell-red') }}{% endif %}">
+          {{ "{:.1f}".format(r.avg_yield) if r.avg_yield else '—' }}
+        </td>
+        <td class="text-right text-mono {% if thca_kpi %}{{ 'cell-green' if thca_kpi.evaluate(r.avg_thca) == 'green' else ('cell-yellow' if thca_kpi.evaluate(r.avg_thca) == 'yellow' else 'cell-red') }}{% endif %}">
+          {{ "{:.1f}".format(r.avg_thca) if r.avg_thca else '—' }}
+        </td>
+        <td class="text-right text-mono">{{ "{:.1f}".format(r.avg_hte) if r.avg_hte else '—' }}</td>
+        <td class="text-right text-mono">{{ "${:.2f}".format(r.avg_cpg) if r.avg_cpg else '—' }}</td>
+        <td class="text-right text-mono">{{ "{:,.0f}".format(r.total_lbs) if r.total_lbs else '0' }}</td>
+        <td class="text-right text-mono">{{ "{:,.0f}".format(r.total_thca_g) if r.total_thca_g else '0' }}</td>
+        <td class="text-right text-mono">{{ "{:,.0f}".format(r.total_hte_g) if r.total_hte_g else '0' }}</td>
+        <td class="text-right text-mono">{{ r.run_count }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="10" class="text-center cell-muted" style="padding:40px;">No strain data available yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

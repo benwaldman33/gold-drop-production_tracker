@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}{% if purchase %}Edit Purchase{% else %}New Purchase{% endif %}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>{% if purchase %}Edit Purchase{% else %}New Purchase{% endif %}</h2>
+  <a href="{{ url_for('purchases_list') }}" class="btn btn-secondary">← Back</a>
+</div>
+
+<div class="card">
+  <form method="POST">
+    <div class="form-section">
+      <h4>Purchase Details</h4>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Supplier *</label>
+          <select name="supplier_id" required>
+            <option value="">Select supplier...</option>
+            {% for s in suppliers %}
+            <option value="{{ s.id }}" {% if purchase and purchase.supplier_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Purchase Date *</label>
+          <input type="date" name="purchase_date" value="{{ purchase.purchase_date.strftime('%Y-%m-%d') if purchase and purchase.purchase_date else today }}" required>
+        </div>
+        <div class="form-group">
+          <label>Status</label>
+          <select name="status">
+            {% for s in ['ordered', 'in_transit', 'delivered', 'in_testing', 'available', 'processing', 'complete'] %}
+            <option value="{{ s }}" {% if purchase and purchase.status == s %}selected{% endif %}>{{ s.replace('_', ' ').title() }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h4>Weight & Pricing</h4>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Stated Weight (lbs) *</label>
+          <input type="number" name="stated_weight_lbs" value="{{ purchase.stated_weight_lbs if purchase else '' }}" step="0.1" required>
+        </div>
+        <div class="form-group">
+          <label>Actual Weight (lbs)</label>
+          <input type="number" name="actual_weight_lbs" value="{{ purchase.actual_weight_lbs if purchase and purchase.actual_weight_lbs else '' }}" step="0.1">
+        </div>
+        <div class="form-group">
+          <label>Delivery Date</label>
+          <input type="date" name="delivery_date" value="{{ purchase.delivery_date.strftime('%Y-%m-%d') if purchase and purchase.delivery_date else '' }}">
+        </div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Stated Potency %</label>
+          <input type="number" name="stated_potency_pct" id="stated_potency" value="{{ purchase.stated_potency_pct if purchase and purchase.stated_potency_pct else '' }}" step="0.1" onchange="calcPrice()">
+        </div>
+        <div class="form-group">
+          <label>Tested Potency %</label>
+          <input type="number" name="tested_potency_pct" value="{{ purchase.tested_potency_pct if purchase and purchase.tested_potency_pct else '' }}" step="0.1">
+        </div>
+        <div class="form-group">
+          <label>Price/lb (auto-calc from potency @ ${{ rate }}/pt)</label>
+          <input type="number" name="price_per_lb" id="price_per_lb" value="{{ purchase.price_per_lb if purchase and purchase.price_per_lb else '' }}" step="0.01">
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h4>Biomass Details</h4>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Clean or Dirty</label>
+          <select name="clean_or_dirty">
+            <option value="">—</option>
+            <option value="clean" {% if purchase and purchase.clean_or_dirty == 'clean' %}selected{% endif %}>Clean</option>
+            <option value="dirty" {% if purchase and purchase.clean_or_dirty == 'dirty' %}selected{% endif %}>Dirty</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Indoor / Outdoor</label>
+          <select name="indoor_outdoor">
+            <option value="">—</option>
+            <option value="indoor" {% if purchase and purchase.indoor_outdoor == 'indoor' %}selected{% endif %}>Indoor</option>
+            <option value="outdoor" {% if purchase and purchase.indoor_outdoor == 'outdoor' %}selected{% endif %}>Outdoor</option>
+            <option value="mixed_light" {% if purchase and purchase.indoor_outdoor == 'mixed_light' %}selected{% endif %}>Mixed Light</option>
+            <option value="greenhouse" {% if purchase and purchase.indoor_outdoor == 'greenhouse' %}selected{% endif %}>Greenhouse</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Harvest Date</label>
+          <input type="date" name="harvest_date" value="{{ purchase.harvest_date.strftime('%Y-%m-%d') if purchase and purchase.harvest_date else '' }}">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea name="notes" rows="2">{{ purchase.notes if purchase and purchase.notes else '' }}</textarea>
+      </div>
+    </div>
+
+    {% if not purchase %}
+    <div class="form-section">
+      <h4>Lots / Strains in This Purchase</h4>
+      <div id="lots-container">
+        <div class="lot-row" style="grid-template-columns:1fr 120px 40px;">
+          <input type="text" name="lot_strains[]" placeholder="Strain name">
+          <input type="number" name="lot_weights[]" placeholder="Lbs" step="0.1">
+          <button type="button" class="remove-lot" onclick="this.parentElement.remove()">✕</button>
+        </div>
+      </div>
+      <button type="button" class="btn btn-secondary btn-sm mt-2" onclick="addLot()">+ Add Lot</button>
+    </div>
+    {% endif %}
+
+    {% if purchase %}
+    <div class="form-section">
+      <h4>Lots ({{ purchase.lots.count() }})</h4>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Strain</th><th class="text-right">Weight</th><th class="text-right">Remaining</th><th>Milled</th></tr></thead>
+          <tbody>
+            {% for lot in purchase.lots %}
+            <tr>
+              <td>{{ lot.strain_name }}</td>
+              <td class="text-right text-mono">{{ "{:,.0f}".format(lot.weight_lbs) }}</td>
+              <td class="text-right text-mono">{{ "{:,.0f}".format(lot.remaining_weight_lbs) }}</td>
+              <td>{% if lot.milled %}Yes{% else %}No{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="text-sm" style="color:var(--text-muted);margin-top:8px;">Use the form below the Save button to add new lots.</p>
+    </div>
+    {% endif %}
+
+    <div class="form-actions">
+      <a href="{{ url_for('purchases_list') }}" class="btn btn-secondary">Cancel</a>
+      <button type="submit" class="btn btn-primary">Save Purchase</button>
+    </div>
+  </form>
+</div>
+
+{% if purchase %}
+<div class="card">
+  <div class="card-header"><h3>Add Lot to This Purchase</h3></div>
+  <form method="POST" action="{{ url_for('lot_new', purchase_id=purchase.id) }}" style="display:flex;gap:8px;align-items:flex-end;">
+    <div class="form-group" style="flex:1;margin:0;">
+      <label>Strain Name</label>
+      <input type="text" name="strain_name" placeholder="e.g. Rockets x Humbolt" required>
+    </div>
+    <div class="form-group" style="width:120px;margin:0;">
+      <label>Weight (lbs)</label>
+      <input type="number" name="weight_lbs" placeholder="Lbs" step="0.1" required>
+    </div>
+    <div class="form-group" style="width:120px;margin:0;">
+      <label>Potency %</label>
+      <input type="number" name="potency_pct" placeholder="%" step="0.1">
+    </div>
+    <button type="submit" class="btn btn-primary" style="margin-bottom:0;height:38px;">Add Lot</button>
+  </form>
+</div>
+{% endif %}
+
+{% endblock %}
+{% block scripts %}
+<script>
+const RATE = {{ rate }};
+function calcPrice() {
+  const potency = parseFloat(document.getElementById('stated_potency').value);
+  const priceField = document.getElementById('price_per_lb');
+  if (potency && !priceField.value) {
+    priceField.value = (RATE * potency).toFixed(2);
+  }
+}
+function addLot() {
+  const c = document.getElementById('lots-container');
+  const row = document.createElement('div');
+  row.className = 'lot-row';
+  row.style.gridTemplateColumns = '1fr 120px 40px';
+  row.innerHTML = `
+    <input type="text" name="lot_strains[]" placeholder="Strain name">
+    <input type="number" name="lot_weights[]" placeholder="Lbs" step="0.1">
+    <button type="button" class="remove-lot" onclick="this.parentElement.remove()">✕</button>
+  `;
+  c.appendChild(row);
+}
+</script>
+{% endblock %}

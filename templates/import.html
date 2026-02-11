@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Import Data{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Import Data</h2>
+</div>
+
+<div class="card">
+  <div class="card-header"><h3>Upload CSV File</h3></div>
+  <p style="color:var(--text-secondary);margin-bottom:16px;">
+    Upload a CSV export from your Google Sheet. The system will automatically filter out repeated header rows,
+    parse dates, and check for duplicates before importing.
+  </p>
+
+  <form method="POST" enctype="multipart/form-data">
+    <div class="form-group" style="max-width:400px;">
+      <label>CSV File</label>
+      <input type="file" name="csv_file" accept=".csv" required 
+             style="padding:10px;background:var(--dark);border:1px solid var(--dark-border);border-radius:var(--radius);color:var(--text-primary);">
+    </div>
+    <button type="submit" class="btn btn-primary">Upload & Preview</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-header"><h3>Import Notes</h3></div>
+  <div style="color:var(--text-secondary);line-height:1.8;">
+    <p><strong style="color:var(--gold);">Supported format:</strong> CSV files exported from Google Sheets with columns matching the run report format (Date, Bio in house, Strain, Source, Price, LBS Ran, Grams Ran, Wet HTE, Wet THCa, Dry HTE, DRY THCA, etc.)</p>
+    <p style="margin-top:8px;"><strong style="color:var(--gold);">Duplicate detection:</strong> Records matching on date + strain + source will be flagged as potential duplicates and skipped by default.</p>
+    <p style="margin-top:8px;"><strong style="color:var(--gold);">Header filtering:</strong> Repeated header rows (common in the Gold Drop sheet format) are automatically stripped.</p>
+    <p style="margin-top:8px;"><strong style="color:var(--gold);">Suppliers:</strong> New supplier names found in the Source column will be automatically created.</p>
+  </div>
+</div>
+{% endblock %}

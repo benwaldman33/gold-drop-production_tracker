@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Dashboard</h2>
+  <div class="period-selector">
+    <a href="?period=today" class="{% if period == 'today' %}active{% endif %}">Today</a>
+    <a href="?period=7" class="{% if period == '7' %}active{% endif %}">7 Days</a>
+    <a href="?period=30" class="{% if period == '30' %}active{% endif %}">30 Days</a>
+    <a href="?period=90" class="{% if period == '90' %}active{% endif %}">90 Days</a>
+    <a href="?period=all" class="{% if period == 'all' %}active{% endif %}">All Time</a>
+  </div>
+</div>
+
+<!-- Summary Stats -->
+<div class="summary-row">
+  <div class="summary-stat">
+    <div class="label">Total Runs</div>
+    <div class="value">{{ total_runs }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Lbs Processed</div>
+    <div class="value">{{ "{:,.0f}".format(total_lbs) }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Dry Output (g)</div>
+    <div class="value">{{ "{:,.0f}".format(total_dry_output) }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Biomass On Hand (lbs)</div>
+    <div class="value">{{ "{:,.0f}".format(on_hand) }}</div>
+  </div>
+</div>
+
+<!-- KPI Cards -->
+<div class="card">
+  <div class="card-header">
+    <h3>Key Performance Indicators</h3>
+  </div>
+  <div class="kpi-grid">
+    {% for kpi in kpi_cards %}
+    <div class="kpi-card {{ kpi.color }}">
+      <div class="kpi-label">{{ kpi.name }}</div>
+      <div class="kpi-value">
+        {% if kpi.actual is not none %}
+          {% if kpi.unit == '%' %}
+            {{ "{:.1f}".format(kpi.actual) }}%
+          {% elif kpi.unit in ('$/g', '$/lb/%pt') %}
+            ${{ "{:.2f}".format(kpi.actual) }}
+          {% elif kpi.unit == 'lbs' %}
+            {{ "{:,.0f}".format(kpi.actual) }}
+          {% elif kpi.unit == 'days' %}
+            {{ "{:.1f}".format(kpi.actual) }}
+          {% else %}
+            {{ "{:.2f}".format(kpi.actual) }}
+          {% endif %}
+        {% else %}
+          —
+        {% endif %}
+      </div>
+      <div class="kpi-target">Target: 
+        {% if kpi.unit == '%' %}{{ "{:.1f}".format(kpi.target) }}%
+        {% elif kpi.unit in ('$/g', '$/lb/%pt') %}${{ "{:.2f}".format(kpi.target) }}
+        {% elif kpi.unit == 'lbs' %}{{ "{:,.0f}".format(kpi.target) }}
+        {% else %}{{ kpi.target }}{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="card">
+  <div class="card-header">
+    <h3>Quick Actions</h3>
+  </div>
+  <div class="btn-group">
+    {% if current_user.can_edit %}
+    <a href="{{ url_for('run_new') }}" class="btn btn-primary">+ Log New Run</a>
+    <a href="{{ url_for('purchase_new') }}" class="btn btn-secondary">+ New Purchase</a>
+    <a href="{{ url_for('supplier_new') }}" class="btn btn-secondary">+ Add Supplier</a>
+    {% endif %}
+    <a href="{{ url_for('export_csv', entity='runs') }}" class="btn btn-secondary">Export Runs CSV</a>
+  </div>
+</div>
+{% endblock %}

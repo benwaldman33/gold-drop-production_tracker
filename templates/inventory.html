@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Inventory{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Inventory</h2>
+  <a href="{{ url_for('export_csv', entity='inventory') }}" class="btn btn-secondary">Export CSV</a>
+</div>
+
+<div class="summary-row">
+  <div class="summary-stat">
+    <div class="label">On Hand</div>
+    <div class="value">{{ "{:,.0f}".format(total_on_hand) }} lbs</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">In Transit</div>
+    <div class="value">{{ "{:,.0f}".format(total_in_transit) }} lbs</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Days of Supply</div>
+    <div class="value {% if days_supply >= 5 %}text-green{% elif days_supply >= 3 %}text-gold{% else %}cell-red{% endif %}">{{ "{:.1f}".format(days_supply) }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Total Available</div>
+    <div class="value">{{ "{:,.0f}".format(total_on_hand + total_in_transit) }} lbs</div>
+  </div>
+</div>
+
+<!-- On Hand -->
+<div class="card">
+  <div class="card-header">
+    <h3>Biomass On Hand</h3>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Strain</th>
+          <th>Supplier</th>
+          <th class="text-right">Original (lbs)</th>
+          <th class="text-right">Remaining (lbs)</th>
+          <th class="text-right">Potency %</th>
+          <th>Milled</th>
+          <th>Location</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for lot in on_hand %}
+        <tr>
+          <td><strong>{{ lot.strain_name }}</strong></td>
+          <td>{{ lot.supplier_name }}</td>
+          <td class="text-right text-mono">{{ "{:,.0f}".format(lot.weight_lbs) }}</td>
+          <td class="text-right text-mono"><strong>{{ "{:,.0f}".format(lot.remaining_weight_lbs) }}</strong></td>
+          <td class="text-right text-mono">{{ "{:.1f}".format(lot.potency_pct) if lot.potency_pct else '—' }}</td>
+          <td>{% if lot.milled %}<span class="badge badge-green">Yes</span>{% else %}<span class="badge badge-gray">No</span>{% endif %}</td>
+          <td>{{ lot.location or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-center cell-muted" style="padding:30px;">No biomass currently on hand.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- In Transit -->
+<div class="card">
+  <div class="card-header">
+    <h3>In Transit / On Order</h3>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Supplier</th>
+          <th>Status</th>
+          <th class="text-right">Weight (lbs)</th>
+          <th>Order Date</th>
+          <th>Expected Delivery</th>
+          <th class="text-right">Price/lb</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in in_transit %}
+        <tr>
+          <td><strong>{{ p.supplier_name }}</strong></td>
+          <td><span class="badge status-{{ p.status }}">{{ p.status.replace('_', ' ') }}</span></td>
+          <td class="text-right text-mono">{{ "{:,.0f}".format(p.stated_weight_lbs) }}</td>
+          <td>{{ p.purchase_date.strftime('%m/%d/%y') if p.purchase_date else '—' }}</td>
+          <td>{{ p.delivery_date.strftime('%m/%d/%y') if p.delivery_date else '—' }}</td>
+          <td class="text-right text-mono">{{ "${:,.2f}".format(p.price_per_lb) if p.price_per_lb else '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center cell-muted" style="padding:30px;">No orders in transit.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Suppliers{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Supplier Performance</h2>
+  {% if current_user.can_edit %}
+  <a href="{{ url_for('supplier_new') }}" class="btn btn-primary">+ Add Supplier</a>
+  {% endif %}
+</div>
+
+{% for ss in supplier_stats %}
+<div class="card">
+  <div class="card-header">
+    <h3 style="text-transform:none;font-size:1.1rem;color:var(--text-primary);">
+      {{ ss.supplier.name }}
+      {% if not ss.supplier.is_active %}<span class="badge badge-gray">Inactive</span>{% endif %}
+    </h3>
+    <div class="btn-group">
+      <span class="text-sm" style="color:var(--text-muted);">{{ ss.all_time.runs }} runs · {{ "{:,.0f}".format(ss.all_time.lbs) }} lbs processed</span>
+      {% if current_user.can_edit %}
+      <a href="{{ url_for('supplier_edit', sid=ss.supplier.id) }}" class="btn btn-secondary btn-sm">Edit</a>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if ss.all_time.runs > 0 %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Period</th>
+          <th class="text-right">Overall Yield %</th>
+          <th class="text-right">THCA Yield %</th>
+          <th class="text-right">HTE Yield %</th>
+          <th class="text-right">Cost/Gram</th>
+          <th class="text-right">Runs</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>All Time</strong></td>
+          <td class="text-right text-mono {% if yield_kpi %}{{ 'cell-green' if yield_kpi.evaluate(ss.all_time.yield) == 'green' else ('cell-yellow' if yield_kpi.evaluate(ss.all_time.yield) == 'yellow' else 'cell-red') }}{% endif %}">
+            {{ "{:.1f}".format(ss.all_time.yield) if ss.all_time.yield else '—' }}
+          </td>
+          <td class="text-right text-mono {% if thca_kpi %}{{ 'cell-green' if thca_kpi.evaluate(ss.all_time.thca) == 'green' else ('cell-yellow' if thca_kpi.evaluate(ss.all_time.thca) == 'yellow' else 'cell-red') }}{% endif %}">
+            {{ "{:.1f}".format(ss.all_time.thca) if ss.all_time.thca else '—' }}
+          </td>
+          <td class="text-right text-mono">{{ "{:.1f}".format(ss.all_time.hte) if ss.all_time.hte else '—' }}</td>
+          <td class="text-right text-mono">{{ "${:.2f}".format(ss.all_time.cpg) if ss.all_time.cpg else '—' }}</td>
+          <td class="text-right text-mono">{{ ss.all_time.runs }}</td>
+        </tr>
+        <tr>
+          <td><strong>Last 90 Days</strong></td>
+          <td class="text-right text-mono {% if yield_kpi %}{{ 'cell-green' if yield_kpi.evaluate(ss.ninety_day.yield) == 'green' else ('cell-yellow' if yield_kpi.evaluate(ss.ninety_day.yield) == 'yellow' else 'cell-red') }}{% endif %}">
+            {{ "{:.1f}".format(ss.ninety_day.yield) if ss.ninety_day.yield else '—' }}
+          </td>
+          <td class="text-right text-mono {% if thca_kpi %}{{ 'cell-green' if thca_kpi.evaluate(ss.ninety_day.thca) == 'green' else ('cell-yellow' if thca_kpi.evaluate(ss.ninety_day.thca) == 'yellow' else 'cell-red') }}{% endif %}">
+            {{ "{:.1f}".format(ss.ninety_day.thca) if ss.ninety_day.thca else '—' }}
+          </td>
+          <td class="text-right text-mono">{{ "{:.1f}".format(ss.ninety_day.hte) if ss.ninety_day.hte else '—' }}</td>
+          <td class="text-right text-mono">{{ "${:.2f}".format(ss.ninety_day.cpg) if ss.ninety_day.cpg else '—' }}</td>
+          <td class="text-right text-mono">{{ ss.ninety_day.runs }}</td>
+        </tr>
+        <tr>
+          <td><strong>Last Batch</strong> {% if ss.last_batch.date %}<span class="cell-muted text-sm">({{ ss.last_batch.date.strftime('%m/%d/%y') }})</span>{% endif %}</td>
+          <td class="text-right text-mono {% if yield_kpi %}{{ 'cell-green' if yield_kpi.evaluate(ss.last_batch.yield) == 'green' else ('cell-yellow' if yield_kpi.evaluate(ss.last_batch.yield) == 'yellow' else 'cell-red') }}{% endif %}">
+            {{ "{:.1f}".format(ss.last_batch.yield) if ss.last_batch.yield else '—' }}
+          </td>
+          <td class="text-right text-mono {% if thca_kpi %}{{ 'cell-green' if thca_kpi.evaluate(ss.last_batch.thca) == 'green' else ('cell-yellow' if thca_kpi.evaluate(ss.last_batch.thca) == 'yellow' else 'cell-red') }}{% endif %}">
+            {{ "{:.1f}".format(ss.last_batch.thca) if ss.last_batch.thca else '—' }}
+          </td>
+          <td class="text-right text-mono">{{ "{:.1f}".format(ss.last_batch.hte) if ss.last_batch.hte else '—' }}</td>
+          <td class="text-right text-mono">{{ "${:.2f}".format(ss.last_batch.cpg) if ss.last_batch.cpg else '—' }}</td>
+          <td class="text-right text-mono">1</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  {% if ss.all_time.total_thca > 0 or ss.all_time.total_hte > 0 %}
+  <div style="margin-top:10px;display:flex;gap:20px;">
+    <span class="text-sm" style="color:var(--text-muted);">Total Dry THCA: <strong class="text-mono" style="color:var(--text-primary);">{{ "{:,.0f}".format(ss.all_time.total_thca) }}g</strong></span>
+    <span class="text-sm" style="color:var(--text-muted);">Total Dry HTE: <strong class="text-mono" style="color:var(--text-primary);">{{ "{:,.0f}".format(ss.all_time.total_hte) }}g</strong></span>
+  </div>
+  {% endif %}
+  {% else %}
+  <p class="cell-muted text-sm">No runs recorded for this supplier.</p>
+  {% endif %}
+</div>
+{% endfor %}
+{% endblock %}
