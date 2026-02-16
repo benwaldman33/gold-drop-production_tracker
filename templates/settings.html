@@ -141,7 +141,7 @@
   <div class="table-wrap mb-2">
     <table>
       <thead>
-        <tr><th>Username</th><th>Display Name</th><th>Role</th><th>Created</th></tr>
+        <tr><th>Username</th><th>Display Name</th><th>Role</th><th>Status</th><th>Created</th><th></th></tr>
       </thead>
       <tbody>
         {% for u in users %}
@@ -149,7 +149,27 @@
           <td>{{ u.username }}</td>
           <td>{{ u.display_name }}</td>
           <td><span class="badge badge-gold">{{ u.role.replace('_', ' ') }}</span></td>
+          <td>
+            {% if u.is_active_user %}
+              <span class="badge badge-green">Active</span>
+            {% else %}
+              <span class="badge badge-gray">Disabled</span>
+            {% endif %}
+          </td>
           <td>{{ u.created_at.strftime('%m/%d/%y') if u.created_at else '—' }}</td>
+          <td style="white-space:nowrap;">
+            {% if u.id == current_user.id %}
+              <span class="text-sm" style="color:var(--text-muted);">Current</span>
+            {% else %}
+              <form method="POST" action="{{ url_for('user_toggle_active', user_id=u.id) }}" style="display:inline;" onsubmit="return confirm('Are you sure? This will {{ 'disable' if u.is_active_user else 'activate' }} the user account.');">
+                {% if u.is_active_user %}
+                  <button type="submit" class="btn btn-danger btn-sm">Disable</button>
+                {% else %}
+                  <button type="submit" class="btn btn-secondary btn-sm">Activate</button>
+                {% endif %}
+              </form>
+            {% endif %}
+          </td>
         </tr>
         {% endfor %}
       </tbody>
@@ -183,6 +203,57 @@
     </div>
     <button type="submit" class="btn btn-primary">Create User</button>
   </form>
+</div>
+
+<!-- Password Management -->
+<div class="card">
+  <div class="card-header"><h3>Password Management</h3></div>
+
+  <div style="padding:16px;">
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:0 0 12px;">Change My Password</h4>
+    <form method="POST" style="display:grid;grid-template-columns: 1fr 1fr 1fr auto; gap:10px; align-items:end; margin-bottom:18px;">
+      <input type="hidden" name="form_type" value="password_self">
+      <div class="form-group" style="margin:0;">
+        <label>Current Password</label>
+        <input type="password" name="current_password" required>
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label>New Password</label>
+        <input type="password" name="new_password" minlength="8" required>
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label>Confirm New Password</label>
+        <input type="password" name="confirm_password" minlength="8" required>
+      </div>
+      <button type="submit" class="btn btn-primary">Update</button>
+    </form>
+
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:0 0 12px;">Set Password for a User</h4>
+    <form method="POST" style="display:grid;grid-template-columns: 220px 1fr 1fr auto; gap:10px; align-items:end;">
+      <input type="hidden" name="form_type" value="password_user">
+      <div class="form-group" style="margin:0;">
+        <label>User</label>
+        <select name="user_id" required>
+          <option value="">Select user...</option>
+          {% for u in users %}
+            <option value="{{ u.id }}">{{ u.display_name }} ({{ u.username }}){% if not u.is_active_user %} — disabled{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label>New Password</label>
+        <input type="password" name="new_password" minlength="8" required>
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label>Confirm New Password</label>
+        <input type="password" name="confirm_password" minlength="8" required>
+      </div>
+      <button type="submit" class="btn btn-secondary" onclick="return confirm('Set a new password for this user?');">Set Password</button>
+    </form>
+    <div class="text-sm" style="color:var(--text-muted); margin-top:8px;">
+      Passwords must be at least 8 characters. Password changes are audited, but passwords are never stored in audit logs.
+    </div>
+  </div>
 </div>
 
 <!-- Maintenance -->

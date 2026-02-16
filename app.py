@@ -29,7 +29,11 @@ login_manager.login_view = "login"
 
 @login_manager.user_loader
 def load_user(user_id):
-    return db.session.get(User, user_id)
+    u = db.session.get(User, user_id)
+    # If a user is deactivated, treat them as logged out
+    if u and not getattr(u, "is_active_user", True):
+        return None
+    return u
 
 
 def admin_required(f):
@@ -208,6 +212,9 @@ def login():
     if request.method == "POST":
         user = User.query.filter_by(username=request.form.get("username", "").strip().lower()).first()
         if user and user.check_password(request.form.get("password", "")):
+            if not user.is_active_user:
+                flash("This account is disabled. Please contact an administrator.", "error")
+                return render_template("login.html")
             login_user(user, remember=True)
             session.permanent = True
             return redirect(request.args.get("next") or url_for("dashboard"))
@@ -255,6 +262,8 @@ def dashboard():
         thca_yields = [r.thca_yield_pct for r in runs if r.thca_yield_pct]
         hte_yields = [r.hte_yield_pct for r in runs if r.hte_yield_pct]
         costs = [r.cost_per_gram_combined for r in runs if r.cost_per_gram_combined]
+        costs_thca = [r.cost_per_gram_thca for r in runs if r.cost_per_gram_thca is not None]
+        costs_hte = [r.cost_per_gram_hte for r in runs if r.cost_per_gram_hte is not None]
         total_lbs = sum(r.bio_in_reactor_lbs or 0 for r in runs)
         total_dry_thca = sum(r.dry_thca_g or 0 for r in runs)
         total_dry_hte = sum(r.dry_hte_g or 0 for r in runs)
@@ -263,6 +272,8 @@ def dashboard():
         kpi_actuals["hte_yield_pct"] = sum(hte_yields) / len(hte_yields) if hte_yields else None
         kpi_actuals["overall_yield_pct"] = sum(yields) / len(yields) if yields else None
         kpi_actuals["cost_per_gram_combined"] = sum(costs) / len(costs) if costs else None
+        kpi_actuals["cost_per_gram_thca"] = sum(costs_thca) / len(costs_thca) if costs_thca else None
+        kpi_actuals["cost_per_gram_hte"] = sum(costs_hte) / len(costs_hte) if costs_hte else None
 
         # Weekly throughput (average lbs/week in period)
         days_in_period = max((date.today() - start_date).days, 1)
@@ -279,11 +290,24 @@ def dashboard():
         kpi_actuals["days_of_supply"] = on_hand / daily_target if daily_target > 0 else 0
 
         # Cost per potency point - average across purchases in period
-        purchases_in_period = Purchase.query.filter(Purchase.purchase_date >= start_date).all()
+        # Tie potency-point KPI to the biomass actually *run* in the selected time period,
+        # not only purchases created in that period (purchases may be older than the run window).
+        purchase_ids = db.session.query(Purchase.id).join(
+            PurchaseLot, PurchaseLot.purchase_id == Purchase.id
+        ).join(
+            RunInput, RunInput.lot_id == PurchaseLot.id
+        ).join(
+            Run, Run.id == RunInput.run_id
+        ).filter(
+            Run.run_date >= start_date
+        ).distinct().all()
+        purchase_ids = [pid for (pid,) in purchase_ids]
+        purchases_in_period = Purchase.query.filter(Purchase.id.in_(purchase_ids)).all() if purchase_ids else []
         potency_costs = []
         for p in purchases_in_period:
-            if p.price_per_lb and p.stated_potency_pct and p.stated_potency_pct > 0:
-                potency_costs.append(p.price_per_lb / p.stated_potency_pct)
+            potency = p.tested_potency_pct or p.stated_potency_pct
+            if p.price_per_lb and potency and potency > 0:
+                potency_costs.append(p.price_per_lb / potency)
         kpi_actuals["cost_per_potency_point"] = sum(potency_costs) / len(potency_costs) if potency_costs else None
 
     # Get KPI targets
@@ -974,11 +998,54 @@ def settings():
                 if User.query.filter_by(username=username).first():
                     flash("Username already exists.", "error")
                 else:
+                    if len(password) < 8:
+                        flash("Password must be at least 8 characters.", "error")
+                        return redirect(url_for("settings"))
                     u = User(username=username, display_name=display, role=role)
                     u.set_password(password)
                     db.session.add(u)
                     db.session.commit()
                     flash(f"User '{display}' created.", "success")
+
+        elif form_type == "password_self":
+            current_pw = request.form.get("current_password", "")
+            new_pw = request.form.get("new_password", "").strip()
+            confirm_pw = request.form.get("confirm_password", "").strip()
+
+            if not current_user.check_password(current_pw):
+                flash("Current password is incorrect.", "error")
+                return redirect(url_for("settings"))
+            if len(new_pw) < 8:
+                flash("New password must be at least 8 characters.", "error")
+                return redirect(url_for("settings"))
+            if new_pw != confirm_pw:
+                flash("New password and confirmation do not match.", "error")
+                return redirect(url_for("settings"))
+
+            current_user.set_password(new_pw)
+            log_audit("password_change", "user", current_user.id, details=json.dumps({"username": current_user.username}))
+            db.session.commit()
+            flash("Password updated.", "success")
+
+        elif form_type == "password_user":
+            user_id = (request.form.get("user_id") or "").strip()
+            new_pw = request.form.get("new_password", "").strip()
+            confirm_pw = request.form.get("confirm_password", "").strip()
+            u = db.session.get(User, user_id) if user_id else None
+            if not u:
+                flash("User not found.", "error")
+                return redirect(url_for("settings"))
+            if len(new_pw) < 8:
+                flash("New password must be at least 8 characters.", "error")
+                return redirect(url_for("settings"))
+            if new_pw != confirm_pw:
+                flash("New password and confirmation do not match.", "error")
+                return redirect(url_for("settings"))
+
+            u.set_password(new_pw)
+            log_audit("password_reset", "user", u.id, details=json.dumps({"username": u.username}))
+            db.session.commit()
+            flash(f"Password updated for '{u.display_name}'.", "success")
 
         return redirect(url_for("settings"))
 
@@ -987,6 +1054,42 @@ def settings():
     users = User.query.all()
     return render_template("settings.html", system_settings=system_settings,
                            kpis=kpis, users=users)
+
+
+@app.route("/settings/users/<user_id>/toggle_active", methods=["POST"])
+@admin_required
+def user_toggle_active(user_id):
+    """
+    "Delete" users safely by deactivating them (keeps audit history intact).
+    Super Admin can deactivate/reactivate users.
+    """
+    u = db.session.get(User, user_id)
+    if not u:
+        flash("User not found.", "error")
+        return redirect(url_for("settings"))
+
+    # Prevent self-disable (avoid locking yourself out)
+    if current_user.id == u.id:
+        flash("You cannot disable your own account.", "error")
+        return redirect(url_for("settings"))
+
+    # Prevent disabling the last active super admin
+    if u.role == "super_admin" and u.is_active_user:
+        active_admins = User.query.filter_by(role="super_admin", is_active_user=True).count()
+        if active_admins <= 1:
+            flash("You cannot disable the last active Super Admin.", "error")
+            return redirect(url_for("settings"))
+
+    u.is_active_user = not bool(u.is_active_user)
+    log_audit(
+        "activate" if u.is_active_user else "deactivate",
+        "user",
+        u.id,
+        details=json.dumps({"username": u.username, "role": u.role}),
+    )
+    db.session.commit()
+    flash(f"User {'activated' if u.is_active_user else 'disabled'}.", "success")
+    return redirect(url_for("settings"))
 
 
 @app.route("/settings/recalculate_costs", methods=["POST"])
@@ -1616,6 +1719,8 @@ def init_db():
         ("overall_yield_pct", "Overall Yield %", 12.0, 12.0, 10.0, "higher_is_better", "%"),
         ("cost_per_potency_point", "Cost per Potency Point", 1.50, 1.35, 1.65, "lower_is_better", "$/lb/%pt"),
         ("cost_per_gram_combined", "Cost per Gram", 5.0, 4.0, 6.0, "lower_is_better", "$/g"),
+        ("cost_per_gram_thca", "Cost per Gram (THCA)", 5.0, 4.0, 6.0, "lower_is_better", "$/g"),
+        ("cost_per_gram_hte", "Cost per Gram (HTE)", 5.0, 4.0, 6.0, "lower_is_better", "$/g"),
         ("weekly_throughput", "Weekly Throughput", 3500, 3500, 3000, "higher_is_better", "lbs"),
     ]
     for name, display, target, green, yellow, direction, unit in kpi_defaults:

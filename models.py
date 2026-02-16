@@ -32,6 +32,11 @@ class User(UserMixin, db.Model):
         return self.id
 
     @property
+    def is_active(self):
+        """Flask-Login integration: disabled users cannot be authenticated."""
+        return bool(self.is_active_user)
+
+    @property
     def is_super_admin(self):
         return self.role == "super_admin"
 
