@@ -12,6 +12,17 @@
   </div>
 </div>
 
+{% if exclude_unpriced %}
+<div class="card" style="padding:12px 16px; margin-bottom:16px; border-color: rgba(251, 191, 36, 0.25);">
+  <div class="text-sm" style="color:var(--yellow); font-weight:600;">
+    Analytics filter enabled: excluding runs missing biomass pricing ($/lb).
+  </div>
+  <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">
+    Change this in Settings → Operational Parameters.
+  </div>
+</div>
+{% endif %}
+
 <!-- Summary Stats -->
 <div class="summary-row">
   <div class="summary-stat">

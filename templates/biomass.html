@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Biomass Pipeline{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Biomass Availability Pipeline</h2>
+  <div class="btn-group">
+    {% if current_user.can_edit %}
+    <a href="{{ url_for('biomass_new') }}" class="btn btn-primary">+ New Availability</a>
+    {% endif %}
+    <a href="{{ url_for('export_csv', entity='biomass') }}" class="btn btn-secondary">Export CSV</a>
+  </div>
+</div>
+
+<div class="view-toggle">
+  <div class="btn-group">
+    <a href="?stage=" class="btn {% if not stage_filter %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">All</a>
+    {% for s in ['declared','testing','committed','delivered','cancelled'] %}
+      <a href="?stage={{ s }}" class="btn {% if stage_filter == s %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">{{ s.replace('_',' ').title() }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Supplier</th>
+        <th>Batch</th>
+        <th>Strain</th>
+        <th>Stage</th>
+        <th>Avail Date</th>
+        <th class="text-right">Declared Lbs</th>
+        <th class="text-right">Declared $/lb</th>
+        <th class="text-right">Est Potency %</th>
+        <th>Testing</th>
+        <th>Committed</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for b in items %}
+      <tr>
+        <td><strong>{{ b.supplier_name }}</strong></td>
+        <td class="text-mono">
+          {% if b.purchase %}
+            <a href="{{ url_for('purchase_edit', purchase_id=b.purchase.id) }}">{{ b.purchase.batch_id or '—' }}</a>
+          {% else %}
+            —
+          {% endif %}
+        </td>
+        <td>{{ b.strain_name or '—' }}</td>
+        <td>
+          {% set stage_class = 'badge-gray' %}
+          {% if b.stage == 'declared' %}{% set stage_class = 'badge-yellow' %}{% endif %}
+          {% if b.stage == 'testing' %}{% set stage_class = 'badge-gold' %}{% endif %}
+          {% if b.stage in ('committed','delivered') %}{% set stage_class = 'badge-green' %}{% endif %}
+          {% if b.stage == 'cancelled' %}{% set stage_class = 'badge-red' %}{% endif %}
+          <span class="badge {{ stage_class }}">{{ b.stage.replace('_',' ') }}</span>
+        </td>
+        <td>{{ b.availability_date.strftime('%m/%d/%y') if b.availability_date else '—' }}</td>
+        <td class="text-right text-mono">{{ "{:,.0f}".format(b.declared_weight_lbs) if b.declared_weight_lbs else '—' }}</td>
+        <td class="text-right text-mono">{{ "${:,.2f}".format(b.declared_price_per_lb) if b.declared_price_per_lb else '—' }}</td>
+        <td class="text-right text-mono">{{ "{:.1f}".format(b.estimated_potency_pct) if b.estimated_potency_pct else '—' }}</td>
+        <td>
+          <div class="text-sm" style="color:var(--text-muted);">
+            {{ b.testing_timing.replace('_',' ') if b.testing_timing else '—' }} • {{ b.testing_status.replace('_',' ') if b.testing_status else '—' }}
+          </div>
+          <div class="text-sm">
+            {% if b.testing_date %}{{ b.testing_date.strftime('%m/%d/%y') }}{% else %}—{% endif %}
+            {% if b.tested_potency_pct %} • {{ "{:.1f}".format(b.tested_potency_pct) }}%{% endif %}
+          </div>
+        </td>
+        <td>
+          <div class="text-sm">
+            {% if b.committed_on %}<span class="text-mono">{{ b.committed_on.strftime('%m/%d/%y') }}</span>{% else %}—{% endif %}
+            {% if b.committed_delivery_date %} → <span class="text-mono">{{ b.committed_delivery_date.strftime('%m/%d/%y') }}</span>{% endif %}
+          </div>
+          <div class="text-sm" style="color:var(--text-muted);">
+            {% if b.committed_weight_lbs %}{{ "{:,.0f}".format(b.committed_weight_lbs) }} lbs{% endif %}
+            {% if b.committed_price_per_lb %}{% if b.committed_weight_lbs %} • {% endif %}{{ "${:,.2f}".format(b.committed_price_per_lb) }}/lb{% endif %}
+          </div>
+        </td>
+        <td>
+          {% if current_user.can_edit %}
+          <a href="{{ url_for('biomass_edit', item_id=b.id) }}" class="btn btn-secondary btn-sm">Edit</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="11" class="text-center cell-muted" style="padding:40px;">No biomass availability records yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+

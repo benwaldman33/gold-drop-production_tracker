@@ -53,6 +53,12 @@ class Supplier(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     purchases = db.relationship("Purchase", backref="supplier", lazy="dynamic")
+    biomass_availabilities = db.relationship(
+        "BiomassAvailability",
+        backref="supplier",
+        lazy="dynamic",
+        cascade="all, delete-orphan",
+    )
 
     def avg_yield(self, days=None):
         """Calculate average overall yield for this supplier."""
@@ -78,6 +84,7 @@ class Supplier(db.Model):
 class Purchase(db.Model):
     __tablename__ = "purchases"
     id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    batch_id = db.Column(db.String(80), unique=True, index=True)
     supplier_id = db.Column(db.String(36), db.ForeignKey("suppliers.id"), nullable=False)
     purchase_date = db.Column(db.Date, nullable=False)
     delivery_date = db.Column(db.Date)
@@ -98,6 +105,54 @@ class Purchase(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     lots = db.relationship("PurchaseLot", backref="purchase", lazy="dynamic", cascade="all, delete-orphan")
+
+    @property
+    def supplier_name(self):
+        return self.supplier.name if self.supplier else "Unknown"
+
+
+class BiomassAvailability(db.Model):
+    """
+    Tracks supplier biomass availability through a simple pipeline:
+    declared -> testing -> committed -> delivered (or cancelled).
+    """
+    __tablename__ = "biomass_availabilities"
+
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    supplier_id = db.Column(db.String(36), db.ForeignKey("suppliers.id"), nullable=False)
+    # One-to-one link to a Purchase (when batch is committed/delivered/cancelled)
+    purchase_id = db.Column(db.String(36), db.ForeignKey("purchases.id"), unique=True)
+    purchase = db.relationship(
+        "Purchase",
+        backref=db.backref("biomass_availability", uselist=False),
+        foreign_keys=[purchase_id],
+    )
+
+    # Step 1: Declaration of availability
+    availability_date = db.Column(db.Date, nullable=False)
+    strain_name = db.Column(db.String(200))
+    declared_weight_lbs = db.Column(db.Float, nullable=False, default=0.0)
+    declared_price_per_lb = db.Column(db.Float)
+    estimated_potency_pct = db.Column(db.Float)
+
+    # Step 2: Testing (sometimes before delivery, sometimes after)
+    testing_timing = db.Column(db.String(20), default="before_delivery")  # before_delivery, after_delivery
+    testing_status = db.Column(db.String(20), default="pending")  # pending, completed, not_needed
+    testing_date = db.Column(db.Date)
+    tested_potency_pct = db.Column(db.Float)
+
+    # Step 3: Commitment to purchase
+    committed_on = db.Column(db.Date)
+    committed_delivery_date = db.Column(db.Date)
+    committed_weight_lbs = db.Column(db.Float)
+    committed_price_per_lb = db.Column(db.Float)
+
+    # Overall stage
+    stage = db.Column(db.String(20), nullable=False, default="declared")  # declared, testing, committed, delivered, cancelled
+
+    notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     @property
     def supplier_name(self):
@@ -148,6 +203,8 @@ class Run(db.Model):
     thca_yield_pct = db.Column(db.Float)
     hte_yield_pct = db.Column(db.Float)
     cost_per_gram_combined = db.Column(db.Float)
+    cost_per_gram_thca = db.Column(db.Float)
+    cost_per_gram_hte = db.Column(db.Float)
     decarb_sample_done = db.Column(db.Boolean, default=False)
     fuel_consumption = db.Column(db.Float)
     run_type = db.Column(db.String(20), default="standard")  # standard, kief, ld
@@ -168,16 +225,100 @@ class Run(db.Model):
             self.hte_yield_pct = ((self.dry_hte_g or 0) / self.grams_ran) * 100
 
     def calculate_cost(self):
-        """Calculate cost per gram based on input lot costs."""
-        total_cost = 0
+        """
+        Calculate cost per gram for this run.
+
+        Components:
+        - Biomass input cost: sum(input_lbs * purchase.price_per_lb)
+        - Operational costs (Cost Entries): allocated evenly across total dry grams produced
+          within each CostEntry date range, then added as a flat $/g.
+
+        Product allocation:
+        - Combined $/g is always total run dollars ÷ total dry grams.
+        - THCA/HTE $/g depends on SystemSetting.cost_allocation_method:
+          - per_gram_uniform: THCA and HTE match combined $/g
+          - split_50_50: split dollars 50/50 between THCA and HTE when both exist
+          - custom_split: split dollars by configured THCA % (remainder to HTE)
+        """
+        from sqlalchemy import func
+
+        # ── Biomass input cost (from purchase pricing) ────────────────────────
+        biomass_cost = 0.0
         for inp in self.inputs:
             if inp.lot and inp.lot.purchase and inp.lot.purchase.price_per_lb:
-                total_cost += inp.weight_lbs * inp.lot.purchase.price_per_lb
-        dry_total = (self.dry_hte_g or 0) + (self.dry_thca_g or 0)
-        if dry_total > 0 and total_cost > 0:
-            self.cost_per_gram_combined = total_cost / dry_total
-        else:
+                biomass_cost += (inp.weight_lbs or 0) * inp.lot.purchase.price_per_lb
+
+        dry_thca = float(self.dry_thca_g or 0)
+        dry_hte = float(self.dry_hte_g or 0)
+        dry_total = dry_thca + dry_hte
+
+        if dry_total <= 0:
             self.cost_per_gram_combined = None
+            self.cost_per_gram_thca = None
+            self.cost_per_gram_hte = None
+            return
+
+        # ── Operational costs allocation ──────────────────────────────────────
+        op_rate = 0.0
+        if self.run_date:
+            entries = CostEntry.query.filter(
+                CostEntry.start_date <= self.run_date,
+                CostEntry.end_date >= self.run_date,
+            ).all()
+
+            dry_expr = func.coalesce(Run.dry_thca_g, 0) + func.coalesce(Run.dry_hte_g, 0)
+            for e in entries:
+                total_grams_in_period = db.session.query(func.sum(dry_expr)).filter(
+                    Run.run_date >= e.start_date,
+                    Run.run_date <= e.end_date,
+                ).scalar() or 0
+                if total_grams_in_period and total_grams_in_period > 0:
+                    op_rate += (e.total_cost or 0) / float(total_grams_in_period)
+
+        total_cost_for_run = biomass_cost + (op_rate * dry_total)
+        self.cost_per_gram_combined = (total_cost_for_run / dry_total) if dry_total > 0 else None
+
+        method = (SystemSetting.get("cost_allocation_method", "per_gram_uniform") or "per_gram_uniform").strip()
+
+        if method == "split_50_50":
+            if dry_thca > 0 and dry_hte > 0:
+                self.cost_per_gram_thca = (total_cost_for_run * 0.5) / dry_thca
+                self.cost_per_gram_hte = (total_cost_for_run * 0.5) / dry_hte
+            elif dry_thca > 0:
+                self.cost_per_gram_thca = total_cost_for_run / dry_thca
+                self.cost_per_gram_hte = None
+            elif dry_hte > 0:
+                self.cost_per_gram_thca = None
+                self.cost_per_gram_hte = total_cost_for_run / dry_hte
+            else:
+                self.cost_per_gram_thca = None
+                self.cost_per_gram_hte = None
+        elif method == "custom_split":
+            pct = SystemSetting.get_float("cost_allocation_thca_pct", 50.0)
+            try:
+                pct = float(pct)
+            except (TypeError, ValueError):
+                pct = 50.0
+            pct = max(0.0, min(100.0, pct))
+            thca_share = pct / 100.0
+            hte_share = 1.0 - thca_share
+
+            if dry_thca > 0 and dry_hte > 0:
+                self.cost_per_gram_thca = (total_cost_for_run * thca_share) / dry_thca
+                self.cost_per_gram_hte = (total_cost_for_run * hte_share) / dry_hte
+            elif dry_thca > 0:
+                self.cost_per_gram_thca = total_cost_for_run / dry_thca
+                self.cost_per_gram_hte = None
+            elif dry_hte > 0:
+                self.cost_per_gram_thca = None
+                self.cost_per_gram_hte = total_cost_for_run / dry_hte
+            else:
+                self.cost_per_gram_thca = None
+                self.cost_per_gram_hte = None
+        else:
+            rate = self.cost_per_gram_combined
+            self.cost_per_gram_thca = (rate if dry_thca > 0 else None)
+            self.cost_per_gram_hte = (rate if dry_hte > 0 else None)
 
     @property
     def source_display(self):
@@ -262,3 +403,20 @@ class AuditLog(db.Model):
     details = db.Column(db.Text)
 
     user = db.relationship("User", backref="audit_logs")
+
+
+class CostEntry(db.Model):
+    """Track operational costs: solvents, personnel, overhead."""
+    __tablename__ = "cost_entries"
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    cost_type = db.Column(db.String(30), nullable=False)  # solvent, personnel, overhead
+    name = db.Column(db.String(200), nullable=False)
+    unit_cost = db.Column(db.Float)
+    unit = db.Column(db.String(50))
+    quantity = db.Column(db.Float)
+    total_cost = db.Column(db.Float, nullable=False)
+    start_date = db.Column(db.Date, nullable=False)
+    end_date = db.Column(db.Date, nullable=False)
+    notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_by = db.Column(db.String(36), db.ForeignKey("users.id"))

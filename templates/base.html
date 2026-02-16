@@ -27,6 +27,12 @@
         <a href="{{ url_for('purchases_list') }}" class="{% if request.endpoint in ('purchases_list', 'purchase_new', 'purchase_edit') %}active{% endif %}">
           <span class="icon">💰</span><span>Purchases</span>
         </a>
+        <a href="{{ url_for('costs_list') }}" class="{% if request.endpoint in ('costs_list', 'cost_new', 'cost_edit') %}active{% endif %}">
+          <span class="icon">🧾</span><span>Costs</span>
+        </a>
+        <a href="{{ url_for('biomass_list') }}" class="{% if request.endpoint in ('biomass_list', 'biomass_new', 'biomass_edit') %}active{% endif %}">
+          <span class="icon">🌾</span><span>Biomass Pipeline</span>
+        </a>
         <a href="{{ url_for('suppliers_list') }}" class="{% if request.endpoint in ('suppliers_list', 'supplier_new', 'supplier_edit') %}active{% endif %}">
           <span class="icon">🌿</span><span>Suppliers</span>
         </a>

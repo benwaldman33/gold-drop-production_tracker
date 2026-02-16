@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}{% if entry %}Edit Cost Entry{% else %}New Cost Entry{% endif %}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>{% if entry %}Edit Cost Entry{% else %}New Cost Entry{% endif %}</h2>
+  <a href="{{ url_for('costs_list') }}" class="btn btn-secondary">← Back to Costs</a>
+</div>
+
+<div class="card">
+  <form method="POST">
+    <div class="form-section">
+      <h4>Cost Details</h4>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Cost Type *</label>
+          <select name="cost_type" required onchange="updateHints(this.value)">
+            <option value="solvent" {% if entry and entry.cost_type == 'solvent' %}selected{% endif %}>Solvent</option>
+            <option value="personnel" {% if entry and entry.cost_type == 'personnel' %}selected{% endif %}>Personnel</option>
+            <option value="overhead" {% if entry and entry.cost_type == 'overhead' %}selected{% endif %}>Overhead</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Name *</label>
+          <input type="text" name="name" value="{{ entry.name if entry else '' }}" placeholder="e.g. N-Butane, Booth Operator, Rent" required>
+        </div>
+        <div class="form-group">
+          <label>Unit</label>
+          <input type="text" name="unit" value="{{ entry.unit if entry and entry.unit else '' }}" placeholder="lbs, hours, month, etc." id="unit-field">
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h4>Amount</h4>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Unit Cost ($)</label>
+          <input type="number" name="unit_cost" value="{{ entry.unit_cost if entry and entry.unit_cost else '' }}" step="0.01" placeholder="Cost per unit" id="unit-cost" onchange="calcTotal()">
+        </div>
+        <div class="form-group">
+          <label>Quantity</label>
+          <input type="number" name="quantity" value="{{ entry.quantity if entry and entry.quantity else '' }}" step="0.1" placeholder="Amount used" id="qty" onchange="calcTotal()">
+        </div>
+        <div class="form-group">
+          <label>Total Cost ($) *</label>
+          <input type="number" name="total_cost" value="{{ entry.total_cost if entry else '' }}" step="0.01" required id="total-cost" placeholder="Auto-calculated or enter directly">
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h4>Period</h4>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Start Date *</label>
+          <input type="date" name="start_date" value="{{ entry.start_date.strftime('%Y-%m-%d') if entry and entry.start_date else today }}" required>
+        </div>
+        <div class="form-group">
+          <label>End Date *</label>
+          <input type="date" name="end_date" value="{{ entry.end_date.strftime('%Y-%m-%d') if entry and entry.end_date else today }}" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea name="notes" rows="2" placeholder="Optional details...">{{ entry.notes if entry and entry.notes else '' }}</textarea>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <a href="{{ url_for('costs_list') }}" class="btn btn-secondary">Cancel</a>
+      <button type="submit" class="btn btn-primary">Save Cost Entry</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-header"><h3>Examples</h3></div>
+  <div style="color:var(--text-secondary);line-height:1.8;font-size:0.9rem;">
+    <p><strong style="color:var(--gold);">Solvent:</strong> N-Butane — $2.50/lb × 500 lbs = $1,250 for the week</p>
+    <p><strong style="color:var(--gold);">Personnel:</strong> Booth Operator — $25/hr × 160 hrs = $4,000/month</p>
+    <p><strong style="color:var(--gold);">Overhead:</strong> Facility Rent — $8,000/month (enter total directly)</p>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function calcTotal() {
+  const uc = parseFloat(document.getElementById('unit-cost').value);
+  const qty = parseFloat(document.getElementById('qty').value);
+  const total = document.getElementById('total-cost');
+  if (uc && qty && !total.value) {
+    total.value = (uc * qty).toFixed(2);
+  }
+}
+function updateHints(type) {
+  const unit = document.getElementById('unit-field');
+  if (type === 'solvent') unit.placeholder = 'lbs, gallons, etc.';
+  else if (type === 'personnel') unit.placeholder = 'hours, month, etc.';
+  else unit.placeholder = 'month, year, etc.';
+}
+</script>
+{% endblock %}
+

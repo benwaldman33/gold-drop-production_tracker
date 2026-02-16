@@ -280,11 +280,15 @@ tbody tr:last-child td { border-bottom: none; }
 .badge-gold { background: rgba(200, 150, 62, 0.15); color: var(--gold); }
 
 /* Status badges */
+.status-committed { background: rgba(200, 150, 62, 0.15); color: var(--gold); }
 .status-ordered { background: var(--yellow-bg); color: var(--yellow); }
 .status-in_transit { background: rgba(96, 165, 250, 0.12); color: #60A5FA; }
 .status-delivered { background: var(--green-bg); color: var(--green); }
+.status-in_testing { background: rgba(200, 150, 62, 0.15); color: var(--gold); }
+.status-available { background: rgba(52, 211, 153, 0.12); color: var(--green); }
 .status-complete { background: var(--gray-bg); color: var(--text-muted); }
 .status-processing { background: rgba(200, 150, 62, 0.15); color: var(--gold); }
+.status-cancelled { background: var(--red-bg); color: var(--red); }
 
 /* Buttons */
 .btn {

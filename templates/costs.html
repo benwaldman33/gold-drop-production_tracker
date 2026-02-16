@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Operational Costs{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Operational Costs</h2>
+  {% if current_user.can_edit %}
+  <a href="{{ url_for('cost_new') }}" class="btn btn-primary">+ New Cost Entry</a>
+  {% endif %}
+</div>
+
+<div class="summary-row">
+  <div class="summary-stat">
+    <div class="label">Solvent Costs</div>
+    <div class="value">${{ "{:,.2f}".format(solvent_total) }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Personnel Costs</div>
+    <div class="value">${{ "{:,.2f}".format(personnel_total) }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Overhead Costs</div>
+    <div class="value">${{ "{:,.2f}".format(overhead_total) }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Total OpEx</div>
+    <div class="value" style="color:var(--gold);">${{ "{:,.2f}".format(solvent_total + personnel_total + overhead_total) }}</div>
+  </div>
+</div>
+
+<div class="card" style="padding:12px 16px;">
+  <div style="display:flex;gap:8px;">
+    <a href="{{ url_for('costs_list') }}" class="btn btn-sm {% if not cost_type %}btn-primary{% else %}btn-secondary{% endif %}">All</a>
+    <a href="{{ url_for('costs_list', type='solvent') }}" class="btn btn-sm {% if cost_type == 'solvent' %}btn-primary{% else %}btn-secondary{% endif %}">Solvents</a>
+    <a href="{{ url_for('costs_list', type='personnel') }}" class="btn btn-sm {% if cost_type == 'personnel' %}btn-primary{% else %}btn-secondary{% endif %}">Personnel</a>
+    <a href="{{ url_for('costs_list', type='overhead') }}" class="btn btn-sm {% if cost_type == 'overhead' %}btn-primary{% else %}btn-secondary{% endif %}">Overhead</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header"><h3>Cost Entries</h3></div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Name</th>
+          <th class="text-right">Unit Cost</th>
+          <th class="text-right">Qty</th>
+          <th class="text-right">Total</th>
+          <th>Period</th>
+          <th>Notes</th>
+          {% if current_user.can_edit %}<th>Actions</th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in entries %}
+        <tr>
+          <td><span class="badge {% if e.cost_type == 'solvent' %}badge-gold{% elif e.cost_type == 'personnel' %}badge-green{% else %}badge-gray{% endif %}">{{ e.cost_type }}</span></td>
+          <td><strong>{{ e.name }}</strong></td>
+          <td class="text-right text-mono">{{ "${:,.2f}".format(e.unit_cost) if e.unit_cost else '—' }}{% if e.unit %}/{{ e.unit }}{% endif %}</td>
+          <td class="text-right text-mono">{{ "{:,.1f}".format(e.quantity) if e.quantity else '—' }}</td>
+          <td class="text-right text-mono"><strong>${{ "{:,.2f}".format(e.total_cost) }}</strong></td>
+          <td>{{ e.start_date.strftime('%m/%d') }}–{{ e.end_date.strftime('%m/%d/%y') }}</td>
+          <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ e.notes or '—' }}</td>
+          {% if current_user.can_edit %}
+          <td>
+            <a href="{{ url_for('cost_edit', entry_id=e.id) }}" class="btn btn-secondary btn-sm">Edit</a>
+            <form method="POST" action="{{ url_for('cost_delete', entry_id=e.id) }}" style="display:inline;" onsubmit="return confirm('Delete this cost entry?');">
+              <button type="submit" class="btn btn-danger btn-sm">Del</button>
+            </form>
+          </td>
+          {% endif %}
+        </tr>
+        {% else %}
+        <tr><td colspan="{% if current_user.can_edit %}8{% else %}7{% endif %}" class="text-center cell-muted" style="padding:30px;">No cost entries yet. Add solvents, personnel, and overhead costs to track operational expenses.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
