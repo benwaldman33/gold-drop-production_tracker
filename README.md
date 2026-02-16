@@ -1,5 +1,7 @@
 # Gold Drop — Biomass Inventory & Extraction Tracking System
 
+**Product requirements** live in `PRD.md`.
+
 ## Quick Start (Local Development)
 
 ```bash
@@ -29,10 +31,15 @@ Open http://localhost:5000 in your browser.
 - **Dashboard** — KPI cards with configurable green/yellow/red traffic lights
 - **Run Logging** — Log extraction runs with source lots, wet/dry HTE & THCA output
 - **Auto-Calculations** — Yield %, cost per gram, true-up amounts calculated automatically
+- **Costs** — Enter solvent/personnel/overhead costs with date ranges; allocated into $/g
+- **Cost Allocation Settings** — Choose THCA vs HTE allocation (uniform, 50/50, custom %)
 - **Inventory** — Track biomass on hand, in transit, and days of supply
 - **Purchases** — Record purchases with potency-based pricing and true-up tracking
+- **Batch IDs** — Unique, readable batch IDs for all purchases (auto-generated if blank)
+- **Biomass Pipeline** — Track farm availability from declared → testing → committed → delivered/cancelled (syncs to Purchases)
 - **Supplier Performance** — All-time, 90-day, and last-batch analytics per farm
 - **Strain Performance** — Compare yields and cost/gram across strains and suppliers
+- **Data Quality Controls** — Flag runs missing $/lb; optionally exclude unpriced runs from analytics
 - **CSV Import/Export** — Import from Google Sheets with deduplication; export any view
 - **Role-Based Access** — Super Admin, User, and Viewer roles
 - **Configurable KPIs** — Set targets and thresholds; change them as operations improve
@@ -46,6 +53,7 @@ gold-drop/
 ├── app.py              # Flask application (routes, business logic)
 ├── models.py           # SQLAlchemy database models
 ├── requirements.txt    # Python dependencies
+├── PRD.md              # Product requirements document
 ├── static/
 │   └── css/
 │       └── style.css   # Application styles
@@ -58,6 +66,10 @@ gold-drop/
     ├── inventory.html      # Inventory position view
     ├── purchases.html      # Purchase list view
     ├── purchase_form.html  # New/edit purchase form
+    ├── biomass.html        # Biomass pipeline list view
+    ├── biomass_form.html   # New/edit biomass pipeline record
+    ├── costs.html          # Operational cost entries list view
+    ├── cost_form.html      # New/edit cost entry form
     ├── suppliers.html      # Supplier performance view
     ├── supplier_form.html  # New/edit supplier form
     ├── strains.html        # Strain performance view
@@ -135,6 +147,9 @@ The system will:
 ## Data Model
 
 - **Suppliers** → **Purchases** → **Lots** (one-to-many chain)
+- **Suppliers** → **Biomass Pipeline** (one-to-many)
+- **Biomass Pipeline** → **Purchase** (one-to-one once committed/delivered/cancelled)
+- **Cost Entries** are allocated across total dry grams in their date ranges
 - **Lots** → **Run Inputs** → **Runs** (many-to-many through run_inputs)
 - Lot `remaining_weight_lbs` is automatically decremented when used in a run
 - Yield calculations and cost-per-gram are auto-computed on save
