@@ -53,6 +53,12 @@ class Supplier(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     purchases = db.relationship("Purchase", backref="supplier", lazy="dynamic")
+    biomass_availabilities = db.relationship(
+        "BiomassAvailability",
+        backref="supplier",
+        lazy="dynamic",
+        cascade="all, delete-orphan",
+    )
 
     def avg_yield(self, days=None):
         """Calculate average overall yield for this supplier."""
@@ -78,6 +84,7 @@ class Supplier(db.Model):
 class Purchase(db.Model):
     __tablename__ = "purchases"
     id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    batch_id = db.Column(db.String(80), unique=True, index=True)
     supplier_id = db.Column(db.String(36), db.ForeignKey("suppliers.id"), nullable=False)
     purchase_date = db.Column(db.Date, nullable=False)
     delivery_date = db.Column(db.Date)
@@ -98,6 +105,49 @@ class Purchase(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     lots = db.relationship("PurchaseLot", backref="purchase", lazy="dynamic", cascade="all, delete-orphan")
+
+    @property
+    def supplier_name(self):
+        return self.supplier.name if self.supplier else "Unknown"
+
+
+class BiomassAvailability(db.Model):
+    """
+    Tracks supplier biomass availability through a simple pipeline:
+    declared -> testing -> committed -> delivered (or cancelled).
+    """
+    __tablename__ = "biomass_availabilities"
+
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    supplier_id = db.Column(db.String(36), db.ForeignKey("suppliers.id"), nullable=False)
+    purchase_id = db.Column(db.String(36), db.ForeignKey("purchases.id"))
+    purchase = db.relationship("Purchase", foreign_keys=[purchase_id])
+
+    # Step 1: Declaration of availability
+    availability_date = db.Column(db.Date, nullable=False)
+    strain_name = db.Column(db.String(200))
+    declared_weight_lbs = db.Column(db.Float, nullable=False, default=0.0)
+    declared_price_per_lb = db.Column(db.Float)
+    estimated_potency_pct = db.Column(db.Float)
+
+    # Step 2: Testing (sometimes before delivery, sometimes after)
+    testing_timing = db.Column(db.String(20), default="before_delivery")  # before_delivery, after_delivery
+    testing_status = db.Column(db.String(20), default="pending")  # pending, completed, not_needed
+    testing_date = db.Column(db.Date)
+    tested_potency_pct = db.Column(db.Float)
+
+    # Step 3: Commitment to purchase
+    committed_on = db.Column(db.Date)
+    committed_delivery_date = db.Column(db.Date)
+    committed_weight_lbs = db.Column(db.Float)
+    committed_price_per_lb = db.Column(db.Float)
+
+    # Overall stage
+    stage = db.Column(db.String(20), nullable=False, default="declared")  # declared, testing, committed, delivered, cancelled
+
+    notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     @property
     def supplier_name(self):

@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local DB / instance data
+instance/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+

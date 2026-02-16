@@ -10,11 +10,11 @@ from flask import (Flask, render_template, request, redirect, url_for, flash,
                    jsonify, Response, session)
 from flask_login import (LoginManager, login_user, logout_user, login_required,
                          current_user)
-from sqlalchemy import func, desc, and_
+from sqlalchemy import func, desc, and_, text
 from werkzeug.security import generate_password_hash
 
 from models import (db, User, Supplier, Purchase, PurchaseLot, Run, RunInput,
-                    KpiTarget, SystemSetting, AuditLog)
+                    KpiTarget, SystemSetting, AuditLog, BiomassAvailability)
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "gold-drop-dev-key-change-in-prod")
@@ -61,6 +61,69 @@ def log_audit(action, entity_type, entity_id, details=None):
         entity_id=str(entity_id), details=details
     )
     db.session.add(entry)
+
+
+def _supplier_prefix(name: str, length: int = 5) -> str:
+    cleaned = "".join(ch for ch in (name or "").upper() if ch.isalnum())
+    return (cleaned[:length] or "BATCH")
+
+
+def _generate_batch_id(supplier_name: str, batch_date: date | None, weight_lbs: float | None) -> str:
+    """
+    Generate a descriptive, readable batch identifier.
+    Example: FARML-15FEB26-200
+    """
+    d = batch_date or date.today()
+    w = int(round(weight_lbs or 0))
+    return f"{_supplier_prefix(supplier_name)}-{d.strftime('%d%b%y').upper()}-{w}"
+
+
+def _ensure_unique_batch_id(candidate: str, exclude_purchase_id: str | None = None) -> str:
+    """Ensure uniqueness by suffixing -2, -3... when needed."""
+    base = (candidate or "").strip().upper()
+    if not base:
+        base = "BATCH"
+    bid = base
+    n = 2
+    while True:
+        q = Purchase.query.filter(Purchase.batch_id == bid)
+        if exclude_purchase_id:
+            q = q.filter(Purchase.id != exclude_purchase_id)
+        if not q.first():
+            return bid
+        bid = f"{base}-{n}"
+        n += 1
+
+
+def _ensure_sqlite_schema():
+    """Lightweight schema updates for existing SQLite DBs (no migrations)."""
+    if db.engine.dialect.name != "sqlite":
+        return
+
+    def has_table(table_name: str) -> bool:
+        row = db.session.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name=:t"),
+            {"t": table_name},
+        ).first()
+        return bool(row)
+
+    def column_names(table_name: str) -> set[str]:
+        rows = db.session.execute(text(f"PRAGMA table_info({table_name})")).all()
+        return {r[1] for r in rows}
+
+    # Purchases: batch_id
+    if has_table("purchases"):
+        cols = column_names("purchases")
+        if "batch_id" not in cols:
+            db.session.execute(text("ALTER TABLE purchases ADD COLUMN batch_id VARCHAR(80)"))
+
+    # Biomass availabilities: purchase_id (if table already exists)
+    if has_table("biomass_availabilities"):
+        cols = column_names("biomass_availabilities")
+        if "purchase_id" not in cols:
+            db.session.execute(text("ALTER TABLE biomass_availabilities ADD COLUMN purchase_id VARCHAR(36)"))
+
+    db.session.commit()
 
 
 # ── Auth Routes ──────────────────────────────────────────────────────────────
@@ -326,7 +389,7 @@ def inventory():
     ).all()
 
     # In-transit purchases
-    in_transit = Purchase.query.filter(Purchase.status.in_(["ordered", "in_transit"])).all()
+    in_transit = Purchase.query.filter(Purchase.status.in_(["committed", "ordered", "in_transit"])).all()
 
     # Summary
     total_on_hand = sum(l.remaining_weight_lbs for l in on_hand)
@@ -423,6 +486,36 @@ def _save_purchase(existing):
         if not existing:
             db.session.add(p)
         db.session.flush()
+
+        # Batch identifier (unique per purchase batch)
+        batch_in = (request.form.get("batch_id") or "").strip()
+        if batch_in:
+            candidate = batch_in.upper()
+            conflict = Purchase.query.filter(Purchase.batch_id == candidate, Purchase.id != p.id).first()
+            if conflict:
+                raise ValueError(f"Batch ID '{candidate}' already exists. Please choose a unique Batch ID.")
+            p.batch_id = candidate
+        else:
+            sup = db.session.get(Supplier, p.supplier_id)
+            supplier_name = sup.name if sup else "BATCH"
+            d = p.delivery_date or p.purchase_date
+            w = p.actual_weight_lbs or p.stated_weight_lbs
+            p.batch_id = _ensure_unique_batch_id(_generate_batch_id(supplier_name, d, w), exclude_purchase_id=p.id)
+
+        # If this purchase is linked to a biomass pipeline record, keep stage in sync
+        linked = BiomassAvailability.query.filter(BiomassAvailability.purchase_id == p.id).first()
+        if linked:
+            status = (p.status or "").strip()
+            if status in ("committed", "ordered", "in_transit"):
+                linked.stage = "committed"
+            elif status == "cancelled":
+                linked.stage = "cancelled"
+            else:
+                linked.stage = "delivered"
+            linked.committed_on = p.purchase_date
+            linked.committed_delivery_date = p.delivery_date
+            linked.committed_weight_lbs = p.actual_weight_lbs or p.stated_weight_lbs
+            linked.committed_price_per_lb = p.price_per_lb
 
         # Process lots
         if not existing:
@@ -684,12 +777,12 @@ def export_csv(entity):
                              f"{r.cost_per_gram_combined:.2f}" if r.cost_per_gram_combined else "",
                              r.notes or ""])
     elif entity == "purchases":
-        writer.writerow(["Date", "Supplier", "Status", "Stated Lbs", "Actual Lbs",
+        writer.writerow(["Date", "Batch ID", "Supplier", "Status", "Stated Lbs", "Actual Lbs",
                          "Stated Potency", "Tested Potency", "Price/Lb", "Total Cost",
                          "True-Up", "Strains"])
         for p in Purchase.query.order_by(Purchase.purchase_date.desc()).all():
             strains = ", ".join([l.strain_name for l in p.lots])
-            writer.writerow([p.purchase_date, p.supplier_name, p.status,
+            writer.writerow([p.purchase_date, p.batch_id, p.supplier_name, p.status,
                              p.stated_weight_lbs, p.actual_weight_lbs,
                              p.stated_potency_pct, p.tested_potency_pct,
                              p.price_per_lb, p.total_cost, p.true_up_amount, strains])
@@ -699,6 +792,40 @@ def export_csv(entity):
         for l in PurchaseLot.query.filter(PurchaseLot.remaining_weight_lbs > 0).all():
             writer.writerow([l.strain_name, l.supplier_name, l.weight_lbs,
                              l.remaining_weight_lbs, l.potency_pct, l.milled, l.location])
+    elif entity == "biomass":
+        writer.writerow([
+            "Stage", "Supplier", "Strain",
+            "Availability Date", "Declared Lbs", "Declared $/lb", "Est Potency %",
+            "Testing Timing", "Testing Status", "Testing Date", "Tested Potency %",
+            "Committed On", "Delivery Date", "Committed Lbs", "Committed $/lb",
+            "Batch ID", "Purchase Status",
+            "Notes",
+        ])
+        q = BiomassAvailability.query.join(Supplier).order_by(
+            BiomassAvailability.availability_date.desc(),
+            Supplier.name.asc(),
+        ).all()
+        for b in q:
+            writer.writerow([
+                b.stage,
+                b.supplier_name,
+                b.strain_name or "",
+                b.availability_date,
+                b.declared_weight_lbs,
+                b.declared_price_per_lb,
+                b.estimated_potency_pct,
+                b.testing_timing,
+                b.testing_status,
+                b.testing_date,
+                b.tested_potency_pct,
+                b.committed_on,
+                b.committed_delivery_date,
+                b.committed_weight_lbs,
+                b.committed_price_per_lb,
+                b.purchase.batch_id if b.purchase else "",
+                b.purchase.status if b.purchase else "",
+                b.notes or "",
+            ])
     else:
         return "Unknown entity", 404
 
@@ -927,6 +1054,162 @@ def lot_new(purchase_id):
     return redirect(url_for("purchase_edit", purchase_id=purchase_id))
 
 
+# ── Biomass Availability Pipeline ─────────────────────────────────────────────
+
+@app.route("/biomass")
+@login_required
+def biomass_list():
+    stage = request.args.get("stage", "").strip()
+    query = BiomassAvailability.query.join(Supplier)
+    if stage:
+        query = query.filter(BiomassAvailability.stage == stage)
+    items = query.order_by(BiomassAvailability.availability_date.desc(), Supplier.name.asc()).all()
+    return render_template("biomass.html", items=items, stage_filter=stage)
+
+
+@app.route("/biomass/new", methods=["GET", "POST"])
+@editor_required
+def biomass_new():
+    if request.method == "POST":
+        return _save_biomass(None)
+    suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
+    return render_template("biomass_form.html", item=None, suppliers=suppliers, today=date.today())
+
+
+@app.route("/biomass/<item_id>/edit", methods=["GET", "POST"])
+@editor_required
+def biomass_edit(item_id):
+    item = db.session.get(BiomassAvailability, item_id)
+    if not item:
+        flash("Biomass availability record not found.", "error")
+        return redirect(url_for("biomass_list"))
+    if request.method == "POST":
+        return _save_biomass(item)
+    suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
+    return render_template("biomass_form.html", item=item, suppliers=suppliers, today=date.today())
+
+
+def _save_biomass(existing):
+    try:
+        b = existing or BiomassAvailability()
+        b.supplier_id = request.form["supplier_id"]
+
+        ad = request.form.get("availability_date", "").strip()
+        b.availability_date = datetime.strptime(ad, "%Y-%m-%d").date()
+
+        b.strain_name = request.form.get("strain_name", "").strip() or None
+
+        dw = request.form.get("declared_weight_lbs", "").strip()
+        b.declared_weight_lbs = float(dw) if dw else 0.0
+
+        dpl = request.form.get("declared_price_per_lb", "").strip()
+        b.declared_price_per_lb = float(dpl) if dpl else None
+
+        ep = request.form.get("estimated_potency_pct", "").strip()
+        b.estimated_potency_pct = float(ep) if ep else None
+
+        b.testing_timing = request.form.get("testing_timing") or "before_delivery"
+        b.testing_status = request.form.get("testing_status") or "pending"
+
+        td = request.form.get("testing_date", "").strip()
+        b.testing_date = datetime.strptime(td, "%Y-%m-%d").date() if td else None
+
+        tpp = request.form.get("tested_potency_pct", "").strip()
+        b.tested_potency_pct = float(tpp) if tpp else None
+
+        co = request.form.get("committed_on", "").strip()
+        b.committed_on = datetime.strptime(co, "%Y-%m-%d").date() if co else None
+
+        cdd = request.form.get("committed_delivery_date", "").strip()
+        b.committed_delivery_date = datetime.strptime(cdd, "%Y-%m-%d").date() if cdd else None
+
+        cw = request.form.get("committed_weight_lbs", "").strip()
+        b.committed_weight_lbs = float(cw) if cw else None
+
+        cpl = request.form.get("committed_price_per_lb", "").strip()
+        b.committed_price_per_lb = float(cpl) if cpl else None
+
+        b.stage = request.form.get("stage") or "declared"
+        b.notes = request.form.get("notes", "").strip() or None
+
+        if not existing:
+            db.session.add(b)
+        db.session.flush()
+
+        # When committed/delivered/cancelled, keep a linked Purchase in sync
+        stage_to_status = {
+            "committed": "committed",
+            "delivered": "delivered",
+            "cancelled": "cancelled",
+        }
+        if b.stage in stage_to_status:
+            purchase = db.session.get(Purchase, b.purchase_id) if b.purchase_id else None
+
+            # Create a purchase record when the batch becomes committed
+            if not purchase and b.stage != "cancelled":
+                purchase = Purchase(
+                    supplier_id=b.supplier_id,
+                    purchase_date=b.committed_on or b.availability_date,
+                    delivery_date=b.committed_delivery_date,
+                    status=stage_to_status[b.stage],
+                    stated_weight_lbs=float(b.committed_weight_lbs or b.declared_weight_lbs or 0),
+                    stated_potency_pct=b.estimated_potency_pct,
+                    tested_potency_pct=b.tested_potency_pct,
+                    price_per_lb=b.committed_price_per_lb or b.declared_price_per_lb,
+                    notes=f"Created from Biomass Pipeline ({b.id})",
+                )
+                db.session.add(purchase)
+                db.session.flush()
+                b.purchase_id = purchase.id
+
+            if purchase:
+                purchase.supplier_id = b.supplier_id
+                purchase.purchase_date = b.committed_on or b.availability_date
+                purchase.delivery_date = b.committed_delivery_date
+                purchase.status = stage_to_status[b.stage]
+                purchase.stated_weight_lbs = float(b.committed_weight_lbs or b.declared_weight_lbs or 0)
+                purchase.stated_potency_pct = b.estimated_potency_pct
+                purchase.tested_potency_pct = b.tested_potency_pct
+                purchase.price_per_lb = b.committed_price_per_lb or b.declared_price_per_lb
+
+                # Total cost
+                w = purchase.actual_weight_lbs or purchase.stated_weight_lbs
+                if w and purchase.price_per_lb:
+                    purchase.total_cost = w * purchase.price_per_lb
+
+                # Batch ID
+                if not purchase.batch_id:
+                    sup = db.session.get(Supplier, purchase.supplier_id)
+                    supplier_name = sup.name if sup else "BATCH"
+                    d = purchase.delivery_date or purchase.purchase_date
+                    purchase.batch_id = _ensure_unique_batch_id(
+                        _generate_batch_id(supplier_name, d, w),
+                        exclude_purchase_id=purchase.id,
+                    )
+
+        log_audit("update" if existing else "create", "biomass_availability", b.id)
+        db.session.commit()
+        flash("Biomass availability saved.", "success")
+        return redirect(url_for("biomass_list"))
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error saving biomass availability: {str(e)}", "error")
+        suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
+        return render_template("biomass_form.html", item=existing, suppliers=suppliers, today=date.today())
+
+
+@app.route("/biomass/<item_id>/delete", methods=["POST"])
+@editor_required
+def biomass_delete(item_id):
+    item = db.session.get(BiomassAvailability, item_id)
+    if item:
+        log_audit("delete", "biomass_availability", item.id)
+        db.session.delete(item)
+        db.session.commit()
+        flash("Biomass availability deleted.", "success")
+    return redirect(url_for("biomass_list"))
+
+
 # ── API endpoints for AJAX ───────────────────────────────────────────────────
 
 @app.route("/api/lots/available")
@@ -947,6 +1230,7 @@ def api_lots_available():
 def init_db():
     """Create tables and seed initial data."""
     db.create_all()
+    _ensure_sqlite_schema()
 
     # Create default admin if none exists
     if not User.query.first():
@@ -994,6 +1278,16 @@ def init_db():
             ))
 
     db.session.commit()
+
+    # Backfill batch IDs for any existing purchases
+    missing = Purchase.query.filter(db.or_(Purchase.batch_id.is_(None), Purchase.batch_id == "")).all()
+    for p in missing:
+        supplier_name = p.supplier_name
+        d = p.delivery_date or p.purchase_date
+        w = p.actual_weight_lbs or p.stated_weight_lbs
+        p.batch_id = _ensure_unique_batch_id(_generate_batch_id(supplier_name, d, w), exclude_purchase_id=p.id)
+    if missing:
+        db.session.commit()
 
     # Seed historical run data if database is empty
     if Run.query.count() == 0:

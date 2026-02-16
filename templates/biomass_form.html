@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}{% if item %}Edit Biomass Availability{% else %}New Biomass Availability{% endif %}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>{% if item %}Edit Biomass Availability{% else %}New Biomass Availability{% endif %}</h2>
+  <a href="{{ url_for('biomass_list') }}" class="btn btn-secondary">← Back</a>
+</div>
+
+<div class="card">
+  <form method="POST">
+    <div class="form-section">
+      <h4>Step 1 — Declaration of Availability</h4>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Supplier *</label>
+          <select name="supplier_id" required>
+            <option value="">Select supplier...</option>
+            {% for s in suppliers %}
+            <option value="{{ s.id }}" {% if item and item.supplier_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Availability Date *</label>
+          <input type="date" name="availability_date" value="{{ item.availability_date.strftime('%Y-%m-%d') if item and item.availability_date else today }}" required>
+        </div>
+        <div class="form-group">
+          <label>Strain (optional)</label>
+          <input type="text" name="strain_name" value="{{ item.strain_name if item and item.strain_name else '' }}" placeholder="e.g. Rockets x Humbolt">
+        </div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Declared Weight (lbs)</label>
+          <input type="number" name="declared_weight_lbs" value="{{ item.declared_weight_lbs if item else '' }}" step="0.1">
+        </div>
+        <div class="form-group">
+          <label>Declared Price ($/lb)</label>
+          <input type="number" name="declared_price_per_lb" value="{{ item.declared_price_per_lb if item and item.declared_price_per_lb else '' }}" step="0.01">
+        </div>
+        <div class="form-group">
+          <label>Estimated Potency (%)</label>
+          <input type="number" name="estimated_potency_pct" value="{{ item.estimated_potency_pct if item and item.estimated_potency_pct else '' }}" step="0.1">
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h4>Step 2 — Testing</h4>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Testing Timing</label>
+          <select name="testing_timing">
+            {% set val = item.testing_timing if item and item.testing_timing else 'before_delivery' %}
+            <option value="before_delivery" {% if val == 'before_delivery' %}selected{% endif %}>Before delivery</option>
+            <option value="after_delivery" {% if val == 'after_delivery' %}selected{% endif %}>After delivery</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Testing Status</label>
+          {% set tstat = item.testing_status if item and item.testing_status else 'pending' %}
+          <select name="testing_status">
+            <option value="pending" {% if tstat == 'pending' %}selected{% endif %}>Pending</option>
+            <option value="completed" {% if tstat == 'completed' %}selected{% endif %}>Completed</option>
+            <option value="not_needed" {% if tstat == 'not_needed' %}selected{% endif %}>Not needed</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Testing Date</label>
+          <input type="date" name="testing_date" value="{{ item.testing_date.strftime('%Y-%m-%d') if item and item.testing_date else '' }}">
+        </div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Tested Potency (%)</label>
+          <input type="number" name="tested_potency_pct" value="{{ item.tested_potency_pct if item and item.tested_potency_pct else '' }}" step="0.1">
+        </div>
+        <div class="form-group"></div>
+        <div class="form-group"></div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h4>Step 3 — Commitment to Purchase</h4>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Commitment Date</label>
+          <input type="date" name="committed_on" value="{{ item.committed_on.strftime('%Y-%m-%d') if item and item.committed_on else '' }}">
+        </div>
+        <div class="form-group">
+          <label>Delivery Date</label>
+          <input type="date" name="committed_delivery_date" value="{{ item.committed_delivery_date.strftime('%Y-%m-%d') if item and item.committed_delivery_date else '' }}">
+        </div>
+        <div class="form-group">
+          <label>Committed Price ($/lb)</label>
+          <input type="number" name="committed_price_per_lb" value="{{ item.committed_price_per_lb if item and item.committed_price_per_lb else '' }}" step="0.01">
+        </div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Committed Weight (lbs)</label>
+          <input type="number" name="committed_weight_lbs" value="{{ item.committed_weight_lbs if item and item.committed_weight_lbs else '' }}" step="0.1">
+        </div>
+        <div class="form-group"></div>
+        <div class="form-group"></div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h4>Stage & Notes</h4>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Stage</label>
+          {% set st = item.stage if item and item.stage else 'declared' %}
+          <select name="stage">
+            <option value="declared" {% if st == 'declared' %}selected{% endif %}>Declared</option>
+            <option value="testing" {% if st == 'testing' %}selected{% endif %}>Testing</option>
+            <option value="committed" {% if st == 'committed' %}selected{% endif %}>Committed</option>
+            <option value="delivered" {% if st == 'delivered' %}selected{% endif %}>Delivered</option>
+            <option value="cancelled" {% if st == 'cancelled' %}selected{% endif %}>Cancelled</option>
+          </select>
+        </div>
+        <div class="form-group" style="grid-column: span 2;">
+          <label>Notes</label>
+          <textarea name="notes" rows="2">{{ item.notes if item and item.notes else '' }}</textarea>
+        </div>
+      </div>
+      {% if item and item.purchase %}
+      <p class="text-sm" style="color:var(--text-muted);margin-top:6px;">
+        Linked Purchase batch: <a href="{{ url_for('purchase_edit', purchase_id=item.purchase.id) }}" class="text-mono">{{ item.purchase.batch_id or '—' }}</a>
+      </p>
+      {% endif %}
+    </div>
+
+    <div class="form-actions" style="justify-content:space-between;">
+      <div>
+        {% if item %}
+        <button
+          type="submit"
+          class="btn btn-danger"
+          formaction="{{ url_for('biomass_delete', item_id=item.id) }}"
+          formmethod="POST"
+          onclick="return confirm('Delete this biomass availability record?');"
+        >Delete</button>
+        {% endif %}
+      </div>
+      <div class="btn-group">
+        <a href="{{ url_for('biomass_list') }}" class="btn btn-secondary">Cancel</a>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
