@@ -10,11 +10,11 @@ from flask import (Flask, render_template, request, redirect, url_for, flash,
                    jsonify, Response, session)
 from flask_login import (LoginManager, login_user, logout_user, login_required,
                          current_user)
-from sqlalchemy import func, desc, and_, text
+from sqlalchemy import func, desc, and_, text, select, exists
 from werkzeug.security import generate_password_hash
 
 from models import (db, User, Supplier, Purchase, PurchaseLot, Run, RunInput,
-                    KpiTarget, SystemSetting, AuditLog, BiomassAvailability)
+                    KpiTarget, SystemSetting, AuditLog, BiomassAvailability, CostEntry)
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "gold-drop-dev-key-change-in-prod")
@@ -61,6 +61,69 @@ def log_audit(action, entity_type, entity_id, details=None):
         entity_id=str(entity_id), details=details
     )
     db.session.add(entry)
+
+
+def _exclude_unpriced_batches_enabled() -> bool:
+    val = (SystemSetting.get("exclude_unpriced_batches", "0") or "0").strip().lower()
+    return val in ("1", "true", "yes", "on")
+
+
+def _priced_run_filter():
+    """
+    Keep only runs where:
+    - at least one input lot linked, and
+    - no input lot has a missing purchase $/lb.
+    """
+    inputs_exist = exists(
+        select(1).select_from(RunInput).where(RunInput.run_id == Run.id).correlate(Run)
+    )
+    missing_price_exists = exists(
+        select(1).select_from(RunInput).join(
+            PurchaseLot, RunInput.lot_id == PurchaseLot.id
+        ).join(
+            Purchase, PurchaseLot.purchase_id == Purchase.id
+        ).where(
+            RunInput.run_id == Run.id,
+            Purchase.price_per_lb.is_(None),
+        ).correlate(Run)
+    )
+    return and_(inputs_exist, ~missing_price_exists)
+
+
+def _pricing_status_for_run_ids(run_ids):
+    """dict[run_id] -> priced|partial|unpriced|unlinked."""
+    if not run_ids:
+        return {}
+    total_rows = db.session.query(
+        RunInput.run_id, func.count(RunInput.id)
+    ).filter(
+        RunInput.run_id.in_(run_ids)
+    ).group_by(RunInput.run_id).all()
+    total_by_run = {rid: cnt for rid, cnt in total_rows}
+
+    priced_rows = db.session.query(
+        RunInput.run_id, func.count(RunInput.id)
+    ).join(PurchaseLot, RunInput.lot_id == PurchaseLot.id
+    ).join(Purchase, PurchaseLot.purchase_id == Purchase.id
+    ).filter(
+        RunInput.run_id.in_(run_ids),
+        Purchase.price_per_lb.isnot(None),
+    ).group_by(RunInput.run_id).all()
+    priced_by_run = {rid: cnt for rid, cnt in priced_rows}
+
+    status = {}
+    for rid in run_ids:
+        total = int(total_by_run.get(rid, 0) or 0)
+        priced = int(priced_by_run.get(rid, 0) or 0)
+        if total == 0:
+            status[rid] = "unlinked"
+        elif priced == total:
+            status[rid] = "priced"
+        elif priced == 0:
+            status[rid] = "unpriced"
+        else:
+            status[rid] = "partial"
+    return status
 
 
 def _supplier_prefix(name: str, length: int = 5) -> str:
@@ -123,6 +186,14 @@ def _ensure_sqlite_schema():
         if "purchase_id" not in cols:
             db.session.execute(text("ALTER TABLE biomass_availabilities ADD COLUMN purchase_id VARCHAR(36)"))
 
+    # Runs: cost_per_gram_thca / cost_per_gram_hte
+    if has_table("runs"):
+        cols = column_names("runs")
+        if "cost_per_gram_thca" not in cols:
+            db.session.execute(text("ALTER TABLE runs ADD COLUMN cost_per_gram_thca FLOAT"))
+        if "cost_per_gram_hte" not in cols:
+            db.session.execute(text("ALTER TABLE runs ADD COLUMN cost_per_gram_hte FLOAT"))
+
     db.session.commit()
 
 
@@ -167,8 +238,13 @@ def dashboard():
     else:
         start_date = date.today() - timedelta(days=30)
 
+    exclude_unpriced = _exclude_unpriced_batches_enabled()
+
     # Query runs in period
-    runs = Run.query.filter(Run.run_date >= start_date).all()
+    runs_q = Run.query.filter(Run.run_date >= start_date)
+    if exclude_unpriced:
+        runs_q = runs_q.filter(_priced_run_filter())
+    runs = runs_q.all()
 
     # Calculate KPI actuals
     kpi_actuals = {}
@@ -235,7 +311,8 @@ def dashboard():
     return render_template("dashboard.html",
                            kpi_cards=kpi_cards, period=period,
                            total_runs=total_runs, total_lbs=total_lbs,
-                           total_dry_output=total_dry_output, on_hand=on_hand)
+                           total_dry_output=total_dry_output, on_hand=on_hand,
+                           exclude_unpriced=exclude_unpriced)
 
 
 # ── Runs ─────────────────────────────────────────────────────────────────────
@@ -262,8 +339,11 @@ def runs_list():
         query = query.order_by(sort_col.desc())
 
     pagination = query.paginate(page=page, per_page=25, error_out=False)
+    run_ids = [r.id for r in pagination.items]
+    pricing_status = _pricing_status_for_run_ids(run_ids)
     return render_template("runs.html", runs=pagination.items, pagination=pagination,
-                           sort=sort, order=order, search=search)
+                           sort=sort, order=order, search=search,
+                           pricing_status=pricing_status)
 
 
 @app.route("/runs/new", methods=["GET", "POST"])
@@ -374,6 +454,95 @@ def run_delete(run_id):
         db.session.commit()
         flash("Run deleted.", "success")
     return redirect(url_for("runs_list"))
+
+
+# ── Cost Entries ─────────────────────────────────────────────────────────────
+
+@app.route("/costs")
+@login_required
+def costs_list():
+    """View operational cost entries."""
+    cost_type = request.args.get("type", "")
+    query = CostEntry.query
+    if cost_type:
+        query = query.filter_by(cost_type=cost_type)
+    entries = query.order_by(CostEntry.start_date.desc()).all()
+
+    solvent_total = sum(e.total_cost for e in CostEntry.query.filter_by(cost_type="solvent").all())
+    personnel_total = sum(e.total_cost for e in CostEntry.query.filter_by(cost_type="personnel").all())
+    overhead_total = sum(e.total_cost for e in CostEntry.query.filter_by(cost_type="overhead").all())
+
+    return render_template("costs.html", entries=entries, cost_type=cost_type,
+                           solvent_total=solvent_total, personnel_total=personnel_total,
+                           overhead_total=overhead_total)
+
+
+@app.route("/costs/new", methods=["GET", "POST"])
+@editor_required
+def cost_new():
+    if request.method == "POST":
+        try:
+            entry = CostEntry(
+                cost_type=request.form["cost_type"],
+                name=request.form["name"].strip(),
+                unit_cost=float(request.form.get("unit_cost") or 0) or None,
+                unit=request.form.get("unit", "").strip() or None,
+                quantity=float(request.form.get("quantity") or 0) or None,
+                total_cost=float(request.form["total_cost"]),
+                start_date=datetime.strptime(request.form["start_date"], "%Y-%m-%d").date(),
+                end_date=datetime.strptime(request.form["end_date"], "%Y-%m-%d").date(),
+                notes=request.form.get("notes", "").strip() or None,
+                created_by=current_user.id,
+            )
+            db.session.add(entry)
+            log_audit("create", "cost_entry", entry.id)
+            db.session.commit()
+            flash("Cost entry added.", "success")
+            return redirect(url_for("costs_list"))
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error: {str(e)}", "error")
+    return render_template("cost_form.html", entry=None, today=date.today())
+
+
+@app.route("/costs/<entry_id>/edit", methods=["GET", "POST"])
+@editor_required
+def cost_edit(entry_id):
+    entry = db.session.get(CostEntry, entry_id)
+    if not entry:
+        flash("Cost entry not found.", "error")
+        return redirect(url_for("costs_list"))
+    if request.method == "POST":
+        try:
+            entry.cost_type = request.form["cost_type"]
+            entry.name = request.form["name"].strip()
+            entry.unit_cost = float(request.form.get("unit_cost") or 0) or None
+            entry.unit = request.form.get("unit", "").strip() or None
+            entry.quantity = float(request.form.get("quantity") or 0) or None
+            entry.total_cost = float(request.form["total_cost"])
+            entry.start_date = datetime.strptime(request.form["start_date"], "%Y-%m-%d").date()
+            entry.end_date = datetime.strptime(request.form["end_date"], "%Y-%m-%d").date()
+            entry.notes = request.form.get("notes", "").strip() or None
+            log_audit("update", "cost_entry", entry.id)
+            db.session.commit()
+            flash("Cost entry updated.", "success")
+            return redirect(url_for("costs_list"))
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error: {str(e)}", "error")
+    return render_template("cost_form.html", entry=entry, today=date.today())
+
+
+@app.route("/costs/<entry_id>/delete", methods=["POST"])
+@editor_required
+def cost_delete(entry_id):
+    entry = db.session.get(CostEntry, entry_id)
+    if entry:
+        log_audit("delete", "cost_entry", entry.id)
+        db.session.delete(entry)
+        db.session.commit()
+        flash("Cost entry deleted.", "success")
+    return redirect(url_for("costs_list"))
 
 
 # ── Inventory ────────────────────────────────────────────────────────────────
@@ -548,6 +717,7 @@ def _save_purchase(existing):
 @login_required
 def suppliers_list():
     suppliers = Supplier.query.order_by(Supplier.name).all()
+    exclude_unpriced = _exclude_unpriced_batches_enabled()
 
     # Enrich with performance stats
     supplier_stats = []
@@ -566,6 +736,8 @@ def suppliers_list():
         ).join(PurchaseLot, RunInput.lot_id == PurchaseLot.id
         ).join(Purchase, PurchaseLot.purchase_id == Purchase.id
         ).filter(Purchase.supplier_id == s.id, Run.is_rollover == False)
+        if exclude_unpriced:
+            runs_q = runs_q.filter(_priced_run_filter())
 
         all_time = runs_q.first()
 
@@ -579,7 +751,10 @@ def suppliers_list():
         ).join(PurchaseLot, RunInput.lot_id == PurchaseLot.id
         ).join(Purchase, PurchaseLot.purchase_id == Purchase.id
         ).filter(Purchase.supplier_id == s.id, Run.is_rollover == False
-        ).order_by(Run.run_date.desc()).first()
+        )
+        if exclude_unpriced:
+            last_run = last_run.filter(_priced_run_filter())
+        last_run = last_run.order_by(Run.run_date.desc()).first()
 
         supplier_stats.append({
             "supplier": s,
@@ -675,6 +850,8 @@ def strains_list():
     ).join(Purchase, PurchaseLot.purchase_id == Purchase.id
     ).join(Supplier, Purchase.supplier_id == Supplier.id
     ).filter(Run.is_rollover == False)
+    if _exclude_unpriced_batches_enabled():
+        query = query.filter(_priced_run_filter())
 
     if view == "90":
         query = query.filter(Run.run_date >= date.today() - timedelta(days=90))
@@ -715,6 +892,49 @@ def settings():
                         existing.value = val
                     else:
                         db.session.add(SystemSetting(key=key, value=val, description=desc))
+
+            # Cost allocation method (impacts THCA vs HTE $/g calculations)
+            method = (request.form.get("cost_allocation_method") or "per_gram_uniform").strip()
+            if method not in ("per_gram_uniform", "split_50_50", "custom_split"):
+                method = "per_gram_uniform"
+            existing = db.session.get(SystemSetting, "cost_allocation_method")
+            if existing:
+                existing.value = method
+            else:
+                db.session.add(SystemSetting(
+                    key="cost_allocation_method",
+                    value=method,
+                    description="Cost allocation method for THCA vs HTE cost/gram",
+                ))
+
+            # Custom split: % of total run dollars allocated to THCA (0-100)
+            pct_raw = (request.form.get("cost_allocation_thca_pct") or "").strip()
+            try:
+                pct = float(pct_raw) if pct_raw else 50.0
+            except ValueError:
+                pct = 50.0
+            pct = max(0.0, min(100.0, pct))
+            existing = db.session.get(SystemSetting, "cost_allocation_thca_pct")
+            if existing:
+                existing.value = str(pct)
+            else:
+                db.session.add(SystemSetting(
+                    key="cost_allocation_thca_pct",
+                    value=str(pct),
+                    description="Custom cost allocation: percent of total run cost allocated to THCA",
+                ))
+
+            # Analytics toggle: exclude unpriced/unlinked runs from yield + cost calculations
+            exclude_val = "1" if request.form.get("exclude_unpriced_batches") else "0"
+            existing = db.session.get(SystemSetting, "exclude_unpriced_batches")
+            if existing:
+                existing.value = exclude_val
+            else:
+                db.session.add(SystemSetting(
+                    key="exclude_unpriced_batches",
+                    value=exclude_val,
+                    description="Exclude unpriced/unlinked runs from yield and cost analytics",
+                ))
             db.session.commit()
             flash("System settings updated.", "success")
 
@@ -752,6 +972,24 @@ def settings():
     users = User.query.all()
     return render_template("settings.html", system_settings=system_settings,
                            kpis=kpis, users=users)
+
+
+@app.route("/settings/recalculate_costs", methods=["POST"])
+@admin_required
+def settings_recalculate_costs():
+    """Recalculate cost-per-gram fields for all runs using current allocation logic."""
+    try:
+        runs = Run.query.order_by(Run.run_date.asc()).all()
+        updated = 0
+        for r in runs:
+            r.calculate_cost()
+            updated += 1
+        db.session.commit()
+        flash(f"Recalculated costs for {updated} runs.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Cost recalculation failed: {e}", "error")
+    return redirect(url_for("settings"))
 
 
 # ── CSV Import/Export ────────────────────────────────────────────────────────
@@ -1255,6 +1493,9 @@ def init_db():
         "operating_days": ("7", "Operating Days Per Week"),
         "daily_throughput_target": ("500", "Daily Throughput Target (lbs)"),
         "weekly_throughput_target": ("3500", "Weekly Throughput Target (lbs)"),
+        "exclude_unpriced_batches": ("0", "Exclude unpriced/unlinked runs from yield and cost analytics"),
+        "cost_allocation_method": ("per_gram_uniform", "Cost allocation method for THCA vs HTE cost/gram"),
+        "cost_allocation_thca_pct": ("50", "Custom cost allocation: percent of total run cost allocated to THCA"),
     }
     for key, (val, desc) in defaults.items():
         if not db.session.get(SystemSetting, key):

@@ -43,6 +43,12 @@
         <td class="text-center">{{ run.reactor_number }}</td>
         <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;">
           {% if run.is_rollover %}<span class="badge badge-gold">Rollover</span>{% endif %}
+          {% set ps = pricing_status.get(run.id) if pricing_status else None %}
+          {% if ps == 'unpriced' %}
+            <span class="badge badge-red">No $/lb</span>
+          {% elif ps == 'partial' %}
+            <span class="badge badge-yellow">Partial $/lb</span>
+          {% endif %}
           {{ run.source_display }}
         </td>
         <td class="text-right text-mono">{{ "{:,.0f}".format(run.bio_in_reactor_lbs) if run.bio_in_reactor_lbs else '—' }}</td>
