@@ -1,6 +1,7 @@
 # Gold Drop — Biomass Inventory & Extraction Tracking System
 
 **Product requirements** live in `PRD.md`.
+**User guide** lives in `USER_MANUAL.md` (no credentials included).
 
 ## Quick Start (Local Development)
 
