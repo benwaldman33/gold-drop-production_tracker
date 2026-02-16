@@ -120,8 +120,13 @@ class BiomassAvailability(db.Model):
 
     id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
     supplier_id = db.Column(db.String(36), db.ForeignKey("suppliers.id"), nullable=False)
-    purchase_id = db.Column(db.String(36), db.ForeignKey("purchases.id"))
-    purchase = db.relationship("Purchase", foreign_keys=[purchase_id])
+    # One-to-one link to a Purchase (when batch is committed/delivered/cancelled)
+    purchase_id = db.Column(db.String(36), db.ForeignKey("purchases.id"), unique=True)
+    purchase = db.relationship(
+        "Purchase",
+        backref=db.backref("biomass_availability", uselist=False),
+        foreign_keys=[purchase_id],
+    )
 
     # Step 1: Declaration of availability
     availability_date = db.Column(db.Date, nullable=False)

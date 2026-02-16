@@ -138,7 +138,7 @@ def _generate_batch_id(supplier_name: str, batch_date: date | None, weight_lbs: 
     """
     d = batch_date or date.today()
     w = int(round(weight_lbs or 0))
-    return f"{_supplier_prefix(supplier_name)}-{d.strftime('%d%b%y').upper()}-{w}"
+    return f"{_supplier_prefix(supplier_name)}-{d.strftime('%d%b%y').upper()}-{w}"[:80]
 
 
 def _ensure_unique_batch_id(candidate: str, exclude_purchase_id: str | None = None) -> str:
@@ -148,7 +148,8 @@ def _ensure_unique_batch_id(candidate: str, exclude_purchase_id: str | None = No
         base = "BATCH"
     bid = base
     n = 2
-    while True:
+    max_attempts = 100
+    for _ in range(max_attempts):
         q = Purchase.query.filter(Purchase.batch_id == bid)
         if exclude_purchase_id:
             q = q.filter(Purchase.id != exclude_purchase_id)
@@ -156,6 +157,7 @@ def _ensure_unique_batch_id(candidate: str, exclude_purchase_id: str | None = No
             return bid
         bid = f"{base}-{n}"
         n += 1
+    raise ValueError(f"Could not generate a unique batch ID for base '{base}' after {max_attempts} attempts.")
 
 
 def _ensure_sqlite_schema():
@@ -675,12 +677,17 @@ def _save_purchase(existing):
         linked = BiomassAvailability.query.filter(BiomassAvailability.purchase_id == p.id).first()
         if linked:
             status = (p.status or "").strip()
-            if status in ("committed", "ordered", "in_transit"):
+            if status in ("ordered", "in_transit", "committed"):
                 linked.stage = "committed"
+            elif status in ("in_testing", "available"):
+                linked.stage = "testing"
+            elif status in ("delivered", "processing", "complete"):
+                linked.stage = "delivered"
             elif status == "cancelled":
                 linked.stage = "cancelled"
             else:
-                linked.stage = "delivered"
+                # Keep sync for early/manual statuses when present
+                linked.stage = status if status in ("declared", "testing") else "delivered"
             linked.committed_on = p.purchase_date
             linked.committed_delivery_date = p.delivery_date
             linked.committed_weight_lbs = p.actual_weight_lbs or p.stated_weight_lbs
@@ -702,9 +709,17 @@ def _save_purchase(existing):
         db.session.commit()
         flash("Purchase saved.", "success")
         return redirect(url_for("purchases_list"))
-    except Exception as e:
+    except ValueError as e:
         db.session.rollback()
-        flash(f"Error: {str(e)}", "error")
+        flash(str(e), "error")
+        suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
+        rate = SystemSetting.get_float("potency_rate", 1.50)
+        return render_template("purchase_form.html", purchase=existing, suppliers=suppliers,
+                               rate=rate, today=date.today())
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Error saving purchase")
+        flash("Error saving purchase. Please check your inputs and try again.", "error")
         suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
         rate = SystemSetting.get_float("potency_rate", 1.50)
         return render_template("purchase_form.html", purchase=existing, suppliers=suppliers,
@@ -1330,61 +1345,134 @@ def biomass_edit(item_id):
 def _save_biomass(existing):
     try:
         b = existing or BiomassAvailability()
-        b.supplier_id = request.form["supplier_id"]
+        supplier_id = (request.form.get("supplier_id") or "").strip()
+        if not supplier_id:
+            raise ValueError("Supplier is required.")
+        supplier = db.session.get(Supplier, supplier_id)
+        if not supplier:
+            raise ValueError("Selected supplier was not found.")
+        b.supplier_id = supplier_id
 
         ad = request.form.get("availability_date", "").strip()
-        b.availability_date = datetime.strptime(ad, "%Y-%m-%d").date()
+        if not ad:
+            raise ValueError("Availability Date is required.")
+        try:
+            b.availability_date = datetime.strptime(ad, "%Y-%m-%d").date()
+        except ValueError:
+            raise ValueError("Availability Date must be a valid date.")
 
         b.strain_name = request.form.get("strain_name", "").strip() or None
 
         dw = request.form.get("declared_weight_lbs", "").strip()
-        b.declared_weight_lbs = float(dw) if dw else 0.0
+        try:
+            b.declared_weight_lbs = float(dw) if dw else 0.0
+        except ValueError:
+            raise ValueError("Declared Weight must be a number.")
+        if b.declared_weight_lbs < 0:
+            raise ValueError("Declared Weight cannot be negative.")
 
         dpl = request.form.get("declared_price_per_lb", "").strip()
-        b.declared_price_per_lb = float(dpl) if dpl else None
+        try:
+            b.declared_price_per_lb = float(dpl) if dpl else None
+        except ValueError:
+            raise ValueError("Declared $/lb must be a number.")
+        if b.declared_price_per_lb is not None and b.declared_price_per_lb < 0:
+            raise ValueError("Declared $/lb cannot be negative.")
 
         ep = request.form.get("estimated_potency_pct", "").strip()
-        b.estimated_potency_pct = float(ep) if ep else None
+        try:
+            b.estimated_potency_pct = float(ep) if ep else None
+        except ValueError:
+            raise ValueError("Estimated Potency must be a number.")
+        if b.estimated_potency_pct is not None and not (0 <= b.estimated_potency_pct <= 100):
+            raise ValueError("Estimated Potency must be between 0 and 100.")
 
-        b.testing_timing = request.form.get("testing_timing") or "before_delivery"
-        b.testing_status = request.form.get("testing_status") or "pending"
+        testing_timing = (request.form.get("testing_timing") or "before_delivery").strip()
+        if testing_timing not in ("before_delivery", "after_delivery"):
+            raise ValueError("Testing Timing is invalid.")
+        b.testing_timing = testing_timing
+
+        testing_status = (request.form.get("testing_status") or "pending").strip()
+        if testing_status not in ("pending", "completed", "not_needed"):
+            raise ValueError("Testing Status is invalid.")
+        b.testing_status = testing_status
 
         td = request.form.get("testing_date", "").strip()
-        b.testing_date = datetime.strptime(td, "%Y-%m-%d").date() if td else None
+        if td:
+            try:
+                b.testing_date = datetime.strptime(td, "%Y-%m-%d").date()
+            except ValueError:
+                raise ValueError("Testing Date must be a valid date.")
+        else:
+            b.testing_date = None
 
         tpp = request.form.get("tested_potency_pct", "").strip()
-        b.tested_potency_pct = float(tpp) if tpp else None
+        try:
+            b.tested_potency_pct = float(tpp) if tpp else None
+        except ValueError:
+            raise ValueError("Tested Potency must be a number.")
+        if b.tested_potency_pct is not None and not (0 <= b.tested_potency_pct <= 100):
+            raise ValueError("Tested Potency must be between 0 and 100.")
 
         co = request.form.get("committed_on", "").strip()
-        b.committed_on = datetime.strptime(co, "%Y-%m-%d").date() if co else None
+        if co:
+            try:
+                b.committed_on = datetime.strptime(co, "%Y-%m-%d").date()
+            except ValueError:
+                raise ValueError("Committed On must be a valid date.")
+        else:
+            b.committed_on = None
 
         cdd = request.form.get("committed_delivery_date", "").strip()
-        b.committed_delivery_date = datetime.strptime(cdd, "%Y-%m-%d").date() if cdd else None
+        if cdd:
+            try:
+                b.committed_delivery_date = datetime.strptime(cdd, "%Y-%m-%d").date()
+            except ValueError:
+                raise ValueError("Delivery Date must be a valid date.")
+        else:
+            b.committed_delivery_date = None
 
         cw = request.form.get("committed_weight_lbs", "").strip()
-        b.committed_weight_lbs = float(cw) if cw else None
+        try:
+            b.committed_weight_lbs = float(cw) if cw else None
+        except ValueError:
+            raise ValueError("Committed Weight must be a number.")
+        if b.committed_weight_lbs is not None and b.committed_weight_lbs < 0:
+            raise ValueError("Committed Weight cannot be negative.")
 
         cpl = request.form.get("committed_price_per_lb", "").strip()
-        b.committed_price_per_lb = float(cpl) if cpl else None
+        try:
+            b.committed_price_per_lb = float(cpl) if cpl else None
+        except ValueError:
+            raise ValueError("Committed $/lb must be a number.")
+        if b.committed_price_per_lb is not None and b.committed_price_per_lb < 0:
+            raise ValueError("Committed $/lb cannot be negative.")
 
-        b.stage = request.form.get("stage") or "declared"
+        stage = (request.form.get("stage") or "declared").strip()
+        allowed_stages = ("declared", "testing", "committed", "delivered", "cancelled")
+        if stage not in allowed_stages:
+            raise ValueError("Stage is invalid.")
+        b.stage = stage
         b.notes = request.form.get("notes", "").strip() or None
 
         if not existing:
             db.session.add(b)
         db.session.flush()
 
-        # When committed/delivered/cancelled, keep a linked Purchase in sync
+        # Keep linked Purchase in sync (create on commitment, but always sync if already linked)
         stage_to_status = {
+            "declared": "declared",
+            "testing": "in_testing",
             "committed": "committed",
             "delivered": "delivered",
             "cancelled": "cancelled",
         }
         if b.stage in stage_to_status:
             purchase = db.session.get(Purchase, b.purchase_id) if b.purchase_id else None
+            purchase_was_new = False
 
-            # Create a purchase record when the batch becomes committed
-            if not purchase and b.stage != "cancelled":
+            # Create a purchase record only once the batch becomes committed/delivered
+            if not purchase and b.stage in ("committed", "delivered"):
                 purchase = Purchase(
                     supplier_id=b.supplier_id,
                     purchase_date=b.committed_on or b.availability_date,
@@ -1399,6 +1487,7 @@ def _save_biomass(existing):
                 db.session.add(purchase)
                 db.session.flush()
                 b.purchase_id = purchase.id
+                purchase_was_new = True
 
             if purchase:
                 purchase.supplier_id = b.supplier_id
@@ -1425,13 +1514,32 @@ def _save_biomass(existing):
                         exclude_purchase_id=purchase.id,
                     )
 
+                # Purchase audit log (so biomass-driven changes are reconstructable)
+                log_audit(
+                    "create" if purchase_was_new else "update",
+                    "purchase",
+                    purchase.id,
+                    details=json.dumps({
+                        "source": "biomass_pipeline",
+                        "biomass_id": b.id,
+                        "stage": b.stage,
+                        "status": purchase.status,
+                    }),
+                )
+
         log_audit("update" if existing else "create", "biomass_availability", b.id)
         db.session.commit()
         flash("Biomass availability saved.", "success")
         return redirect(url_for("biomass_list"))
-    except Exception as e:
+    except ValueError as e:
         db.session.rollback()
-        flash(f"Error saving biomass availability: {str(e)}", "error")
+        flash(str(e), "error")
+        suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
+        return render_template("biomass_form.html", item=existing, suppliers=suppliers, today=date.today())
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Error saving biomass availability")
+        flash("Error saving biomass availability. Please check your inputs and try again.", "error")
         suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
         return render_template("biomass_form.html", item=existing, suppliers=suppliers, today=date.today())
 
@@ -1520,7 +1628,11 @@ def init_db():
 
     db.session.commit()
 
-    # Backfill batch IDs for any existing purchases
+    # Seed historical run data if database is empty
+    if Run.query.count() == 0:
+        _seed_historical_data()
+
+    # Backfill batch IDs for any existing purchases (including seeded purchases)
     missing = Purchase.query.filter(db.or_(Purchase.batch_id.is_(None), Purchase.batch_id == "")).all()
     for p in missing:
         supplier_name = p.supplier_name
@@ -1529,10 +1641,6 @@ def init_db():
         p.batch_id = _ensure_unique_batch_id(_generate_batch_id(supplier_name, d, w), exclude_purchase_id=p.id)
     if missing:
         db.session.commit()
-
-    # Seed historical run data if database is empty
-    if Run.query.count() == 0:
-        _seed_historical_data()
 
 
 def _seed_historical_data():

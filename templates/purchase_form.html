@@ -27,7 +27,7 @@
         <div class="form-group">
           <label>Status</label>
           <select name="status">
-            {% for s in ['committed', 'ordered', 'in_transit', 'delivered', 'in_testing', 'available', 'processing', 'complete', 'cancelled'] %}
+            {% for s in ['declared', 'committed', 'ordered', 'in_transit', 'delivered', 'in_testing', 'available', 'processing', 'complete', 'cancelled'] %}
             <option value="{{ s }}" {% if purchase and purchase.status == s %}selected{% endif %}>{{ s.replace('_', ' ').title() }}</option>
             {% endfor %}
           </select>
