@@ -425,3 +425,62 @@ class CostEntry(db.Model):
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     created_by = db.Column(db.String(36), db.ForeignKey("users.id"))
+
+
+class FieldAccessToken(db.Model):
+    """
+    Revocable access token for field/mobile data entry without site login.
+
+    The plain token is only shown at creation time; we store only a SHA-256 hash.
+    """
+    __tablename__ = "field_access_tokens"
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    label = db.Column(db.String(200), nullable=False)
+    token_hash = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_by = db.Column(db.String(36), db.ForeignKey("users.id"))
+    expires_at = db.Column(db.DateTime)
+    revoked_at = db.Column(db.DateTime)
+    last_used_at = db.Column(db.DateTime)
+
+    @property
+    def is_active(self):
+        if self.revoked_at is not None:
+            return False
+        if self.expires_at is not None and datetime.utcnow() > self.expires_at:
+            return False
+        return True
+
+
+class FieldPurchaseSubmission(db.Model):
+    """
+    Field-submitted potential purchase data.
+
+    Submissions require admin approval before creating a real Purchase record.
+    """
+    __tablename__ = "field_purchase_submissions"
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    submitted_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    source_token_id = db.Column(db.String(36), db.ForeignKey("field_access_tokens.id"))
+    source_token = db.relationship("FieldAccessToken", foreign_keys=[source_token_id])
+
+    # What the field user provided
+    supplier_id = db.Column(db.String(36), db.ForeignKey("suppliers.id"), nullable=False)
+    supplier = db.relationship("Supplier", foreign_keys=[supplier_id])
+    purchase_date = db.Column(db.Date, nullable=False)
+    delivery_date = db.Column(db.Date)
+    estimated_potency_pct = db.Column(db.Float)
+    price_per_lb = db.Column(db.Float)
+    notes = db.Column(db.Text)
+
+    # Lot lines as JSON: [{"strain": "...", "weight_lbs": 123.4}, ...]
+    lots_json = db.Column(db.Text)
+
+    # Review / approval
+    status = db.Column(db.String(20), nullable=False, default="pending")  # pending, approved, rejected
+    reviewed_at = db.Column(db.DateTime)
+    reviewed_by = db.Column(db.String(36), db.ForeignKey("users.id"))
+    review_notes = db.Column(db.Text)
+
+    approved_purchase_id = db.Column(db.String(36), db.ForeignKey("purchases.id"))
+    approved_purchase = db.relationship("Purchase", foreign_keys=[approved_purchase_id])

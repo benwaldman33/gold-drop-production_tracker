@@ -3,6 +3,8 @@ import os
 import csv
 import io
 import json
+import hashlib
+import secrets
 from datetime import datetime, date, timedelta
 from functools import wraps
 
@@ -14,7 +16,8 @@ from sqlalchemy import func, desc, and_, text, select, exists
 from werkzeug.security import generate_password_hash
 
 from models import (db, User, Supplier, Purchase, PurchaseLot, Run, RunInput,
-                    KpiTarget, SystemSetting, AuditLog, BiomassAvailability, CostEntry)
+                    KpiTarget, SystemSetting, AuditLog, BiomassAvailability, CostEntry,
+                    FieldAccessToken, FieldPurchaseSubmission)
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "gold-drop-dev-key-change-in-prod")
@@ -58,13 +61,51 @@ def editor_required(f):
     return decorated
 
 
-def log_audit(action, entity_type, entity_id, details=None):
+def log_audit(action, entity_type, entity_id, details=None, user_id=None):
     entry = AuditLog(
-        user_id=current_user.id if current_user.is_authenticated else None,
+        user_id=(user_id if user_id is not None else (current_user.id if current_user.is_authenticated else None)),
         action=action, entity_type=entity_type,
         entity_id=str(entity_id), details=details
     )
     db.session.add(entry)
+
+
+def _hash_field_token(token: str) -> str:
+    return hashlib.sha256((token or "").encode("utf-8")).hexdigest()
+
+
+def _get_field_token_value() -> str | None:
+    """Read token from querystring or form."""
+    return (request.args.get("t") or request.form.get("t") or "").strip() or None
+
+
+def _require_field_token():
+    token = _get_field_token_value()
+    if not token:
+        return None, "Missing access token."
+    token_hash = _hash_field_token(token)
+    tok = FieldAccessToken.query.filter_by(token_hash=token_hash).first()
+    if not tok:
+        return None, "Invalid access token."
+    if not tok.is_active:
+        return None, "Access token is expired or revoked."
+    # Touch last_used_at (best-effort)
+    try:
+        tok.last_used_at = datetime.utcnow()
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    return tok, None
+
+
+def field_token_required(view_fn):
+    @wraps(view_fn)
+    def wrapper(*args, **kwargs):
+        tok, err = _require_field_token()
+        if err:
+            return render_template("field_error.html", message=err), 403
+        return view_fn(tok, *args, **kwargs)
+    return wrapper
 
 
 def _exclude_unpriced_batches_enabled() -> bool:
@@ -227,6 +268,202 @@ def login():
 def logout():
     logout_user()
     return redirect(url_for("login"))
+
+
+# ── Field (mobile) intake ────────────────────────────────────────────────────
+
+@app.route("/field")
+@field_token_required
+def field_home(token):
+    """Landing page for field/mobile data entry (no login, token required)."""
+    return render_template("field_home.html", token_value=_get_field_token_value(), token=token)
+
+
+@app.route("/field/biomass/new", methods=["GET", "POST"])
+@field_token_required
+def field_biomass_new(token):
+    """
+    Create a BiomassAvailability record from the field without requiring login.
+    This is intended for early-stage pipeline entry (declared/testing).
+    """
+    suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
+    if request.method == "POST":
+        try:
+            supplier_id = (request.form.get("supplier_id") or "").strip()
+            if not supplier_id:
+                raise ValueError("Supplier is required.")
+            sup = db.session.get(Supplier, supplier_id)
+            if not sup:
+                raise ValueError("Selected supplier was not found.")
+
+            ad = (request.form.get("availability_date") or "").strip()
+            if not ad:
+                raise ValueError("Availability Date is required.")
+            availability_date = datetime.strptime(ad, "%Y-%m-%d").date()
+
+            stage = (request.form.get("stage") or "declared").strip()
+            if stage not in ("declared", "testing"):
+                raise ValueError("Stage must be Declared or Testing for field intake.")
+
+            dw = (request.form.get("declared_weight_lbs") or "").strip()
+            declared_weight = float(dw) if dw else 0.0
+            if declared_weight < 0:
+                raise ValueError("Declared Weight cannot be negative.")
+
+            dpl = (request.form.get("declared_price_per_lb") or "").strip()
+            declared_price = float(dpl) if dpl else None
+            if declared_price is not None and declared_price < 0:
+                raise ValueError("Declared $/lb cannot be negative.")
+
+            ep = (request.form.get("estimated_potency_pct") or "").strip()
+            estimated_potency = float(ep) if ep else None
+            if estimated_potency is not None and not (0 <= estimated_potency <= 100):
+                raise ValueError("Estimated Potency must be between 0 and 100.")
+
+            b = BiomassAvailability(
+                supplier_id=supplier_id,
+                availability_date=availability_date,
+                strain_name=(request.form.get("strain_name") or "").strip() or None,
+                declared_weight_lbs=declared_weight,
+                declared_price_per_lb=declared_price,
+                estimated_potency_pct=estimated_potency,
+                testing_timing=(request.form.get("testing_timing") or "before_delivery").strip() or "before_delivery",
+                testing_status=(request.form.get("testing_status") or "pending").strip() or "pending",
+                stage=stage,
+                notes=((request.form.get("notes") or "").strip() or None),
+            )
+            db.session.add(b)
+            db.session.flush()
+            log_audit(
+                "create",
+                "biomass_availability",
+                b.id,
+                details=json.dumps({
+                    "source": "field_intake",
+                    "token_label": token.label,
+                    "supplier": sup.name,
+                }),
+                user_id=None,
+            )
+            db.session.commit()
+            return redirect(url_for("field_thanks", kind="biomass", t=_get_field_token_value()))
+        except ValueError as e:
+            db.session.rollback()
+            flash(str(e), "error")
+        except Exception:
+            db.session.rollback()
+            app.logger.exception("Field biomass intake failed")
+            flash("Could not submit. Please check your inputs and try again.", "error")
+
+    return render_template(
+        "field_biomass_form.html",
+        token_value=_get_field_token_value(),
+        suppliers=suppliers,
+        today=date.today(),
+    )
+
+
+@app.route("/field/purchase/new", methods=["GET", "POST"])
+@field_token_required
+def field_purchase_new(token):
+    """Submit a potential purchase from the field (requires admin approval)."""
+    suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
+    if request.method == "POST":
+        try:
+            supplier_id = (request.form.get("supplier_id") or "").strip()
+            if not supplier_id:
+                raise ValueError("Supplier is required.")
+            sup = db.session.get(Supplier, supplier_id)
+            if not sup:
+                raise ValueError("Selected supplier was not found.")
+
+            pd = (request.form.get("purchase_date") or "").strip()
+            if not pd:
+                raise ValueError("Purchase Date is required.")
+            purchase_date = datetime.strptime(pd, "%Y-%m-%d").date()
+
+            dd = (request.form.get("delivery_date") or "").strip()
+            delivery_date = datetime.strptime(dd, "%Y-%m-%d").date() if dd else None
+
+            ep = (request.form.get("estimated_potency_pct") or "").strip()
+            estimated_potency = float(ep) if ep else None
+            if estimated_potency is not None and not (0 <= estimated_potency <= 100):
+                raise ValueError("Estimated Potency must be between 0 and 100.")
+
+            ppl = (request.form.get("price_per_lb") or "").strip()
+            price_per_lb = float(ppl) if ppl else None
+            if price_per_lb is not None and price_per_lb < 0:
+                raise ValueError("Price/lb cannot be negative.")
+
+            # Lots (at least one)
+            lot_strains = request.form.getlist("lot_strains[]")
+            lot_weights = request.form.getlist("lot_weights[]")
+            lots = []
+            for strain, w in zip(lot_strains, lot_weights):
+                strain = (strain or "").strip()
+                w = (w or "").strip()
+                if not strain and not w:
+                    continue
+                if not strain:
+                    raise ValueError("Lot strain name is required.")
+                try:
+                    weight = float(w)
+                except ValueError:
+                    raise ValueError("Lot weight must be a number.")
+                if weight <= 0:
+                    raise ValueError("Lot weight must be greater than 0.")
+                lots.append({"strain": strain, "weight_lbs": weight})
+            if not lots:
+                raise ValueError("Add at least one lot/strain with weight.")
+
+            sub = FieldPurchaseSubmission(
+                source_token_id=token.id,
+                supplier_id=supplier_id,
+                purchase_date=purchase_date,
+                delivery_date=delivery_date,
+                estimated_potency_pct=estimated_potency,
+                price_per_lb=price_per_lb,
+                notes=((request.form.get("notes") or "").strip() or None),
+                lots_json=json.dumps(lots),
+                status="pending",
+            )
+            db.session.add(sub)
+            db.session.flush()
+            log_audit(
+                "create",
+                "field_purchase_submission",
+                sub.id,
+                details=json.dumps({
+                    "source": "field_intake",
+                    "token_label": token.label,
+                    "supplier": sup.name,
+                    "lots_count": len(lots),
+                }),
+                user_id=None,
+            )
+            db.session.commit()
+            return redirect(url_for("field_thanks", kind="purchase", t=_get_field_token_value()))
+        except ValueError as e:
+            db.session.rollback()
+            flash(str(e), "error")
+        except Exception:
+            db.session.rollback()
+            app.logger.exception("Field purchase intake failed")
+            flash("Could not submit. Please check your inputs and try again.", "error")
+
+    return render_template(
+        "field_purchase_form.html",
+        token_value=_get_field_token_value(),
+        suppliers=suppliers,
+        today=date.today(),
+    )
+
+
+@app.route("/field/thanks")
+@field_token_required
+def field_thanks(token):
+    kind = (request.args.get("kind") or "").strip()
+    return render_template("field_thanks.html", kind=kind, token_value=_get_field_token_value())
 
 
 # ── Dashboard ────────────────────────────────────────────────────────────────
@@ -1051,9 +1288,34 @@ def settings():
 
     system_settings = {s.key: s.value for s in SystemSetting.query.all()}
     kpis = KpiTarget.query.all()
-    users = User.query.all()
-    return render_template("settings.html", system_settings=system_settings,
-                           kpis=kpis, users=users)
+    users = User.query.order_by(User.created_at.asc()).all()
+    field_tokens = FieldAccessToken.query.order_by(FieldAccessToken.created_at.desc()).all()
+    field_submissions = FieldPurchaseSubmission.query.order_by(FieldPurchaseSubmission.submitted_at.desc()).all()
+    for s in field_submissions:
+        try:
+            s.lots_count = len(json.loads(s.lots_json or "[]"))
+        except Exception:
+            s.lots_count = 0
+
+    # One-time display after creating a field link (POST-redirect-GET)
+    last_field_link = session.pop("last_field_link", None)
+    last_field_sms = session.pop("last_field_sms", None)
+    last_field_email_subject = session.pop("last_field_email_subject", None)
+    last_field_email_body = session.pop("last_field_email_body", None)
+
+    return render_template(
+        "settings.html",
+        system_settings=system_settings,
+        kpis=kpis,
+        users=users,
+        field_tokens=field_tokens,
+        field_submissions=field_submissions,
+        server_now=datetime.utcnow(),
+        last_field_link=last_field_link,
+        last_field_sms=last_field_sms,
+        last_field_email_subject=last_field_email_subject,
+        last_field_email_body=last_field_email_body,
+    )
 
 
 @app.route("/settings/users/<user_id>/toggle_active", methods=["POST"])
@@ -1089,6 +1351,155 @@ def user_toggle_active(user_id):
     )
     db.session.commit()
     flash(f"User {'activated' if u.is_active_user else 'disabled'}.", "success")
+    return redirect(url_for("settings"))
+
+
+@app.route("/settings/field_tokens/new", methods=["POST"])
+@admin_required
+def field_token_create():
+    label = (request.form.get("label") or "").strip()
+    if not label:
+        flash("Token label is required.", "error")
+        return redirect(url_for("settings"))
+
+    days_raw = (request.form.get("expires_days") or "").strip()
+    try:
+        expires_days = int(days_raw) if days_raw else 30
+    except ValueError:
+        expires_days = 30
+    expires_days = max(1, min(365, expires_days))
+
+    token_plain = secrets.token_urlsafe(32)
+    tok = FieldAccessToken(
+        label=label,
+        token_hash=_hash_field_token(token_plain),
+        created_by=current_user.id,
+        expires_at=datetime.utcnow() + timedelta(days=expires_days),
+    )
+    db.session.add(tok)
+    log_audit("create", "field_access_token", tok.id, details=json.dumps({"label": label, "expires_days": expires_days}))
+    db.session.commit()
+
+    link = url_for("field_home", t=token_plain, _external=True)
+    # Store in session so Settings can render a copy/share UI once.
+    session["last_field_link"] = link
+    session["last_field_sms"] = f"Gold Drop field intake link: {link}"
+    session["last_field_email_subject"] = "Gold Drop — Field Intake Link"
+    session["last_field_email_body"] = (
+        "Here is your Gold Drop field intake link (no login required):\n\n"
+        f"{link}\n\n"
+        "Use it to submit biomass availability or potential purchases from the field."
+    )
+    flash("Field link created. Scroll down to copy/share it.", "success")
+    return redirect(url_for("settings"))
+
+
+@app.route("/settings/field_tokens/<token_id>/revoke", methods=["POST"])
+@admin_required
+def field_token_revoke(token_id):
+    tok = db.session.get(FieldAccessToken, token_id)
+    if not tok:
+        flash("Token not found.", "error")
+        return redirect(url_for("settings"))
+    tok.revoked_at = datetime.utcnow()
+    log_audit("revoke", "field_access_token", tok.id, details=json.dumps({"label": tok.label}))
+    db.session.commit()
+    flash("Token revoked.", "success")
+    return redirect(url_for("settings"))
+
+
+@app.route("/settings/field_submissions/<submission_id>/approve", methods=["POST"])
+@admin_required
+def field_submission_approve(submission_id):
+    sub = db.session.get(FieldPurchaseSubmission, submission_id)
+    if not sub:
+        flash("Submission not found.", "error")
+        return redirect(url_for("settings"))
+    if sub.status != "pending":
+        flash("Submission has already been reviewed.", "error")
+        return redirect(url_for("settings"))
+
+    try:
+        lots = json.loads(sub.lots_json or "[]")
+    except Exception:
+        lots = []
+    if not lots:
+        flash("Submission has no lot lines.", "error")
+        return redirect(url_for("settings"))
+
+    total_weight = sum(float(l.get("weight_lbs") or 0) for l in lots)
+    if total_weight <= 0:
+        flash("Submission lot weights are invalid.", "error")
+        return redirect(url_for("settings"))
+
+    purchase = Purchase(
+        supplier_id=sub.supplier_id,
+        purchase_date=sub.purchase_date,
+        delivery_date=sub.delivery_date,
+        status="committed",
+        stated_weight_lbs=total_weight,
+        stated_potency_pct=sub.estimated_potency_pct,
+        price_per_lb=sub.price_per_lb,
+        notes=(sub.notes or "") + (f"\n\nApproved from field submission {sub.id}" if sub.notes else f"Approved from field submission {sub.id}"),
+    )
+    db.session.add(purchase)
+    db.session.flush()
+
+    # Create lots
+    for l in lots:
+        strain = (l.get("strain") or "").strip()
+        w = float(l.get("weight_lbs") or 0)
+        if not strain or w <= 0:
+            continue
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name=strain,
+            weight_lbs=w,
+            remaining_weight_lbs=w,
+        )
+        db.session.add(lot)
+
+    # Generate batch id
+    sup = db.session.get(Supplier, purchase.supplier_id)
+    supplier_name = sup.name if sup else "BATCH"
+    d = purchase.delivery_date or purchase.purchase_date
+    purchase.batch_id = _ensure_unique_batch_id(_generate_batch_id(supplier_name, d, total_weight), exclude_purchase_id=purchase.id)
+
+    # Total cost if possible
+    if purchase.price_per_lb:
+        purchase.total_cost = purchase.stated_weight_lbs * purchase.price_per_lb
+
+    # Mark submission approved
+    sub.status = "approved"
+    sub.reviewed_at = datetime.utcnow()
+    sub.reviewed_by = current_user.id
+    sub.review_notes = (request.form.get("review_notes") or "").strip() or None
+    sub.approved_purchase_id = purchase.id
+
+    log_audit("approve", "field_purchase_submission", sub.id, details=json.dumps({"purchase_id": purchase.id}))
+    log_audit("create", "purchase", purchase.id, details=json.dumps({"source": "field_submission", "submission_id": sub.id}))
+    db.session.commit()
+    flash("Submission approved and converted to a Purchase.", "success")
+    return redirect(url_for("purchase_edit", purchase_id=purchase.id))
+
+
+@app.route("/settings/field_submissions/<submission_id>/reject", methods=["POST"])
+@admin_required
+def field_submission_reject(submission_id):
+    sub = db.session.get(FieldPurchaseSubmission, submission_id)
+    if not sub:
+        flash("Submission not found.", "error")
+        return redirect(url_for("settings"))
+    if sub.status != "pending":
+        flash("Submission has already been reviewed.", "error")
+        return redirect(url_for("settings"))
+    sub.status = "rejected"
+    sub.reviewed_at = datetime.utcnow()
+    sub.reviewed_by = current_user.id
+    sub.review_notes = (request.form.get("review_notes") or "").strip() or None
+    log_audit("reject", "field_purchase_submission", sub.id, details=json.dumps({"notes": sub.review_notes}))
+    db.session.commit()
+    flash("Submission rejected.", "success")
     return redirect(url_for("settings"))
 
 

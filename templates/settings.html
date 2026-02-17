@@ -256,6 +256,157 @@
   </div>
 </div>
 
+<!-- Field Intake -->
+<div class="card">
+  <div class="card-header"><h3>Field Intake (Mobile Links + Submissions)</h3></div>
+  <div style="padding:16px;">
+    {% if last_field_link %}
+    <div class="card" style="padding:14px 16px; margin-bottom:14px; border-color: rgba(34, 197, 94, 0.25);">
+      <div style="font-weight:600;">New field link ready to share</div>
+      <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">
+        This link is only shown once. If you lose it, create a new token.
+      </div>
+
+      <div class="form-group" style="margin-top:10px;">
+        <label>Field Link</label>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input id="field-link" type="text" value="{{ last_field_link }}" readonly class="text-mono" style="flex:1;">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="copyText('field-link')">Copy link</button>
+        </div>
+      </div>
+
+      <div class="form-row-3" style="margin-top:6px;">
+        <div class="form-group" style="grid-column: span 3; margin:0;">
+          <label>SMS share text</label>
+          <div style="display:flex; gap:8px; align-items:flex-start;">
+            <textarea id="field-sms" rows="2" readonly style="flex:1;">{{ last_field_sms }}</textarea>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="copyText('field-sms')">Copy SMS</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-row-3" style="margin-top:6px;">
+        <div class="form-group" style="grid-column: span 3; margin:0;">
+          <label>Email subject</label>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input id="field-email-subject" type="text" value="{{ last_field_email_subject }}" readonly style="flex:1;">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="copyText('field-email-subject')">Copy subject</button>
+          </div>
+        </div>
+        <div class="form-group" style="grid-column: span 3; margin:0;">
+          <label>Email body</label>
+          <div style="display:flex; gap:8px; align-items:flex-start;">
+            <textarea id="field-email-body" rows="4" readonly style="flex:1;">{{ last_field_email_body }}</textarea>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="copyText('field-email-body')">Copy body</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:0 0 12px;">Create Field Access Link</h4>
+    <form method="POST" action="{{ url_for('field_token_create') }}" style="display:grid;grid-template-columns: 1fr 140px auto; gap:10px; align-items:end; margin-bottom:14px;">
+      <div class="form-group" style="margin:0;">
+        <label>Label</label>
+        <input type="text" name="label" placeholder="e.g. Field Purchasers (SMS link)" required>
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label>Expires (days)</label>
+        <input type="number" name="expires_days" value="30" min="1" max="365" required>
+      </div>
+      <button type="submit" class="btn btn-primary">Create Link</button>
+    </form>
+    <div class="text-sm" style="color:var(--text-muted); margin-bottom:16px;">
+      After creating a link, copy it from the green success message and send via SMS or email. Tokens are revocable.
+    </div>
+
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:0 0 12px;">Active / Recent Tokens</h4>
+    <div class="table-wrap mb-2">
+      <table>
+        <thead>
+          <tr><th>Label</th><th>Status</th><th>Expires</th><th>Last Used</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for t in field_tokens %}
+          <tr>
+            <td><strong>{{ t.label }}</strong></td>
+            <td>
+              {% if t.revoked_at %}
+                <span class="badge badge-gray">Revoked</span>
+              {% elif t.expires_at and t.expires_at < server_now %}
+                <span class="badge badge-gray">Expired</span>
+              {% else %}
+                <span class="badge badge-green">Active</span>
+              {% endif %}
+            </td>
+            <td>{{ t.expires_at.strftime('%m/%d/%y') if t.expires_at else '—' }}</td>
+            <td>{{ t.last_used_at.strftime('%m/%d/%y %H:%M') if t.last_used_at else '—' }}</td>
+            <td>
+              {% if not t.revoked_at %}
+              <form method="POST" action="{{ url_for('field_token_revoke', token_id=t.id) }}" style="display:inline;" onsubmit="return confirm('Revoke this token? Existing links will stop working.');">
+                <button type="submit" class="btn btn-danger btn-sm">Revoke</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-center cell-muted" style="padding:20px;">No field tokens created yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:18px 0 12px;">Pending Purchase Submissions</h4>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Submitted</th>
+            <th>Supplier</th>
+            <th class="text-right">Lots</th>
+            <th class="text-right">$/lb</th>
+            <th class="text-right">Potency %</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in field_submissions %}
+          <tr>
+            <td>{{ s.submitted_at.strftime('%m/%d/%y %H:%M') if s.submitted_at else '—' }}</td>
+            <td><strong>{{ s.supplier.name if s.supplier else '—' }}</strong></td>
+            <td class="text-right text-mono">{{ s.lots_count }}</td>
+            <td class="text-right text-mono">{{ "${:,.2f}".format(s.price_per_lb) if s.price_per_lb else '—' }}</td>
+            <td class="text-right text-mono">{{ "{:.1f}".format(s.estimated_potency_pct) if s.estimated_potency_pct else '—' }}</td>
+            <td>
+              {% if s.status == 'pending' %}<span class="badge badge-yellow">Pending</span>
+              {% elif s.status == 'approved' %}<span class="badge badge-green">Approved</span>
+              {% else %}<span class="badge badge-gray">Rejected</span>{% endif %}
+            </td>
+            <td style="white-space:nowrap;">
+              {% if s.status == 'pending' %}
+                <form method="POST" action="{{ url_for('field_submission_approve', submission_id=s.id) }}" style="display:inline;" onsubmit="return confirm('Approve this submission and create a Purchase?');">
+                  <button type="submit" class="btn btn-primary btn-sm">Approve</button>
+                </form>
+                <form method="POST" action="{{ url_for('field_submission_reject', submission_id=s.id) }}" style="display:inline;" onsubmit="return confirm('Reject this submission?');">
+                  <button type="submit" class="btn btn-danger btn-sm">Reject</button>
+                </form>
+              {% elif s.approved_purchase %}
+                <a href="{{ url_for('purchase_edit', purchase_id=s.approved_purchase.id) }}" class="btn btn-secondary btn-sm">View Purchase</a>
+              {% else %}
+                <span class="text-sm" style="color:var(--text-muted);">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-center cell-muted" style="padding:20px;">No submissions yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <!-- Maintenance -->
 <div class="card">
   <div class="card-header"><h3>Maintenance</h3></div>
@@ -271,4 +422,22 @@
     </form>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function copyText(elementId) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    const value = el.value || el.textContent || '';
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(value);
+      return;
+    }
+    // Fallback
+    el.focus();
+    el.select && el.select();
+    try { document.execCommand('copy'); } catch (e) {}
+  }
+</script>
 {% endblock %}

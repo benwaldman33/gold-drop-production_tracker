@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Field Intake — Access Error</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <div class="login-page">
+    <div class="login-box" style="max-width:520px;">
+      <h1>GOLD DROP</h1>
+      <p class="subtitle">Field Intake</p>
+      <div class="flash flash-error" style="margin-top:16px;">
+        {{ message }}
+      </div>
+      <p class="text-sm" style="color:var(--text-muted); margin-top:12px; line-height:1.6;">
+        Ask your administrator for a new field access link.
+      </p>
+    </div>
+  </div>
+</body>
+</html>
+

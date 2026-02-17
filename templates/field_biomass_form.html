@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Field Intake — Biomass Availability</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <div class="login-page">
+    <div class="login-box" style="max-width:720px;">
+      <h1>Biomass Availability</h1>
+      <p class="subtitle">Field Intake</p>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="flash flash-{{ category }}" style="margin-bottom:12px;">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+      {% endwith %}
+
+      <form method="POST">
+        <input type="hidden" name="t" value="{{ token_value }}">
+
+        <div class="form-group">
+          <label>Supplier *</label>
+          <select name="supplier_id" required>
+            <option value="">Select supplier...</option>
+            {% for s in suppliers %}
+              <option value="{{ s.id }}">{{ s.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="form-row-3">
+          <div class="form-group">
+            <label>Availability Date *</label>
+            <input type="date" name="availability_date" value="{{ today }}" required>
+          </div>
+          <div class="form-group">
+            <label>Stage *</label>
+            <select name="stage">
+              <option value="declared" selected>Declared</option>
+              <option value="testing">Testing</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Strain (optional)</label>
+            <input type="text" name="strain_name" placeholder="e.g. Rockets x Humbolt">
+          </div>
+        </div>
+
+        <div class="form-row-3">
+          <div class="form-group">
+            <label>Declared Weight (lbs)</label>
+            <input type="number" name="declared_weight_lbs" step="0.1" placeholder="e.g. 200">
+          </div>
+          <div class="form-group">
+            <label>Declared Price ($/lb)</label>
+            <input type="number" name="declared_price_per_lb" step="0.01" placeholder="e.g. 28.00">
+          </div>
+          <div class="form-group">
+            <label>Estimated Potency (%)</label>
+            <input type="number" name="estimated_potency_pct" step="0.1" placeholder="e.g. 14.0">
+          </div>
+        </div>
+
+        <div class="form-row-3">
+          <div class="form-group">
+            <label>Testing Timing</label>
+            <select name="testing_timing">
+              <option value="before_delivery" selected>Before delivery</option>
+              <option value="after_delivery">After delivery</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Testing Status</label>
+            <select name="testing_status">
+              <option value="pending" selected>Pending</option>
+              <option value="completed">Completed</option>
+              <option value="not_needed">Not needed</option>
+            </select>
+          </div>
+          <div class="form-group"></div>
+        </div>
+
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea name="notes" rows="3" placeholder="Any extra context..."></textarea>
+        </div>
+
+        <div class="form-actions" style="justify-content:space-between;">
+          <a class="btn btn-secondary" href="{{ url_for('field_home', t=token_value) }}">Back</a>
+          <button type="submit" class="btn btn-primary">Submit</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</body>
+</html>
+

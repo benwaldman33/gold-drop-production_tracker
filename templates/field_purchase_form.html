@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Field Intake — Potential Purchase</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <div class="login-page">
+    <div class="login-box" style="max-width:820px;">
+      <h1>Potential Purchase</h1>
+      <p class="subtitle">Field Intake (requires admin approval)</p>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="flash flash-{{ category }}" style="margin-bottom:12px;">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+      {% endwith %}
+
+      <form method="POST">
+        <input type="hidden" name="t" value="{{ token_value }}">
+
+        <div class="form-row-3">
+          <div class="form-group">
+            <label>Supplier *</label>
+            <select name="supplier_id" required>
+              <option value="">Select supplier...</option>
+              {% for s in suppliers %}
+                <option value="{{ s.id }}">{{ s.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Purchase Date *</label>
+            <input type="date" name="purchase_date" value="{{ today }}" required>
+          </div>
+          <div class="form-group">
+            <label>Expected Delivery Date</label>
+            <input type="date" name="delivery_date" value="">
+          </div>
+        </div>
+
+        <div class="form-row-3">
+          <div class="form-group">
+            <label>Estimated Potency (%)</label>
+            <input type="number" name="estimated_potency_pct" step="0.1" placeholder="e.g. 14.0">
+          </div>
+          <div class="form-group">
+            <label>Price/lb</label>
+            <input type="number" name="price_per_lb" step="0.01" placeholder="e.g. 28.00">
+          </div>
+          <div class="form-group"></div>
+        </div>
+
+        <div class="form-section" style="margin-top:8px;">
+          <h4>Lots / Strains</h4>
+          <div id="lots-container">
+            <div class="lot-row" style="grid-template-columns:1fr 120px 40px;">
+              <input type="text" name="lot_strains[]" placeholder="Strain name" required>
+              <input type="number" name="lot_weights[]" placeholder="Lbs" step="0.1" required>
+              <button type="button" class="remove-lot" onclick="removeLotRow(this)">✕</button>
+            </div>
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm mt-2" onclick="addLot()">+ Add Lot</button>
+          <div class="text-sm" style="color:var(--text-muted); margin-top:6px;">
+            Add at least one strain lot with weight.
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea name="notes" rows="3" placeholder="Any extra context..."></textarea>
+        </div>
+
+        <div class="form-actions" style="justify-content:space-between;">
+          <a class="btn btn-secondary" href="{{ url_for('field_home', t=token_value) }}">Back</a>
+          <button type="submit" class="btn btn-primary">Submit for Approval</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    function addLot() {
+      const container = document.getElementById('lots-container');
+      const row = document.createElement('div');
+      row.className = 'lot-row';
+      row.style.gridTemplateColumns = '1fr 120px 40px';
+      row.innerHTML = `
+        <input type="text" name="lot_strains[]" placeholder="Strain name" required>
+        <input type="number" name="lot_weights[]" placeholder="Lbs" step="0.1" required>
+        <button type="button" class="remove-lot" onclick="removeLotRow(this)">✕</button>
+      `;
+      container.appendChild(row);
+    }
+    function removeLotRow(btn) {
+      const container = document.getElementById('lots-container');
+      if (container.children.length <= 1) return;
+      btn.parentElement.remove();
+    }
+  </script>
+</body>
+</html>
+
