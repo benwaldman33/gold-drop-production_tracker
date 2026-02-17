@@ -272,6 +272,59 @@ def logout():
 
 # ── Field (mobile) intake ────────────────────────────────────────────────────
 
+def _get_or_create_supplier_from_field_form(token):
+    """
+    Field intake can select an existing supplier or create one by name.
+    Returns (supplier, created_bool).
+    """
+    supplier_id = (request.form.get("supplier_id") or "").strip()
+    new_name = (request.form.get("new_supplier_name") or "").strip()
+
+    if supplier_id:
+        sup = db.session.get(Supplier, supplier_id)
+        if not sup:
+            raise ValueError("Selected supplier was not found.")
+        return sup, False
+
+    if not new_name:
+        raise ValueError("Supplier is required (pick one or enter a new supplier name).")
+
+    new_location = (request.form.get("new_supplier_location") or "").strip() or None
+    new_phone = (request.form.get("new_supplier_phone") or "").strip() or None
+    new_email = (request.form.get("new_supplier_email") or "").strip() or None
+
+    # Dedupe by name (case-insensitive)
+    existing = Supplier.query.filter(func.lower(Supplier.name) == new_name.lower()).first()
+    if existing:
+        return existing, False
+
+    sup = Supplier(
+        name=new_name,
+        location=new_location,
+        contact_phone=new_phone,
+        contact_email=new_email,
+        is_active=True,
+        notes="Created via field intake",
+    )
+    db.session.add(sup)
+    db.session.flush()
+    log_audit(
+        "create",
+        "supplier",
+        sup.id,
+        details=json.dumps({
+            "source": "field_intake",
+            "token_label": token.label,
+            "name": new_name,
+            "location": new_location,
+            "contact_phone": new_phone,
+            "contact_email": new_email,
+        }),
+        user_id=None,
+    )
+    return sup, True
+
+
 @app.route("/field")
 @field_token_required
 def field_home(token):
@@ -289,12 +342,7 @@ def field_biomass_new(token):
     suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
     if request.method == "POST":
         try:
-            supplier_id = (request.form.get("supplier_id") or "").strip()
-            if not supplier_id:
-                raise ValueError("Supplier is required.")
-            sup = db.session.get(Supplier, supplier_id)
-            if not sup:
-                raise ValueError("Selected supplier was not found.")
+            sup, _created = _get_or_create_supplier_from_field_form(token)
 
             ad = (request.form.get("availability_date") or "").strip()
             if not ad:
@@ -321,7 +369,7 @@ def field_biomass_new(token):
                 raise ValueError("Estimated Potency must be between 0 and 100.")
 
             b = BiomassAvailability(
-                supplier_id=supplier_id,
+                supplier_id=sup.id,
                 availability_date=availability_date,
                 strain_name=(request.form.get("strain_name") or "").strip() or None,
                 declared_weight_lbs=declared_weight,
@@ -370,12 +418,7 @@ def field_purchase_new(token):
     suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
     if request.method == "POST":
         try:
-            supplier_id = (request.form.get("supplier_id") or "").strip()
-            if not supplier_id:
-                raise ValueError("Supplier is required.")
-            sup = db.session.get(Supplier, supplier_id)
-            if not sup:
-                raise ValueError("Selected supplier was not found.")
+            sup, _created = _get_or_create_supplier_from_field_form(token)
 
             pd = (request.form.get("purchase_date") or "").strip()
             if not pd:
@@ -418,7 +461,7 @@ def field_purchase_new(token):
 
             sub = FieldPurchaseSubmission(
                 source_token_id=token.id,
-                supplier_id=supplier_id,
+                supplier_id=sup.id,
                 purchase_date=purchase_date,
                 delivery_date=delivery_date,
                 estimated_potency_pct=estimated_potency,

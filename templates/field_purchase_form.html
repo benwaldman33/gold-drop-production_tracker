@@ -27,12 +27,15 @@
         <div class="form-row-3">
           <div class="form-group">
             <label>Supplier *</label>
-            <select name="supplier_id" required>
+            <select name="supplier_id" id="supplier_id">
               <option value="">Select supplier...</option>
               {% for s in suppliers %}
                 <option value="{{ s.id }}">{{ s.name }}</option>
               {% endfor %}
             </select>
+            <div class="text-sm" style="color:var(--text-muted); margin-top:6px;">
+              Pick an existing supplier, or enter a new supplier name below.
+            </div>
           </div>
           <div class="form-group">
             <label>Purchase Date *</label>
@@ -41,6 +44,25 @@
           <div class="form-group">
             <label>Expected Delivery Date</label>
             <input type="date" name="delivery_date" value="">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>New supplier name (if not in list)</label>
+          <input type="text" name="new_supplier_name" id="new_supplier_name" placeholder="e.g. Farmlane">
+        </div>
+        <div class="form-row-3">
+          <div class="form-group">
+            <label>New supplier location (optional)</label>
+            <input type="text" name="new_supplier_location" id="new_supplier_location" placeholder="e.g. Salinas, CA">
+          </div>
+          <div class="form-group">
+            <label>New supplier phone (optional)</label>
+            <input type="text" name="new_supplier_phone" id="new_supplier_phone" placeholder="e.g. (555) 123-4567">
+          </div>
+          <div class="form-group">
+            <label>New supplier email (optional)</label>
+            <input type="email" name="new_supplier_email" id="new_supplier_email" placeholder="e.g. buyer@farm.com">
           </div>
         </div>
 
@@ -85,6 +107,26 @@
   </div>
 
   <script>
+    // If user selects a supplier, clear "new supplier" field; if they type a new supplier, clear selection.
+    const supplierSelect = document.getElementById('supplier_id');
+    const newSupplier = document.getElementById('new_supplier_name');
+    if (supplierSelect && newSupplier) {
+      supplierSelect.addEventListener('change', () => {
+        if (supplierSelect.value) {
+          newSupplier.value = '';
+          const loc = document.getElementById('new_supplier_location');
+          const phone = document.getElementById('new_supplier_phone');
+          const email = document.getElementById('new_supplier_email');
+          if (loc) loc.value = '';
+          if (phone) phone.value = '';
+          if (email) email.value = '';
+        }
+      });
+      newSupplier.addEventListener('input', () => {
+        if (newSupplier.value.trim().length) supplierSelect.value = '';
+      });
+    }
+
     function addLot() {
       const container = document.getElementById('lots-container');
       const row = document.createElement('div');
