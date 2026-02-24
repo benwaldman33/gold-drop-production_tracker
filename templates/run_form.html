@@ -79,8 +79,8 @@
           <input type="number" name="bio_in_reactor_lbs" value="{{ run.bio_in_reactor_lbs if run and run.bio_in_reactor_lbs else '' }}" step="0.1" required>
         </div>
         <div class="form-group">
-          <label>Bio in House (lbs)</label>
-          <input type="number" name="bio_in_house_lbs" value="{{ run.bio_in_house_lbs if run and run.bio_in_house_lbs else '' }}" step="0.1">
+          <label>Bio in House (auto from inventory)</label>
+          <input type="number" value="{{ run.bio_in_house_lbs if run and run.bio_in_house_lbs else '' }}" step="0.1" disabled>
         </div>
         <div class="form-group">
           <label>Butane in House (lbs)</label>
@@ -157,6 +157,11 @@
       <form method="POST" action="{{ url_for('run_delete', run_id=run.id) }}" style="display:inline;" onsubmit="return confirm('Delete this run?');">
         <button type="submit" class="btn btn-danger">Delete Run</button>
       </form>
+      {% if current_user.is_super_admin %}
+      <form method="POST" action="{{ url_for('run_hard_delete', run_id=run.id) }}" style="display:inline;" onsubmit="return confirm('Hard delete this run permanently?');">
+        <button type="submit" class="btn btn-secondary">Hard Delete</button>
+      </form>
+      {% endif %}
       {% endif %}
       <a href="{{ url_for('runs_list') }}" class="btn btn-secondary">Cancel</a>
       <button type="submit" class="btn btn-primary">Save Run</button>

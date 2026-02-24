@@ -97,6 +97,29 @@
           <input type="date" name="harvest_date" value="{{ purchase.harvest_date.strftime('%Y-%m-%d') if purchase and purchase.harvest_date else '' }}">
         </div>
       </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Queue Placement</label>
+          <select name="queue_placement">
+            <option value="">—</option>
+            <option value="aggregate" {% if purchase and purchase.queue_placement == 'aggregate' %}selected{% endif %}>Aggregate</option>
+            <option value="indoor" {% if purchase and purchase.queue_placement == 'indoor' %}selected{% endif %}>Indoor</option>
+            <option value="outdoor" {% if purchase and purchase.queue_placement == 'outdoor' %}selected{% endif %}>Outdoor</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Storage Note</label>
+          <input type="text" name="storage_note" value="{{ purchase.storage_note if purchase and purchase.storage_note else '' }}">
+        </div>
+        <div class="form-group">
+          <label>License Information</label>
+          <input type="text" name="license_info" value="{{ purchase.license_info if purchase and purchase.license_info else '' }}">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Testing / COA Status</label>
+        <input type="text" name="coa_status_text" value="{{ purchase.coa_status_text if purchase and purchase.coa_status_text else '' }}">
+      </div>
       <div class="form-group">
         <label>Notes</label>
         <textarea name="notes" rows="2">{{ purchase.notes if purchase and purchase.notes else '' }}</textarea>
@@ -140,6 +163,16 @@
     {% endif %}
 
     <div class="form-actions">
+      {% if purchase %}
+      <form method="POST" action="{{ url_for('purchase_delete', purchase_id=purchase.id) }}" style="display:inline;" onsubmit="return confirm('Soft delete this purchase?');">
+        <button type="submit" class="btn btn-danger">Delete Purchase</button>
+      </form>
+      {% if current_user.is_super_admin %}
+      <form method="POST" action="{{ url_for('purchase_hard_delete', purchase_id=purchase.id) }}" style="display:inline;" onsubmit="return confirm('Permanently hard delete this purchase? This cannot be undone.');">
+        <button type="submit" class="btn btn-secondary">Hard Delete</button>
+      </form>
+      {% endif %}
+      {% endif %}
       <a href="{{ url_for('purchases_list') }}" class="btn btn-secondary">Cancel</a>
       <button type="submit" class="btn btn-primary">Save Purchase</button>
     </div>

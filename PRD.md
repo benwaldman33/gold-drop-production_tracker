@@ -80,6 +80,13 @@ Both field forms support optional photo uploads:
 - Max file size: 20 MB per photo
 - Files are stored under `static/uploads/field/` and referenced by relative path in JSON fields
 
+Field purchase intake requires/accepts:
+- Purchase date, expected delivery date, harvest date
+- Storage note and license information text
+- Queue placement (`aggregate`, `indoor`, `outdoor`)
+- Testing/COA status text
+- Separate image categories for supplier/license docs, biomass photos, and testing/COA photos
+
 ### Purchases (batch-level financial/receiving record)
 Represents the committed/delivered batch. Contains:
 - Supplier, purchase/delivery dates
@@ -159,12 +166,20 @@ Audit requirements:
 #### Field purchase submissions
 Secure field links can submit purchase requests with:
 - Supplier, date, estimated potency, $/lb, notes
-- One or more lot lines (strain + weight)
-- Optional photos (multiple images)
+- One or more lot lines (weight required, strain optional)
+- Optional categorized photos (supplier/license, biomass, testing/COA)
 
 Review requirements:
-- Admin review table displays submission photo thumbnails when present.
+- Pending table only shows unreviewed submissions.
+- Reviewed submissions are retained in a separate history table.
+- Admin review table displays categorized submission photo thumbnails when present.
 - Clicking a thumbnail opens the full image in a new tab.
+
+Delete/cleanup requirements:
+- Runs and purchases support soft delete for operational safety.
+- Super admin can hard-delete runs/purchases for sandbox cleanup.
+- Revoked/expired field tokens can be removed from Settings.
+- User accounts remain disable-first; hard delete is blocked when audit history exists.
 
 #### Batch ID generation
 - Batch IDs are **unique** and **human-readable**.
@@ -267,6 +282,8 @@ When enabled, Dashboard/Supplier/Strain analytics:
 Acceptance criteria:
 - Dashboard shows a banner when the filter is enabled.
 - Supplier and Strain pages do not break under group-by queries when filter is enabled.
+- Dashboard includes week-to-date quick metrics (lbs ran, dry THCA, dry HTE).
+- Dashboard includes best-yielding supplier month-over-month view.
 
 ---
 

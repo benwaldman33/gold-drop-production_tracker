@@ -45,6 +45,10 @@
             <label>Expected Delivery Date</label>
             <input type="date" name="delivery_date" value="">
           </div>
+          <div class="form-group">
+            <label>Harvest Date</label>
+            <input type="date" name="harvest_date" value="">
+          </div>
         </div>
 
         <div class="form-group">
@@ -75,14 +79,37 @@
             <label>Price/lb</label>
             <input type="number" name="price_per_lb" step="0.01" placeholder="e.g. 28.00">
           </div>
-          <div class="form-group"></div>
+          <div class="form-group">
+            <label>Queue Placement</label>
+            <select name="queue_placement">
+              <option value="">Select queue...</option>
+              <option value="aggregate">Aggregate</option>
+              <option value="indoor">Indoor</option>
+              <option value="outdoor">Outdoor</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Storage Note</label>
+          <input type="text" name="storage_note" placeholder="How this material is stored in field/staging">
+        </div>
+
+        <div class="form-group">
+          <label>License Information</label>
+          <input type="text" name="license_info" placeholder="Farm/handler license details">
+        </div>
+
+        <div class="form-group">
+          <label>Testing / COA Status</label>
+          <input type="text" name="coa_status_text" placeholder="e.g. Pending COA from lab, received 01/14">
         </div>
 
         <div class="form-section" style="margin-top:8px;">
           <h4>Lots / Strains</h4>
           <div id="lots-container">
             <div class="lot-row" style="grid-template-columns:1fr 120px 40px;">
-              <input type="text" name="lot_strains[]" placeholder="Strain name" required>
+              <input type="text" name="lot_strains[]" placeholder="Strain name (optional)">
               <input type="number" name="lot_weights[]" placeholder="Lbs" step="0.1" required>
               <button type="button" class="remove-lot" onclick="removeLotRow(this)">✕</button>
             </div>
@@ -99,10 +126,26 @@
         </div>
 
         <div class="form-group">
-          <label>Photos (optional)</label>
-          <input type="file" name="photos" accept="image/*" multiple>
+          <label>Supplier / License Photos (optional)</label>
+          <input type="file" name="supplier_photos" accept="image/*" multiple>
           <div class="text-sm" style="color:var(--text-muted); margin-top:6px;">
-            Upload photos from camera, photo library, or files (JPG, PNG, WEBP, HEIC, HEIF; max 20 MB each).
+            Upload docs/licenses for supplier records (JPG, PNG, WEBP, HEIC, HEIF; max 20 MB each).
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Biomass Photos (optional)</label>
+          <input type="file" name="biomass_photos" accept="image/*" multiple>
+          <div class="text-sm" style="color:var(--text-muted); margin-top:6px;">
+            Upload photos of biomass material for this purchase.
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Testing / COA Photos (optional)</label>
+          <input type="file" name="coa_photos" accept="image/*" multiple>
+          <div class="text-sm" style="color:var(--text-muted); margin-top:6px;">
+            Upload test result photos/COA screenshots.
           </div>
         </div>
 
@@ -141,7 +184,7 @@
       row.className = 'lot-row';
       row.style.gridTemplateColumns = '1fr 120px 40px';
       row.innerHTML = `
-        <input type="text" name="lot_strains[]" placeholder="Strain name" required>
+        <input type="text" name="lot_strains[]" placeholder="Strain name (optional)">
         <input type="number" name="lot_weights[]" placeholder="Lbs" step="0.1" required>
         <button type="button" class="remove-lot" onclick="removeLotRow(this)">✕</button>
       `;

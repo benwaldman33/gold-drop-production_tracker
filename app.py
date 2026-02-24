@@ -4,7 +4,12 @@ import csv
 import io
 import json
 import hashlib
+import hmac
 import secrets
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import datetime, date, timedelta
 from functools import wraps
 
@@ -18,7 +23,7 @@ from werkzeug.utils import secure_filename
 
 from models import (db, User, Supplier, Purchase, PurchaseLot, Run, RunInput,
                     KpiTarget, SystemSetting, AuditLog, BiomassAvailability, CostEntry,
-                    FieldAccessToken, FieldPurchaseSubmission)
+                    FieldAccessToken, FieldPurchaseSubmission, LabTest, SupplierAttachment)
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "gold-drop-dev-key-change-in-prod")
@@ -27,6 +32,8 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
 app.config["FIELD_UPLOAD_DIR"] = os.path.join(app.root_path, "static", "uploads", "field")
 app.config["FIELD_UPLOAD_MAX_BYTES"] = 20 * 1024 * 1024  # 20 MB per image
+app.config["LAB_UPLOAD_DIR"] = os.path.join(app.root_path, "static", "uploads", "labs")
+app.config["LAB_UPLOAD_MAX_BYTES"] = 50 * 1024 * 1024  # 50 MB per file
 
 db.init_app(app)
 login_manager = LoginManager(app)
@@ -73,6 +80,83 @@ def log_audit(action, entity_type, entity_id, details=None, user_id=None):
     db.session.add(entry)
 
 
+def _slack_enabled() -> bool:
+    return (SystemSetting.get("slack_enabled", "0") or "0").strip() in ("1", "true", "yes", "on")
+
+
+def _slack_webhook_url() -> str | None:
+    return (SystemSetting.get("slack_webhook_url", "") or "").strip() or None
+
+
+def _slack_signing_secret() -> str | None:
+    return (SystemSetting.get("slack_signing_secret", "") or "").strip() or None
+
+
+def _slack_bot_token() -> str | None:
+    return (SystemSetting.get("slack_bot_token", "") or "").strip() or None
+
+
+def _slack_channel() -> str | None:
+    return (SystemSetting.get("slack_default_channel", "") or "").strip() or None
+
+
+def _post_slack_webhook(text_value: str) -> None:
+    webhook = _slack_webhook_url()
+    if not webhook or not _slack_enabled():
+        return
+    payload = json.dumps({"text": text_value}).encode("utf-8")
+    req = urllib.request.Request(webhook, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=6):
+            pass
+    except Exception:
+        app.logger.exception("Slack webhook send failed")
+
+
+def _post_slack_api_message(text_value: str) -> None:
+    token = _slack_bot_token()
+    channel = _slack_channel()
+    if not token or not channel or not _slack_enabled():
+        return
+    payload = json.dumps({"channel": channel, "text": text_value}).encode("utf-8")
+    req = urllib.request.Request(
+        "https://slack.com/api/chat.postMessage",
+        data=payload,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=utf-8"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=6):
+            pass
+    except Exception:
+        app.logger.exception("Slack API send failed")
+
+
+def notify_slack(text_value: str) -> None:
+    _post_slack_webhook(text_value)
+    _post_slack_api_message(text_value)
+
+
+def _verify_slack_signature(req) -> bool:
+    secret = _slack_signing_secret()
+    if not secret:
+        return False
+    timestamp = req.headers.get("X-Slack-Request-Timestamp", "")
+    signature = req.headers.get("X-Slack-Signature", "")
+    if not timestamp or not signature:
+        return False
+    try:
+        ts = int(timestamp)
+    except ValueError:
+        return False
+    if abs(int(time.time()) - ts) > 60 * 5:
+        return False
+    raw_body = req.get_data(cache=True, as_text=False) or b""
+    basestring = f"v0:{timestamp}:{raw_body.decode('utf-8')}".encode("utf-8")
+    digest = "v0=" + hmac.new(secret.encode("utf-8"), basestring, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(digest, signature)
+
+
 def _hash_field_token(token: str) -> str:
     return hashlib.sha256((token or "").encode("utf-8")).hexdigest()
 
@@ -80,6 +164,11 @@ def _hash_field_token(token: str) -> str:
 def _allowed_image_filename(filename: str) -> bool:
     name = (filename or "").lower()
     return name.endswith((".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"))
+
+
+def _allowed_lab_filename(filename: str) -> bool:
+    name = (filename or "").lower()
+    return name.endswith((".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".pdf"))
 
 
 def _file_size_bytes(file_obj) -> int:
@@ -90,34 +179,54 @@ def _file_size_bytes(file_obj) -> int:
     return int(size or 0)
 
 
+def _save_uploads(files, prefix: str, upload_dir: str, max_bytes: int, validator, error_message: str) -> list[str]:
+    os.makedirs(upload_dir, exist_ok=True)
+    saved = []
+    for f in files or []:
+        if not f or not getattr(f, "filename", ""):
+            continue
+        if not validator(f.filename):
+            raise ValueError(error_message)
+        size = _file_size_bytes(f)
+        if size <= 0:
+            continue
+        if size > max_bytes:
+            raise ValueError(f"Each file must be {int(max_bytes/(1024*1024))} MB or smaller.")
+
+        base = secure_filename(f.filename) or "file.bin"
+        ext = os.path.splitext(base)[1].lower() or ".bin"
+        unique_name = f"{prefix}-{secrets.token_hex(8)}{ext}"
+        abs_path = os.path.join(upload_dir, unique_name)
+        f.save(abs_path)
+        parent = os.path.basename(upload_dir)
+        saved.append(f"uploads/{parent}/{unique_name}")
+    return saved
+
+
 def _save_field_photos(files, prefix: str) -> list[str]:
     """
     Save uploaded field photos under static/uploads/field and return
     relative static paths (e.g. uploads/field/abc.jpg).
     """
-    upload_dir = app.config["FIELD_UPLOAD_DIR"]
-    os.makedirs(upload_dir, exist_ok=True)
-    max_bytes = int(app.config.get("FIELD_UPLOAD_MAX_BYTES", 20 * 1024 * 1024))
+    return _save_uploads(
+        files=files,
+        prefix=prefix,
+        upload_dir=app.config["FIELD_UPLOAD_DIR"],
+        max_bytes=int(app.config.get("FIELD_UPLOAD_MAX_BYTES", 20 * 1024 * 1024)),
+        validator=_allowed_image_filename,
+        error_message="Only image files (.jpg, .jpeg, .png, .webp, .heic, .heif) are allowed.",
+    )
 
-    saved = []
-    for f in files or []:
-        if not f or not getattr(f, "filename", ""):
-            continue
-        if not _allowed_image_filename(f.filename):
-            raise ValueError("Only image files (.jpg, .jpeg, .png, .webp, .heic, .heif) are allowed.")
-        size = _file_size_bytes(f)
-        if size <= 0:
-            continue
-        if size > max_bytes:
-            raise ValueError("Each photo must be 20 MB or smaller.")
 
-        base = secure_filename(f.filename) or "photo.jpg"
-        ext = os.path.splitext(base)[1].lower() or ".jpg"
-        unique_name = f"{prefix}-{secrets.token_hex(8)}{ext}"
-        abs_path = os.path.join(upload_dir, unique_name)
-        f.save(abs_path)
-        saved.append(f"uploads/field/{unique_name}")
-    return saved
+def _save_lab_files(files, prefix: str) -> list[str]:
+    return _save_uploads(
+        files=files,
+        prefix=prefix,
+        upload_dir=app.config["LAB_UPLOAD_DIR"],
+        max_bytes=int(app.config.get("LAB_UPLOAD_MAX_BYTES", 50 * 1024 * 1024)),
+        validator=_allowed_lab_filename,
+        error_message="Only lab files (.jpg, .jpeg, .png, .webp, .heic, .heif, .pdf) are allowed.",
+    )
 
 
 def _get_field_token_value() -> str | None:
@@ -272,6 +381,18 @@ def _ensure_sqlite_schema():
         cols = column_names("purchases")
         if "batch_id" not in cols:
             db.session.execute(text("ALTER TABLE purchases ADD COLUMN batch_id VARCHAR(80)"))
+        if "storage_note" not in cols:
+            db.session.execute(text("ALTER TABLE purchases ADD COLUMN storage_note TEXT"))
+        if "license_info" not in cols:
+            db.session.execute(text("ALTER TABLE purchases ADD COLUMN license_info TEXT"))
+        if "queue_placement" not in cols:
+            db.session.execute(text("ALTER TABLE purchases ADD COLUMN queue_placement VARCHAR(20)"))
+        if "coa_status_text" not in cols:
+            db.session.execute(text("ALTER TABLE purchases ADD COLUMN coa_status_text TEXT"))
+        if "deleted_at" not in cols:
+            db.session.execute(text("ALTER TABLE purchases ADD COLUMN deleted_at DATETIME"))
+        if "deleted_by" not in cols:
+            db.session.execute(text("ALTER TABLE purchases ADD COLUMN deleted_by VARCHAR(36)"))
 
     # Biomass availabilities: purchase_id (if table already exists)
     if has_table("biomass_availabilities"):
@@ -288,12 +409,70 @@ def _ensure_sqlite_schema():
             db.session.execute(text("ALTER TABLE runs ADD COLUMN cost_per_gram_thca FLOAT"))
         if "cost_per_gram_hte" not in cols:
             db.session.execute(text("ALTER TABLE runs ADD COLUMN cost_per_gram_hte FLOAT"))
+        if "deleted_at" not in cols:
+            db.session.execute(text("ALTER TABLE runs ADD COLUMN deleted_at DATETIME"))
+        if "deleted_by" not in cols:
+            db.session.execute(text("ALTER TABLE runs ADD COLUMN deleted_by VARCHAR(36)"))
+
+    if has_table("purchase_lots"):
+        cols = column_names("purchase_lots")
+        if "deleted_at" not in cols:
+            db.session.execute(text("ALTER TABLE purchase_lots ADD COLUMN deleted_at DATETIME"))
+        if "deleted_by" not in cols:
+            db.session.execute(text("ALTER TABLE purchase_lots ADD COLUMN deleted_by VARCHAR(36)"))
 
     # Field purchase submissions: photos_json
     if has_table("field_purchase_submissions"):
         cols = column_names("field_purchase_submissions")
         if "photos_json" not in cols:
             db.session.execute(text("ALTER TABLE field_purchase_submissions ADD COLUMN photos_json TEXT"))
+        if "harvest_date" not in cols:
+            db.session.execute(text("ALTER TABLE field_purchase_submissions ADD COLUMN harvest_date DATE"))
+        if "storage_note" not in cols:
+            db.session.execute(text("ALTER TABLE field_purchase_submissions ADD COLUMN storage_note TEXT"))
+        if "license_info" not in cols:
+            db.session.execute(text("ALTER TABLE field_purchase_submissions ADD COLUMN license_info TEXT"))
+        if "queue_placement" not in cols:
+            db.session.execute(text("ALTER TABLE field_purchase_submissions ADD COLUMN queue_placement VARCHAR(20)"))
+        if "coa_status_text" not in cols:
+            db.session.execute(text("ALTER TABLE field_purchase_submissions ADD COLUMN coa_status_text TEXT"))
+        if "supplier_photos_json" not in cols:
+            db.session.execute(text("ALTER TABLE field_purchase_submissions ADD COLUMN supplier_photos_json TEXT"))
+        if "biomass_photos_json" not in cols:
+            db.session.execute(text("ALTER TABLE field_purchase_submissions ADD COLUMN biomass_photos_json TEXT"))
+        if "coa_photos_json" not in cols:
+            db.session.execute(text("ALTER TABLE field_purchase_submissions ADD COLUMN coa_photos_json TEXT"))
+
+    # New table: lab_tests
+    if not has_table("lab_tests"):
+        db.session.execute(text(
+            "CREATE TABLE lab_tests ("
+            "id VARCHAR(36) PRIMARY KEY, "
+            "supplier_id VARCHAR(36) NOT NULL, "
+            "purchase_id VARCHAR(36), "
+            "test_date DATE NOT NULL, "
+            "test_type VARCHAR(50) NOT NULL, "
+            "status_text TEXT, "
+            "potency_pct FLOAT, "
+            "notes TEXT, "
+            "result_paths_json TEXT, "
+            "created_at DATETIME, "
+            "created_by VARCHAR(36)"
+            ")"
+        ))
+    # New table: supplier_attachments
+    if not has_table("supplier_attachments"):
+        db.session.execute(text(
+            "CREATE TABLE supplier_attachments ("
+            "id VARCHAR(36) PRIMARY KEY, "
+            "supplier_id VARCHAR(36) NOT NULL, "
+            "document_type VARCHAR(50) NOT NULL, "
+            "title VARCHAR(200), "
+            "file_path VARCHAR(500) NOT NULL, "
+            "uploaded_at DATETIME, "
+            "uploaded_by VARCHAR(36)"
+            ")"
+        ))
 
     db.session.commit()
 
@@ -486,6 +665,8 @@ def field_purchase_new(token):
 
             dd = (request.form.get("delivery_date") or "").strip()
             delivery_date = datetime.strptime(dd, "%Y-%m-%d").date() if dd else None
+            hd = (request.form.get("harvest_date") or "").strip()
+            harvest_date = datetime.strptime(hd, "%Y-%m-%d").date() if hd else None
 
             ep = (request.form.get("estimated_potency_pct") or "").strip()
             estimated_potency = float(ep) if ep else None
@@ -496,6 +677,9 @@ def field_purchase_new(token):
             price_per_lb = float(ppl) if ppl else None
             if price_per_lb is not None and price_per_lb < 0:
                 raise ValueError("Price/lb cannot be negative.")
+            queue_placement = ((request.form.get("queue_placement") or "").strip() or None)
+            if queue_placement and queue_placement not in ("aggregate", "indoor", "outdoor"):
+                raise ValueError("Queue Placement must be Aggregate, Indoor, or Outdoor.")
 
             # Lots (at least one)
             lot_strains = request.form.getlist("lot_strains[]")
@@ -506,31 +690,42 @@ def field_purchase_new(token):
                 w = (w or "").strip()
                 if not strain and not w:
                     continue
-                if not strain:
-                    raise ValueError("Lot strain name is required.")
                 try:
                     weight = float(w)
                 except ValueError:
                     raise ValueError("Lot weight must be a number.")
                 if weight <= 0:
                     raise ValueError("Lot weight must be greater than 0.")
-                lots.append({"strain": strain, "weight_lbs": weight})
+                lots.append({"strain": strain or None, "weight_lbs": weight})
             if not lots:
                 raise ValueError("Add at least one lot/strain with weight.")
 
-            photos = request.files.getlist("photos")
-            saved_photo_paths = _save_field_photos(photos, prefix="purchase")
+            supplier_photos = request.files.getlist("supplier_photos")
+            biomass_photos = request.files.getlist("biomass_photos")
+            coa_photos = request.files.getlist("coa_photos")
+            saved_supplier_paths = _save_field_photos(supplier_photos, prefix="purchase-supplier")
+            saved_biomass_paths = _save_field_photos(biomass_photos, prefix="purchase-biomass")
+            saved_coa_paths = _save_field_photos(coa_photos, prefix="purchase-coa")
+            all_paths = saved_supplier_paths + saved_biomass_paths + saved_coa_paths
 
             sub = FieldPurchaseSubmission(
                 source_token_id=token.id,
                 supplier_id=sup.id,
                 purchase_date=purchase_date,
                 delivery_date=delivery_date,
+                harvest_date=harvest_date,
                 estimated_potency_pct=estimated_potency,
                 price_per_lb=price_per_lb,
+                storage_note=((request.form.get("storage_note") or "").strip() or None),
+                license_info=((request.form.get("license_info") or "").strip() or None),
+                queue_placement=queue_placement,
+                coa_status_text=((request.form.get("coa_status_text") or "").strip() or None),
                 notes=((request.form.get("notes") or "").strip() or None),
                 lots_json=json.dumps(lots),
-                photos_json=(json.dumps(saved_photo_paths) if saved_photo_paths else None),
+                photos_json=(json.dumps(all_paths) if all_paths else None),
+                supplier_photos_json=(json.dumps(saved_supplier_paths) if saved_supplier_paths else None),
+                biomass_photos_json=(json.dumps(saved_biomass_paths) if saved_biomass_paths else None),
+                coa_photos_json=(json.dumps(saved_coa_paths) if saved_coa_paths else None),
                 status="pending",
             )
             db.session.add(sub)
@@ -544,11 +739,12 @@ def field_purchase_new(token):
                     "token_label": token.label,
                     "supplier": sup.name,
                     "lots_count": len(lots),
-                    "photos_count": len(saved_photo_paths),
+                    "photos_count": len(all_paths),
                 }),
                 user_id=None,
             )
             db.session.commit()
+            notify_slack(f"New field purchase submission from {sup.name}: {len(lots)} lot(s), pending review.")
             return redirect(url_for("field_thanks", kind="purchase", t=_get_field_token_value()))
         except ValueError as e:
             db.session.rollback()
@@ -594,7 +790,7 @@ def dashboard():
     exclude_unpriced = _exclude_unpriced_batches_enabled()
 
     # Query runs in period
-    runs_q = Run.query.filter(Run.run_date >= start_date)
+    runs_q = Run.query.filter(Run.deleted_at.is_(None), Run.run_date >= start_date)
     if exclude_unpriced:
         runs_q = runs_q.filter(_priced_run_filter())
     runs = runs_q.all()
@@ -629,6 +825,8 @@ def dashboard():
         on_hand_statuses = ("delivered", "in_testing", "available", "processing", "complete")
         on_hand = db.session.query(func.sum(PurchaseLot.remaining_weight_lbs)).join(Purchase).filter(
             PurchaseLot.remaining_weight_lbs > 0,
+            PurchaseLot.deleted_at.is_(None),
+            Purchase.deleted_at.is_(None),
             Purchase.status.in_(on_hand_statuses)
         ).scalar() or 0
         kpi_actuals["days_of_supply"] = on_hand / daily_target if daily_target > 0 else 0
@@ -643,6 +841,9 @@ def dashboard():
         ).join(
             Run, Run.id == RunInput.run_id
         ).filter(
+            Run.deleted_at.is_(None),
+            Purchase.deleted_at.is_(None),
+            PurchaseLot.deleted_at.is_(None),
             Run.run_date >= start_date
         ).distinct().all()
         purchase_ids = [pid for (pid,) in purchase_ids]
@@ -675,14 +876,97 @@ def dashboard():
     total_dry_output = sum((r.dry_hte_g or 0) + (r.dry_thca_g or 0) for r in runs)
     on_hand = db.session.query(func.sum(PurchaseLot.remaining_weight_lbs)).join(Purchase).filter(
         PurchaseLot.remaining_weight_lbs > 0,
+        PurchaseLot.deleted_at.is_(None),
+        Purchase.deleted_at.is_(None),
         Purchase.status.in_(("delivered", "in_testing", "available", "processing", "complete"))
     ).scalar() or 0
+
+    week_start = date.today() - timedelta(days=date.today().weekday())
+    wtd_runs_q = Run.query.filter(
+        Run.deleted_at.is_(None),
+        Run.run_date >= week_start,
+        Run.run_date <= date.today(),
+    )
+    if exclude_unpriced:
+        wtd_runs_q = wtd_runs_q.filter(_priced_run_filter())
+    wtd_runs = wtd_runs_q.all()
+    wtd_lbs = sum(r.bio_in_reactor_lbs or 0 for r in wtd_runs)
+    wtd_dry_thca = sum(r.dry_thca_g or 0 for r in wtd_runs)
+    wtd_dry_hte = sum(r.dry_hte_g or 0 for r in wtd_runs)
+
+    current_month_start = date.today().replace(day=1)
+    prev_month_end = current_month_start - timedelta(days=1)
+    prev_month_start = prev_month_end.replace(day=1)
+    mom_rows = db.session.query(
+        Supplier.id.label("supplier_id"),
+        Supplier.name.label("supplier_name"),
+        func.avg(Run.overall_yield_pct).label("avg_yield"),
+    ).join(Purchase, Purchase.supplier_id == Supplier.id
+    ).join(PurchaseLot, PurchaseLot.purchase_id == Purchase.id
+    ).join(RunInput, RunInput.lot_id == PurchaseLot.id
+    ).join(Run, Run.id == RunInput.run_id
+    ).filter(
+        Run.deleted_at.is_(None),
+        Purchase.deleted_at.is_(None),
+        PurchaseLot.deleted_at.is_(None),
+        Run.is_rollover == False,
+        Run.run_date >= current_month_start,
+        Run.overall_yield_pct.isnot(None),
+    ).group_by(Supplier.id, Supplier.name).all()
+    if exclude_unpriced:
+        mom_rows = db.session.query(
+            Supplier.id.label("supplier_id"),
+            Supplier.name.label("supplier_name"),
+            func.avg(Run.overall_yield_pct).label("avg_yield"),
+        ).join(Purchase, Purchase.supplier_id == Supplier.id
+        ).join(PurchaseLot, PurchaseLot.purchase_id == Purchase.id
+        ).join(RunInput, RunInput.lot_id == PurchaseLot.id
+        ).join(Run, Run.id == RunInput.run_id
+        ).filter(
+            Run.deleted_at.is_(None),
+            Purchase.deleted_at.is_(None),
+            PurchaseLot.deleted_at.is_(None),
+            Run.is_rollover == False,
+            Run.run_date >= current_month_start,
+            Run.overall_yield_pct.isnot(None),
+            _priced_run_filter(),
+        ).group_by(Supplier.id, Supplier.name).all()
+    best_supplier_mom = None
+    if mom_rows:
+        best = max(mom_rows, key=lambda r: float(r.avg_yield or 0))
+        prev = db.session.query(func.avg(Run.overall_yield_pct)).join(
+            RunInput, Run.id == RunInput.run_id
+        ).join(PurchaseLot, RunInput.lot_id == PurchaseLot.id
+        ).join(Purchase, PurchaseLot.purchase_id == Purchase.id
+        ).filter(
+            Run.deleted_at.is_(None),
+            Purchase.deleted_at.is_(None),
+            PurchaseLot.deleted_at.is_(None),
+            Run.is_rollover == False,
+            Purchase.supplier_id == best.supplier_id,
+            Run.run_date >= prev_month_start,
+            Run.run_date <= prev_month_end,
+        )
+        if exclude_unpriced:
+            prev = prev.filter(_priced_run_filter())
+        prev_avg = prev.scalar()
+        best_supplier_mom = {
+            "name": best.supplier_name,
+            "current": float(best.avg_yield or 0),
+            "previous": float(prev_avg or 0) if prev_avg is not None else None,
+        }
+        if best_supplier_mom["previous"] and best_supplier_mom["previous"] > 0:
+            best_supplier_mom["pct_change"] = ((best_supplier_mom["current"] - best_supplier_mom["previous"]) / best_supplier_mom["previous"]) * 100.0
+        else:
+            best_supplier_mom["pct_change"] = None
 
     return render_template("dashboard.html",
                            kpi_cards=kpi_cards, period=period,
                            total_runs=total_runs, total_lbs=total_lbs,
                            total_dry_output=total_dry_output, on_hand=on_hand,
-                           exclude_unpriced=exclude_unpriced)
+                           exclude_unpriced=exclude_unpriced,
+                           wtd_lbs=wtd_lbs, wtd_dry_thca=wtd_dry_thca, wtd_dry_hte=wtd_dry_hte,
+                           best_supplier_mom=best_supplier_mom)
 
 
 # ── Runs ─────────────────────────────────────────────────────────────────────
@@ -694,12 +978,43 @@ def runs_list():
     sort = request.args.get("sort", "run_date")
     order = request.args.get("order", "desc")
     search = request.args.get("search", "").strip()
+    start_raw = (request.args.get("start_date") or "").strip()
+    end_raw = (request.args.get("end_date") or "").strip()
+    supplier_filter = (request.args.get("supplier_id") or "").strip()
+    min_pot_raw = (request.args.get("min_potency") or "").strip()
+    max_pot_raw = (request.args.get("max_potency") or "").strip()
+    try:
+        start_date = datetime.strptime(start_raw, "%Y-%m-%d").date() if start_raw else None
+        end_date = datetime.strptime(end_raw, "%Y-%m-%d").date() if end_raw else None
+    except ValueError:
+        start_date = None
+        end_date = None
+    try:
+        min_potency = float(min_pot_raw) if min_pot_raw else None
+        max_potency = float(max_pot_raw) if max_pot_raw else None
+    except ValueError:
+        min_potency = None
+        max_potency = None
 
-    query = Run.query
+    query = Run.query.filter(Run.deleted_at.is_(None))
     if search:
         query = query.join(RunInput, isouter=True).join(PurchaseLot, isouter=True).filter(
             db.or_(PurchaseLot.strain_name.ilike(f"%{search}%"),
                    Run.notes.ilike(f"%{search}%"))
+        ).distinct()
+    if start_date:
+        query = query.filter(Run.run_date >= start_date)
+    if end_date:
+        query = query.filter(Run.run_date <= end_date)
+    if min_potency is not None:
+        query = query.filter(Run.thca_yield_pct >= min_potency)
+    if max_potency is not None:
+        query = query.filter(Run.thca_yield_pct <= max_potency)
+    if supplier_filter:
+        query = query.join(RunInput, RunInput.run_id == Run.id).join(
+            PurchaseLot, PurchaseLot.id == RunInput.lot_id
+        ).join(Purchase, Purchase.id == PurchaseLot.purchase_id).filter(
+            Purchase.supplier_id == supplier_filter
         ).distinct()
 
     sort_col = getattr(Run, sort, Run.run_date)
@@ -711,9 +1026,13 @@ def runs_list():
     pagination = query.paginate(page=page, per_page=25, error_out=False)
     run_ids = [r.id for r in pagination.items]
     pricing_status = _pricing_status_for_run_ids(run_ids)
+    suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
     return render_template("runs.html", runs=pagination.items, pagination=pagination,
                            sort=sort, order=order, search=search,
-                           pricing_status=pricing_status)
+                           pricing_status=pricing_status, suppliers=suppliers,
+                           supplier_filter=supplier_filter,
+                           start_date=start_raw, end_date=end_raw,
+                           min_potency=min_pot_raw, max_potency=max_pot_raw)
 
 
 @app.route("/runs/new", methods=["GET", "POST"])
@@ -722,7 +1041,11 @@ def run_new():
     if request.method == "POST":
         return _save_run(None)
 
-    lots = PurchaseLot.query.filter(PurchaseLot.remaining_weight_lbs > 0).all()
+    lots = PurchaseLot.query.join(Purchase).filter(
+        PurchaseLot.remaining_weight_lbs > 0,
+        PurchaseLot.deleted_at.is_(None),
+        Purchase.deleted_at.is_(None),
+    ).all()
     return render_template("run_form.html", run=None, lots=lots, today=date.today())
 
 
@@ -730,14 +1053,16 @@ def run_new():
 @editor_required
 def run_edit(run_id):
     run = db.session.get(Run, run_id)
-    if not run:
+    if not run or run.deleted_at is not None:
         flash("Run not found.", "error")
         return redirect(url_for("runs_list"))
 
     if request.method == "POST":
         return _save_run(run)
 
-    lots = PurchaseLot.query.filter(
+    lots = PurchaseLot.query.join(Purchase).filter(
+        PurchaseLot.deleted_at.is_(None),
+        Purchase.deleted_at.is_(None),
         db.or_(PurchaseLot.remaining_weight_lbs > 0,
                PurchaseLot.id.in_([i.lot_id for i in run.inputs]))
     ).all()
@@ -761,7 +1086,13 @@ def _save_run(existing_run):
         run.reactor_number = int(request.form["reactor_number"])
         run.is_rollover = "is_rollover" in request.form
         run.bio_in_reactor_lbs = float(request.form.get("bio_in_reactor_lbs") or 0)
-        run.bio_in_house_lbs = float(request.form.get("bio_in_house_lbs") or 0) or None
+        on_hand_statuses = ("delivered", "in_testing", "available", "processing", "complete")
+        run.bio_in_house_lbs = db.session.query(func.sum(PurchaseLot.remaining_weight_lbs)).join(Purchase).filter(
+            PurchaseLot.remaining_weight_lbs > 0,
+            PurchaseLot.deleted_at.is_(None),
+            Purchase.deleted_at.is_(None),
+            Purchase.status.in_(on_hand_statuses),
+        ).scalar() or 0
         run.butane_in_house_lbs = float(request.form.get("butane_in_house_lbs") or 0) or None
         run.solvent_ratio = float(request.form.get("solvent_ratio") or 0) or None
         run.system_temp = float(request.form.get("system_temp") or 0) or None
@@ -793,7 +1124,7 @@ def _save_run(existing_run):
                     inp = RunInput(run_id=run.id, lot_id=lid, weight_lbs=weight)
                     db.session.add(inp)
                     lot = db.session.get(PurchaseLot, lid)
-                    if lot:
+                    if lot and lot.deleted_at is None and lot.purchase and lot.purchase.deleted_at is None:
                         lot.remaining_weight_lbs = max(0, lot.remaining_weight_lbs - weight)
 
         run.calculate_cost()
@@ -805,7 +1136,11 @@ def _save_run(existing_run):
     except Exception as e:
         db.session.rollback()
         flash(f"Error saving run: {str(e)}", "error")
-        lots = PurchaseLot.query.filter(PurchaseLot.remaining_weight_lbs > 0).all()
+        lots = PurchaseLot.query.join(Purchase).filter(
+            PurchaseLot.remaining_weight_lbs > 0,
+            PurchaseLot.deleted_at.is_(None),
+            Purchase.deleted_at.is_(None),
+        ).all()
         return render_template("run_form.html", run=existing_run, lots=lots, today=date.today())
 
 
@@ -813,16 +1148,38 @@ def _save_run(existing_run):
 @editor_required
 def run_delete(run_id):
     run = db.session.get(Run, run_id)
-    if run:
+    if run and run.deleted_at is None:
         # Restore lot weights
         for inp in run.inputs:
             lot = db.session.get(PurchaseLot, inp.lot_id)
-            if lot:
+            if lot and lot.deleted_at is None:
                 lot.remaining_weight_lbs += inp.weight_lbs
-        log_audit("delete", "run", run.id)
-        db.session.delete(run)
+        run.deleted_at = datetime.utcnow()
+        run.deleted_by = current_user.id
+        log_audit("delete", "run", run.id, details=json.dumps({"mode": "soft"}))
         db.session.commit()
+        notify_slack(f"Run soft-deleted: {run.id}.")
         flash("Run deleted.", "success")
+    return redirect(url_for("runs_list"))
+
+
+@app.route("/runs/<run_id>/hard_delete", methods=["POST"])
+@admin_required
+def run_hard_delete(run_id):
+    run = db.session.get(Run, run_id)
+    if not run:
+        flash("Run not found.", "error")
+        return redirect(url_for("runs_list"))
+    if run.deleted_at is None:
+        for inp in run.inputs:
+            lot = db.session.get(PurchaseLot, inp.lot_id)
+            if lot and lot.deleted_at is None:
+                lot.remaining_weight_lbs += inp.weight_lbs
+    log_audit("delete", "run", run.id, details=json.dumps({"mode": "hard"}))
+    db.session.delete(run)
+    db.session.commit()
+    notify_slack(f"Run hard-deleted: {run.id}.")
+    flash("Run permanently deleted.", "success")
     return redirect(url_for("runs_list"))
 
 
@@ -833,9 +1190,21 @@ def run_delete(run_id):
 def costs_list():
     """View operational cost entries."""
     cost_type = request.args.get("type", "")
+    start_raw = (request.args.get("start_date") or "").strip()
+    end_raw = (request.args.get("end_date") or "").strip()
+    try:
+        start_date = datetime.strptime(start_raw, "%Y-%m-%d").date() if start_raw else None
+        end_date = datetime.strptime(end_raw, "%Y-%m-%d").date() if end_raw else None
+    except ValueError:
+        start_date = None
+        end_date = None
     query = CostEntry.query
     if cost_type:
         query = query.filter_by(cost_type=cost_type)
+    if start_date:
+        query = query.filter(CostEntry.end_date >= start_date)
+    if end_date:
+        query = query.filter(CostEntry.start_date <= end_date)
     entries = query.order_by(CostEntry.start_date.desc()).all()
 
     solvent_total = sum(e.total_cost for e in CostEntry.query.filter_by(cost_type="solvent").all())
@@ -844,7 +1213,7 @@ def costs_list():
 
     return render_template("costs.html", entries=entries, cost_type=cost_type,
                            solvent_total=solvent_total, personnel_total=personnel_total,
-                           overhead_total=overhead_total)
+                           overhead_total=overhead_total, start_date=start_raw, end_date=end_raw)
 
 
 @app.route("/costs/new", methods=["GET", "POST"])
@@ -920,15 +1289,30 @@ def cost_delete(entry_id):
 @app.route("/inventory")
 @login_required
 def inventory():
+    supplier_filter = (request.args.get("supplier_id") or "").strip()
+    strain_filter = (request.args.get("strain") or "").strip().lower()
     # On-hand lots: only from purchases that have actually arrived
     on_hand_statuses = ("delivered", "in_testing", "available", "processing", "complete")
-    on_hand = PurchaseLot.query.join(Purchase).filter(
+    on_hand_q = PurchaseLot.query.join(Purchase).filter(
         PurchaseLot.remaining_weight_lbs > 0,
+        PurchaseLot.deleted_at.is_(None),
+        Purchase.deleted_at.is_(None),
         Purchase.status.in_(on_hand_statuses)
-    ).all()
+    )
+    if supplier_filter:
+        on_hand_q = on_hand_q.filter(Purchase.supplier_id == supplier_filter)
+    if strain_filter:
+        on_hand_q = on_hand_q.filter(func.lower(PurchaseLot.strain_name).like(f"%{strain_filter}%"))
+    on_hand = on_hand_q.all()
 
     # In-transit purchases
-    in_transit = Purchase.query.filter(Purchase.status.in_(["committed", "ordered", "in_transit"])).all()
+    in_transit_q = Purchase.query.filter(
+        Purchase.deleted_at.is_(None),
+        Purchase.status.in_(["committed", "ordered", "in_transit"])
+    )
+    if supplier_filter:
+        in_transit_q = in_transit_q.filter(Purchase.supplier_id == supplier_filter)
+    in_transit = in_transit_q.all()
 
     # Summary
     total_on_hand = sum(l.remaining_weight_lbs for l in on_hand)
@@ -936,9 +1320,11 @@ def inventory():
     daily_target = SystemSetting.get_float("daily_throughput_target", 500)
     days_supply = total_on_hand / daily_target if daily_target > 0 else 0
 
+    suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
     return render_template("inventory.html", on_hand=on_hand, in_transit=in_transit,
                            total_on_hand=total_on_hand, total_in_transit=total_in_transit,
-                           days_supply=days_supply)
+                           days_supply=days_supply, suppliers=suppliers,
+                           supplier_filter=supplier_filter, strain_filter=(request.args.get("strain") or "").strip())
 
 
 # ── Purchases ────────────────────────────────────────────────────────────────
@@ -948,12 +1334,43 @@ def inventory():
 def purchases_list():
     page = request.args.get("page", 1, type=int)
     status_filter = request.args.get("status", "")
-    query = Purchase.query
+    start_raw = (request.args.get("start_date") or "").strip()
+    end_raw = (request.args.get("end_date") or "").strip()
+    supplier_filter = (request.args.get("supplier_id") or "").strip()
+    min_pot_raw = (request.args.get("min_potency") or "").strip()
+    max_pot_raw = (request.args.get("max_potency") or "").strip()
+    try:
+        start_date = datetime.strptime(start_raw, "%Y-%m-%d").date() if start_raw else None
+        end_date = datetime.strptime(end_raw, "%Y-%m-%d").date() if end_raw else None
+    except ValueError:
+        start_date = None
+        end_date = None
+    try:
+        min_potency = float(min_pot_raw) if min_pot_raw else None
+        max_potency = float(max_pot_raw) if max_pot_raw else None
+    except ValueError:
+        min_potency = None
+        max_potency = None
+    query = Purchase.query.filter(Purchase.deleted_at.is_(None))
     if status_filter:
         query = query.filter_by(status=status_filter)
+    if start_date:
+        query = query.filter(Purchase.purchase_date >= start_date)
+    if end_date:
+        query = query.filter(Purchase.purchase_date <= end_date)
+    if supplier_filter:
+        query = query.filter(Purchase.supplier_id == supplier_filter)
+    if min_potency is not None:
+        query = query.filter(Purchase.stated_potency_pct >= min_potency)
+    if max_potency is not None:
+        query = query.filter(Purchase.stated_potency_pct <= max_potency)
     pagination = query.order_by(Purchase.purchase_date.desc()).paginate(page=page, per_page=25)
+    suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
     return render_template("purchases.html", purchases=pagination.items, pagination=pagination,
-                           status_filter=status_filter)
+                           status_filter=status_filter, suppliers=suppliers,
+                           supplier_filter=supplier_filter,
+                           start_date=start_raw, end_date=end_raw,
+                           min_potency=min_pot_raw, max_potency=max_pot_raw)
 
 
 @app.route("/purchases/new", methods=["GET", "POST"])
@@ -971,7 +1388,7 @@ def purchase_new():
 @editor_required
 def purchase_edit(purchase_id):
     purchase = db.session.get(Purchase, purchase_id)
-    if not purchase:
+    if not purchase or purchase.deleted_at is not None:
         flash("Purchase not found.", "error")
         return redirect(url_for("purchases_list"))
     if request.method == "POST":
@@ -999,6 +1416,11 @@ def _save_purchase(existing):
         p.tested_potency_pct = float(tp) if tp else None
         ppl = request.form.get("price_per_lb", "").strip()
         p.price_per_lb = float(ppl) if ppl else None
+        p.storage_note = request.form.get("storage_note", "").strip() or None
+        p.license_info = request.form.get("license_info", "").strip() or None
+        qp = (request.form.get("queue_placement") or "").strip().lower()
+        p.queue_placement = qp if qp in ("aggregate", "indoor", "outdoor") else None
+        p.coa_status_text = request.form.get("coa_status_text", "").strip() or None
         p.clean_or_dirty = request.form.get("clean_or_dirty") or None
         p.indoor_outdoor = request.form.get("indoor_outdoor") or None
         hd = request.form.get("harvest_date", "").strip()
@@ -1094,6 +1516,59 @@ def _save_purchase(existing):
                                rate=rate, today=date.today())
 
 
+@app.route("/purchases/<purchase_id>/delete", methods=["POST"])
+@editor_required
+def purchase_delete(purchase_id):
+    p = db.session.get(Purchase, purchase_id)
+    if not p or p.deleted_at is not None:
+        flash("Purchase not found.", "error")
+        return redirect(url_for("purchases_list"))
+    has_run_inputs = db.session.query(RunInput.id).join(PurchaseLot).join(Run).filter(
+        PurchaseLot.purchase_id == p.id,
+        PurchaseLot.deleted_at.is_(None),
+        Run.deleted_at.is_(None),
+    ).first() is not None
+    if has_run_inputs:
+        flash("Cannot delete purchase that is used in active runs. Delete those runs first.", "error")
+        return redirect(url_for("purchase_edit", purchase_id=p.id))
+    p.deleted_at = datetime.utcnow()
+    p.deleted_by = current_user.id
+    for lot in p.lots:
+        lot.deleted_at = datetime.utcnow()
+        lot.deleted_by = current_user.id
+    linked = BiomassAvailability.query.filter(BiomassAvailability.purchase_id == p.id).first()
+    if linked:
+        linked.purchase_id = None
+        linked.stage = "declared"
+    log_audit("delete", "purchase", p.id, details=json.dumps({"mode": "soft"}))
+    db.session.commit()
+    notify_slack(f"Purchase soft-deleted: {p.batch_id or p.id}.")
+    flash("Purchase deleted.", "success")
+    return redirect(url_for("purchases_list"))
+
+
+@app.route("/purchases/<purchase_id>/hard_delete", methods=["POST"])
+@admin_required
+def purchase_hard_delete(purchase_id):
+    p = db.session.get(Purchase, purchase_id)
+    if not p:
+        flash("Purchase not found.", "error")
+        return redirect(url_for("purchases_list"))
+    has_any_run_inputs = db.session.query(RunInput.id).join(PurchaseLot).filter(PurchaseLot.purchase_id == p.id).first() is not None
+    if has_any_run_inputs:
+        flash("Cannot hard-delete purchase that has run history.", "error")
+        return redirect(url_for("purchase_edit", purchase_id=p.id))
+    linked = BiomassAvailability.query.filter(BiomassAvailability.purchase_id == p.id).first()
+    if linked:
+        linked.purchase_id = None
+    log_audit("delete", "purchase", p.id, details=json.dumps({"mode": "hard"}))
+    db.session.delete(p)
+    db.session.commit()
+    notify_slack(f"Purchase hard-deleted: {p.batch_id or p.id}.")
+    flash("Purchase permanently deleted.", "success")
+    return redirect(url_for("purchases_list"))
+
+
 # ── Suppliers ────────────────────────────────────────────────────────────────
 
 @app.route("/suppliers")
@@ -1118,7 +1593,13 @@ def suppliers_list():
         ).join(RunInput, Run.id == RunInput.run_id
         ).join(PurchaseLot, RunInput.lot_id == PurchaseLot.id
         ).join(Purchase, PurchaseLot.purchase_id == Purchase.id
-        ).filter(Purchase.supplier_id == s.id, Run.is_rollover == False)
+        ).filter(
+            Purchase.supplier_id == s.id,
+            Run.is_rollover == False,
+            Run.deleted_at.is_(None),
+            Purchase.deleted_at.is_(None),
+            PurchaseLot.deleted_at.is_(None),
+        )
         if exclude_unpriced:
             runs_q = runs_q.filter(_priced_run_filter())
 
@@ -1133,7 +1614,12 @@ def suppliers_list():
             RunInput, Run.id == RunInput.run_id
         ).join(PurchaseLot, RunInput.lot_id == PurchaseLot.id
         ).join(Purchase, PurchaseLot.purchase_id == Purchase.id
-        ).filter(Purchase.supplier_id == s.id, Run.is_rollover == False
+        ).filter(
+            Purchase.supplier_id == s.id,
+            Run.is_rollover == False,
+            Run.deleted_at.is_(None),
+            Purchase.deleted_at.is_(None),
+            PurchaseLot.deleted_at.is_(None),
         )
         if exclude_unpriced:
             last_run = last_run.filter(_priced_run_filter())
@@ -1163,8 +1649,61 @@ def suppliers_list():
     yield_kpi = KpiTarget.query.filter_by(kpi_name="overall_yield_pct").first()
     thca_kpi = KpiTarget.query.filter_by(kpi_name="thca_yield_pct").first()
 
+    current_month_start = date.today().replace(day=1)
+    prev_month_end = current_month_start - timedelta(days=1)
+    prev_month_start = prev_month_end.replace(day=1)
+    best_supplier_mom = None
+    month_rows = db.session.query(
+        Supplier.id.label("supplier_id"),
+        Supplier.name.label("supplier_name"),
+        func.avg(Run.overall_yield_pct).label("avg_yield"),
+    ).join(Purchase, Purchase.supplier_id == Supplier.id
+    ).join(PurchaseLot, PurchaseLot.purchase_id == Purchase.id
+    ).join(RunInput, RunInput.lot_id == PurchaseLot.id
+    ).join(Run, Run.id == RunInput.run_id
+    ).filter(
+        Run.deleted_at.is_(None),
+        Purchase.deleted_at.is_(None),
+        PurchaseLot.deleted_at.is_(None),
+        Run.is_rollover == False,
+        Run.run_date >= current_month_start,
+        Run.overall_yield_pct.isnot(None),
+    )
+    if exclude_unpriced:
+        month_rows = month_rows.filter(_priced_run_filter())
+    month_rows = month_rows.group_by(Supplier.id, Supplier.name).all()
+    if month_rows:
+        best = max(month_rows, key=lambda r: float(r.avg_yield or 0))
+        prev_q = db.session.query(func.avg(Run.overall_yield_pct)).join(
+            RunInput, Run.id == RunInput.run_id
+        ).join(PurchaseLot, RunInput.lot_id == PurchaseLot.id
+        ).join(Purchase, PurchaseLot.purchase_id == Purchase.id
+        ).filter(
+            Run.deleted_at.is_(None),
+            Purchase.deleted_at.is_(None),
+            PurchaseLot.deleted_at.is_(None),
+            Purchase.supplier_id == best.supplier_id,
+            Run.is_rollover == False,
+            Run.run_date >= prev_month_start,
+            Run.run_date <= prev_month_end,
+            Run.overall_yield_pct.isnot(None),
+        )
+        if exclude_unpriced:
+            prev_q = prev_q.filter(_priced_run_filter())
+        prev_avg = prev_q.scalar()
+        best_supplier_mom = {
+            "name": best.supplier_name,
+            "current": float(best.avg_yield or 0),
+            "previous": float(prev_avg) if prev_avg is not None else None,
+        }
+        if best_supplier_mom["previous"] and best_supplier_mom["previous"] > 0:
+            best_supplier_mom["pct_change"] = ((best_supplier_mom["current"] - best_supplier_mom["previous"]) / best_supplier_mom["previous"]) * 100.0
+        else:
+            best_supplier_mom["pct_change"] = None
+
     return render_template("suppliers.html", supplier_stats=supplier_stats,
-                           yield_kpi=yield_kpi, thca_kpi=thca_kpi)
+                           yield_kpi=yield_kpi, thca_kpi=thca_kpi,
+                           best_supplier_mom=best_supplier_mom)
 
 
 @app.route("/suppliers/new", methods=["GET", "POST"])
@@ -1195,18 +1734,114 @@ def supplier_edit(sid):
         flash("Supplier not found.", "error")
         return redirect(url_for("suppliers_list"))
     if request.method == "POST":
-        s.name = request.form["name"].strip()
-        s.contact_name = request.form.get("contact_name", "").strip() or None
-        s.contact_phone = request.form.get("contact_phone", "").strip() or None
-        s.contact_email = request.form.get("contact_email", "").strip() or None
-        s.location = request.form.get("location", "").strip() or None
-        s.notes = request.form.get("notes", "").strip() or None
-        s.is_active = "is_active" in request.form
-        log_audit("update", "supplier", s.id)
-        db.session.commit()
-        flash("Supplier updated.", "success")
-        return redirect(url_for("suppliers_list"))
-    return render_template("supplier_form.html", supplier=s)
+        form_type = (request.form.get("form_type") or "supplier").strip()
+        if form_type == "supplier":
+            s.name = request.form["name"].strip()
+            s.contact_name = request.form.get("contact_name", "").strip() or None
+            s.contact_phone = request.form.get("contact_phone", "").strip() or None
+            s.contact_email = request.form.get("contact_email", "").strip() or None
+            s.location = request.form.get("location", "").strip() or None
+            s.notes = request.form.get("notes", "").strip() or None
+            s.is_active = "is_active" in request.form
+            log_audit("update", "supplier", s.id)
+            db.session.commit()
+            flash("Supplier updated.", "success")
+        elif form_type == "lab_test":
+            td = (request.form.get("test_date") or "").strip()
+            if not td:
+                flash("Lab test date is required.", "error")
+                return redirect(url_for("supplier_edit", sid=s.id))
+            try:
+                test_date = datetime.strptime(td, "%Y-%m-%d").date()
+            except ValueError:
+                flash("Lab test date is invalid.", "error")
+                return redirect(url_for("supplier_edit", sid=s.id))
+            files = request.files.getlist("lab_files")
+            saved_paths = _save_lab_files(files, prefix=f"lab-{s.id}")
+            pot_raw = (request.form.get("potency_pct") or "").strip()
+            try:
+                potency_pct = float(pot_raw) if pot_raw else None
+            except ValueError:
+                flash("Lab test potency must be numeric.", "error")
+                return redirect(url_for("supplier_edit", sid=s.id))
+            t = LabTest(
+                supplier_id=s.id,
+                purchase_id=((request.form.get("purchase_id") or "").strip() or None),
+                test_date=test_date,
+                test_type=((request.form.get("test_type") or "coa").strip() or "coa"),
+                status_text=((request.form.get("status_text") or "").strip() or None),
+                potency_pct=potency_pct,
+                notes=((request.form.get("notes") or "").strip() or None),
+                result_paths_json=(json.dumps(saved_paths) if saved_paths else None),
+                created_by=current_user.id,
+            )
+            db.session.add(t)
+            log_audit("create", "lab_test", t.id, details=json.dumps({"supplier_id": s.id, "files": len(saved_paths)}))
+            db.session.commit()
+            flash("Lab test entry added.", "success")
+        elif form_type == "supplier_attachment":
+            files = request.files.getlist("attachment_files")
+            title = (request.form.get("title") or "").strip() or None
+            doc_type = ((request.form.get("document_type") or "coa").strip() or "coa")
+            saved_paths = _save_lab_files(files, prefix=f"supplier-{s.id}")
+            if not saved_paths:
+                flash("Select at least one attachment file.", "error")
+                return redirect(url_for("supplier_edit", sid=s.id))
+            for path in saved_paths:
+                a = SupplierAttachment(
+                    supplier_id=s.id,
+                    document_type=doc_type,
+                    title=title,
+                    file_path=path,
+                    uploaded_by=current_user.id,
+                )
+                db.session.add(a)
+            log_audit("create", "supplier_attachment", s.id, details=json.dumps({"count": len(saved_paths), "type": doc_type}))
+            db.session.commit()
+            flash("Supplier attachments uploaded.", "success")
+        return redirect(url_for("supplier_edit", sid=s.id))
+
+    purchases = Purchase.query.filter(
+        Purchase.deleted_at.is_(None),
+        Purchase.supplier_id == s.id,
+    ).order_by(Purchase.purchase_date.desc()).all()
+    lab_tests = LabTest.query.filter_by(supplier_id=s.id).order_by(LabTest.test_date.desc()).all()
+    for t in lab_tests:
+        try:
+            paths = json.loads(t.result_paths_json or "[]")
+            t.file_paths = [p for p in paths if isinstance(p, str) and p.strip()]
+        except Exception:
+            t.file_paths = []
+    attachments = SupplierAttachment.query.filter_by(supplier_id=s.id).order_by(SupplierAttachment.uploaded_at.desc()).all()
+    return render_template("supplier_form.html", supplier=s, purchases=purchases, lab_tests=lab_tests, attachments=attachments)
+
+
+@app.route("/suppliers/<sid>/lab_tests/<test_id>/delete", methods=["POST"])
+@editor_required
+def supplier_lab_test_delete(sid, test_id):
+    t = db.session.get(LabTest, test_id)
+    if not t or t.supplier_id != sid:
+        flash("Lab test record not found.", "error")
+        return redirect(url_for("supplier_edit", sid=sid))
+    log_audit("delete", "lab_test", t.id, details=json.dumps({"supplier_id": sid}))
+    db.session.delete(t)
+    db.session.commit()
+    flash("Lab test record deleted.", "success")
+    return redirect(url_for("supplier_edit", sid=sid))
+
+
+@app.route("/suppliers/<sid>/attachments/<attachment_id>/delete", methods=["POST"])
+@editor_required
+def supplier_attachment_delete(sid, attachment_id):
+    a = db.session.get(SupplierAttachment, attachment_id)
+    if not a or a.supplier_id != sid:
+        flash("Attachment not found.", "error")
+        return redirect(url_for("supplier_edit", sid=sid))
+    log_audit("delete", "supplier_attachment", a.id, details=json.dumps({"supplier_id": sid}))
+    db.session.delete(a)
+    db.session.commit()
+    flash("Attachment deleted.", "success")
+    return redirect(url_for("supplier_edit", sid=sid))
 
 
 # ── Strain Performance ───────────────────────────────────────────────────────
@@ -1232,7 +1867,12 @@ def strains_list():
     ).join(Run, RunInput.run_id == Run.id
     ).join(Purchase, PurchaseLot.purchase_id == Purchase.id
     ).join(Supplier, Purchase.supplier_id == Supplier.id
-    ).filter(Run.is_rollover == False)
+    ).filter(
+        Run.is_rollover == False,
+        Run.deleted_at.is_(None),
+        Purchase.deleted_at.is_(None),
+        PurchaseLot.deleted_at.is_(None),
+    )
     if _exclude_unpriced_batches_enabled():
         query = query.filter(_priced_run_filter())
 
@@ -1391,14 +2031,41 @@ def settings():
             db.session.commit()
             flash(f"Password updated for '{u.display_name}'.", "success")
 
+        elif form_type == "slack":
+            slack_map = {
+                "slack_enabled": "Enable Slack integration",
+                "slack_webhook_url": "Slack incoming webhook URL",
+                "slack_signing_secret": "Slack signing secret",
+                "slack_bot_token": "Slack bot token",
+                "slack_default_channel": "Default Slack channel",
+            }
+            for key, desc in slack_map.items():
+                if key == "slack_enabled":
+                    val = "1" if request.form.get("slack_enabled") else "0"
+                else:
+                    val = (request.form.get(key) or "").strip()
+                existing = db.session.get(SystemSetting, key)
+                if existing:
+                    existing.value = val
+                else:
+                    db.session.add(SystemSetting(key=key, value=val, description=desc))
+            db.session.commit()
+            flash("Slack integration settings updated.", "success")
+
         return redirect(url_for("settings"))
 
     system_settings = {s.key: s.value for s in SystemSetting.query.all()}
     kpis = KpiTarget.query.all()
     users = User.query.order_by(User.created_at.asc()).all()
     field_tokens = FieldAccessToken.query.order_by(FieldAccessToken.created_at.desc()).all()
-    field_submissions = FieldPurchaseSubmission.query.order_by(FieldPurchaseSubmission.submitted_at.desc()).all()
-    for s in field_submissions:
+    pending_field_submissions = FieldPurchaseSubmission.query.filter_by(status="pending").order_by(
+        FieldPurchaseSubmission.submitted_at.desc()
+    ).all()
+    reviewed_field_submissions = FieldPurchaseSubmission.query.filter(
+        FieldPurchaseSubmission.status.in_(("approved", "rejected"))
+    ).order_by(FieldPurchaseSubmission.submitted_at.desc()).all()
+    all_field_submissions = pending_field_submissions + reviewed_field_submissions
+    for s in all_field_submissions:
         try:
             s.lots_count = len(json.loads(s.lots_json or "[]"))
         except Exception:
@@ -1408,6 +2075,21 @@ def settings():
             s.photo_paths = [p for p in photo_paths if isinstance(p, str) and p.strip()]
         except Exception:
             s.photo_paths = []
+        try:
+            supplier_paths = json.loads(s.supplier_photos_json or "[]")
+            s.supplier_photo_paths = [p for p in supplier_paths if isinstance(p, str) and p.strip()]
+        except Exception:
+            s.supplier_photo_paths = []
+        try:
+            biomass_paths = json.loads(s.biomass_photos_json or "[]")
+            s.biomass_photo_paths = [p for p in biomass_paths if isinstance(p, str) and p.strip()]
+        except Exception:
+            s.biomass_photo_paths = []
+        try:
+            coa_paths = json.loads(s.coa_photos_json or "[]")
+            s.coa_photo_paths = [p for p in coa_paths if isinstance(p, str) and p.strip()]
+        except Exception:
+            s.coa_photo_paths = []
 
     # One-time display after creating a field link (POST-redirect-GET)
     last_field_link = session.pop("last_field_link", None)
@@ -1421,7 +2103,8 @@ def settings():
         kpis=kpis,
         users=users,
         field_tokens=field_tokens,
-        field_submissions=field_submissions,
+        field_submissions=pending_field_submissions,
+        reviewed_field_submissions=reviewed_field_submissions,
         server_now=datetime.utcnow(),
         last_field_link=last_field_link,
         last_field_sms=last_field_sms,
@@ -1502,6 +2185,7 @@ def field_token_create():
         f"{link}\n\n"
         "Use it to submit biomass availability or potential purchases from the field."
     )
+    notify_slack(f"Field token created: {label} (expires in {expires_days} days).")
     flash("Field link created. Scroll down to copy/share it.", "success")
     return redirect(url_for("settings"))
 
@@ -1516,7 +2200,51 @@ def field_token_revoke(token_id):
     tok.revoked_at = datetime.utcnow()
     log_audit("revoke", "field_access_token", tok.id, details=json.dumps({"label": tok.label}))
     db.session.commit()
+    notify_slack(f"Field token revoked: {tok.label}.")
     flash("Token revoked.", "success")
+    return redirect(url_for("settings"))
+
+
+@app.route("/settings/field_tokens/<token_id>/delete", methods=["POST"])
+@admin_required
+def field_token_delete(token_id):
+    tok = db.session.get(FieldAccessToken, token_id)
+    if not tok:
+        flash("Token not found.", "error")
+        return redirect(url_for("settings"))
+    if tok.revoked_at is None and (tok.expires_at is None or tok.expires_at >= datetime.utcnow()):
+        flash("Only revoked or expired tokens can be deleted.", "error")
+        return redirect(url_for("settings"))
+    log_audit("delete", "field_access_token", tok.id, details=json.dumps({"label": tok.label}))
+    db.session.delete(tok)
+    db.session.commit()
+    flash("Token record deleted.", "success")
+    return redirect(url_for("settings"))
+
+
+@app.route("/settings/users/<user_id>/delete", methods=["POST"])
+@admin_required
+def user_delete(user_id):
+    u = db.session.get(User, user_id)
+    if not u:
+        flash("User not found.", "error")
+        return redirect(url_for("settings"))
+    if current_user.id == u.id:
+        flash("You cannot delete your own account.", "error")
+        return redirect(url_for("settings"))
+    if u.role == "super_admin":
+        active_admins = User.query.filter_by(role="super_admin", is_active_user=True).count()
+        if u.is_active_user and active_admins <= 1:
+            flash("You cannot delete the last active Super Admin.", "error")
+            return redirect(url_for("settings"))
+    has_audit = AuditLog.query.filter_by(user_id=u.id).first() is not None
+    if has_audit:
+        flash("User has historical activity and cannot be hard-deleted. Disable instead.", "error")
+        return redirect(url_for("settings"))
+    log_audit("delete", "user", u.id, details=json.dumps({"username": u.username, "role": u.role}))
+    db.session.delete(u)
+    db.session.commit()
+    flash("User permanently deleted.", "success")
     return redirect(url_for("settings"))
 
 
@@ -1548,10 +2276,15 @@ def field_submission_approve(submission_id):
         supplier_id=sub.supplier_id,
         purchase_date=sub.purchase_date,
         delivery_date=sub.delivery_date,
+        harvest_date=sub.harvest_date,
         status="committed",
         stated_weight_lbs=total_weight,
         stated_potency_pct=sub.estimated_potency_pct,
         price_per_lb=sub.price_per_lb,
+        storage_note=sub.storage_note,
+        license_info=sub.license_info,
+        queue_placement=sub.queue_placement,
+        coa_status_text=sub.coa_status_text,
         notes=(sub.notes or "") + (f"\n\nApproved from field submission {sub.id}" if sub.notes else f"Approved from field submission {sub.id}"),
     )
     db.session.add(purchase)
@@ -1561,11 +2294,11 @@ def field_submission_approve(submission_id):
     for l in lots:
         strain = (l.get("strain") or "").strip()
         w = float(l.get("weight_lbs") or 0)
-        if not strain or w <= 0:
+        if w <= 0:
             continue
         lot = PurchaseLot(
             purchase_id=purchase.id,
-            strain_name=strain,
+            strain_name=(strain or "Unspecified"),
             weight_lbs=w,
             remaining_weight_lbs=w,
         )
@@ -1591,6 +2324,7 @@ def field_submission_approve(submission_id):
     log_audit("approve", "field_purchase_submission", sub.id, details=json.dumps({"purchase_id": purchase.id}))
     log_audit("create", "purchase", purchase.id, details=json.dumps({"source": "field_submission", "submission_id": sub.id}))
     db.session.commit()
+    notify_slack(f"Field submission approved for {sub.supplier.name if sub.supplier else 'supplier'}; purchase {purchase.batch_id or purchase.id} created.")
     flash("Submission approved and converted to a Purchase.", "success")
     return redirect(url_for("purchase_edit", purchase_id=purchase.id))
 
@@ -1611,6 +2345,7 @@ def field_submission_reject(submission_id):
     sub.review_notes = (request.form.get("review_notes") or "").strip() or None
     log_audit("reject", "field_purchase_submission", sub.id, details=json.dumps({"notes": sub.review_notes}))
     db.session.commit()
+    notify_slack(f"Field submission rejected for {sub.supplier.name if sub.supplier else 'supplier'}.")
     flash("Submission rejected.", "success")
     return redirect(url_for("settings"))
 
@@ -1633,12 +2368,72 @@ def settings_recalculate_costs():
     return redirect(url_for("settings"))
 
 
+@app.route("/api/slack/command", methods=["POST"])
+def slack_command():
+    if not _verify_slack_signature(request):
+        return "Unauthorized", 401
+    cmd_text = (request.form.get("text") or "").strip().lower()
+    if cmd_text.startswith("pending"):
+        pending = FieldPurchaseSubmission.query.filter_by(status="pending").count()
+        return jsonify({"response_type": "ephemeral", "text": f"Pending field submissions: {pending}"})
+    if cmd_text.startswith("inventory"):
+        on_hand = db.session.query(func.sum(PurchaseLot.remaining_weight_lbs)).join(Purchase).filter(
+            PurchaseLot.remaining_weight_lbs > 0,
+            PurchaseLot.deleted_at.is_(None),
+            Purchase.deleted_at.is_(None),
+            Purchase.status.in_(("delivered", "in_testing", "available", "processing", "complete")),
+        ).scalar() or 0
+        return jsonify({"response_type": "ephemeral", "text": f"Current biomass on hand: {on_hand:,.1f} lbs"})
+    if cmd_text.startswith("export runs"):
+        link = url_for("export_csv", entity="runs", _external=True)
+        return jsonify({"response_type": "ephemeral", "text": f"Runs export: {link}"})
+    return jsonify({"response_type": "ephemeral", "text": "Try: pending, inventory, export runs"})
+
+
+@app.route("/api/slack/interactivity", methods=["POST"])
+def slack_interactivity():
+    if not _verify_slack_signature(request):
+        return "Unauthorized", 401
+    payload_raw = (request.form.get("payload") or "").strip()
+    if not payload_raw:
+        return "OK", 200
+    try:
+        payload = json.loads(payload_raw)
+    except json.JSONDecodeError:
+        return "OK", 200
+    action = ((payload.get("actions") or [{}])[0].get("action_id") or "").strip()
+    submission_id = ((payload.get("actions") or [{}])[0].get("value") or "").strip()
+    if action in ("approve_submission", "reject_submission") and submission_id:
+        # Slack-triggered review logs an audit event; web UI handles full conversion workflow.
+        log_audit("slack_action", "field_purchase_submission", submission_id, details=json.dumps({"action": action}))
+        db.session.commit()
+    return "OK", 200
+
+
 # ── CSV Import/Export ────────────────────────────────────────────────────────
 
 @app.route("/export/<entity>")
 @login_required
 def export_csv(entity):
     """Export data as CSV."""
+    start_raw = (request.args.get("start_date") or "").strip()
+    end_raw = (request.args.get("end_date") or "").strip()
+    status_filter = (request.args.get("status") or "").strip()
+    supplier_id = (request.args.get("supplier_id") or "").strip()
+    strain_filter = (request.args.get("strain") or "").strip().lower()
+    min_pot_raw = (request.args.get("min_potency") or "").strip()
+    max_pot_raw = (request.args.get("max_potency") or "").strip()
+    try:
+        start_date = datetime.strptime(start_raw, "%Y-%m-%d").date() if start_raw else None
+        end_date = datetime.strptime(end_raw, "%Y-%m-%d").date() if end_raw else None
+    except ValueError:
+        return "Invalid date filter.", 400
+    try:
+        min_pot = float(min_pot_raw) if min_pot_raw else None
+        max_pot = float(max_pot_raw) if max_pot_raw else None
+    except ValueError:
+        return "Invalid potency filter.", 400
+
     si = io.StringIO()
     writer = csv.writer(si)
 
@@ -1646,7 +2441,25 @@ def export_csv(entity):
         writer.writerow(["Date", "Reactor", "Rollover", "Source", "Lbs Ran", "Grams Ran",
                          "Wet HTE", "Wet THCA", "Dry HTE", "Dry THCA", "Overall Yield %",
                          "THCA Yield %", "HTE Yield %", "Cost/Gram", "Notes"])
-        for r in Run.query.order_by(Run.run_date.desc()).all():
+        q = Run.query.filter(Run.deleted_at.is_(None))
+        if start_date:
+            q = q.filter(Run.run_date >= start_date)
+        if end_date:
+            q = q.filter(Run.run_date <= end_date)
+        if min_pot is not None:
+            q = q.filter(Run.thca_yield_pct >= min_pot)
+        if max_pot is not None:
+            q = q.filter(Run.thca_yield_pct <= max_pot)
+        if supplier_id or strain_filter:
+            q = q.join(RunInput, Run.id == RunInput.run_id).join(PurchaseLot, RunInput.lot_id == PurchaseLot.id
+            ).join(Purchase, PurchaseLot.purchase_id == Purchase.id)
+            q = q.filter(PurchaseLot.deleted_at.is_(None), Purchase.deleted_at.is_(None))
+            if supplier_id:
+                q = q.filter(Purchase.supplier_id == supplier_id)
+            if strain_filter:
+                q = q.filter(func.lower(PurchaseLot.strain_name).like(f"%{strain_filter}%"))
+            q = q.distinct()
+        for r in q.order_by(Run.run_date.desc()).all():
             writer.writerow([r.run_date, r.reactor_number, r.is_rollover, r.source_display,
                              r.bio_in_reactor_lbs, r.grams_ran, r.wet_hte_g, r.wet_thca_g,
                              r.dry_hte_g, r.dry_thca_g,
@@ -1659,7 +2472,20 @@ def export_csv(entity):
         writer.writerow(["Date", "Batch ID", "Supplier", "Status", "Stated Lbs", "Actual Lbs",
                          "Stated Potency", "Tested Potency", "Price/Lb", "Total Cost",
                          "True-Up", "Strains"])
-        for p in Purchase.query.order_by(Purchase.purchase_date.desc()).all():
+        q = Purchase.query.filter(Purchase.deleted_at.is_(None))
+        if start_date:
+            q = q.filter(Purchase.purchase_date >= start_date)
+        if end_date:
+            q = q.filter(Purchase.purchase_date <= end_date)
+        if status_filter:
+            q = q.filter(Purchase.status == status_filter)
+        if supplier_id:
+            q = q.filter(Purchase.supplier_id == supplier_id)
+        if min_pot is not None:
+            q = q.filter(Purchase.stated_potency_pct >= min_pot)
+        if max_pot is not None:
+            q = q.filter(Purchase.stated_potency_pct <= max_pot)
+        for p in q.order_by(Purchase.purchase_date.desc()).all():
             strains = ", ".join([l.strain_name for l in p.lots])
             writer.writerow([p.purchase_date, p.batch_id, p.supplier_name, p.status,
                              p.stated_weight_lbs, p.actual_weight_lbs,
@@ -1668,7 +2494,16 @@ def export_csv(entity):
     elif entity == "inventory":
         writer.writerow(["Strain", "Supplier", "Weight (lbs)", "Remaining (lbs)",
                          "Potency %", "Milled", "Location"])
-        for l in PurchaseLot.query.filter(PurchaseLot.remaining_weight_lbs > 0).all():
+        q = PurchaseLot.query.join(Purchase).filter(
+            PurchaseLot.remaining_weight_lbs > 0,
+            PurchaseLot.deleted_at.is_(None),
+            Purchase.deleted_at.is_(None),
+        )
+        if supplier_id:
+            q = q.filter(Purchase.supplier_id == supplier_id)
+        if strain_filter:
+            q = q.filter(func.lower(PurchaseLot.strain_name).like(f"%{strain_filter}%"))
+        for l in q.all():
             writer.writerow([l.strain_name, l.supplier_name, l.weight_lbs,
                              l.remaining_weight_lbs, l.potency_pct, l.milled, l.location])
     elif entity == "biomass":
@@ -1680,11 +2515,18 @@ def export_csv(entity):
             "Batch ID", "Purchase Status",
             "Notes",
         ])
-        q = BiomassAvailability.query.join(Supplier).order_by(
-            BiomassAvailability.availability_date.desc(),
-            Supplier.name.asc(),
-        ).all()
-        for b in q:
+        q = BiomassAvailability.query.join(Supplier)
+        if start_date:
+            q = q.filter(BiomassAvailability.availability_date >= start_date)
+        if end_date:
+            q = q.filter(BiomassAvailability.availability_date <= end_date)
+        if status_filter:
+            q = q.filter(BiomassAvailability.stage == status_filter)
+        if supplier_id:
+            q = q.filter(BiomassAvailability.supplier_id == supplier_id)
+        if strain_filter:
+            q = q.filter(func.lower(BiomassAvailability.strain_name).like(f"%{strain_filter}%"))
+        for b in q.order_by(BiomassAvailability.availability_date.desc(), Supplier.name.asc()).all():
             writer.writerow([
                 b.stage,
                 b.supplier_name,
@@ -1705,6 +2547,54 @@ def export_csv(entity):
                 b.purchase.status if b.purchase else "",
                 b.notes or "",
             ])
+    elif entity == "suppliers":
+        writer.writerow(["Supplier", "Contact", "Phone", "Email", "Location", "Active"])
+        q = Supplier.query
+        if supplier_id:
+            q = q.filter(Supplier.id == supplier_id)
+        for s in q.order_by(Supplier.name.asc()).all():
+            writer.writerow([s.name, s.contact_name or "", s.contact_phone or "", s.contact_email or "", s.location or "", s.is_active])
+    elif entity == "strains":
+        writer.writerow(["Strain", "Supplier", "Avg Yield %", "Avg THCA %", "Avg HTE %", "Avg $/g", "Runs", "Total Lbs"])
+        q = db.session.query(
+            PurchaseLot.strain_name,
+            Supplier.name.label("supplier_name"),
+            func.avg(Run.overall_yield_pct).label("avg_yield"),
+            func.avg(Run.thca_yield_pct).label("avg_thca"),
+            func.avg(Run.hte_yield_pct).label("avg_hte"),
+            func.avg(Run.cost_per_gram_combined).label("avg_cpg"),
+            func.count(Run.id).label("run_count"),
+            func.sum(Run.bio_in_reactor_lbs).label("total_lbs"),
+        ).join(RunInput, PurchaseLot.id == RunInput.lot_id
+        ).join(Run, RunInput.run_id == Run.id
+        ).join(Purchase, PurchaseLot.purchase_id == Purchase.id
+        ).join(Supplier, Purchase.supplier_id == Supplier.id
+        ).filter(
+            Run.deleted_at.is_(None),
+            Purchase.deleted_at.is_(None),
+            PurchaseLot.deleted_at.is_(None),
+        )
+        if start_date:
+            q = q.filter(Run.run_date >= start_date)
+        if end_date:
+            q = q.filter(Run.run_date <= end_date)
+        if supplier_id:
+            q = q.filter(Purchase.supplier_id == supplier_id)
+        if strain_filter:
+            q = q.filter(func.lower(PurchaseLot.strain_name).like(f"%{strain_filter}%"))
+        for r in q.group_by(PurchaseLot.strain_name, Supplier.name).order_by(desc("avg_yield")).all():
+            writer.writerow([r.strain_name, r.supplier_name, r.avg_yield, r.avg_thca, r.avg_hte, r.avg_cpg, r.run_count, r.total_lbs])
+    elif entity == "costs":
+        writer.writerow(["Type", "Name", "Start Date", "End Date", "Total Cost", "Unit Cost", "Qty", "Unit", "Notes"])
+        q = CostEntry.query
+        if start_date:
+            q = q.filter(CostEntry.end_date >= start_date)
+        if end_date:
+            q = q.filter(CostEntry.start_date <= end_date)
+        if status_filter:
+            q = q.filter(CostEntry.cost_type == status_filter)
+        for c in q.order_by(CostEntry.start_date.desc()).all():
+            writer.writerow([c.cost_type, c.name, c.start_date, c.end_date, c.total_cost, c.unit_cost, c.quantity, c.unit, c.notes or ""])
     else:
         return "Unknown entity", 404
 
@@ -1913,7 +2803,7 @@ def _parse_float(s):
 @editor_required
 def lot_new(purchase_id):
     purchase = db.session.get(Purchase, purchase_id)
-    if not purchase:
+    if not purchase or purchase.deleted_at is not None:
         flash("Purchase not found.", "error")
         return redirect(url_for("purchases_list"))
 
@@ -1939,11 +2829,39 @@ def lot_new(purchase_id):
 @login_required
 def biomass_list():
     stage = request.args.get("stage", "").strip()
+    start_raw = (request.args.get("start_date") or "").strip()
+    end_raw = (request.args.get("end_date") or "").strip()
+    supplier_filter = (request.args.get("supplier_id") or "").strip()
+    strain_filter = (request.args.get("strain") or "").strip()
+    try:
+        start_date = datetime.strptime(start_raw, "%Y-%m-%d").date() if start_raw else None
+        end_date = datetime.strptime(end_raw, "%Y-%m-%d").date() if end_raw else None
+    except ValueError:
+        start_date = None
+        end_date = None
     query = BiomassAvailability.query.join(Supplier)
     if stage:
         query = query.filter(BiomassAvailability.stage == stage)
+    if start_date:
+        query = query.filter(BiomassAvailability.availability_date >= start_date)
+    if end_date:
+        query = query.filter(BiomassAvailability.availability_date <= end_date)
+    if supplier_filter:
+        query = query.filter(BiomassAvailability.supplier_id == supplier_filter)
+    if strain_filter:
+        query = query.filter(func.lower(BiomassAvailability.strain_name).like(f"%{strain_filter.lower()}%"))
     items = query.order_by(BiomassAvailability.availability_date.desc(), Supplier.name.asc()).all()
-    return render_template("biomass.html", items=items, stage_filter=stage)
+    suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
+    return render_template(
+        "biomass.html",
+        items=items,
+        stage_filter=stage,
+        suppliers=suppliers,
+        supplier_filter=supplier_filter,
+        start_date=start_raw,
+        end_date=end_raw,
+        strain_filter=strain_filter,
+    )
 
 
 @app.route("/biomass/new", methods=["GET", "POST"])
@@ -2187,7 +3105,11 @@ def biomass_delete(item_id):
 @app.route("/api/lots/available")
 @login_required
 def api_lots_available():
-    lots = PurchaseLot.query.filter(PurchaseLot.remaining_weight_lbs > 0).all()
+    lots = PurchaseLot.query.join(Purchase).filter(
+        PurchaseLot.remaining_weight_lbs > 0,
+        PurchaseLot.deleted_at.is_(None),
+        Purchase.deleted_at.is_(None),
+    ).all()
     return jsonify([{
         "id": l.id,
         "strain": l.strain_name,

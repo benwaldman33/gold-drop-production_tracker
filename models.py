@@ -103,9 +103,15 @@ class Purchase(db.Model):
     true_up_amount = db.Column(db.Float)
     true_up_status = db.Column(db.String(20))
     harvest_date = db.Column(db.Date)
+    storage_note = db.Column(db.Text)
+    license_info = db.Column(db.Text)
+    queue_placement = db.Column(db.String(20))  # aggregate, indoor, outdoor
+    coa_status_text = db.Column(db.Text)
     clean_or_dirty = db.Column(db.String(10))
     indoor_outdoor = db.Column(db.String(20))
     notes = db.Column(db.Text)
+    deleted_at = db.Column(db.DateTime)
+    deleted_by = db.Column(db.String(36), db.ForeignKey("users.id"))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -179,6 +185,8 @@ class PurchaseLot(db.Model):
     milled = db.Column(db.Boolean, default=False)
     location = db.Column(db.String(200))
     notes = db.Column(db.Text)
+    deleted_at = db.Column(db.DateTime)
+    deleted_by = db.Column(db.String(36), db.ForeignKey("users.id"))
 
     run_inputs = db.relationship("RunInput", backref="lot", lazy="dynamic")
 
@@ -217,6 +225,8 @@ class Run(db.Model):
     fuel_consumption = db.Column(db.Float)
     run_type = db.Column(db.String(20), default="standard")  # standard, kief, ld
     notes = db.Column(db.Text)
+    deleted_at = db.Column(db.DateTime)
+    deleted_by = db.Column(db.String(36), db.ForeignKey("users.id"))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     created_by = db.Column(db.String(36), db.ForeignKey("users.id"))
 
@@ -279,6 +289,7 @@ class Run(db.Model):
                 total_grams_in_period = db.session.query(func.sum(dry_expr)).filter(
                     Run.run_date >= e.start_date,
                     Run.run_date <= e.end_date,
+                    Run.deleted_at.is_(None),
                 ).scalar() or 0
                 if total_grams_in_period and total_grams_in_period > 0:
                     op_rate += (e.total_cost or 0) / float(total_grams_in_period)
@@ -472,14 +483,23 @@ class FieldPurchaseSubmission(db.Model):
     supplier = db.relationship("Supplier", foreign_keys=[supplier_id])
     purchase_date = db.Column(db.Date, nullable=False)
     delivery_date = db.Column(db.Date)
+    harvest_date = db.Column(db.Date)
     estimated_potency_pct = db.Column(db.Float)
     price_per_lb = db.Column(db.Float)
+    storage_note = db.Column(db.Text)
+    license_info = db.Column(db.Text)
+    queue_placement = db.Column(db.String(20))  # aggregate, indoor, outdoor
+    coa_status_text = db.Column(db.Text)
     notes = db.Column(db.Text)
 
     # Lot lines as JSON: [{"strain": "...", "weight_lbs": 123.4}, ...]
     lots_json = db.Column(db.Text)
     # Optional field photos (JSON array of relative static paths)
     photos_json = db.Column(db.Text)
+    # Optional categorized photos
+    supplier_photos_json = db.Column(db.Text)
+    biomass_photos_json = db.Column(db.Text)
+    coa_photos_json = db.Column(db.Text)
 
     # Review / approval
     status = db.Column(db.String(20), nullable=False, default="pending")  # pending, approved, rejected
@@ -489,3 +509,34 @@ class FieldPurchaseSubmission(db.Model):
 
     approved_purchase_id = db.Column(db.String(36), db.ForeignKey("purchases.id"))
     approved_purchase = db.relationship("Purchase", foreign_keys=[approved_purchase_id])
+
+
+class LabTest(db.Model):
+    __tablename__ = "lab_tests"
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    supplier_id = db.Column(db.String(36), db.ForeignKey("suppliers.id"), nullable=False)
+    purchase_id = db.Column(db.String(36), db.ForeignKey("purchases.id"))
+    test_date = db.Column(db.Date, nullable=False)
+    test_type = db.Column(db.String(50), nullable=False, default="coa")
+    status_text = db.Column(db.Text)
+    potency_pct = db.Column(db.Float)
+    notes = db.Column(db.Text)
+    result_paths_json = db.Column(db.Text)  # JSON array of files under static/uploads/labs
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_by = db.Column(db.String(36), db.ForeignKey("users.id"))
+
+    supplier = db.relationship("Supplier", foreign_keys=[supplier_id])
+    purchase = db.relationship("Purchase", foreign_keys=[purchase_id])
+
+
+class SupplierAttachment(db.Model):
+    __tablename__ = "supplier_attachments"
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    supplier_id = db.Column(db.String(36), db.ForeignKey("suppliers.id"), nullable=False)
+    document_type = db.Column(db.String(50), nullable=False, default="coa")
+    title = db.Column(db.String(200))
+    file_path = db.Column(db.String(500), nullable=False)
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+    uploaded_by = db.Column(db.String(36), db.ForeignKey("users.id"))
+
+    supplier = db.relationship("Supplier", foreign_keys=[supplier_id])

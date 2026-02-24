@@ -3,10 +3,29 @@
 {% block content %}
 <div class="page-header">
   <h2>Supplier Performance</h2>
+  <div class="btn-group">
+    <a href="{{ url_for('export_csv', entity='suppliers') }}" class="btn btn-secondary">Export Suppliers CSV</a>
+    <a href="{{ url_for('export_csv', entity='strains') }}" class="btn btn-secondary">Export Strains CSV</a>
   {% if current_user.can_edit %}
   <a href="{{ url_for('supplier_new') }}" class="btn btn-primary">+ Add Supplier</a>
   {% endif %}
+  </div>
 </div>
+
+{% if best_supplier_mom %}
+<div class="card" style="margin-bottom:12px;">
+  <div class="card-header"><h3>Best Yielding Supplier (Current Month)</h3></div>
+  <div class="text-sm" style="color:var(--text-secondary);">
+    <strong>{{ best_supplier_mom.name }}</strong> at {{ "{:.2f}".format(best_supplier_mom.current) }}% average overall yield.
+    {% if best_supplier_mom.previous is not none %}
+      Last month {{ "{:.2f}".format(best_supplier_mom.previous) }}%
+      {% if best_supplier_mom.pct_change is not none %}
+        ({{ "{:+.1f}".format(best_supplier_mom.pct_change) }}% MoM).
+      {% endif %}
+    {% endif %}
+  </div>
+</div>
+{% endif %}
 
 {% for ss in supplier_stats %}
 <div class="card">

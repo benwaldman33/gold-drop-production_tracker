@@ -48,6 +48,8 @@ Typical fields include:
 - Wet and dry output for **HTE** and **THCA**
 - Notes
 
+The **Bio in House** field is now auto-populated from inventory (not manually entered).
+
 ### Adding a new run
 1. Go to **Runs** → **+ New Run**
 2. Fill in the run details and outputs.
@@ -71,6 +73,7 @@ These badges help identify runs that may skew cost analytics.
 ### Editing or deleting runs
 - **Edit**: updates calculations again on save.
 - **Delete**: restores lot remaining weights (so inventory stays correct).
+- **Hard Delete (Super Admin)**: permanently removes run records for sandbox cleanup.
 
 ---
 
@@ -125,6 +128,10 @@ Purchase status affects:
 - Whether it is treated as in-transit vs on-hand inventory views
 - If the purchase is linked to a Biomass Pipeline record, the pipeline stage is kept in sync
 
+### Purchase deletion
+- **Delete Purchase** performs a safe (soft) delete.
+- **Hard Delete (Super Admin)** is available for sandbox cleanup when no run history depends on the purchase.
+
 ### Adding lots to an existing purchase
 Open a purchase and use “Add Lot to This Purchase” to add strain lots. Lots create inventory that can be consumed by runs.
 
@@ -160,8 +167,17 @@ What users can do:
 - Max size per image: 20 MB.
 
 What admins can see:
-- In **Settings**, the field purchase submission review table shows photo thumbnails.
+- In **Settings**, pending purchase submissions show categorized thumbnails (supplier/license, biomass, testing/COA).
 - Clicking a thumbnail opens the full image in a new tab.
+
+### Updated mobile purchase form fields
+The field purchase form supports:
+- Harvest date
+- Storage note
+- License information
+- Queue placement (Aggregate, Indoor, Outdoor)
+- Testing/COA status text
+- Optional strain names on lot lines (weight remains required)
 
 ### Validation and error messages
 If something is missing or invalid (bad date, negative weight, invalid stage), you’ll see a clear error message. Fix the input and save again.
@@ -194,6 +210,11 @@ Operational costs are allocated as:
 Suppliers shows performance analytics by farm, including:
 - All-time and recent averages (yield %, THCA %, cost/gram)
 - Last-batch performance snapshot
+- Best-yielding supplier month-over-month spotlight
+
+Supplier profiles also include:
+- Historical lab test records
+- Supplier lab attachments (COAs/results/licenses)
 
 If the “exclude runs missing $/lb” setting is enabled, these analytics ignore runs with incomplete biomass pricing.
 
@@ -222,6 +243,16 @@ Set KPI targets and green/yellow thresholds to match operational goals.
 
 ### Users
 Admins can create users and assign roles. (This manual does not include any credentials.)
+- Disabled users can be reactivated.
+- Permanent delete is available only when no historical audit activity exists.
+
+### Field links/tokens
+- Tokens can be revoked immediately.
+- Revoked or expired tokens can be deleted from the table to keep Settings clean.
+
+### Slack integration
+- Configure webhook URL, signing secret, bot token, and default channel in Settings.
+- Supports outbound notifications and inbound Slack command/interactivity endpoints.
 
 ### Maintenance: Recalculate all run costs
 Use **Recalculate All Run Costs** after:
@@ -255,6 +286,11 @@ Most list screens include **Export CSV**. Exports available include:
 - Purchases
 - Inventory
 - Biomass Pipeline
+- Suppliers
+- Strains
+- Costs
+
+Exports support criteria filters (depending on tab), including date range, supplier/status, strain text, and potency range.
 
 Use exports for reporting, reconciliation, or offline analysis.
 
