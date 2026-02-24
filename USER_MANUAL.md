@@ -156,8 +156,8 @@ Both field intake forms (biomass and purchase request) support optional photo up
 
 What users can do:
 - Attach one or more photos from camera or gallery before submitting.
-- Upload formats: JPG, JPEG, PNG, WEBP.
-- Max size per image: 8 MB.
+- Upload formats: JPG, JPEG, PNG, WEBP, HEIC, HEIF.
+- Max size per image: 20 MB.
 
 What admins can see:
 - In **Settings**, the field purchase submission review table shows photo thumbnails.

@@ -26,7 +26,7 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:/
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
 app.config["FIELD_UPLOAD_DIR"] = os.path.join(app.root_path, "static", "uploads", "field")
-app.config["FIELD_UPLOAD_MAX_BYTES"] = 8 * 1024 * 1024  # 8 MB per image
+app.config["FIELD_UPLOAD_MAX_BYTES"] = 20 * 1024 * 1024  # 20 MB per image
 
 db.init_app(app)
 login_manager = LoginManager(app)
@@ -79,7 +79,7 @@ def _hash_field_token(token: str) -> str:
 
 def _allowed_image_filename(filename: str) -> bool:
     name = (filename or "").lower()
-    return name.endswith((".jpg", ".jpeg", ".png", ".webp"))
+    return name.endswith((".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"))
 
 
 def _file_size_bytes(file_obj) -> int:
@@ -97,19 +97,19 @@ def _save_field_photos(files, prefix: str) -> list[str]:
     """
     upload_dir = app.config["FIELD_UPLOAD_DIR"]
     os.makedirs(upload_dir, exist_ok=True)
-    max_bytes = int(app.config.get("FIELD_UPLOAD_MAX_BYTES", 8 * 1024 * 1024))
+    max_bytes = int(app.config.get("FIELD_UPLOAD_MAX_BYTES", 20 * 1024 * 1024))
 
     saved = []
     for f in files or []:
         if not f or not getattr(f, "filename", ""):
             continue
         if not _allowed_image_filename(f.filename):
-            raise ValueError("Only image files (.jpg, .jpeg, .png, .webp) are allowed.")
+            raise ValueError("Only image files (.jpg, .jpeg, .png, .webp, .heic, .heif) are allowed.")
         size = _file_size_bytes(f)
         if size <= 0:
             continue
         if size > max_bytes:
-            raise ValueError("Each photo must be 8 MB or smaller.")
+            raise ValueError("Each photo must be 20 MB or smaller.")
 
         base = secure_filename(f.filename) or "photo.jpg"
         ext = os.path.splitext(base)[1].lower() or ".jpg"

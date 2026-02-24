@@ -76,8 +76,8 @@ Field users can submit data through secure links for:
 - Purchase requests (including multiple lot lines)
 
 Both field forms support optional photo uploads:
-- Allowed formats: `.jpg`, `.jpeg`, `.png`, `.webp`
-- Max file size: 8 MB per photo
+- Allowed formats: `.jpg`, `.jpeg`, `.png`, `.webp`, `.heic`, `.heif`
+- Max file size: 20 MB per photo
 - Files are stored under `static/uploads/field/` and referenced by relative path in JSON fields
 
 ### Purchases (batch-level financial/receiving record)
