@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Photo Library{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Photo Library</h2>
+</div>
+
+<div class="card">
+  <form method="GET">
+    <div class="form-row-3">
+      <div class="form-group">
+        <label>Search tags/title/path</label>
+        <input type="text" name="q" value="{{ q }}" placeholder="e.g. license, coa, biomass">
+      </div>
+      <div class="form-group">
+        <label>Supplier</label>
+        <select name="supplier_id">
+          <option value="">All suppliers</option>
+          {% for s in suppliers %}
+          <option value="{{ s.id }}" {% if supplier_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Category</label>
+        <select name="category">
+          <option value="">All categories</option>
+          {% for c in categories %}
+          <option value="{{ c }}" {% if category == c %}selected{% endif %}>{{ c.replace('_', ' ').title() }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="form-row-3">
+      <div class="form-group">
+        <label>Purchase</label>
+        <select name="purchase_id">
+          <option value="">All purchases</option>
+          {% for p in purchases %}
+          <option value="{{ p.id }}" {% if purchase_id == p.id %}selected{% endif %}>{{ p.batch_id or p.id }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group"></div>
+      <div class="form-group" style="display:flex;align-items:flex-end;gap:8px;">
+        <button type="submit" class="btn btn-primary">Filter</button>
+        <a href="{{ url_for('photos_library') }}" class="btn btn-secondary">Reset</a>
+      </div>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h3>Assets ({{ assets|length }})</h3>
+  </div>
+  {% if assets %}
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;">
+    {% for a in assets %}
+    <div style="border:1px solid var(--dark-border);border-radius:10px;padding:10px;background:var(--dark);">
+      {% set lower_path = (a.file_path or '')|lower %}
+      <a href="{{ url_for('static', filename=a.file_path) }}" target="_blank" rel="noopener">
+        {% if lower_path.endswith('.pdf') %}
+        <div style="width:100%;height:130px;display:flex;align-items:center;justify-content:center;border-radius:8px;border:1px solid var(--dark-border);background:#111827;color:#fbbf24;font-weight:700;">
+          PDF
+        </div>
+        {% else %}
+        <img src="{{ url_for('static', filename=a.file_path) }}" alt="asset" style="width:100%;height:130px;object-fit:cover;border-radius:8px;border:1px solid var(--dark-border);">
+        {% endif %}
+      </a>
+      <div class="text-sm" style="margin-top:8px;color:var(--text-secondary);">
+        <div><strong style="color:var(--text-primary);">{{ a.title or 'Untitled' }}</strong></div>
+        <div>Category: {{ a.category }}</div>
+        <div>Source: {{ a.source_type }}</div>
+        <div>Tags: {{ a.tags or '—' }}</div>
+        <div class="text-mono" style="font-size:0.72rem;word-break:break-all;">{{ a.file_path }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="cell-muted">No assets found for the selected filters.</p>
+  {% endif %}
+</div>
+{% endblock %}

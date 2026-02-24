@@ -540,3 +540,21 @@ class SupplierAttachment(db.Model):
     uploaded_by = db.Column(db.String(36), db.ForeignKey("users.id"))
 
     supplier = db.relationship("Supplier", foreign_keys=[supplier_id])
+
+
+class PhotoAsset(db.Model):
+    __tablename__ = "photo_assets"
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    supplier_id = db.Column(db.String(36), db.ForeignKey("suppliers.id"))
+    purchase_id = db.Column(db.String(36), db.ForeignKey("purchases.id"))
+    submission_id = db.Column(db.String(36), db.ForeignKey("field_purchase_submissions.id"))
+    source_type = db.Column(db.String(50), nullable=False, default="manual")  # field_submission, supplier_attachment, lab_test, purchase_upload
+    category = db.Column(db.String(50), nullable=False, default="other")  # supplier_license, biomass, coa, lab_result, supplier_doc
+    title = db.Column(db.String(200))
+    tags = db.Column(db.String(500))  # comma-separated searchable tags
+    file_path = db.Column(db.String(500), nullable=False)
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+    uploaded_by = db.Column(db.String(36), db.ForeignKey("users.id"))
+
+    supplier = db.relationship("Supplier", foreign_keys=[supplier_id])
+    purchase = db.relationship("Purchase", foreign_keys=[purchase_id])

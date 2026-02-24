@@ -86,6 +86,7 @@ Field purchase intake requires/accepts:
 - Queue placement (`aggregate`, `indoor`, `outdoor`)
 - Testing/COA status text
 - Separate image categories for supplier/license docs, biomass photos, and testing/COA photos
+- Lot line strain and lot line weight are optional in field intake (at least one lot row can still be submitted for context)
 
 ### Purchases (batch-level financial/receiving record)
 Represents the committed/delivered batch. Contains:
@@ -174,6 +175,15 @@ Review requirements:
 - Reviewed submissions are retained in a separate history table.
 - Admin review table displays categorized submission photo thumbnails when present.
 - Clicking a thumbnail opens the full image in a new tab.
+- On approval, supplier/license photos are promoted into supplier attachments for persistent supplier document review.
+- On approval, biomass/COA photos are retained as purchase-linked audit media.
+
+Photo library requirements:
+- The app provides a central photo/media library view.
+- Library supports filtering by supplier, purchase, and category.
+- Library supports free-text search against tags/title/path metadata.
+- Assets are indexed from field submissions, supplier attachments, and lab test uploads.
+- PDFs should remain accessible in the library with non-image preview handling.
 
 Delete/cleanup requirements:
 - Runs and purchases support soft delete for operational safety.
@@ -298,6 +308,14 @@ Critical requirements:
 - Biomass create/update/delete actions must be logged.
 - Purchase create/update/delete actions must be logged.
 - Purchases created/updated indirectly via Biomass Pipeline must also generate purchase audit log entries indicating source = biomass_pipeline and biomass_id.
+- Purchase and supplier media must remain traceable from source submission/document to final record context.
+
+## Maintenance & Backfill Requirements
+- Super Admin can run a one-time historical media backfill from Settings.
+- Backfill processes approved field submissions and:
+  - creates missing supplier attachments for supplier/license images,
+  - creates searchable media index records for supplier/purchase audit photos.
+- Backfill must be idempotent (safe to re-run without duplicating records).
 
 ---
 

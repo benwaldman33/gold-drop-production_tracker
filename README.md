@@ -42,6 +42,8 @@ Open http://localhost:5000 in your browser.
 - **Field Purchase Intake Enhancements** — Harvest date, storage note, license info, queue placement, testing/COA status, and categorized photo uploads
 - **Soft Delete + Admin Hard Delete** — Runs and purchases support safe delete plus super-admin permanent cleanup
 - **Historical Lab Tracking** — Supplier-level lab test history and file attachments (including PDF lab docs)
+- **Photo Library** — Central searchable media index with supplier/purchase/category/tag filters
+- **Photo Audit Linkage** — Approved field photos are auto-linked to supplier docs (license) and purchase audit records (biomass/COA)
 - **Advanced Exports** — Date range and criteria filters (supplier/status/potency/strain) across operational tabs
 - **Slack Integration** — Outbound notifications and inbound command endpoints for operational visibility
 - **Supplier Performance** — All-time, 90-day, and last-batch analytics per farm
@@ -160,6 +162,7 @@ The system will:
 - **Biomass Pipeline** → **Purchase** (one-to-one once committed/delivered/cancelled)
 - **Field submissions** may include photo arrays stored as JSON paths to files in `static/uploads/field/`
 - **Lab tests / supplier attachments** are stored as file references under `static/uploads/labs/`
+- **Photo assets** are indexed in `photo_assets` for cross-screen search/filter and audit traceability
 - **Cost Entries** are allocated across total dry grams in their date ranges
 - **Lots** → **Run Inputs** → **Runs** (many-to-many through run_inputs)
 - Lot `remaining_weight_lbs` is automatically decremented when used in a run

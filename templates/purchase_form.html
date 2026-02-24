@@ -200,6 +200,24 @@
 </div>
 {% endif %}
 
+{% if purchase and purchase_audit_photos %}
+<div class="card">
+  <div class="card-header"><h3>Purchase Audit Photos</h3></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+    {% for a in purchase_audit_photos %}
+    <a href="{{ url_for('static', filename=a.file_path) }}" target="_blank" rel="noopener"
+       title="{{ a.category }}{% if a.tags %} · {{ a.tags }}{% endif %}">
+      <img src="{{ url_for('static', filename=a.file_path) }}" alt="purchase audit photo"
+           style="width:90px;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--dark-border);">
+    </a>
+    {% endfor %}
+  </div>
+  <p class="text-sm" style="color:var(--text-muted);margin-top:8px;">
+    Field-submitted biomass/COA photos are retained here for audit history.
+  </p>
+</div>
+{% endif %}
+
 {% endblock %}
 {% block scripts %}
 <script>

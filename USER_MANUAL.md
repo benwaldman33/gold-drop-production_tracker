@@ -22,6 +22,7 @@ Use the left sidebar:
 - **Biomass Pipeline**: pre-purchase pipeline tracking (declared → testing → committed → delivered/cancelled)
 - **Suppliers**: supplier performance analytics
 - **Strains**: strain performance analytics
+- **Photo Library**: searchable media across supplier/purchase/field contexts
 - **Settings** (Super Admin only): system parameters, KPIs, users, maintenance actions
 - **Import**: CSV import review + confirm
 
@@ -177,7 +178,8 @@ The field purchase form supports:
 - License information
 - Queue placement (Aggregate, Indoor, Outdoor)
 - Testing/COA status text
-- Optional strain names on lot lines (weight remains required)
+- Optional strain names on lot lines
+- Optional lot weights on lot lines
 
 ### Validation and error messages
 If something is missing or invalid (bad date, negative weight, invalid stage), you’ll see a clear error message. Fix the input and save again.
@@ -215,6 +217,7 @@ Suppliers shows performance analytics by farm, including:
 Supplier profiles also include:
 - Historical lab test records
 - Supplier lab attachments (COAs/results/licenses)
+- Field-approved supplier/license photos are automatically added into supplier attachments
 
 If the “exclude runs missing $/lb” setting is enabled, these analytics ignore runs with incomplete biomass pricing.
 
@@ -261,6 +264,14 @@ Use **Recalculate All Run Costs** after:
 - correcting biomass pricing
 
 This recomputes cost-per-gram fields for all historical runs using current rules.
+
+### Maintenance: Historical photo backfill
+Use **Run Photo Backfill** if you have older approved field submissions from before photo indexing was enabled.
+
+What it does:
+- Adds missing supplier attachments for supplier/license photos from approved field submissions.
+- Creates searchable photo-library records for supplier, biomass, and COA images tied to those submissions.
+- Safe to run more than once (deduplicates existing records).
 
 ---
 

@@ -6,10 +6,11 @@
 </div>
 
 <!-- System Settings -->
-<div class="card">
+<div class="card" id="settings-system">
   <div class="card-header"><h3>Operational Parameters</h3></div>
   <form method="POST">
     <input type="hidden" name="form_type" value="system">
+    <input type="hidden" name="return_to" value="#settings-system">
     <div class="form-row-3">
       <div class="form-group">
         <label>Potency Rate ($/lb/%pt)</label>
@@ -89,10 +90,11 @@
 </div>
 
 <!-- KPI Targets -->
-<div class="card">
+<div class="card" id="settings-kpis">
   <div class="card-header"><h3>KPI Targets</h3></div>
   <form method="POST">
     <input type="hidden" name="form_type" value="kpi">
+    <input type="hidden" name="return_to" value="#settings-kpis">
     <div class="table-wrap">
       <table>
         <thead>
@@ -136,7 +138,7 @@
 </div>
 
 <!-- User Management -->
-<div class="card">
+<div class="card" id="settings-users">
   <div class="card-header"><h3>Users</h3></div>
   <div class="table-wrap mb-2">
     <table>
@@ -162,6 +164,7 @@
               <span class="text-sm" style="color:var(--text-muted);">Current</span>
             {% else %}
               <form method="POST" action="{{ url_for('user_toggle_active', user_id=u.id) }}" style="display:inline;" onsubmit="return confirm('Are you sure? This will {{ 'disable' if u.is_active_user else 'activate' }} the user account.');">
+                <input type="hidden" name="return_to" value="#settings-users">
                 {% if u.is_active_user %}
                   <button type="submit" class="btn btn-danger btn-sm">Disable</button>
                 {% else %}
@@ -169,6 +172,7 @@
                 {% endif %}
               </form>
               <form method="POST" action="{{ url_for('user_delete', user_id=u.id) }}" style="display:inline;" onsubmit="return confirm('Permanently delete this user? This only works if no historical activity exists.');">
+                <input type="hidden" name="return_to" value="#settings-users">
                 <button type="submit" class="btn btn-secondary btn-sm">Delete</button>
               </form>
             {% endif %}
@@ -181,6 +185,7 @@
 
   <form method="POST">
     <input type="hidden" name="form_type" value="user">
+    <input type="hidden" name="return_to" value="#settings-users">
     <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:16px 0 12px;">Add New User</h4>
     <div class="form-row-3">
       <div class="form-group">
@@ -209,13 +214,14 @@
 </div>
 
 <!-- Password Management -->
-<div class="card">
+<div class="card" id="settings-passwords">
   <div class="card-header"><h3>Password Management</h3></div>
 
   <div style="padding:16px;">
     <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:0 0 12px;">Change My Password</h4>
     <form method="POST" style="display:grid;grid-template-columns: 1fr 1fr 1fr auto; gap:10px; align-items:end; margin-bottom:18px;">
       <input type="hidden" name="form_type" value="password_self">
+      <input type="hidden" name="return_to" value="#settings-passwords">
       <div class="form-group" style="margin:0;">
         <label>Current Password</label>
         <input type="password" name="current_password" required>
@@ -234,6 +240,7 @@
     <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:0 0 12px;">Set Password for a User</h4>
     <form method="POST" style="display:grid;grid-template-columns: 220px 1fr 1fr auto; gap:10px; align-items:end;">
       <input type="hidden" name="form_type" value="password_user">
+      <input type="hidden" name="return_to" value="#settings-passwords">
       <div class="form-group" style="margin:0;">
         <label>User</label>
         <select name="user_id" required>
@@ -260,7 +267,7 @@
 </div>
 
 <!-- Field Intake -->
-<div class="card">
+<div class="card" id="settings-field-intake">
   <div class="card-header"><h3>Field Intake (Mobile Links + Submissions)</h3></div>
   <div style="padding:16px;">
     {% if last_field_link %}
@@ -309,6 +316,7 @@
 
     <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:0 0 12px;">Create Field Access Link</h4>
     <form method="POST" action="{{ url_for('field_token_create') }}" style="display:grid;grid-template-columns: 1fr 140px auto; gap:10px; align-items:end; margin-bottom:14px;">
+      <input type="hidden" name="return_to" value="#settings-field-intake">
       <div class="form-group" style="margin:0;">
         <label>Label</label>
         <input type="text" name="label" placeholder="e.g. Field Purchasers (SMS link)" required>
@@ -347,11 +355,13 @@
             <td>
               {% if not t.revoked_at %}
               <form method="POST" action="{{ url_for('field_token_revoke', token_id=t.id) }}" style="display:inline;" onsubmit="return confirm('Revoke this token? Existing links will stop working.');">
+                <input type="hidden" name="return_to" value="#settings-field-intake">
                 <button type="submit" class="btn btn-danger btn-sm">Revoke</button>
               </form>
               {% endif %}
               {% if t.revoked_at or (t.expires_at and t.expires_at < server_now) %}
               <form method="POST" action="{{ url_for('field_token_delete', token_id=t.id) }}" style="display:inline;" onsubmit="return confirm('Delete this revoked/expired token record?');">
+                <input type="hidden" name="return_to" value="#settings-field-intake">
                 <button type="submit" class="btn btn-secondary btn-sm">Delete</button>
               </form>
               {% endif %}
@@ -427,9 +437,11 @@
             <td style="white-space:nowrap;">
               {% if s.status == 'pending' %}
                 <form method="POST" action="{{ url_for('field_submission_approve', submission_id=s.id) }}" style="display:inline;" onsubmit="return confirm('Approve this submission and create a Purchase?');">
+                  <input type="hidden" name="return_to" value="#settings-field-intake">
                   <button type="submit" class="btn btn-primary btn-sm">Approve</button>
                 </form>
                 <form method="POST" action="{{ url_for('field_submission_reject', submission_id=s.id) }}" style="display:inline;" onsubmit="return confirm('Reject this submission?');">
+                  <input type="hidden" name="return_to" value="#settings-field-intake">
                   <button type="submit" class="btn btn-danger btn-sm">Reject</button>
                 </form>
               {% elif s.approved_purchase %}
@@ -480,10 +492,11 @@
 </div>
 
 <!-- Slack Integration -->
-<div class="card">
+<div class="card" id="settings-slack">
   <div class="card-header"><h3>Slack Integration</h3></div>
   <form method="POST">
     <input type="hidden" name="form_type" value="slack">
+    <input type="hidden" name="return_to" value="#settings-slack">
     <div class="form-group">
       <label style="display:flex;align-items:center;gap:8px; text-transform:none; letter-spacing:0; font-size:0.85rem; color:var(--text-secondary);">
         <input type="checkbox" name="slack_enabled" {% if system_settings.get('slack_enabled', '0') in ('1','true','yes','on') %}checked{% endif %}>
@@ -520,7 +533,7 @@
 </div>
 
 <!-- Maintenance -->
-<div class="card">
+<div class="card" id="settings-maintenance">
   <div class="card-header"><h3>Maintenance</h3></div>
   <div style="background:var(--dark);border:1px solid var(--dark-border);border-radius:var(--radius);padding:16px;">
     <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Recalculate Run Costs</h4>
@@ -530,7 +543,19 @@
     </p>
     <form method="POST" action="{{ url_for('settings_recalculate_costs') }}"
           onsubmit="return confirm('Recalculate cost-per-gram for ALL runs? This may take a moment.');">
+      <input type="hidden" name="return_to" value="#settings-maintenance">
       <button type="submit" class="btn btn-secondary btn-sm">Recalculate All Run Costs</button>
+    </form>
+  </div>
+  <div style="background:var(--dark);border:1px solid var(--dark-border);border-radius:var(--radius);padding:16px;margin-top:12px;">
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Backfill Historical Photo Records</h4>
+    <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:12px;">
+      One-time migration for historical approved field submissions. Creates Supplier Attachments for supplier/license photos and indexes all related images into the Photo Library for searchable audit history.
+    </p>
+    <form method="POST" action="{{ url_for('settings_backfill_photo_assets') }}"
+          onsubmit="return confirm('Run one-time photo backfill for historical approved submissions? This can be run again safely if needed.');">
+      <input type="hidden" name="return_to" value="#settings-maintenance">
+      <button type="submit" class="btn btn-secondary btn-sm">Run Photo Backfill</button>
     </form>
   </div>
 </div>

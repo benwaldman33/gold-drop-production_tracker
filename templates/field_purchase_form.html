@@ -110,13 +110,13 @@
           <div id="lots-container">
             <div class="lot-row" style="grid-template-columns:1fr 120px 40px;">
               <input type="text" name="lot_strains[]" placeholder="Strain name (optional)">
-              <input type="number" name="lot_weights[]" placeholder="Lbs" step="0.1" required>
+              <input type="number" name="lot_weights[]" placeholder="Lbs (optional)" step="0.1">
               <button type="button" class="remove-lot" onclick="removeLotRow(this)">✕</button>
             </div>
           </div>
           <button type="button" class="btn btn-secondary btn-sm mt-2" onclick="addLot()">+ Add Lot</button>
           <div class="text-sm" style="color:var(--text-muted); margin-top:6px;">
-            Add at least one strain lot with weight.
+            Lot strain and pounds are both optional for field submission.
           </div>
         </div>
 
@@ -185,7 +185,7 @@
       row.style.gridTemplateColumns = '1fr 120px 40px';
       row.innerHTML = `
         <input type="text" name="lot_strains[]" placeholder="Strain name (optional)">
-        <input type="number" name="lot_weights[]" placeholder="Lbs" step="0.1" required>
+        <input type="number" name="lot_weights[]" placeholder="Lbs (optional)" step="0.1">
         <button type="button" class="remove-lot" onclick="removeLotRow(this)">✕</button>
       `;
       container.appendChild(row);

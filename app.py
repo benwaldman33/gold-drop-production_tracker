@@ -23,7 +23,7 @@ from werkzeug.utils import secure_filename
 
 from models import (db, User, Supplier, Purchase, PurchaseLot, Run, RunInput,
                     KpiTarget, SystemSetting, AuditLog, BiomassAvailability, CostEntry,
-                    FieldAccessToken, FieldPurchaseSubmission, LabTest, SupplierAttachment)
+                    FieldAccessToken, FieldPurchaseSubmission, LabTest, SupplierAttachment, PhotoAsset)
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "gold-drop-dev-key-change-in-prod")
@@ -227,6 +227,61 @@ def _save_lab_files(files, prefix: str) -> list[str]:
         validator=_allowed_lab_filename,
         error_message="Only lab files (.jpg, .jpeg, .png, .webp, .heic, .heif, .pdf) are allowed.",
     )
+
+
+def _json_paths(value) -> list[str]:
+    try:
+        items = json.loads(value or "[]")
+        return [p for p in items if isinstance(p, str) and p.strip()]
+    except Exception:
+        return []
+
+
+def _create_photo_asset(
+    file_path: str,
+    *,
+    source_type: str,
+    category: str,
+    tags: list[str] | None = None,
+    title: str | None = None,
+    supplier_id: str | None = None,
+    purchase_id: str | None = None,
+    submission_id: str | None = None,
+    uploaded_by: str | None = None,
+) -> None:
+    db.session.add(PhotoAsset(
+        file_path=file_path,
+        source_type=source_type,
+        category=category,
+        tags=",".join([t.strip().lower() for t in (tags or []) if t and t.strip()]) or None,
+        title=title,
+        supplier_id=supplier_id,
+        purchase_id=purchase_id,
+        submission_id=submission_id,
+        uploaded_by=uploaded_by,
+    ))
+
+
+def _photo_asset_exists(*, file_path: str, source_type: str, category: str, submission_id: str | None = None, supplier_id: str | None = None, purchase_id: str | None = None) -> bool:
+    q = PhotoAsset.query.filter(
+        PhotoAsset.file_path == file_path,
+        PhotoAsset.source_type == source_type,
+        PhotoAsset.category == category,
+    )
+    if submission_id:
+        q = q.filter(PhotoAsset.submission_id == submission_id)
+    if supplier_id:
+        q = q.filter(PhotoAsset.supplier_id == supplier_id)
+    if purchase_id:
+        q = q.filter(PhotoAsset.purchase_id == purchase_id)
+    return q.first() is not None
+
+
+def _supplier_attachment_exists(*, supplier_id: str, file_path: str) -> bool:
+    return SupplierAttachment.query.filter(
+        SupplierAttachment.supplier_id == supplier_id,
+        SupplierAttachment.file_path == file_path,
+    ).first() is not None
 
 
 def _get_field_token_value() -> str | None:
@@ -473,6 +528,23 @@ def _ensure_sqlite_schema():
             "uploaded_by VARCHAR(36)"
             ")"
         ))
+    # New table: photo_assets (searchable media library)
+    if not has_table("photo_assets"):
+        db.session.execute(text(
+            "CREATE TABLE photo_assets ("
+            "id VARCHAR(36) PRIMARY KEY, "
+            "supplier_id VARCHAR(36), "
+            "purchase_id VARCHAR(36), "
+            "submission_id VARCHAR(36), "
+            "source_type VARCHAR(50) NOT NULL, "
+            "category VARCHAR(50) NOT NULL, "
+            "title VARCHAR(200), "
+            "tags VARCHAR(500), "
+            "file_path VARCHAR(500) NOT NULL, "
+            "uploaded_at DATETIME, "
+            "uploaded_by VARCHAR(36)"
+            ")"
+        ))
 
     db.session.commit()
 
@@ -690,15 +762,16 @@ def field_purchase_new(token):
                 w = (w or "").strip()
                 if not strain and not w:
                     continue
-                try:
-                    weight = float(w)
-                except ValueError:
-                    raise ValueError("Lot weight must be a number.")
-                if weight <= 0:
-                    raise ValueError("Lot weight must be greater than 0.")
+                if w:
+                    try:
+                        weight = float(w)
+                    except ValueError:
+                        raise ValueError("Lot weight must be a number.")
+                    if weight <= 0:
+                        raise ValueError("Lot weight must be greater than 0.")
+                else:
+                    weight = None
                 lots.append({"strain": strain or None, "weight_lbs": weight})
-            if not lots:
-                raise ValueError("Add at least one lot/strain with weight.")
 
             supplier_photos = request.files.getlist("supplier_photos")
             biomass_photos = request.files.getlist("biomass_photos")
@@ -744,7 +817,7 @@ def field_purchase_new(token):
                 user_id=None,
             )
             db.session.commit()
-            notify_slack(f"New field purchase submission from {sup.name}: {len(lots)} lot(s), pending review.")
+            notify_slack(f"New field purchase submission from {sup.name}: {len(lots)} lot row(s), pending review.")
             return redirect(url_for("field_thanks", kind="purchase", t=_get_field_token_value()))
         except ValueError as e:
             db.session.rollback()
@@ -1394,9 +1467,13 @@ def purchase_edit(purchase_id):
     if request.method == "POST":
         return _save_purchase(purchase)
     suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
+    purchase_audit_photos = PhotoAsset.query.filter(
+        PhotoAsset.purchase_id == purchase.id,
+        PhotoAsset.source_type == "field_submission",
+    ).order_by(PhotoAsset.uploaded_at.desc()).all()
     rate = SystemSetting.get_float("potency_rate", 1.50)
     return render_template("purchase_form.html", purchase=purchase, suppliers=suppliers,
-                           rate=rate, today=date.today())
+                           rate=rate, today=date.today(), purchase_audit_photos=purchase_audit_photos)
 
 
 def _save_purchase(existing):
@@ -1504,16 +1581,28 @@ def _save_purchase(existing):
         flash(str(e), "error")
         suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
         rate = SystemSetting.get_float("potency_rate", 1.50)
+        purchase_audit_photos = []
+        if existing:
+            purchase_audit_photos = PhotoAsset.query.filter(
+                PhotoAsset.purchase_id == existing.id,
+                PhotoAsset.source_type == "field_submission",
+            ).order_by(PhotoAsset.uploaded_at.desc()).all()
         return render_template("purchase_form.html", purchase=existing, suppliers=suppliers,
-                               rate=rate, today=date.today())
+                               rate=rate, today=date.today(), purchase_audit_photos=purchase_audit_photos)
     except Exception:
         db.session.rollback()
         app.logger.exception("Error saving purchase")
         flash("Error saving purchase. Please check your inputs and try again.", "error")
         suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
         rate = SystemSetting.get_float("potency_rate", 1.50)
+        purchase_audit_photos = []
+        if existing:
+            purchase_audit_photos = PhotoAsset.query.filter(
+                PhotoAsset.purchase_id == existing.id,
+                PhotoAsset.source_type == "field_submission",
+            ).order_by(PhotoAsset.uploaded_at.desc()).all()
         return render_template("purchase_form.html", purchase=existing, suppliers=suppliers,
-                               rate=rate, today=date.today())
+                               rate=rate, today=date.today(), purchase_audit_photos=purchase_audit_photos)
 
 
 @app.route("/purchases/<purchase_id>/delete", methods=["POST"])
@@ -1776,6 +1865,17 @@ def supplier_edit(sid):
                 created_by=current_user.id,
             )
             db.session.add(t)
+            for path in saved_paths:
+                _create_photo_asset(
+                    path,
+                    source_type="lab_test",
+                    category="lab_result",
+                    tags=["lab", "test", "supplier"],
+                    title=f"Lab test {test_date.isoformat()}",
+                    supplier_id=s.id,
+                    purchase_id=t.purchase_id,
+                    uploaded_by=current_user.id,
+                )
             log_audit("create", "lab_test", t.id, details=json.dumps({"supplier_id": s.id, "files": len(saved_paths)}))
             db.session.commit()
             flash("Lab test entry added.", "success")
@@ -1796,6 +1896,15 @@ def supplier_edit(sid):
                     uploaded_by=current_user.id,
                 )
                 db.session.add(a)
+                _create_photo_asset(
+                    path,
+                    source_type="supplier_attachment",
+                    category="supplier_doc",
+                    tags=["supplier", doc_type],
+                    title=title or f"Supplier {doc_type}",
+                    supplier_id=s.id,
+                    uploaded_by=current_user.id,
+                )
             log_audit("create", "supplier_attachment", s.id, details=json.dumps({"count": len(saved_paths), "type": doc_type}))
             db.session.commit()
             flash("Supplier attachments uploaded.", "success")
@@ -1823,6 +1932,12 @@ def supplier_lab_test_delete(sid, test_id):
     if not t or t.supplier_id != sid:
         flash("Lab test record not found.", "error")
         return redirect(url_for("supplier_edit", sid=sid))
+    for path in _json_paths(t.result_paths_json):
+        PhotoAsset.query.filter(
+            PhotoAsset.file_path == path,
+            PhotoAsset.supplier_id == sid,
+            PhotoAsset.source_type == "lab_test",
+        ).delete(synchronize_session=False)
     log_audit("delete", "lab_test", t.id, details=json.dumps({"supplier_id": sid}))
     db.session.delete(t)
     db.session.commit()
@@ -1837,11 +1952,56 @@ def supplier_attachment_delete(sid, attachment_id):
     if not a or a.supplier_id != sid:
         flash("Attachment not found.", "error")
         return redirect(url_for("supplier_edit", sid=sid))
+    PhotoAsset.query.filter(
+        PhotoAsset.file_path == a.file_path,
+        PhotoAsset.supplier_id == sid,
+        PhotoAsset.source_type == "supplier_attachment",
+    ).delete(synchronize_session=False)
     log_audit("delete", "supplier_attachment", a.id, details=json.dumps({"supplier_id": sid}))
     db.session.delete(a)
     db.session.commit()
     flash("Attachment deleted.", "success")
     return redirect(url_for("supplier_edit", sid=sid))
+
+
+@app.route("/photos")
+@login_required
+def photos_library():
+    q = (request.args.get("q") or "").strip()
+    supplier_id = (request.args.get("supplier_id") or "").strip()
+    purchase_id = (request.args.get("purchase_id") or "").strip()
+    category = (request.args.get("category") or "").strip()
+
+    query = PhotoAsset.query
+    if supplier_id:
+        query = query.filter(PhotoAsset.supplier_id == supplier_id)
+    if purchase_id:
+        query = query.filter(PhotoAsset.purchase_id == purchase_id)
+    if category:
+        query = query.filter(PhotoAsset.category == category)
+    if q:
+        like = f"%{q.lower()}%"
+        query = query.filter(
+            func.lower(func.coalesce(PhotoAsset.tags, "")).like(like) |
+            func.lower(func.coalesce(PhotoAsset.title, "")).like(like) |
+            func.lower(func.coalesce(PhotoAsset.file_path, "")).like(like)
+        )
+
+    assets = query.order_by(PhotoAsset.uploaded_at.desc()).limit(400).all()
+    suppliers = Supplier.query.order_by(Supplier.name.asc()).all()
+    purchases = Purchase.query.filter(Purchase.deleted_at.is_(None)).order_by(Purchase.purchase_date.desc()).limit(300).all()
+    categories = [row[0] for row in db.session.query(PhotoAsset.category).distinct().order_by(PhotoAsset.category.asc()).all() if row and row[0]]
+    return render_template(
+        "photos.html",
+        assets=assets,
+        suppliers=suppliers,
+        purchases=purchases,
+        q=q,
+        supplier_id=supplier_id,
+        purchase_id=purchase_id,
+        category=category,
+        categories=categories,
+    )
 
 
 # ── Strain Performance ───────────────────────────────────────────────────────
@@ -1984,7 +2144,7 @@ def settings():
                 else:
                     if len(password) < 8:
                         flash("Password must be at least 8 characters.", "error")
-                        return redirect(url_for("settings"))
+                        return _settings_redirect()
                     u = User(username=username, display_name=display, role=role)
                     u.set_password(password)
                     db.session.add(u)
@@ -1998,13 +2158,13 @@ def settings():
 
             if not current_user.check_password(current_pw):
                 flash("Current password is incorrect.", "error")
-                return redirect(url_for("settings"))
+                return _settings_redirect()
             if len(new_pw) < 8:
                 flash("New password must be at least 8 characters.", "error")
-                return redirect(url_for("settings"))
+                return _settings_redirect()
             if new_pw != confirm_pw:
                 flash("New password and confirmation do not match.", "error")
-                return redirect(url_for("settings"))
+                return _settings_redirect()
 
             current_user.set_password(new_pw)
             log_audit("password_change", "user", current_user.id, details=json.dumps({"username": current_user.username}))
@@ -2018,13 +2178,13 @@ def settings():
             u = db.session.get(User, user_id) if user_id else None
             if not u:
                 flash("User not found.", "error")
-                return redirect(url_for("settings"))
+                return _settings_redirect()
             if len(new_pw) < 8:
                 flash("New password must be at least 8 characters.", "error")
-                return redirect(url_for("settings"))
+                return _settings_redirect()
             if new_pw != confirm_pw:
                 flash("New password and confirmation do not match.", "error")
-                return redirect(url_for("settings"))
+                return _settings_redirect()
 
             u.set_password(new_pw)
             log_audit("password_reset", "user", u.id, details=json.dumps({"username": u.username}))
@@ -2052,7 +2212,7 @@ def settings():
             db.session.commit()
             flash("Slack integration settings updated.", "success")
 
-        return redirect(url_for("settings"))
+        return _settings_redirect()
 
     system_settings = {s.key: s.value for s in SystemSetting.query.all()}
     kpis = KpiTarget.query.all()
@@ -2113,6 +2273,16 @@ def settings():
     )
 
 
+def _settings_redirect():
+    anchor = (request.form.get("return_to") or request.args.get("return_to") or "").strip()
+    target = url_for("settings")
+    if anchor:
+        if not anchor.startswith("#"):
+            anchor = f"#{anchor.lstrip('#')}"
+        target = f"{target}{anchor}"
+    return redirect(target)
+
+
 @app.route("/settings/users/<user_id>/toggle_active", methods=["POST"])
 @admin_required
 def user_toggle_active(user_id):
@@ -2123,19 +2293,19 @@ def user_toggle_active(user_id):
     u = db.session.get(User, user_id)
     if not u:
         flash("User not found.", "error")
-        return redirect(url_for("settings"))
+        return _settings_redirect()
 
     # Prevent self-disable (avoid locking yourself out)
     if current_user.id == u.id:
         flash("You cannot disable your own account.", "error")
-        return redirect(url_for("settings"))
+        return _settings_redirect()
 
     # Prevent disabling the last active super admin
     if u.role == "super_admin" and u.is_active_user:
         active_admins = User.query.filter_by(role="super_admin", is_active_user=True).count()
         if active_admins <= 1:
             flash("You cannot disable the last active Super Admin.", "error")
-            return redirect(url_for("settings"))
+            return _settings_redirect()
 
     u.is_active_user = not bool(u.is_active_user)
     log_audit(
@@ -2146,7 +2316,7 @@ def user_toggle_active(user_id):
     )
     db.session.commit()
     flash(f"User {'activated' if u.is_active_user else 'disabled'}.", "success")
-    return redirect(url_for("settings"))
+    return _settings_redirect()
 
 
 @app.route("/settings/field_tokens/new", methods=["POST"])
@@ -2155,7 +2325,7 @@ def field_token_create():
     label = (request.form.get("label") or "").strip()
     if not label:
         flash("Token label is required.", "error")
-        return redirect(url_for("settings"))
+        return _settings_redirect()
 
     days_raw = (request.form.get("expires_days") or "").strip()
     try:
@@ -2187,7 +2357,7 @@ def field_token_create():
     )
     notify_slack(f"Field token created: {label} (expires in {expires_days} days).")
     flash("Field link created. Scroll down to copy/share it.", "success")
-    return redirect(url_for("settings"))
+    return _settings_redirect()
 
 
 @app.route("/settings/field_tokens/<token_id>/revoke", methods=["POST"])
@@ -2196,13 +2366,13 @@ def field_token_revoke(token_id):
     tok = db.session.get(FieldAccessToken, token_id)
     if not tok:
         flash("Token not found.", "error")
-        return redirect(url_for("settings"))
+        return _settings_redirect()
     tok.revoked_at = datetime.utcnow()
     log_audit("revoke", "field_access_token", tok.id, details=json.dumps({"label": tok.label}))
     db.session.commit()
     notify_slack(f"Field token revoked: {tok.label}.")
     flash("Token revoked.", "success")
-    return redirect(url_for("settings"))
+    return _settings_redirect()
 
 
 @app.route("/settings/field_tokens/<token_id>/delete", methods=["POST"])
@@ -2211,15 +2381,15 @@ def field_token_delete(token_id):
     tok = db.session.get(FieldAccessToken, token_id)
     if not tok:
         flash("Token not found.", "error")
-        return redirect(url_for("settings"))
+        return _settings_redirect()
     if tok.revoked_at is None and (tok.expires_at is None or tok.expires_at >= datetime.utcnow()):
         flash("Only revoked or expired tokens can be deleted.", "error")
-        return redirect(url_for("settings"))
+        return _settings_redirect()
     log_audit("delete", "field_access_token", tok.id, details=json.dumps({"label": tok.label}))
     db.session.delete(tok)
     db.session.commit()
     flash("Token record deleted.", "success")
-    return redirect(url_for("settings"))
+    return _settings_redirect()
 
 
 @app.route("/settings/users/<user_id>/delete", methods=["POST"])
@@ -2228,24 +2398,24 @@ def user_delete(user_id):
     u = db.session.get(User, user_id)
     if not u:
         flash("User not found.", "error")
-        return redirect(url_for("settings"))
+        return _settings_redirect()
     if current_user.id == u.id:
         flash("You cannot delete your own account.", "error")
-        return redirect(url_for("settings"))
+        return _settings_redirect()
     if u.role == "super_admin":
         active_admins = User.query.filter_by(role="super_admin", is_active_user=True).count()
         if u.is_active_user and active_admins <= 1:
             flash("You cannot delete the last active Super Admin.", "error")
-            return redirect(url_for("settings"))
+            return _settings_redirect()
     has_audit = AuditLog.query.filter_by(user_id=u.id).first() is not None
     if has_audit:
         flash("User has historical activity and cannot be hard-deleted. Disable instead.", "error")
-        return redirect(url_for("settings"))
+        return _settings_redirect()
     log_audit("delete", "user", u.id, details=json.dumps({"username": u.username, "role": u.role}))
     db.session.delete(u)
     db.session.commit()
     flash("User permanently deleted.", "success")
-    return redirect(url_for("settings"))
+    return _settings_redirect()
 
 
 @app.route("/settings/field_submissions/<submission_id>/approve", methods=["POST"])
@@ -2254,23 +2424,20 @@ def field_submission_approve(submission_id):
     sub = db.session.get(FieldPurchaseSubmission, submission_id)
     if not sub:
         flash("Submission not found.", "error")
-        return redirect(url_for("settings"))
+        return _settings_redirect()
     if sub.status != "pending":
         flash("Submission has already been reviewed.", "error")
-        return redirect(url_for("settings"))
+        return _settings_redirect()
 
     try:
         lots = json.loads(sub.lots_json or "[]")
     except Exception:
         lots = []
-    if not lots:
-        flash("Submission has no lot lines.", "error")
-        return redirect(url_for("settings"))
 
-    total_weight = sum(float(l.get("weight_lbs") or 0) for l in lots)
-    if total_weight <= 0:
+    total_weight = sum(float(l.get("weight_lbs") or 0) for l in lots if (l.get("weight_lbs") is not None))
+    if total_weight < 0:
         flash("Submission lot weights are invalid.", "error")
-        return redirect(url_for("settings"))
+        return _settings_redirect()
 
     purchase = Purchase(
         supplier_id=sub.supplier_id,
@@ -2278,7 +2445,7 @@ def field_submission_approve(submission_id):
         delivery_date=sub.delivery_date,
         harvest_date=sub.harvest_date,
         status="committed",
-        stated_weight_lbs=total_weight,
+        stated_weight_lbs=(total_weight if total_weight > 0 else 0.0),
         stated_potency_pct=sub.estimated_potency_pct,
         price_per_lb=sub.price_per_lb,
         storage_note=sub.storage_note,
@@ -2293,7 +2460,8 @@ def field_submission_approve(submission_id):
     # Create lots
     for l in lots:
         strain = (l.get("strain") or "").strip()
-        w = float(l.get("weight_lbs") or 0)
+        weight_val = l.get("weight_lbs")
+        w = float(weight_val) if weight_val is not None else 0.0
         if w <= 0:
             continue
         lot = PurchaseLot(
@@ -2308,11 +2476,93 @@ def field_submission_approve(submission_id):
     sup = db.session.get(Supplier, purchase.supplier_id)
     supplier_name = sup.name if sup else "BATCH"
     d = purchase.delivery_date or purchase.purchase_date
-    purchase.batch_id = _ensure_unique_batch_id(_generate_batch_id(supplier_name, d, total_weight), exclude_purchase_id=purchase.id)
+    purchase.batch_id = _ensure_unique_batch_id(
+        _generate_batch_id(supplier_name, d, (total_weight if total_weight > 0 else 0.0)),
+        exclude_purchase_id=purchase.id
+    )
 
     # Total cost if possible
     if purchase.price_per_lb:
         purchase.total_cost = purchase.stated_weight_lbs * purchase.price_per_lb
+
+    supplier_photo_paths = _json_paths(sub.supplier_photos_json)
+    biomass_photo_paths = _json_paths(sub.biomass_photos_json)
+    coa_photo_paths = _json_paths(sub.coa_photos_json)
+    if not supplier_photo_paths and not biomass_photo_paths and not coa_photo_paths:
+        # Backward compatibility: older submissions only had a single photos_json bucket.
+        biomass_photo_paths = _json_paths(sub.photos_json)
+
+    # Promote supplier/license photos into supplier record docs.
+    for path in supplier_photo_paths:
+        if not _supplier_attachment_exists(supplier_id=sub.supplier_id, file_path=path):
+            db.session.add(SupplierAttachment(
+                supplier_id=sub.supplier_id,
+                document_type="license",
+                title=f"Field submission {sub.id} supplier doc",
+                file_path=path,
+                uploaded_by=current_user.id,
+            ))
+        if not _photo_asset_exists(
+            file_path=path,
+            source_type="field_submission",
+            category="supplier_license",
+            submission_id=sub.id,
+            supplier_id=sub.supplier_id,
+            purchase_id=purchase.id,
+        ):
+            _create_photo_asset(
+                path,
+                source_type="field_submission",
+                category="supplier_license",
+                tags=["field", "supplier", "license"],
+                title=f"Field submission {sub.id}",
+                supplier_id=sub.supplier_id,
+                purchase_id=purchase.id,
+                submission_id=sub.id,
+                uploaded_by=current_user.id,
+            )
+
+    # Keep biomass and COA photos attached to purchase audit trail.
+    for path in biomass_photo_paths:
+        if not _photo_asset_exists(
+            file_path=path,
+            source_type="field_submission",
+            category="biomass",
+            submission_id=sub.id,
+            supplier_id=sub.supplier_id,
+            purchase_id=purchase.id,
+        ):
+            _create_photo_asset(
+                path,
+                source_type="field_submission",
+                category="biomass",
+                tags=["field", "purchase", "biomass", "audit"],
+                title=f"Purchase audit biomass photo ({sub.id})",
+                supplier_id=sub.supplier_id,
+                purchase_id=purchase.id,
+                submission_id=sub.id,
+                uploaded_by=current_user.id,
+            )
+    for path in coa_photo_paths:
+        if not _photo_asset_exists(
+            file_path=path,
+            source_type="field_submission",
+            category="coa",
+            submission_id=sub.id,
+            supplier_id=sub.supplier_id,
+            purchase_id=purchase.id,
+        ):
+            _create_photo_asset(
+                path,
+                source_type="field_submission",
+                category="coa",
+                tags=["field", "purchase", "coa", "audit"],
+                title=f"Purchase audit COA photo ({sub.id})",
+                supplier_id=sub.supplier_id,
+                purchase_id=purchase.id,
+                submission_id=sub.id,
+                uploaded_by=current_user.id,
+            )
 
     # Mark submission approved
     sub.status = "approved"
@@ -2335,10 +2585,10 @@ def field_submission_reject(submission_id):
     sub = db.session.get(FieldPurchaseSubmission, submission_id)
     if not sub:
         flash("Submission not found.", "error")
-        return redirect(url_for("settings"))
+        return _settings_redirect()
     if sub.status != "pending":
         flash("Submission has already been reviewed.", "error")
-        return redirect(url_for("settings"))
+        return _settings_redirect()
     sub.status = "rejected"
     sub.reviewed_at = datetime.utcnow()
     sub.reviewed_by = current_user.id
@@ -2347,7 +2597,7 @@ def field_submission_reject(submission_id):
     db.session.commit()
     notify_slack(f"Field submission rejected for {sub.supplier.name if sub.supplier else 'supplier'}.")
     flash("Submission rejected.", "success")
-    return redirect(url_for("settings"))
+    return _settings_redirect()
 
 
 @app.route("/settings/recalculate_costs", methods=["POST"])
@@ -2365,7 +2615,134 @@ def settings_recalculate_costs():
     except Exception as e:
         db.session.rollback()
         flash(f"Cost recalculation failed: {e}", "error")
-    return redirect(url_for("settings"))
+    return _settings_redirect()
+
+
+@app.route("/settings/backfill_photo_assets", methods=["POST"])
+@admin_required
+def settings_backfill_photo_assets():
+    """
+    One-time backfill for historical approved field submissions:
+    - supplier/license photos -> SupplierAttachment + PhotoAsset
+    - biomass/COA photos -> PhotoAsset linked to purchase for audit
+    """
+    try:
+        submissions = FieldPurchaseSubmission.query.filter(
+            FieldPurchaseSubmission.status == "approved",
+            FieldPurchaseSubmission.approved_purchase_id.isnot(None),
+        ).all()
+
+        supplier_attachments_added = 0
+        assets_added = 0
+        touched_submissions = 0
+
+        for sub in submissions:
+            supplier_id = sub.supplier_id
+            purchase_id = sub.approved_purchase_id
+            if not supplier_id or not purchase_id:
+                continue
+
+            supplier_photo_paths = _json_paths(sub.supplier_photos_json)
+            biomass_photo_paths = _json_paths(sub.biomass_photos_json)
+            coa_photo_paths = _json_paths(sub.coa_photos_json)
+            if not supplier_photo_paths and not biomass_photo_paths and not coa_photo_paths:
+                biomass_photo_paths = _json_paths(sub.photos_json)
+
+            changed = False
+
+            for path in supplier_photo_paths:
+                if not _supplier_attachment_exists(supplier_id=supplier_id, file_path=path):
+                    db.session.add(SupplierAttachment(
+                        supplier_id=supplier_id,
+                        document_type="license",
+                        title=f"Field submission {sub.id} supplier doc",
+                        file_path=path,
+                        uploaded_by=current_user.id,
+                    ))
+                    supplier_attachments_added += 1
+                    changed = True
+                if not _photo_asset_exists(
+                    file_path=path,
+                    source_type="field_submission",
+                    category="supplier_license",
+                    submission_id=sub.id,
+                    supplier_id=supplier_id,
+                    purchase_id=purchase_id,
+                ):
+                    _create_photo_asset(
+                        path,
+                        source_type="field_submission",
+                        category="supplier_license",
+                        tags=["field", "supplier", "license"],
+                        title=f"Field submission {sub.id}",
+                        supplier_id=supplier_id,
+                        purchase_id=purchase_id,
+                        submission_id=sub.id,
+                        uploaded_by=current_user.id,
+                    )
+                    assets_added += 1
+                    changed = True
+
+            for path in biomass_photo_paths:
+                if not _photo_asset_exists(
+                    file_path=path,
+                    source_type="field_submission",
+                    category="biomass",
+                    submission_id=sub.id,
+                    supplier_id=supplier_id,
+                    purchase_id=purchase_id,
+                ):
+                    _create_photo_asset(
+                        path,
+                        source_type="field_submission",
+                        category="biomass",
+                        tags=["field", "purchase", "biomass", "audit"],
+                        title=f"Purchase audit biomass photo ({sub.id})",
+                        supplier_id=supplier_id,
+                        purchase_id=purchase_id,
+                        submission_id=sub.id,
+                        uploaded_by=current_user.id,
+                    )
+                    assets_added += 1
+                    changed = True
+
+            for path in coa_photo_paths:
+                if not _photo_asset_exists(
+                    file_path=path,
+                    source_type="field_submission",
+                    category="coa",
+                    submission_id=sub.id,
+                    supplier_id=supplier_id,
+                    purchase_id=purchase_id,
+                ):
+                    _create_photo_asset(
+                        path,
+                        source_type="field_submission",
+                        category="coa",
+                        tags=["field", "purchase", "coa", "audit"],
+                        title=f"Purchase audit COA photo ({sub.id})",
+                        supplier_id=supplier_id,
+                        purchase_id=purchase_id,
+                        submission_id=sub.id,
+                        uploaded_by=current_user.id,
+                    )
+                    assets_added += 1
+                    changed = True
+
+            if changed:
+                touched_submissions += 1
+
+        db.session.commit()
+        flash(
+            f"Photo backfill complete. Updated {touched_submissions} submissions, added "
+            f"{supplier_attachments_added} supplier attachment(s) and {assets_added} photo asset(s).",
+            "success",
+        )
+    except Exception as e:
+        db.session.rollback()
+        app.logger.exception("Photo backfill failed")
+        flash(f"Photo backfill failed: {e}", "error")
+    return _settings_redirect()
 
 
 @app.route("/api/slack/command", methods=["POST"])
