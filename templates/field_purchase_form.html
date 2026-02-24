@@ -21,7 +21,7 @@
       {% endif %}
       {% endwith %}
 
-      <form method="POST">
+      <form method="POST" enctype="multipart/form-data">
         <input type="hidden" name="t" value="{{ token_value }}">
 
         <div class="form-row-3">
@@ -96,6 +96,14 @@
         <div class="form-group">
           <label>Notes</label>
           <textarea name="notes" rows="3" placeholder="Any extra context..."></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>Photos (optional)</label>
+          <input type="file" name="photos" accept="image/*" capture="environment" multiple>
+          <div class="text-sm" style="color:var(--text-muted); margin-top:6px;">
+            Upload camera/gallery images (JPG, PNG, WEBP; max 8 MB each).
+          </div>
         </div>
 
         <div class="form-actions" style="justify-content:space-between;">

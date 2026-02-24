@@ -14,6 +14,7 @@ from flask_login import (LoginManager, login_user, logout_user, login_required,
                          current_user)
 from sqlalchemy import func, desc, and_, text, select, exists
 from werkzeug.security import generate_password_hash
+from werkzeug.utils import secure_filename
 
 from models import (db, User, Supplier, Purchase, PurchaseLot, Run, RunInput,
                     KpiTarget, SystemSetting, AuditLog, BiomassAvailability, CostEntry,
@@ -24,6 +25,8 @@ app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "gold-drop-dev-key-chang
 app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///golddrop.db")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
+app.config["FIELD_UPLOAD_DIR"] = os.path.join(app.root_path, "static", "uploads", "field")
+app.config["FIELD_UPLOAD_MAX_BYTES"] = 8 * 1024 * 1024  # 8 MB per image
 
 db.init_app(app)
 login_manager = LoginManager(app)
@@ -72,6 +75,49 @@ def log_audit(action, entity_type, entity_id, details=None, user_id=None):
 
 def _hash_field_token(token: str) -> str:
     return hashlib.sha256((token or "").encode("utf-8")).hexdigest()
+
+
+def _allowed_image_filename(filename: str) -> bool:
+    name = (filename or "").lower()
+    return name.endswith((".jpg", ".jpeg", ".png", ".webp"))
+
+
+def _file_size_bytes(file_obj) -> int:
+    cur = file_obj.stream.tell()
+    file_obj.stream.seek(0, os.SEEK_END)
+    size = file_obj.stream.tell()
+    file_obj.stream.seek(cur, os.SEEK_SET)
+    return int(size or 0)
+
+
+def _save_field_photos(files, prefix: str) -> list[str]:
+    """
+    Save uploaded field photos under static/uploads/field and return
+    relative static paths (e.g. uploads/field/abc.jpg).
+    """
+    upload_dir = app.config["FIELD_UPLOAD_DIR"]
+    os.makedirs(upload_dir, exist_ok=True)
+    max_bytes = int(app.config.get("FIELD_UPLOAD_MAX_BYTES", 8 * 1024 * 1024))
+
+    saved = []
+    for f in files or []:
+        if not f or not getattr(f, "filename", ""):
+            continue
+        if not _allowed_image_filename(f.filename):
+            raise ValueError("Only image files (.jpg, .jpeg, .png, .webp) are allowed.")
+        size = _file_size_bytes(f)
+        if size <= 0:
+            continue
+        if size > max_bytes:
+            raise ValueError("Each photo must be 8 MB or smaller.")
+
+        base = secure_filename(f.filename) or "photo.jpg"
+        ext = os.path.splitext(base)[1].lower() or ".jpg"
+        unique_name = f"{prefix}-{secrets.token_hex(8)}{ext}"
+        abs_path = os.path.join(upload_dir, unique_name)
+        f.save(abs_path)
+        saved.append(f"uploads/field/{unique_name}")
+    return saved
 
 
 def _get_field_token_value() -> str | None:
@@ -232,6 +278,8 @@ def _ensure_sqlite_schema():
         cols = column_names("biomass_availabilities")
         if "purchase_id" not in cols:
             db.session.execute(text("ALTER TABLE biomass_availabilities ADD COLUMN purchase_id VARCHAR(36)"))
+        if "field_photo_paths_json" not in cols:
+            db.session.execute(text("ALTER TABLE biomass_availabilities ADD COLUMN field_photo_paths_json TEXT"))
 
     # Runs: cost_per_gram_thca / cost_per_gram_hte
     if has_table("runs"):
@@ -240,6 +288,12 @@ def _ensure_sqlite_schema():
             db.session.execute(text("ALTER TABLE runs ADD COLUMN cost_per_gram_thca FLOAT"))
         if "cost_per_gram_hte" not in cols:
             db.session.execute(text("ALTER TABLE runs ADD COLUMN cost_per_gram_hte FLOAT"))
+
+    # Field purchase submissions: photos_json
+    if has_table("field_purchase_submissions"):
+        cols = column_names("field_purchase_submissions")
+        if "photos_json" not in cols:
+            db.session.execute(text("ALTER TABLE field_purchase_submissions ADD COLUMN photos_json TEXT"))
 
     db.session.commit()
 
@@ -368,6 +422,9 @@ def field_biomass_new(token):
             if estimated_potency is not None and not (0 <= estimated_potency <= 100):
                 raise ValueError("Estimated Potency must be between 0 and 100.")
 
+            photos = request.files.getlist("photos")
+            saved_photo_paths = _save_field_photos(photos, prefix="biomass")
+
             b = BiomassAvailability(
                 supplier_id=sup.id,
                 availability_date=availability_date,
@@ -378,6 +435,7 @@ def field_biomass_new(token):
                 testing_timing=(request.form.get("testing_timing") or "before_delivery").strip() or "before_delivery",
                 testing_status=(request.form.get("testing_status") or "pending").strip() or "pending",
                 stage=stage,
+                field_photo_paths_json=(json.dumps(saved_photo_paths) if saved_photo_paths else None),
                 notes=((request.form.get("notes") or "").strip() or None),
             )
             db.session.add(b)
@@ -390,6 +448,7 @@ def field_biomass_new(token):
                     "source": "field_intake",
                     "token_label": token.label,
                     "supplier": sup.name,
+                    "photos_count": len(saved_photo_paths),
                 }),
                 user_id=None,
             )
@@ -459,6 +518,9 @@ def field_purchase_new(token):
             if not lots:
                 raise ValueError("Add at least one lot/strain with weight.")
 
+            photos = request.files.getlist("photos")
+            saved_photo_paths = _save_field_photos(photos, prefix="purchase")
+
             sub = FieldPurchaseSubmission(
                 source_token_id=token.id,
                 supplier_id=sup.id,
@@ -468,6 +530,7 @@ def field_purchase_new(token):
                 price_per_lb=price_per_lb,
                 notes=((request.form.get("notes") or "").strip() or None),
                 lots_json=json.dumps(lots),
+                photos_json=(json.dumps(saved_photo_paths) if saved_photo_paths else None),
                 status="pending",
             )
             db.session.add(sub)
@@ -481,6 +544,7 @@ def field_purchase_new(token):
                     "token_label": token.label,
                     "supplier": sup.name,
                     "lots_count": len(lots),
+                    "photos_count": len(saved_photo_paths),
                 }),
                 user_id=None,
             )
@@ -1339,6 +1403,11 @@ def settings():
             s.lots_count = len(json.loads(s.lots_json or "[]"))
         except Exception:
             s.lots_count = 0
+        try:
+            photo_paths = json.loads(s.photos_json or "[]")
+            s.photo_paths = [p for p in photo_paths if isinstance(p, str) and p.strip()]
+        except Exception:
+            s.photo_paths = []
 
     # One-time display after creating a field link (POST-redirect-GET)
     last_field_link = session.pop("last_field_link", None)

@@ -38,6 +38,7 @@ Open http://localhost:5000 in your browser.
 - **Purchases** — Record purchases with potency-based pricing and true-up tracking
 - **Batch IDs** — Unique, readable batch IDs for all purchases (auto-generated if blank)
 - **Biomass Pipeline** — Track farm availability from declared → testing → committed → delivered/cancelled (syncs to Purchases)
+- **Field Photo Uploads** — Field users can attach multiple photos to biomass and purchase submissions (JPG/JPEG/PNG/WEBP, max 8 MB each)
 - **Supplier Performance** — All-time, 90-day, and last-batch analytics per farm
 - **Strain Performance** — Compare yields and cost/gram across strains and suppliers
 - **Data Quality Controls** — Flag runs missing $/lb; optionally exclude unpriced runs from analytics
@@ -56,8 +57,9 @@ gold-drop/
 ├── requirements.txt    # Python dependencies
 ├── PRD.md              # Product requirements document
 ├── static/
-│   └── css/
-│       └── style.css   # Application styles
+│   ├── css/
+│   │   └── style.css       # Application styles
+│   └── uploads/field/      # Field-submitted photos (created at runtime)
 └── templates/
     ├── base.html           # Layout with sidebar navigation
     ├── login.html          # Login page
@@ -150,6 +152,7 @@ The system will:
 - **Suppliers** → **Purchases** → **Lots** (one-to-many chain)
 - **Suppliers** → **Biomass Pipeline** (one-to-many)
 - **Biomass Pipeline** → **Purchase** (one-to-one once committed/delivered/cancelled)
+- **Field submissions** may include photo arrays stored as JSON paths to files in `static/uploads/field/`
 - **Cost Entries** are allocated across total dry grams in their date ranges
 - **Lots** → **Run Inputs** → **Runs** (many-to-many through run_inputs)
 - Lot `remaining_weight_lbs` is automatically decremented when used in a run

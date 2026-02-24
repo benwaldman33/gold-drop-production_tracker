@@ -68,6 +68,17 @@ Tracks availability before it becomes a Purchase. Key stages:
 - `cancelled`
 
 It may link **one-to-one** to a Purchase once committed/delivered/cancelled.
+It can also include optional **field photos** (multiple images) captured at intake.
+
+### Field intake submissions
+Field users can submit data through secure links for:
+- Biomass availability declarations
+- Purchase requests (including multiple lot lines)
+
+Both field forms support optional photo uploads:
+- Allowed formats: `.jpg`, `.jpeg`, `.png`, `.webp`
+- Max file size: 8 MB per photo
+- Files are stored under `static/uploads/field/` and referenced by relative path in JSON fields
 
 ### Purchases (batch-level financial/receiving record)
 Represents the committed/delivered batch. Contains:
@@ -107,11 +118,13 @@ Fields:
 - Declared $/lb (>= 0, optional)
 - Estimated potency % (0–100, optional)
 - Strain name (optional)
+- Photos (optional, multiple images)
 
 Acceptance criteria:
 - User can create a record in stage `declared`.
 - Validation errors show friendly messages; no stack traces are flashed.
 - Audit log entry is written for create/update/delete.
+- Invalid photo type or oversized photo shows a friendly validation message.
 
 #### Testing
 Fields:
@@ -143,6 +156,16 @@ Audit requirements:
 ---
 
 ### 2) Purchases workflow
+#### Field purchase submissions
+Secure field links can submit purchase requests with:
+- Supplier, date, estimated potency, $/lb, notes
+- One or more lot lines (strain + weight)
+- Optional photos (multiple images)
+
+Review requirements:
+- Admin review table displays submission photo thumbnails when present.
+- Clicking a thumbnail opens the full image in a new tab.
+
 #### Batch ID generation
 - Batch IDs are **unique** and **human-readable**.
 - Default format: `PREFIX-DDMONYY-WEIGHT` (example `FARML-15FEB26-200`)

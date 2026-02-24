@@ -151,6 +151,18 @@ The Biomass Pipeline tracks farm availability before it becomes a purchase.
 - If a linked Purchase exists, key fields stay synchronized (supplier/date/weights/potency/$/lb/status).
 - The pipeline list shows the linked Batch ID (when present) and links directly to the Purchase.
 
+### Adding field photos
+Both field intake forms (biomass and purchase request) support optional photo uploads.
+
+What users can do:
+- Attach one or more photos from camera or gallery before submitting.
+- Upload formats: JPG, JPEG, PNG, WEBP.
+- Max size per image: 8 MB.
+
+What admins can see:
+- In **Settings**, the field purchase submission review table shows photo thumbnails.
+- Clicking a thumbnail opens the full image in a new tab.
+
 ### Validation and error messages
 If something is missing or invalid (bad date, negative weight, invalid stage), you’ll see a clear error message. Fix the input and save again.
 

@@ -155,6 +155,9 @@ class BiomassAvailability(db.Model):
     # Overall stage
     stage = db.Column(db.String(20), nullable=False, default="declared")  # declared, testing, committed, delivered, cancelled
 
+    # Optional field-intake photo paths (JSON array of relative static paths)
+    field_photo_paths_json = db.Column(db.Text)
+
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -475,6 +478,8 @@ class FieldPurchaseSubmission(db.Model):
 
     # Lot lines as JSON: [{"strain": "...", "weight_lbs": 123.4}, ...]
     lots_json = db.Column(db.Text)
+    # Optional field photos (JSON array of relative static paths)
+    photos_json = db.Column(db.Text)
 
     # Review / approval
     status = db.Column(db.String(20), nullable=False, default="pending")  # pending, approved, rejected
