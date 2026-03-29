@@ -319,6 +319,16 @@ Critical requirements:
 
 ---
 
+## Integrations — Slack
+- **Configuration:** Super Admin stores webhook URL, signing secret, bot token, and default channel in Settings. Outbound notifications post when integration is enabled.
+- **Inbound HTTP endpoints (no user session):** requests must be verified with Slack’s signing secret (HMAC).
+  - **Slash commands:** `POST /api/slack/command`
+  - **Interactivity:** `POST /api/slack/interactivity`
+  - **Events API:** `POST /api/slack/events` — must respond to `url_verification` with JSON `{ "challenge": "<value>" }`; must acknowledge `event_callback` within Slack’s timeout (hook for future channel/message automation).
+- **Production:** Event Subscriptions Request URL must use **HTTPS** on the public hostname nginx serves.
+
+---
+
 ## Non-Functional Requirements
 - **Security**
   - Do not display raw exception messages to end users.

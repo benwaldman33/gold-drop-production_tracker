@@ -2745,6 +2745,24 @@ def settings_backfill_photo_assets():
     return _settings_redirect()
 
 
+@app.route("/api/slack/events", methods=["POST"])
+def slack_events():
+    """
+    Slack Events API: URL verification challenge and event callbacks.
+    Request URL: https://<your-host>/api/slack/events
+    Uses the same signing secret as slash commands (Settings → Slack).
+    """
+    if not _verify_slack_signature(request):
+        return "Unauthorized", 401
+    payload = request.get_json(silent=True) or {}
+    if payload.get("type") == "url_verification":
+        return jsonify({"challenge": payload.get("challenge") or ""})
+    if payload.get("type") == "event_callback":
+        # Acknowledge immediately; extend here to process message.* events.
+        return "", 200
+    return "", 200
+
+
 @app.route("/api/slack/command", methods=["POST"])
 def slack_command():
     if not _verify_slack_signature(request):

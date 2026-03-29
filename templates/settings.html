@@ -526,7 +526,11 @@
       <div class="form-group"></div>
     </div>
     <div class="text-sm" style="color:var(--text-muted); margin-bottom:10px;">
-      Configure Slack app request URLs to `/api/slack/command` and `/api/slack/interactivity`.
+      In your Slack app, set <strong>Event Subscriptions</strong> Request URL to
+      <code>https://&lt;your-site&gt;/api/slack/events</code> (HTTPS).
+      Set <strong>Slash Command</strong> and <strong>Interactivity</strong> to
+      <code>/api/slack/command</code> and <code>/api/slack/interactivity</code>.
+      Use the same <strong>Signing Secret</strong> here as in Slack → Basic Information.
     </div>
     <button type="submit" class="btn btn-primary">Save Slack Settings</button>
   </form>

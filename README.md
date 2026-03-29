@@ -45,7 +45,7 @@ Open http://localhost:5000 in your browser.
 - **Photo Library** — Central searchable media index with supplier/purchase/category/tag filters
 - **Photo Audit Linkage** — Approved field photos are auto-linked to supplier docs (license) and purchase audit records (biomass/COA)
 - **Advanced Exports** — Date range and criteria filters (supplier/status/potency/strain) across operational tabs
-- **Slack Integration** — Outbound notifications and inbound command endpoints for operational visibility
+- **Slack Integration** — Outbound notifications; inbound slash commands, interactivity, and Events API URL (`/api/slack/events`) for subscriptions / future channel automations
 - **Supplier Performance** — All-time, 90-day, and last-batch analytics per farm
 - **Strain Performance** — Compare yields and cost/gram across strains and suppliers
 - **Data Quality Controls** — Flag runs missing $/lb; optionally exclude unpriced runs from analytics

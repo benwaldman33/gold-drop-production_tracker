@@ -255,7 +255,9 @@ Admins can create users and assign roles. (This manual does not include any cred
 
 ### Slack integration
 - Configure webhook URL, signing secret, bot token, and default channel in Settings.
-- Supports outbound notifications and inbound Slack command/interactivity endpoints.
+- **Outbound:** notifications for key actions (when enabled).
+- **Inbound:** Slash commands and interactivity use `/api/slack/command` and `/api/slack/interactivity`.
+- **Event Subscriptions:** In the Slack app, set the Request URL to `https://your-site/api/slack/events` (HTTPS). The app answers Slack’s URL challenge and accepts `event_callback` pings (extend later for channel messages). The **Signing Secret** in Slack must match the value saved in Settings.
 
 ### Maintenance: Recalculate all run costs
 Use **Recalculate All Run Costs** after:
