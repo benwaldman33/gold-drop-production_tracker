@@ -534,6 +534,33 @@
     </div>
     <button type="submit" class="btn btn-primary">Save Slack Settings</button>
   </form>
+
+  <form method="POST" style="margin-top:20px;padding-top:16px;border-top:1px solid var(--dark-border);">
+    <input type="hidden" name="form_type" value="slack_sync_channels">
+    <input type="hidden" name="return_to" value="#settings-slack">
+    <div class="form-group">
+      <label>Channel history sync (up to 6)</label>
+      <p class="text-sm" style="color:var(--text-muted);margin-bottom:10px;">
+        Enter <code>#channel-name</code> or a channel ID per row. The Maintenance action pulls history for every non-empty row.
+        The first run for each channel uses the &ldquo;days back&rdquo; window; later runs use a per-channel cursor (Slack message timestamp) so only new traffic is scanned. Changing a row clears that channel&rsquo;s resolved ID and cursor.
+      </p>
+      <div style="display:grid;gap:8px;">
+        {% for slot in slack_sync_slots %}
+        <div style="display:grid;grid-template-columns:1fr minmax(140px,auto);gap:10px;align-items:end;">
+          <div class="form-group" style="margin:0;">
+            <label style="font-size:0.75rem;text-transform:none;letter-spacing:0;">Channel {{ loop.index }}</label>
+            <input type="text" name="sync_ch_{{ slot.slot_index }}" value="{{ slot.channel_hint or '' }}" placeholder="#example-{{ loop.index }}">
+          </div>
+          <div class="text-sm" style="color:var(--text-muted);margin-bottom:6px;">
+            {% if slot.resolved_channel_id %}<span title="Resolved Slack channel ID">{{ slot.resolved_channel_id }}</span>{% else %}&mdash;{% endif %}
+            {% if slot.last_watermark_ts %}<span title="Last ingested message ts (cursor)"> · {{ slot.last_watermark_ts }}</span>{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    <button type="submit" class="btn btn-secondary btn-sm">Save sync channels</button>
+  </form>
 </div>
 
 <!-- Maintenance -->
@@ -561,6 +588,28 @@
       <input type="hidden" name="return_to" value="#settings-maintenance">
       <button type="submit" class="btn btn-secondary btn-sm">Run Photo Backfill</button>
     </form>
+  </div>
+  <div style="background:var(--dark);border:1px solid var(--dark-border);border-radius:var(--radius);padding:16px;margin-top:12px;">
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Sync Slack channel history</h4>
+    <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:12px;">
+      Fetches messages via Slack <code>conversations.history</code> for each channel listed under
+      <strong>Settings → Slack Integration → Channel history sync</strong> (up to 6). Only <strong>new</strong>
+      messages (never seen Slack timestamps) are saved; each channel has its own last-sync cursor after the first run.
+      For the <strong>first</strong> sync of a channel, use <strong>Days back</strong> below; later runs ignore older history for that channel.
+      Invite the bot to each channel and grant OAuth scopes: <code>channels:history</code>, <code>channels:read</code>;
+      for private channels add <code>groups:history</code>, <code>groups:read</code>.
+    </p>
+    <form method="POST" action="{{ url_for('settings_slack_sync_channel') }}" style="display:flex;flex-wrap:wrap;gap:10px;align-items:end;">
+      <input type="hidden" name="return_to" value="#settings-maintenance">
+      <div class="form-group" style="margin:0;">
+        <label>Days back</label>
+        <input type="number" name="sync_days" value="90" min="1" max="365" style="width:90px;">
+      </div>
+      <button type="submit" class="btn btn-secondary btn-sm" onclick="return confirm('Fetch Slack history for all configured sync channels? This may take a moment for busy channels.');">Sync Slack channels</button>
+    </form>
+    <div style="margin-top:12px;">
+      <a href="{{ url_for('settings_slack_imports') }}" class="btn btn-secondary btn-sm">View Slack imports</a>
+    </div>
   </div>
 </div>
 {% endblock %}

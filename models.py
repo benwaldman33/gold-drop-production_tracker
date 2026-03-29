@@ -558,3 +558,33 @@ class PhotoAsset(db.Model):
 
     supplier = db.relationship("Supplier", foreign_keys=[supplier_id])
     purchase = db.relationship("Purchase", foreign_keys=[purchase_id])
+
+
+class SlackIngestedMessage(db.Model):
+    """
+    One row per Slack channel message ingested via conversations.history (deduped by channel + ts).
+    """
+    __tablename__ = "slack_ingested_messages"
+    __table_args__ = (db.UniqueConstraint("channel_id", "message_ts", name="uq_slack_channel_ts"),)
+
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    channel_id = db.Column(db.String(32), nullable=False)
+    message_ts = db.Column(db.String(32), nullable=False)
+    slack_user_id = db.Column(db.String(32))
+    raw_text = db.Column(db.Text)
+    message_kind = db.Column(db.String(40))  # yield_report, production_log, unknown
+    derived_json = db.Column(db.Text)
+    ingested_at = db.Column(db.DateTime, default=datetime.utcnow)
+    ingested_by = db.Column(db.String(36), db.ForeignKey("users.id"))
+
+
+class SlackChannelSyncConfig(db.Model):
+    """Up to six Slack channels for history sync, each with its own cursor (last message ts)."""
+    __tablename__ = "slack_channel_sync_configs"
+    __table_args__ = (db.UniqueConstraint("slot_index", name="uq_slack_sync_slot"),)
+
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    slot_index = db.Column(db.Integer, nullable=False)
+    channel_hint = db.Column(db.String(200), nullable=False, default="")
+    resolved_channel_id = db.Column(db.String(32))
+    last_watermark_ts = db.Column(db.String(32))

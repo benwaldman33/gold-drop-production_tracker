@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Slack imports{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Slack channel imports</h2>
+  <a href="{{ url_for('settings') }}#settings-maintenance" class="btn btn-secondary">← Settings</a>
+</div>
+
+<div class="card">
+  <p class="text-sm" style="color:var(--text-muted);">
+    Rows come from <strong>Settings → Maintenance → Sync Slack channel</strong>. Only messages not already stored (by Slack timestamp) are added.
+    Parsed fields are hints for yield vs production-log templates; they do not create Runs automatically yet.
+  </p>
+  <div class="table-wrap" style="margin-top:12px;">
+    <table>
+      <thead>
+        <tr>
+          <th>Slack ts</th>
+          <th>Kind</th>
+          <th>Derived</th>
+          <th>Raw (trimmed)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td class="text-mono text-sm">{{ r.message_ts }}</td>
+          <td><span class="badge badge-gray">{{ r.message_kind or '—' }}</span></td>
+          <td class="text-sm" style="max-width:320px;word-break:break-word;">
+            {% if r.derived %}
+              {% for k, v in r.derived.items() %}
+                <strong>{{ k }}</strong>: {{ v }}{% if not loop.last %}<br>{% endif %}
+              {% endfor %}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td class="text-sm" style="max-width:420px;white-space:pre-wrap;word-break:break-word;">{{ (r.raw_text or '')[:800] }}{% if r.raw_text and r.raw_text|length > 800 %}…{% endif %}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="text-center cell-muted" style="padding:24px;">No imported messages yet. Run sync from Settings.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

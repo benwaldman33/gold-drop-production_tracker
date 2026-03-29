@@ -3,6 +3,7 @@ import os
 import csv
 import io
 import json
+import re
 import hashlib
 import hmac
 import secrets
@@ -23,7 +24,8 @@ from werkzeug.utils import secure_filename
 
 from models import (db, User, Supplier, Purchase, PurchaseLot, Run, RunInput,
                     KpiTarget, SystemSetting, AuditLog, BiomassAvailability, CostEntry,
-                    FieldAccessToken, FieldPurchaseSubmission, LabTest, SupplierAttachment, PhotoAsset)
+                    FieldAccessToken, FieldPurchaseSubmission, LabTest, SupplierAttachment, PhotoAsset,
+                    SlackIngestedMessage, SlackChannelSyncConfig)
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "gold-drop-dev-key-change-in-prod")
@@ -155,6 +157,177 @@ def _verify_slack_signature(req) -> bool:
     basestring = f"v0:{timestamp}:{raw_body.decode('utf-8')}".encode("utf-8")
     digest = "v0=" + hmac.new(secret.encode("utf-8"), basestring, hashlib.sha256).hexdigest()
     return hmac.compare_digest(digest, signature)
+
+
+def _slack_web_api(token: str, method: str, params: dict) -> dict:
+    """POST application/x-www-form-urlencoded to Slack Web API."""
+    body = urllib.parse.urlencode({k: v for k, v in params.items() if v is not None}).encode("utf-8")
+    req = urllib.request.Request(
+        f"https://slack.com/api/{method}",
+        data=body,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=45) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def _slack_resolve_channel_id(token: str, channel_setting: str) -> str | None:
+    """Resolve #name or channel ID from Settings default channel."""
+    hint = (channel_setting or "").strip()
+    if not hint:
+        return None
+    if hint.upper().startswith("C") and len(hint) >= 9:
+        return hint
+    name = hint.lstrip("#").strip().lower()
+    cursor = None
+    for _ in range(40):
+        params: dict[str, str] = {"types": "public_channel,private_channel", "limit": "200"}
+        if cursor:
+            params["cursor"] = cursor
+        data = _slack_web_api(token, "conversations.list", params)
+        if not data.get("ok"):
+            app.logger.warning("Slack conversations.list failed: %s", data.get("error"))
+            return None
+        for ch in data.get("channels") or []:
+            if (ch.get("name") or "").lower() == name:
+                return ch.get("id")
+        cursor = (data.get("response_metadata") or {}).get("next_cursor") or None
+        if not cursor:
+            break
+    return None
+
+
+SLACK_SYNC_CHANNEL_SLOTS = 6
+
+
+def _ensure_slack_sync_configs() -> None:
+    """Ensure six sync slots exist; first install seeds slot 0 from slack_default_channel."""
+    count = SlackChannelSyncConfig.query.count()
+    if count == 0:
+        default_ch = (SystemSetting.get("slack_default_channel") or "").strip()
+        for i in range(SLACK_SYNC_CHANNEL_SLOTS):
+            hint = default_ch if i == 0 else ""
+            db.session.add(SlackChannelSyncConfig(slot_index=i, channel_hint=hint))
+        db.session.commit()
+        return
+    have = {r.slot_index for r in SlackChannelSyncConfig.query.all()}
+    added = False
+    for i in range(SLACK_SYNC_CHANNEL_SLOTS):
+        if i not in have:
+            db.session.add(SlackChannelSyncConfig(slot_index=i, channel_hint=""))
+            added = True
+    if added:
+        db.session.commit()
+
+
+def _slack_ingest_channel_history(
+    token: str,
+    channel_id: str,
+    oldest: str,
+    ingested_by: str,
+) -> tuple[int, int, str | None, str | None]:
+    """
+    Pull conversations.history pages; insert new SlackIngestedMessage rows (deduped).
+    Returns (new_rows, scanned, max_ts_seen, error_code).
+    """
+    new_rows = 0
+    scanned = 0
+    max_ts_seen: str | None = None
+    cursor = None
+    for _page in range(50):
+        params: dict[str, str] = {"channel": channel_id, "limit": "200", "oldest": oldest}
+        if cursor:
+            params["cursor"] = cursor
+        data = _slack_web_api(token, "conversations.history", params)
+        if not data.get("ok"):
+            return new_rows, scanned, max_ts_seen, str(data.get("error", "unknown"))
+        for msg in data.get("messages") or []:
+            scanned += 1
+            if msg.get("subtype") in ("channel_join", "channel_leave", "channel_topic", "channel_purpose"):
+                continue
+            ts = msg.get("ts")
+            if not ts:
+                continue
+            if max_ts_seen is None or float(ts) > float(max_ts_seen):
+                max_ts_seen = str(ts)
+            if SlackIngestedMessage.query.filter_by(channel_id=channel_id, message_ts=str(ts)).first():
+                continue
+            txt = (msg.get("text") or "").strip()
+            if not txt:
+                if msg.get("files"):
+                    txt = "[attachment or file only]"
+                else:
+                    continue
+            derived = _derive_slack_production_message(txt)
+            db.session.add(SlackIngestedMessage(
+                channel_id=channel_id,
+                message_ts=str(ts),
+                slack_user_id=(msg.get("user") or None),
+                raw_text=txt,
+                message_kind=derived.get("message_kind"),
+                derived_json=json.dumps(derived),
+                ingested_by=ingested_by,
+            ))
+            new_rows += 1
+        cursor = (data.get("response_metadata") or {}).get("next_cursor") or None
+        if not cursor:
+            break
+    return new_rows, scanned, max_ts_seen, None
+
+
+def _derive_slack_production_message(raw: str) -> dict:
+    """Lightweight classifier + field extraction for production / yield Slack templates."""
+    text = raw or ""
+    lower = text.lower()
+    kind = "unknown"
+    if re.search(r"wet\s*thca|wet\s*hte", lower) and re.search(r"bio\s*:\s*[\d,]+", lower):
+        kind = "yield_report"
+    elif re.search(r"reactor\s*:", lower) and re.search(r"strain\s*:", lower):
+        kind = "production_log"
+
+    def grab(pat: str):
+        m = re.search(pat, text, flags=re.I)
+        return m.group(1).strip() if m else None
+
+    out: dict = {"message_kind": kind, "source": grab(r"source\s*:\s*([^\n]+)")}
+    strain = grab(r"strain\s*:\s*([^\n]+)")
+    if strain:
+        out["strain"] = strain
+    if kind == "yield_report":
+        bm = re.search(r"bio\s*:\s*([\d,]+)\s*lbs?", text, re.I)
+        if bm:
+            try:
+                out["bio_lbs"] = float(bm.group(1).replace(",", ""))
+            except ValueError:
+                pass
+        for label, key in (("wet wt", "wet_total_g"), ("wet thca", "wet_thca_g"), ("wet hte", "wet_hte_g")):
+            mm = re.search(rf"{label}\s*:\s*([\d,]+)\s*g", lower)
+            if mm:
+                try:
+                    out[key] = float(mm.group(1).replace(",", ""))
+                except ValueError:
+                    pass
+        ym = re.search(r"yield\s*:\s*([\d.]+)\s*%", lower)
+        if ym:
+            try:
+                out["yield_pct_mentioned"] = float(ym.group(1))
+            except ValueError:
+                pass
+    elif kind == "production_log":
+        rm = re.search(r"reactor\s*:\s*([A-Za-z0-9]+)", text, re.I)
+        if rm:
+            out["reactor"] = rm.group(1).upper()
+        wm = re.search(r"bio\s*wt\s*:\s*([\d.]+)", text, re.I)
+        if wm:
+            try:
+                out["bio_weight_lbs"] = float(wm.group(1))
+            except ValueError:
+                pass
+    notes = grab(r"notes\s*:\s*([^\n]+)")
+    if notes:
+        out["notes_line"] = notes
+    return out
 
 
 def _hash_field_token(token: str) -> str:
@@ -543,6 +716,34 @@ def _ensure_sqlite_schema():
             "file_path VARCHAR(500) NOT NULL, "
             "uploaded_at DATETIME, "
             "uploaded_by VARCHAR(36)"
+            ")"
+        ))
+    # Slack ingested channel messages (history sync)
+    if not has_table("slack_ingested_messages"):
+        db.session.execute(text(
+            "CREATE TABLE slack_ingested_messages ("
+            "id VARCHAR(36) PRIMARY KEY, "
+            "channel_id VARCHAR(32) NOT NULL, "
+            "message_ts VARCHAR(32) NOT NULL, "
+            "slack_user_id VARCHAR(32), "
+            "raw_text TEXT, "
+            "message_kind VARCHAR(40), "
+            "derived_json TEXT, "
+            "ingested_at DATETIME, "
+            "ingested_by VARCHAR(36), "
+            "UNIQUE(channel_id, message_ts)"
+            ")"
+        ))
+    # Per-channel Slack history sync slots (cursor per channel)
+    if not has_table("slack_channel_sync_configs"):
+        db.session.execute(text(
+            "CREATE TABLE slack_channel_sync_configs ("
+            "id VARCHAR(36) PRIMARY KEY, "
+            "slot_index INTEGER NOT NULL, "
+            "channel_hint VARCHAR(200) NOT NULL DEFAULT '', "
+            "resolved_channel_id VARCHAR(32), "
+            "last_watermark_ts VARCHAR(32), "
+            "UNIQUE(slot_index)"
             ")"
         ))
 
@@ -2212,8 +2413,27 @@ def settings():
             db.session.commit()
             flash("Slack integration settings updated.", "success")
 
+        elif form_type == "slack_sync_channels":
+            _ensure_slack_sync_configs()
+            for i in range(SLACK_SYNC_CHANNEL_SLOTS):
+                hint = (request.form.get(f"sync_ch_{i}") or "").strip()
+                row = SlackChannelSyncConfig.query.filter_by(slot_index=i).first()
+                if not row:
+                    row = SlackChannelSyncConfig(slot_index=i, channel_hint=hint)
+                    db.session.add(row)
+                else:
+                    old = (row.channel_hint or "").strip()
+                    row.channel_hint = hint
+                    if old != hint:
+                        row.resolved_channel_id = None
+                        row.last_watermark_ts = None
+            db.session.commit()
+            flash("Slack history sync channels saved (up to 6). Each channel keeps its own last-sync cursor.", "success")
+
         return _settings_redirect()
 
+    _ensure_slack_sync_configs()
+    slack_sync_slots = SlackChannelSyncConfig.query.order_by(SlackChannelSyncConfig.slot_index).all()
     system_settings = {s.key: s.value for s in SystemSetting.query.all()}
     kpis = KpiTarget.query.all()
     users = User.query.order_by(User.created_at.asc()).all()
@@ -2260,6 +2480,7 @@ def settings():
     return render_template(
         "settings.html",
         system_settings=system_settings,
+        slack_sync_slots=slack_sync_slots,
         kpis=kpis,
         users=users,
         field_tokens=field_tokens,
@@ -2743,6 +2964,115 @@ def settings_backfill_photo_assets():
         app.logger.exception("Photo backfill failed")
         flash(f"Photo backfill failed: {e}", "error")
     return _settings_redirect()
+
+
+@app.route("/settings/slack_sync_channel", methods=["POST"])
+@admin_required
+def settings_slack_sync_channel():
+    """
+    Pull conversations.history for each configured sync channel (max 6).
+    First run for a channel uses a rolling window (sync_days); later runs use per-channel watermark ts.
+    """
+    token = _slack_bot_token()
+    if not token:
+        flash("Set Bot Token in Slack settings first.", "error")
+        return _settings_redirect()
+    days_raw = (request.form.get("sync_days") or "90").strip()
+    try:
+        days = int(days_raw)
+    except ValueError:
+        days = 90
+    days = max(1, min(365, days))
+    oldest_window = str(time.time() - days * 86400)
+    try:
+        _ensure_slack_sync_configs()
+        configs = [
+            c for c in SlackChannelSyncConfig.query.order_by(SlackChannelSyncConfig.slot_index).all()
+            if (c.channel_hint or "").strip()
+        ]
+        if not configs:
+            flash(
+                "No channels configured for history sync. Under Settings → Slack Integration, fill in at least one "
+                "channel (e.g. #biomass-intake) in Channel history sync and save.",
+                "error",
+            )
+            return _settings_redirect()
+        total_new = 0
+        total_scanned = 0
+        errors: list[str] = []
+        audit_channels: list[dict] = []
+        for cfg in configs:
+            hint = cfg.channel_hint.strip()
+            channel_id = _slack_resolve_channel_id(token, hint)
+            if not channel_id:
+                errors.append(hint)
+                continue
+            cfg.resolved_channel_id = channel_id
+            oldest = (cfg.last_watermark_ts or "").strip() or oldest_window
+            new_rows, scanned, max_ts_seen, err = _slack_ingest_channel_history(
+                token, channel_id, oldest, current_user.id,
+            )
+            if err:
+                errors.append(f"{hint}:{err}")
+                db.session.commit()
+                continue
+            total_new += new_rows
+            total_scanned += scanned
+            if max_ts_seen:
+                cfg.last_watermark_ts = max_ts_seen
+            elif not (cfg.last_watermark_ts or "").strip():
+                cfg.last_watermark_ts = str(time.time())
+            db.session.commit()
+            audit_channels.append({
+                "hint": hint,
+                "channel_id": channel_id,
+                "new": new_rows,
+                "scanned": scanned,
+            })
+        if errors and not audit_channels:
+            flash(
+                "Could not sync any channel. Check names or IDs, invite the bot, and add OAuth scopes "
+                "channels:history, channels:read (private: groups:history, groups:read). "
+                f"Details: {', '.join(errors)}",
+                "error",
+            )
+            return _settings_redirect()
+        log_audit(
+            "slack_channel_sync",
+            "slack",
+            "multi",
+            details=json.dumps({"days": days, "new": total_new, "scanned": total_scanned, "channels": audit_channels, "errors": errors}),
+        )
+        msg = (
+            f"Slack sync: {total_new} new message(s) saved, {total_scanned} row(s) seen "
+            f"across {len(audit_channels)} channel(s)."
+        )
+        if errors:
+            msg += " Could not sync: " + "; ".join(errors) + "."
+        msg += " Open Slack imports to review parsed fields."
+        flash(msg, "success")
+    except urllib.error.HTTPError as e:
+        db.session.rollback()
+        flash(f"Slack HTTP error: {e}", "error")
+    except Exception as e:
+        db.session.rollback()
+        app.logger.exception("Slack channel sync failed")
+        flash(f"Slack sync failed: {e}", "error")
+    return _settings_redirect()
+
+
+@app.route("/settings/slack-imports")
+@admin_required
+def settings_slack_imports():
+    rows = SlackIngestedMessage.query.order_by(
+        desc(SlackIngestedMessage.message_ts),
+    ).limit(400).all()
+    for r in rows:
+        try:
+            r.derived = json.loads(r.derived_json) if r.derived_json else {}
+        except Exception:
+            r.derived = {}
+    return render_template("slack_imports.html", rows=rows)
 
 
 @app.route("/api/slack/events", methods=["POST"])

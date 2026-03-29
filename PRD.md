@@ -321,6 +321,7 @@ Critical requirements:
 
 ## Integrations — Slack
 - **Configuration:** Super Admin stores webhook URL, signing secret, bot token, and default channel in Settings. Outbound notifications post when integration is enabled.
+- **Channel history sync (admin tooling):** Super Admin configures up to **six** Slack channels (by `#name` or channel ID) under **Slack Integration → Channel history sync**, then runs **Maintenance → Sync Slack channel history**. The sync uses Slack `conversations.history`, dedupes messages by **channel ID + message `ts`**, and stores rows for review (yield/production-style parsing hints); it does **not** auto-create Run records. **First sync** for each configured channel uses a configurable rolling window (**Days back**). **Subsequent syncs** use a **per-channel cursor** (last ingested message timestamp / watermark) so each channel incrementally fetches only newer messages. Editing a channel hint clears that slot’s resolved ID and cursor. New installs seed sync slot 0 from **Default Channel** when no sync rows exist yet.
 - **Inbound HTTP endpoints (no user session):** requests must be verified with Slack’s signing secret (HMAC).
   - **Slash commands:** `POST /api/slack/command`
   - **Interactivity:** `POST /api/slack/interactivity`

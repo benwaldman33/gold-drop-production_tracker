@@ -2,6 +2,8 @@
 
 **Product requirements** live in `PRD.md`.
 **User guide** lives in `USER_MANUAL.md` (no credentials included).
+**FAQ** lives in `FAQ.md`.
+**Engineering notes** (implementation-oriented) live in `ENGINEERING.md`.
 
 ## Quick Start (Local Development)
 
@@ -45,7 +47,7 @@ Open http://localhost:5000 in your browser.
 - **Photo Library** — Central searchable media index with supplier/purchase/category/tag filters
 - **Photo Audit Linkage** — Approved field photos are auto-linked to supplier docs (license) and purchase audit records (biomass/COA)
 - **Advanced Exports** — Date range and criteria filters (supplier/status/potency/strain) across operational tabs
-- **Slack Integration** — Outbound notifications; inbound slash commands, interactivity, and Events API URL (`/api/slack/events`) for subscriptions / future channel automations
+- **Slack Integration** — Outbound notifications; inbound slash commands, interactivity, and Events API URL (`/api/slack/events`); optional **channel history sync** for up to six channels with per-channel cursors (`conversations.history` → Slack imports review UI)
 - **Supplier Performance** — All-time, 90-day, and last-batch analytics per farm
 - **Strain Performance** — Compare yields and cost/gram across strains and suppliers
 - **Data Quality Controls** — Flag runs missing $/lb; optionally exclude unpriced runs from analytics
@@ -63,6 +65,9 @@ gold-drop/
 ├── models.py           # SQLAlchemy database models
 ├── requirements.txt    # Python dependencies
 ├── PRD.md              # Product requirements document
+├── USER_MANUAL.md      # End-user / operator guide
+├── FAQ.md              # Short frequently asked questions
+├── ENGINEERING.md      # Implementation and schema notes for developers
 ├── static/
 │   ├── css/
 │   │   └── style.css       # Application styles

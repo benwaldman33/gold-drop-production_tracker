@@ -2,6 +2,8 @@
 
 This guide explains how to use the Gold Drop web app day-to-day. It intentionally **does not include any usernames or passwords**. Ask your administrator for access.
 
+**Other documents:** `FAQ.md` (quick answers), `PRD.md` (product requirements), `ENGINEERING.md` (technical implementation notes for developers).
+
 ---
 
 ## Getting started
@@ -258,6 +260,7 @@ Admins can create users and assign roles. (This manual does not include any cred
 - **Outbound:** notifications for key actions (when enabled).
 - **Inbound:** Slash commands and interactivity use `/api/slack/command` and `/api/slack/interactivity`.
 - **Event Subscriptions:** In the Slack app, set the Request URL to `https://your-site/api/slack/events` (HTTPS). The app answers Slack’s URL challenge and accepts `event_callback` pings (extend later for channel messages). The **Signing Secret** in Slack must match the value saved in Settings.
+- **Channel history sync:** Under **Settings → Slack Integration → Channel history sync**, configure up to **six** channels (`#name` or channel ID), then use **Settings → Maintenance → Sync Slack channel history**. The **Days back** value applies to the **first** sync of each channel; after that, each channel keeps its own cursor (last message timestamp) so only newer messages are scanned. The bot must be **invited** to every channel and have `channels:history` + `channels:read` (and for private channels, `groups:history` + `groups:read`). Each message is stored once (deduped by channel + Slack timestamp). Open **View Slack imports** to see raw text and automatically derived fields (yield report vs production log hints). This does not create Run records yet—it is for review and future automation.
 
 ### Maintenance: Recalculate all run costs
 Use **Recalculate All Run Costs** after:
