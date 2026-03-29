@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Slack import — Run preview{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Run preview (Slack import)</h2>
+  <a href="{{ url_for('settings_slack_imports') }}" class="btn btn-secondary">← Slack imports</a>
+  <a href="{{ url_for('settings_slack_run_mappings') }}" class="btn btn-secondary">Edit mappings</a>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;margin-bottom:8px;">Message</h4>
+  <p class="text-sm"><strong>Kind:</strong> {{ row.message_kind or '—' }} &nbsp; <strong>Slack ts:</strong> <span class="text-mono">{{ row.message_ts }}</span> &nbsp; <strong>Channel:</strong> <span class="text-mono">{{ row.channel_id }}</span></p>
+  <p class="text-sm" style="color:var(--text-muted);margin-top:8px;"><strong>Phase 1:</strong> Values below are a <em>Run preview</em> only (not saved to Runs).{% if non_run_mapping_rule_count %} This message may also match <strong>{{ non_run_mapping_rule_count }}</strong> saved rule(s) for <strong>other destinations</strong> (Biomass, Purchases, …); those are not shown here yet.{% endif %}</p>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;margin-bottom:8px;">Parsed derived fields</h4>
+  {% if derived %}
+  <div class="table-wrap">
+    <table>
+      <tbody>
+        {% for k, v in derived.items() %}
+        <tr><td class="text-mono text-sm">{{ k }}</td><td class="text-sm">{{ v }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-sm cell-muted">No derived_json.</p>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;margin-bottom:8px;">Mapped Run fields (preview)</h4>
+  {% if preview.filled %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Run field</th><th>Value</th></tr></thead>
+      <tbody>
+        {% for k, v in preview.filled.items() %}
+        <tr>
+          <td class="text-mono text-sm">{{ k }}</td>
+          <td class="text-sm" style="white-space:pre-wrap;">{{ v }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-sm cell-muted">No fields mapped (check message kind, derived keys, and mapping rules).</p>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;margin-bottom:8px;">Gaps</h4>
+  {% if preview.unmapped_keys %}
+  <p class="text-sm"><strong>Derived keys not consumed by any rule:</strong></p>
+  <ul class="text-sm">
+    {% for k in preview.unmapped_keys %}
+    <li><code>{{ k }}</code></li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="text-sm cell-muted">All derived keys were used by at least one applicable rule (or there were none).</p>
+  {% endif %}
+  {% if preview.missing_recommended %}
+  <p class="text-sm" style="margin-top:12px;"><strong>Recommended Run fields still empty after mapping:</strong></p>
+  <ul class="text-sm">
+    {% for f in preview.missing_recommended %}
+    <li><code>{{ f }}</code> — required on the Run form for a typical log</li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="text-sm" style="margin-top:12px;color:var(--green);">Preview includes run_date, reactor_number, and bio_in_reactor_lbs (recommended trio present).</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;margin-bottom:8px;">Raw text (trimmed)</h4>
+  <pre class="text-sm" style="white-space:pre-wrap;word-break:break-word;color:var(--text-secondary);max-height:240px;overflow:auto;">{{ (row.raw_text or '')[:4000] }}{% if row.raw_text and row.raw_text|length > 4000 %}…{% endif %}</pre>
+</div>
+{% endblock %}

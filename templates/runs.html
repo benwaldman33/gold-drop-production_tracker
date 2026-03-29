@@ -56,6 +56,7 @@
       <tr>
         <th><a href="?sort=run_date&order={% if sort=='run_date' and order=='desc' %}asc{% else %}desc{% endif %}&search={{ search }}&start_date={{ start_date }}&end_date={{ end_date }}&supplier_id={{ supplier_filter }}&min_potency={{ min_potency }}&max_potency={{ max_potency }}">Date</a></th>
         <th>Rx</th>
+        <th>Load</th>
         <th>Source</th>
         <th class="text-right">Lbs</th>
         <th class="text-right">Wet HTE</th>
@@ -75,6 +76,7 @@
       <tr>
         <td>{{ run.run_date.strftime('%m/%d/%y') if run.run_date else '—' }}</td>
         <td class="text-center">{{ run.reactor_number }}</td>
+        <td class="text-center text-mono text-sm">{{ run.load_source_reactors or '—' }}</td>
         <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;">
           {% if run.is_rollover %}<span class="badge badge-gold">Rollover</span>{% endif %}
           {% set ps = pricing_status.get(run.id) if pricing_status else None %}
@@ -104,7 +106,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="14" class="text-center cell-muted" style="padding:40px;">No runs recorded yet. <a href="{{ url_for('run_new') }}">Log your first run.</a></td></tr>
+      <tr><td colspan="15" class="text-center cell-muted" style="padding:40px;">No runs recorded yet. <a href="{{ url_for('run_new') }}">Log your first run.</a></td></tr>
       {% endfor %}
     </tbody>
   </table>

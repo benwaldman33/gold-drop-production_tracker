@@ -1,0 +1,461 @@
+{% extends "base.html" %}
+{% block title %}Slack → field mappings{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Slack → field mappings (Phase 1)</h2>
+  <a href="{{ url_for('settings') }}#settings-slack" class="btn btn-secondary">← Settings</a>
+  <a href="{{ url_for('settings_slack_imports') }}" class="btn btn-secondary">Slack imports</a>
+</div>
+
+<div class="card">
+  <p class="text-sm" style="color:var(--text-muted);margin-bottom:12px;">
+    Each row sends one <strong>parsed Slack field</strong> (from <code>derived_json</code>) to a <strong>destination module</strong> and <strong>target field</strong>.
+    <strong>Runs</strong>: target fields use the dropdown; the <strong>Slack imports → Run preview</strong> reflects these rules today.
+    <strong>Biomass Pipeline, Purchases, Inventory, Photo Library, Suppliers, Strains, Costs</strong>: you can save snake_case target labels now so routing is ready; module-specific previews and apply/import (e.g. photo attachments to the library) will ship in later phases.
+    <strong>Preview only</strong> for Runs — nothing is written automatically. Rule order matters for Runs: later rows overwrite the same Run field, except <code>notes</code> (lines are combined).
+    The table shows <strong>complete rules + two spare rows</strong> (minimum 2); filling a spare row adds another until the server limit.
+  </p>
+</div>
+
+<div class="card" style="overflow-x:auto;">
+  <p class="text-sm" id="slack-map-row-cap-hint" style="color:var(--text-muted);margin:0 0 10px 0;"></p>
+  <form method="POST" id="slack-map-form">
+    <input type="hidden" name="action" value="">
+    <table style="width:100%;min-width:1080px;font-size:0.82rem;">
+      <thead>
+        <tr style="text-align:left;color:var(--gold);">
+          <th style="padding:6px;">#</th>
+          <th style="padding:6px;width:12%;">Destination</th>
+          <th style="padding:6px;width:19%;">Slack source</th>
+          <th style="padding:6px;width:19%;">Target field</th>
+          <th style="padding:6px;">Message kinds</th>
+          <th style="padding:6px;">Transform</th>
+          <th style="padding:6px;">Arg</th>
+        </tr>
+      </thead>
+      <tbody id="slack-map-rules-tbody">
+        {% for i in range(rule_slots) %}
+        {% if i < rules|length %}{% set r = rules[i] %}{% else %}{% set r = none %}{% endif %}
+        {% set tr = r.transform if r and r.transform else {} %}
+        {% set tt = tr.get('type', 'passthrough') if tr is mapping else 'passthrough' %}
+        {% set ta = '' %}
+        {% if tt == 'multiply' %}{% set ta = tr.get('factor', '') %}{% elif tt in ('prefix', 'suffix') %}{% set ta = tr.get('value', '') or '' %}{% endif %}
+        {% set kv = (r.message_kinds | join(',')) if r and r.message_kinds else 'all' %}
+        {% set raw_dest = ((r.destination if r and r.destination else 'run') | trim) or 'run' %}
+        {% set dest = raw_dest if raw_dest in destination_values else 'run' %}
+        <tr class="slack-map-rule-row" style="border-top:1px solid var(--dark-border);">
+          <td class="slack-map-row-num" style="padding:6px;color:var(--text-muted);">{{ loop.index }}</td>
+          <td style="padding:6px;">
+            <select name="rule_destination_{{ i }}" class="slack-map-rule-destination" data-row="{{ i }}" style="max-width:100%;">
+              {% for val, label in destination_choices %}
+              <option value="{{ val }}" {% if raw_dest == val %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+              {% if r and raw_dest not in destination_values %}
+              <option value="{{ raw_dest }}" selected>{{ raw_dest }} (saved)</option>
+              {% endif %}
+            </select>
+          </td>
+          <td style="padding:6px;">
+            <select name="rule_source_{{ i }}" class="slack-map-rule-source" data-row="{{ i }}" style="max-width:100%;">
+              <option value="">—</option>
+              {% for sk in source_keys %}
+              <option value="{{ sk }}" {% if r and r.source_key == sk %}selected{% endif %}>{{ sk }}</option>
+              {% endfor %}
+            </select>
+            <div class="text-sm slack-map-source-hint" data-row="{{ i }}" style="color:var(--text-muted);margin-top:4px;min-height:1.25em;"></div>
+          </td>
+          <td style="padding:6px;">
+            <select name="rule_target_select_{{ i }}" class="slack-map-target-run" data-row="{{ i }}" style="max-width:100%;{% if raw_dest != 'run' %}display:none{% endif %}" {% if raw_dest != 'run' %}disabled{% endif %}>
+              <option value="">—</option>
+              {% for tf in target_fields %}
+              <option value="{{ tf }}" {% if r and raw_dest == 'run' and r.target_field == tf %}selected{% endif %}>{{ tf }}</option>
+              {% endfor %}
+            </select>
+            <input type="text" name="rule_target_text_{{ i }}" class="slack-map-target-other" data-row="{{ i }}" autocomplete="off"
+              value="{% if r and raw_dest != 'run' %}{{ r.target_field }}{% endif %}"
+              placeholder="snake_case (e.g. notes_hint)"
+              style="max-width:100%;width:100%;box-sizing:border-box;margin-top:0;{% if raw_dest == 'run' %}display:none{% endif %}"
+              {% if raw_dest == 'run' %}disabled{% endif %}>
+            <div class="text-sm slack-map-target-hint" data-row="{{ i }}" style="color:var(--text-muted);margin-top:4px;min-height:1.25em;"></div>
+          </td>
+          <td style="padding:6px;">
+            <select name="rule_kinds_{{ i }}" class="slack-map-rule-kinds" data-row="{{ i }}" style="max-width:160px;">
+              {% for val, label in kind_presets %}
+              <option value="{{ val }}" {% if kv == val %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+              {% set preset_vals = ['all','yield_report','production_log','unknown','yield_report,production_log'] %}
+              {% if kv not in preset_vals %}
+              <option value="{{ kv }}" selected>{{ kv }} (saved)</option>
+              {% endif %}
+            </select>
+          </td>
+          <td style="padding:6px;">
+            <select name="rule_transform_{{ i }}" class="slack-map-rule-transform" data-row="{{ i }}">
+              {% for t in transform_types %}
+              <option value="{{ t }}" {% if tt == t %}selected{% endif %}>{{ t }}</option>
+              {% endfor %}
+            </select>
+          </td>
+          <td style="padding:6px;">
+            <input type="text" name="rule_transform_arg_{{ i }}" class="slack-map-rule-arg" data-row="{{ i }}" value="{{ ta }}" placeholder="factor / prefix / suffix" style="width:130px;">
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div style="margin-top:16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+      <button type="submit" class="btn btn-primary">Save mappings</button>
+      <button type="submit" name="action" value="reset_defaults" class="btn btn-secondary" onclick="return confirm('Replace saved rules with built-in defaults?');">Reset to defaults</button>
+    </div>
+  </form>
+</div>
+
+<details class="card text-sm" style="margin-top:16px;">
+  <summary style="cursor:pointer;color:var(--gold);">Advanced: edit as JSON</summary>
+  <p style="color:var(--text-muted);margin:12px 0;">Optional per rule: <code>"destination"</code> — one of <code>run</code>, <code>biomass</code>, <code>purchase</code>, <code>inventory</code>, <code>photo_library</code>, <code>supplier</code>, <code>strain</code>, <code>cost</code>. Omit or <code>run</code> for Run mappings. Saving here replaces the entire rule set.</p>
+  <form method="POST">
+    <input type="hidden" name="action" value="save_json">
+    <textarea name="rules_json" rows="14" style="width:100%;font-family:monospace;font-size:0.8rem;">{{ rules_json }}</textarea>
+    <button type="submit" class="btn btn-secondary btn-sm" style="margin-top:8px;">Save JSON only</button>
+  </form>
+</details>
+<script type="application/json" id="slack-mapping-help-json">{{ {'source': source_help, 'target': target_help} | tojson }}</script>
+<script type="application/json" id="slack-mapping-ui-json">{{ {
+  'ruleSlotsMax': rule_slots_max,
+  'sourceKeys': source_keys,
+  'targetFields': target_fields,
+  'kindPresets': kind_presets_meta,
+  'transformTypes': transform_types | list,
+  'destinationChoices': destination_choices_meta,
+  'nonRunTargetHint': non_run_target_hint,
+} | tojson }}</script>
+<script>
+(function () {
+  var tbody = document.getElementById('slack-map-rules-tbody');
+  var capHint = document.getElementById('slack-map-row-cap-hint');
+  if (!tbody) return;
+
+  var HELP = {};
+  try {
+    HELP = JSON.parse(document.getElementById('slack-mapping-help-json').textContent || '{}');
+  } catch (e) {}
+
+  var UI = {};
+  try {
+    UI = JSON.parse(document.getElementById('slack-mapping-ui-json').textContent || '{}');
+  } catch (e) {
+    return;
+  }
+
+  var srcMap = HELP.source || {};
+  var tgtMap = HELP.target || {};
+  var RULE_MAX = parseInt(UI.ruleSlotsMax, 10) || 80;
+  var sourceKeys = UI.sourceKeys || [];
+  var targetFields = UI.targetFields || [];
+  var kindPresets = UI.kindPresets || [];
+  var transformTypes = UI.transformTypes || [];
+  var destChoices = UI.destinationChoices || [];
+  var nonRunTgtHint = UI.nonRunTargetHint || '';
+
+  function hintFor(map, key) {
+    if (!key) return '';
+    var t = map[key];
+    return typeof t === 'string' ? t : '';
+  }
+
+  function rowDestination(tr) {
+    var d = tr.querySelector('.slack-map-rule-destination');
+    return d && d.value ? d.value : 'run';
+  }
+
+  function rowTargetEffective(tr) {
+    var dest = rowDestination(tr);
+    var runSel = tr.querySelector('.slack-map-target-run');
+    var oth = tr.querySelector('.slack-map-target-other');
+    if (dest === 'run') {
+      if (!runSel || runSel.disabled) return '';
+      return (runSel.value || '').trim();
+    }
+    if (!oth || oth.disabled) return '';
+    return (oth.value || '').trim();
+  }
+
+  function applyDestMode(rowIdx) {
+    var tr = tbody.querySelector('select.slack-map-rule-destination[data-row="' + rowIdx + '"]');
+    if (!tr) return;
+    tr = tr.closest('tr');
+    if (!tr) return;
+    var dest = rowDestination(tr);
+    var runSel = tr.querySelector('.slack-map-target-run');
+    var oth = tr.querySelector('.slack-map-target-other');
+    if (runSel) {
+      runSel.disabled = dest !== 'run';
+      runSel.style.display = dest === 'run' ? 'block' : 'none';
+    }
+    if (oth) {
+      oth.disabled = dest === 'run';
+      oth.style.display = dest === 'run' ? 'none' : 'block';
+      if (dest === 'run') oth.value = '';
+    }
+    refreshRow(rowIdx);
+  }
+
+  function refreshRow(i) {
+    var sh = tbody.querySelector('.slack-map-source-hint[data-row="' + i + '"]');
+    var th = tbody.querySelector('.slack-map-target-hint[data-row="' + i + '"]');
+    var srcSel = tbody.querySelector('select.slack-map-rule-source[data-row="' + i + '"]');
+    var destSel = tbody.querySelector('select.slack-map-rule-destination[data-row="' + i + '"]');
+    var dest = destSel && destSel.value ? destSel.value : 'run';
+    if (sh && srcSel) sh.textContent = hintFor(srcMap, srcSel.value);
+    if (th) {
+      if (dest === 'run') {
+        var runSel = tbody.querySelector('select.slack-map-target-run[data-row="' + i + '"]');
+        th.textContent = runSel ? hintFor(tgtMap, runSel.value) : '';
+      } else {
+        th.textContent = nonRunTgtHint;
+      }
+    }
+  }
+
+  function maxDataRow() {
+    var max = -1;
+    tbody.querySelectorAll('[data-row]').forEach(function (el) {
+      var v = el.getAttribute('data-row');
+      var n = parseInt(v, 10);
+      if (!isNaN(n)) max = Math.max(max, n);
+    });
+    return max;
+  }
+
+  function getPopulatedCount() {
+    var n = 0;
+    tbody.querySelectorAll('tr.slack-map-rule-row').forEach(function (tr) {
+      var s = tr.querySelector('.slack-map-rule-source');
+      if (s && s.value && rowTargetEffective(tr)) n++;
+    });
+    return n;
+  }
+
+  function isRowBlank(tr) {
+    var s = tr.querySelector('.slack-map-rule-source');
+    return !(s && s.value) && !rowTargetEffective(tr);
+  }
+
+  function targetRowCount() {
+    return Math.min(RULE_MAX, Math.max(2, getPopulatedCount() + 2));
+  }
+
+  function renumberRows() {
+    var rows = tbody.querySelectorAll('tr.slack-map-rule-row');
+    rows.forEach(function (tr, idx) {
+      var td = tr.querySelector('.slack-map-row-num');
+      if (td) td.textContent = String(idx + 1);
+    });
+  }
+
+  function updateCapHint() {
+    if (!capHint) return;
+    var rows = tbody.querySelectorAll('tr.slack-map-rule-row').length;
+    capHint.textContent = 'Showing ' + rows + ' row(s) · up to ' + RULE_MAX + ' rules total. Complete rules: ' + getPopulatedCount() + '.';
+  }
+
+  function appendSelectOptions(sel, items, selected) {
+    items.forEach(function (k) {
+      var opt = document.createElement('option');
+      opt.value = k;
+      opt.textContent = k;
+      if (selected && selected === k) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  }
+
+  function createRuleRow(idx) {
+    var tr = document.createElement('tr');
+    tr.className = 'slack-map-rule-row';
+    tr.style.borderTop = '1px solid var(--dark-border)';
+
+    var tdNum = document.createElement('td');
+    tdNum.className = 'slack-map-row-num';
+    tdNum.style.padding = '6px';
+    tdNum.style.color = 'var(--text-muted)';
+    tr.appendChild(tdNum);
+
+    function cellWithPadding() {
+      var td = document.createElement('td');
+      td.style.padding = '6px';
+      return td;
+    }
+
+    var tdD = cellWithPadding();
+    var selD = document.createElement('select');
+    selD.name = 'rule_destination_' + idx;
+    selD.className = 'slack-map-rule-destination';
+    selD.setAttribute('data-row', idx);
+    selD.style.maxWidth = '100%';
+    destChoices.forEach(function (dc) {
+      var o = document.createElement('option');
+      o.value = dc.value;
+      o.textContent = dc.label;
+      if (dc.value === 'run') o.selected = true;
+      selD.appendChild(o);
+    });
+    tdD.appendChild(selD);
+    tr.appendChild(tdD);
+
+    var tdS = cellWithPadding();
+    var selS = document.createElement('select');
+    selS.name = 'rule_source_' + idx;
+    selS.className = 'slack-map-rule-source';
+    selS.setAttribute('data-row', idx);
+    selS.style.maxWidth = '100%';
+    var o0 = document.createElement('option');
+    o0.value = '';
+    o0.textContent = '—';
+    selS.appendChild(o0);
+    appendSelectOptions(selS, sourceKeys, null);
+    tdS.appendChild(selS);
+    var hintS = document.createElement('div');
+    hintS.className = 'text-sm slack-map-source-hint';
+    hintS.setAttribute('data-row', idx);
+    hintS.style.color = 'var(--text-muted)';
+    hintS.style.marginTop = '4px';
+    hintS.style.minHeight = '1.25em';
+    tdS.appendChild(hintS);
+    tr.appendChild(tdS);
+
+    var tdT = cellWithPadding();
+    var selT = document.createElement('select');
+    selT.name = 'rule_target_select_' + idx;
+    selT.className = 'slack-map-target-run';
+    selT.setAttribute('data-row', idx);
+    selT.style.maxWidth = '100%';
+    var o1 = document.createElement('option');
+    o1.value = '';
+    o1.textContent = '—';
+    selT.appendChild(o1);
+    appendSelectOptions(selT, targetFields, null);
+    tdT.appendChild(selT);
+    var inpT = document.createElement('input');
+    inpT.type = 'text';
+    inpT.name = 'rule_target_text_' + idx;
+    inpT.className = 'slack-map-target-other';
+    inpT.setAttribute('data-row', idx);
+    inpT.placeholder = 'snake_case (e.g. notes_hint)';
+    inpT.autocomplete = 'off';
+    inpT.style.maxWidth = '100%';
+    inpT.style.width = '100%';
+    inpT.style.boxSizing = 'border-box';
+    inpT.style.display = 'none';
+    inpT.disabled = true;
+    tdT.appendChild(inpT);
+    var hintT = document.createElement('div');
+    hintT.className = 'text-sm slack-map-target-hint';
+    hintT.setAttribute('data-row', idx);
+    hintT.style.color = 'var(--text-muted)';
+    hintT.style.marginTop = '4px';
+    hintT.style.minHeight = '1.25em';
+    tdT.appendChild(hintT);
+    tr.appendChild(tdT);
+
+    var tdK = cellWithPadding();
+    var selK = document.createElement('select');
+    selK.name = 'rule_kinds_' + idx;
+    selK.className = 'slack-map-rule-kinds';
+    selK.setAttribute('data-row', idx);
+    selK.style.maxWidth = '160px';
+    kindPresets.forEach(function (kp, j) {
+      var o = document.createElement('option');
+      o.value = kp.value;
+      o.textContent = kp.label;
+      if (j === 0) o.selected = true;
+      selK.appendChild(o);
+    });
+    tdK.appendChild(selK);
+    tr.appendChild(tdK);
+
+    var tdTr = cellWithPadding();
+    var selTr = document.createElement('select');
+    selTr.name = 'rule_transform_' + idx;
+    selTr.className = 'slack-map-rule-transform';
+    selTr.setAttribute('data-row', idx);
+    transformTypes.forEach(function (tname) {
+      var o = document.createElement('option');
+      o.value = tname;
+      o.textContent = tname;
+      if (tname === 'passthrough') o.selected = true;
+      selTr.appendChild(o);
+    });
+    tdTr.appendChild(selTr);
+    tr.appendChild(tdTr);
+
+    var tdA = cellWithPadding();
+    var inp = document.createElement('input');
+    inp.type = 'text';
+    inp.name = 'rule_transform_arg_' + idx;
+    inp.className = 'slack-map-rule-arg';
+    inp.setAttribute('data-row', idx);
+    inp.placeholder = 'factor / prefix / suffix';
+    inp.style.width = '130px';
+    tdA.appendChild(inp);
+    tr.appendChild(tdA);
+
+    return tr;
+  }
+
+  function adjustRows() {
+    var want = targetRowCount();
+
+    while (true) {
+      var rows = tbody.querySelectorAll('tr.slack-map-rule-row');
+      if (rows.length >= want) break;
+      var nextIdx = maxDataRow() + 1;
+      if (nextIdx >= RULE_MAX) break;
+      tbody.appendChild(createRuleRow(nextIdx));
+      applyDestMode(nextIdx);
+    }
+
+    while (true) {
+      var rows2 = tbody.querySelectorAll('tr.slack-map-rule-row');
+      if (rows2.length <= want) break;
+      var last = rows2[rows2.length - 1];
+      if (!isRowBlank(last)) break;
+      last.remove();
+    }
+
+    renumberRows();
+    updateCapHint();
+  }
+
+  tbody.addEventListener('change', function (e) {
+    var t = e.target;
+    if (t.classList.contains('slack-map-rule-destination')) {
+      var dr = t.getAttribute('data-row');
+      if (dr !== null) applyDestMode(parseInt(dr, 10));
+    }
+    if (t.classList.contains('slack-map-rule-source') || t.classList.contains('slack-map-target-run')) {
+      var dr2 = t.getAttribute('data-row');
+      if (dr2 !== null) refreshRow(parseInt(dr2, 10));
+    }
+    if (t.classList.contains('slack-map-rule-source') || t.classList.contains('slack-map-target-run') ||
+        t.classList.contains('slack-map-target-other') ||
+        t.classList.contains('slack-map-rule-destination') ||
+        t.classList.contains('slack-map-rule-kinds') || t.classList.contains('slack-map-rule-transform')) {
+      adjustRows();
+    }
+  });
+
+  tbody.querySelectorAll('.slack-map-rule-destination').forEach(function (el) {
+    var dr = el.getAttribute('data-row');
+    if (dr !== null) applyDestMode(parseInt(dr, 10));
+  });
+
+  tbody.querySelectorAll('.slack-map-rule-row').forEach(function (tr) {
+    tr.querySelectorAll('[data-row]').forEach(function (el) {
+      var dr = el.getAttribute('data-row');
+      if (dr !== null) refreshRow(parseInt(dr, 10));
+    });
+  });
+  adjustRows();
+})();
+</script>
+{% endblock %}

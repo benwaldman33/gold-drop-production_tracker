@@ -204,6 +204,8 @@ class Run(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
     run_date = db.Column(db.Date, nullable=False)
     reactor_number = db.Column(db.Integer, nullable=False)
+    # Which upstream load reactor(s) this biomass came from (e.g. A, B, A+B); not the processing vessel # above.
+    load_source_reactors = db.Column(db.String(120))
     is_rollover = db.Column(db.Boolean, default=False)
     bio_in_house_lbs = db.Column(db.Float)
     bio_in_reactor_lbs = db.Column(db.Float)

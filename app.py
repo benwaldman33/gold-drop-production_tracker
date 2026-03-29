@@ -331,6 +331,432 @@ def _derive_slack_production_message(raw: str) -> dict:
     return out
 
 
+# ── Slack → Run field mappings (Phase 1: preview only, configurable in Settings) ─
+
+SLACK_RUN_MAPPINGS_KEY = "slack_run_field_mappings"
+
+# Derived keys from `_derive_slack_production_message` plus Slack `message_ts` virtual source
+SLACK_MAPPING_ALLOWED_SOURCE_KEYS = frozenset({
+    "__message_ts__",
+    "strain", "source", "bio_lbs", "bio_weight_lbs", "wet_thca_g", "wet_hte_g", "wet_total_g",
+    "yield_pct_mentioned", "reactor", "notes_line", "message_kind",
+})
+
+# Run columns that Phase 1 preview may populate (subset of Run model / run form)
+SLACK_MAPPING_ALLOWED_TARGET_FIELDS = frozenset({
+    "run_date", "reactor_number", "load_source_reactors", "bio_in_reactor_lbs", "bio_in_house_lbs", "grams_ran",
+    "wet_thca_g", "wet_hte_g", "dry_thca_g", "dry_hte_g",
+    "overall_yield_pct", "thca_yield_pct", "hte_yield_pct",
+    "butane_in_house_lbs", "solvent_ratio", "system_temp", "fuel_consumption",
+    "run_type", "notes",
+})
+
+RUN_PREVIEW_RECOMMENDED_FIELDS = ("run_date", "reactor_number", "bio_in_reactor_lbs")
+
+SLACK_RUN_MAPPING_MAX_FORM_ROWS = 80
+
+
+def _slack_mapping_grid_row_count(rules: list | None) -> int:
+    """Visible grid rows: saved rules + 2 spare blanks (min 2), capped at max form rows."""
+    n = len(rules) if rules else 0
+    return min(SLACK_RUN_MAPPING_MAX_FORM_ROWS, max(2, n + 2))
+
+
+SLACK_MAPPING_MESSAGE_KINDS = frozenset({"yield_report", "production_log", "unknown"})
+SLACK_MAPPING_TRANSFORM_TYPES = (
+    "passthrough", "slack_ts_to_date", "to_float", "to_reactor_int", "multiply", "prefix", "suffix",
+)
+# Short hints for the mapping GUI (source = keys in derived_json or __message_ts__)
+SLACK_MAPPING_SOURCE_HELP = {
+    "__message_ts__": "Slack message time → run date",
+    "strain": "Parsed strain (yield / production templates)",
+    "source": "Parsed source/supplier line",
+    "bio_lbs": "Bio lbs (yield template)",
+    "bio_weight_lbs": "Bio weight lbs (production template)",
+    "wet_thca_g": "Wet THCA (g)",
+    "wet_hte_g": "Wet HTE (g)",
+    "wet_total_g": "Wet total (g)",
+    "yield_pct_mentioned": "Yield % from text",
+    "reactor": "Reactor token (e.g. A) — map twice for load source + equipment #",
+    "notes_line": "Parsed notes line",
+    "message_kind": "Classifier string as data (rare)",
+}
+SLACK_MAPPING_TARGET_HELP = {
+    "run_date": "Run date",
+    "reactor_number": "Processing reactor 1–3 (use to_reactor_int)",
+    "load_source_reactors": "Biomass load A/B/A+B (string; pair with reactor source)",
+    "bio_in_reactor_lbs": "Lbs in reactor",
+    "bio_in_house_lbs": "Bio in house",
+    "grams_ran": "Grams ran",
+    "wet_thca_g": "Wet THCA (g)",
+    "wet_hte_g": "Wet HTE (g)",
+    "dry_thca_g": "Dry THCA (g)",
+    "dry_hte_g": "Dry HTE (g)",
+    "overall_yield_pct": "Overall yield %",
+    "thca_yield_pct": "THCA yield %",
+    "hte_yield_pct": "HTE yield %",
+    "butane_in_house_lbs": "Butane in house",
+    "solvent_ratio": "Solvent ratio",
+    "system_temp": "System temp",
+    "fuel_consumption": "Fuel consumption",
+    "run_type": "Run type (string)",
+    "notes": "Notes (concatenates multiple rules)",
+}
+SLACK_MAPPING_KIND_PRESETS = (
+    ("all", "All message kinds"),
+    ("yield_report", "yield_report only"),
+    ("production_log", "production_log only"),
+    ("unknown", "unknown only"),
+    ("yield_report,production_log", "yield_report + production_log"),
+)
+
+# Parsed Slack values can be routed to multiple product areas (Phase 1 preview implements run only).
+SLACK_MAPPING_ALLOWED_DESTINATIONS = frozenset({
+    "run", "biomass", "purchase", "inventory", "photo_library", "supplier", "strain", "cost",
+})
+SLACK_MAPPING_DESTINATION_CHOICES = (
+    ("run", "Runs (preview active)"),
+    ("biomass", "Biomass Pipeline"),
+    ("purchase", "Purchases"),
+    ("inventory", "Inventory"),
+    ("photo_library", "Photo Library"),
+    ("supplier", "Suppliers"),
+    ("strain", "Strains"),
+    ("cost", "Costs"),
+)
+SLACK_NON_RUN_TARGET_FIELD_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+
+SLACK_MAPPING_NON_RUN_TARGET_HINT = (
+    "Snake_case field label for this module (real columns come when that destination ships)."
+)
+
+
+def _slack_run_mappings_template_kwargs(rules: list, rules_json: str) -> dict:
+    return {
+        "rules": rules,
+        "rules_json": rules_json,
+        "source_keys": sorted(SLACK_MAPPING_ALLOWED_SOURCE_KEYS),
+        "target_fields": sorted(SLACK_MAPPING_ALLOWED_TARGET_FIELDS),
+        "destination_choices": SLACK_MAPPING_DESTINATION_CHOICES,
+        "destination_choices_meta": [
+            {"value": v, "label": lbl} for v, lbl in SLACK_MAPPING_DESTINATION_CHOICES
+        ],
+        "destination_values": sorted(SLACK_MAPPING_ALLOWED_DESTINATIONS),
+        "kind_presets": SLACK_MAPPING_KIND_PRESETS,
+        "kind_presets_meta": [{"value": v, "label": lbl} for v, lbl in SLACK_MAPPING_KIND_PRESETS],
+        "transform_types": SLACK_MAPPING_TRANSFORM_TYPES,
+        "source_help": SLACK_MAPPING_SOURCE_HELP,
+        "target_help": SLACK_MAPPING_TARGET_HELP,
+        "non_run_target_hint": SLACK_MAPPING_NON_RUN_TARGET_HINT,
+        "rule_slots": _slack_mapping_grid_row_count(rules),
+        "rule_slots_max": SLACK_RUN_MAPPING_MAX_FORM_ROWS,
+    }
+
+
+def _default_slack_run_field_rules():
+    return [
+        {
+            "message_kinds": [],
+            "source_key": "__message_ts__",
+            "target_field": "run_date",
+            "transform": {"type": "slack_ts_to_date"},
+        },
+        {
+            "message_kinds": ["yield_report", "production_log"],
+            "source_key": "strain",
+            "target_field": "notes",
+            "transform": {"type": "prefix", "value": "Strain: "},
+        },
+        {
+            "message_kinds": ["yield_report"],
+            "source_key": "bio_lbs",
+            "target_field": "bio_in_reactor_lbs",
+            "transform": {"type": "to_float"},
+        },
+        {
+            "message_kinds": ["production_log"],
+            "source_key": "bio_weight_lbs",
+            "target_field": "bio_in_reactor_lbs",
+            "transform": {"type": "to_float"},
+        },
+        {
+            "message_kinds": ["production_log"],
+            "source_key": "reactor",
+            "target_field": "reactor_number",
+            "transform": {"type": "to_reactor_int"},
+        },
+        {
+            "message_kinds": ["production_log"],
+            "source_key": "reactor",
+            "target_field": "load_source_reactors",
+            "transform": {"type": "passthrough"},
+        },
+        {
+            "message_kinds": ["yield_report"],
+            "source_key": "wet_thca_g",
+            "target_field": "wet_thca_g",
+            "transform": {"type": "to_float"},
+        },
+        {
+            "message_kinds": ["yield_report"],
+            "source_key": "wet_hte_g",
+            "target_field": "wet_hte_g",
+            "transform": {"type": "to_float"},
+        },
+        {
+            "message_kinds": ["yield_report"],
+            "source_key": "yield_pct_mentioned",
+            "target_field": "overall_yield_pct",
+            "transform": {"type": "to_float"},
+        },
+        {
+            "message_kinds": ["yield_report", "production_log"],
+            "source_key": "source",
+            "target_field": "notes",
+            "transform": {"type": "prefix", "value": "Source: "},
+        },
+        {
+            "message_kinds": ["yield_report", "production_log"],
+            "source_key": "notes_line",
+            "target_field": "notes",
+            "transform": {"type": "prefix", "value": "Notes: "},
+        },
+    ]
+
+
+def _load_slack_run_field_rules() -> list:
+    raw = SystemSetting.get(SLACK_RUN_MAPPINGS_KEY)
+    if not raw or not str(raw).strip():
+        return _default_slack_run_field_rules()
+    try:
+        data = json.loads(raw)
+        rules = data.get("rules")
+        if isinstance(rules, list) and len(rules) > 0:
+            return rules
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return _default_slack_run_field_rules()
+
+
+def _validate_slack_run_field_rules(rules: list) -> None:
+    for i, r in enumerate(rules):
+        if not isinstance(r, dict):
+            raise ValueError(f"Rule {i + 1} must be an object.")
+        kinds = r.get("message_kinds")
+        if kinds is not None and not isinstance(kinds, list):
+            raise ValueError(f"Rule {i + 1}: message_kinds must be a list (or omit for all kinds).")
+        for k in kinds or []:
+            if not isinstance(k, str):
+                raise ValueError(f"Rule {i + 1}: message_kinds entries must be strings.")
+            if k not in SLACK_MAPPING_MESSAGE_KINDS:
+                raise ValueError(
+                    f"Rule {i + 1}: invalid message_kind {k!r} "
+                    f"(use yield_report, production_log, unknown, or leave scope as “all”).",
+                )
+        sk = r.get("source_key")
+        if sk not in SLACK_MAPPING_ALLOWED_SOURCE_KEYS:
+            raise ValueError(f"Rule {i + 1}: unknown source_key {sk!r}.")
+        dest = (r.get("destination") or "run").strip() or "run"
+        if dest not in SLACK_MAPPING_ALLOWED_DESTINATIONS:
+            raise ValueError(
+                f"Rule {i + 1}: unknown destination {dest!r} "
+                f"(use run, biomass, purchase, inventory, photo_library, supplier, strain, or cost).",
+            )
+        tf = r.get("target_field")
+        if not isinstance(tf, str) or not tf.strip():
+            raise ValueError(f"Rule {i + 1}: target_field is required.")
+        tf = tf.strip()
+        if dest == "run":
+            if tf not in SLACK_MAPPING_ALLOWED_TARGET_FIELDS:
+                raise ValueError(f"Rule {i + 1}: unknown Run target_field {tf!r}.")
+        elif not SLACK_NON_RUN_TARGET_FIELD_RE.match(tf):
+            raise ValueError(
+                f"Rule {i + 1}: for destination {dest!r}, target_field must be snake_case (e.g. notes_hint), "
+                "letters and digits after the first character.",
+            )
+        tr = r.get("transform")
+        if tr is not None and not isinstance(tr, dict):
+            raise ValueError(f"Rule {i + 1}: transform must be an object.")
+        ttype = (tr or {}).get("type") or "passthrough"
+        if ttype not in ("passthrough", "slack_ts_to_date", "to_float", "to_reactor_int", "multiply", "prefix", "suffix"):
+            raise ValueError(f"Rule {i + 1}: unsupported transform type {ttype!r}.")
+
+
+def _slack_ts_to_date_value(ts_str: str | None):
+    if not ts_str:
+        return None
+    try:
+        sec = float(str(ts_str).split(".")[0])
+        return datetime.utcfromtimestamp(sec).date()
+    except (ValueError, OSError, TypeError, OverflowError):
+        return None
+
+
+def _apply_slack_mapping_transform(raw_val, transform: dict | None, message_ts: str, source_key: str):
+    tr = transform or {}
+    t = tr.get("type") or "passthrough"
+    if t == "slack_ts_to_date":
+        return _slack_ts_to_date_value(raw_val or message_ts)
+    if t == "to_float":
+        try:
+            return float(raw_val)
+        except (TypeError, ValueError):
+            return None
+    if t == "to_reactor_int":
+        s = str(raw_val).strip().upper()
+        for ch in s:
+            if ch.isdigit():
+                n = int(ch)
+                if 1 <= n <= 9:
+                    return n
+        try:
+            n = int(float(s))
+            if 1 <= n <= 9:
+                return n
+        except (ValueError, TypeError):
+            pass
+        return None
+    if t == "multiply":
+        try:
+            return float(raw_val) * float(tr.get("factor", 1))
+        except (TypeError, ValueError):
+            return None
+    if t == "prefix":
+        return f"{tr.get('value', '')}{raw_val}"
+    if t == "suffix":
+        return f"{raw_val}{tr.get('value', '')}"
+    if isinstance(raw_val, (int, float)):
+        return raw_val
+    return raw_val
+
+
+def _preview_slack_to_run_fields(
+    derived: dict,
+    message_ts: str,
+    message_kind: str | None,
+    rules: list,
+) -> dict:
+    """Phase 1: Run-shaped preview only; no database writes."""
+    notes_parts: list[str] = []
+    filled: dict = {}
+    consumed_sources: set[str] = set()
+
+    def rule_applies(rule: dict) -> bool:
+        kinds = rule.get("message_kinds") or []
+        if not kinds:
+            return True
+        return (message_kind or "") in kinds
+
+    for rule in rules:
+        if not rule_applies(rule):
+            continue
+        sk = rule.get("source_key")
+        tf = rule.get("target_field")
+        if not sk or not tf:
+            continue
+        dest = (rule.get("destination") or "run").strip() or "run"
+        if dest not in SLACK_MAPPING_ALLOWED_DESTINATIONS:
+            continue
+        if sk == "__message_ts__":
+            raw_val = message_ts
+        else:
+            if sk not in derived:
+                continue
+            raw_val = derived.get(sk)
+        if raw_val is None or raw_val == "":
+            continue
+        consumed_sources.add(sk)
+        if dest != "run":
+            continue
+        val = _apply_slack_mapping_transform(raw_val, rule.get("transform"), message_ts, sk)
+        if val is None and tf != "notes":
+            continue
+        if tf == "notes":
+            if val is not None:
+                notes_parts.append(str(val))
+        else:
+            filled[tf] = val
+
+    if notes_parts:
+        filled["notes"] = "\n".join(notes_parts)
+
+    skip_unmapped = {"message_kind"}
+    unmapped_keys = sorted(k for k in derived if k not in skip_unmapped and k not in consumed_sources)
+    missing_recommended = [f for f in RUN_PREVIEW_RECOMMENDED_FIELDS if f not in filled]
+
+    return {
+        "filled": filled,
+        "unmapped_keys": unmapped_keys,
+        "missing_recommended": missing_recommended,
+    }
+
+
+def _slack_non_run_mapping_rule_count(rules: list) -> int:
+    n = 0
+    for r in rules:
+        if not isinstance(r, dict):
+            continue
+        d = (r.get("destination") or "run").strip() or "run"
+        if d != "run" and d in SLACK_MAPPING_ALLOWED_DESTINATIONS:
+            n += 1
+    return n
+
+
+def _slack_mapping_transform_from_form(ttype: str, arg: str) -> dict:
+    ttype = (ttype or "passthrough").strip()
+    if ttype not in SLACK_MAPPING_TRANSFORM_TYPES:
+        ttype = "passthrough"
+    arg = (arg or "").strip()
+    if ttype == "multiply":
+        try:
+            fac = float(arg) if arg else 1.0
+        except ValueError:
+            fac = 1.0
+        return {"type": "multiply", "factor": fac}
+    if ttype in ("prefix", "suffix"):
+        return {"type": ttype, "value": arg}
+    return {"type": ttype}
+
+
+def _slack_run_rules_from_mapping_form(form) -> list:
+    rules: list = []
+    for i in range(SLACK_RUN_MAPPING_MAX_FORM_ROWS):
+        src = (form.get(f"rule_source_{i}") or "").strip()
+        dest = (form.get(f"rule_destination_{i}") or "run").strip() or "run"
+        if dest not in SLACK_MAPPING_ALLOWED_DESTINATIONS:
+            dest = "run"
+        if dest == "run":
+            tgt = (form.get(f"rule_target_select_{i}") or "").strip()
+        else:
+            tgt = (form.get(f"rule_target_text_{i}") or "").strip()
+        if not src or not tgt:
+            continue
+        kinds_raw = (form.get(f"rule_kinds_{i}") or "all").strip()
+        if kinds_raw.lower() in ("", "all"):
+            kinds: list = []
+        else:
+            kinds = [k.strip() for k in kinds_raw.split(",") if k.strip()]
+        ttype = (form.get(f"rule_transform_{i}") or "passthrough").strip()
+        arg = form.get(f"rule_transform_arg_{i}", "") or ""
+        transform = _slack_mapping_transform_from_form(ttype, arg)
+        row = {
+            "message_kinds": kinds,
+            "source_key": src,
+            "target_field": tgt,
+            "transform": transform,
+        }
+        if dest != "run":
+            row["destination"] = dest
+        rules.append(row)
+    return rules
+
+
+def _slack_rule_kind_select_value(kinds: list | None) -> str:
+    if not kinds:
+        return "all"
+    return ",".join(kinds)
+
+
 def _hash_field_token(token: str) -> str:
     return hashlib.sha256((token or "").encode("utf-8")).hexdigest()
 
@@ -642,6 +1068,8 @@ def _ensure_sqlite_schema():
             db.session.execute(text("ALTER TABLE runs ADD COLUMN deleted_at DATETIME"))
         if "deleted_by" not in cols:
             db.session.execute(text("ALTER TABLE runs ADD COLUMN deleted_by VARCHAR(36)"))
+        if "load_source_reactors" not in cols:
+            db.session.execute(text("ALTER TABLE runs ADD COLUMN load_source_reactors VARCHAR(120)"))
 
     if has_table("purchase_lots"):
         cols = column_names("purchase_lots")
@@ -1359,6 +1787,7 @@ def _save_run(existing_run):
 
         run.run_date = datetime.strptime(request.form["run_date"], "%Y-%m-%d").date()
         run.reactor_number = int(request.form["reactor_number"])
+        run.load_source_reactors = (request.form.get("load_source_reactors") or "").strip() or None
         run.is_rollover = "is_rollover" in request.form
         run.bio_in_reactor_lbs = float(request.form.get("bio_in_reactor_lbs") or 0)
         on_hand_statuses = ("delivered", "in_testing", "available", "processing", "complete")
@@ -2477,10 +2906,18 @@ def settings():
     last_field_email_subject = session.pop("last_field_email_subject", None)
     last_field_email_body = session.pop("last_field_email_body", None)
 
+    slack_sync_days_pref = session.get("slack_sync_days", 90)
+    try:
+        slack_sync_days_pref = int(slack_sync_days_pref)
+    except (TypeError, ValueError):
+        slack_sync_days_pref = 90
+    slack_sync_days_pref = max(1, min(365, slack_sync_days_pref))
+
     return render_template(
         "settings.html",
         system_settings=system_settings,
         slack_sync_slots=slack_sync_slots,
+        slack_sync_days_pref=slack_sync_days_pref,
         kpis=kpis,
         users=users,
         field_tokens=field_tokens,
@@ -2973,16 +3410,19 @@ def settings_slack_sync_channel():
     Pull conversations.history for each configured sync channel (max 6).
     First run for a channel uses a rolling window (sync_days); later runs use per-channel watermark ts.
     """
-    token = _slack_bot_token()
-    if not token:
-        flash("Set Bot Token in Slack settings first.", "error")
-        return _settings_redirect()
     days_raw = (request.form.get("sync_days") or "90").strip()
     try:
         days = int(days_raw)
     except ValueError:
         days = 90
     days = max(1, min(365, days))
+    session["slack_sync_days"] = days
+    session.permanent = True
+
+    token = _slack_bot_token()
+    if not token:
+        flash("Set Bot Token in Slack settings first.", "error")
+        return _settings_redirect()
     oldest_window = str(time.time() - days * 86400)
     try:
         _ensure_slack_sync_configs()
@@ -3075,6 +3515,100 @@ def settings_slack_imports():
     return render_template("slack_imports.html", rows=rows)
 
 
+@app.route("/settings/slack-imports/<msg_id>/preview")
+@admin_required
+def settings_slack_import_preview(msg_id):
+    row = db.session.get(SlackIngestedMessage, msg_id)
+    if not row:
+        flash("Slack import row not found.", "error")
+        return redirect(url_for("settings_slack_imports"))
+    try:
+        derived = json.loads(row.derived_json) if row.derived_json else {}
+    except Exception:
+        derived = {}
+    rules = _load_slack_run_field_rules()
+    preview = _preview_slack_to_run_fields(derived, str(row.message_ts or ""), row.message_kind, rules)
+    return render_template(
+        "slack_import_preview.html",
+        row=row,
+        derived=derived,
+        preview=preview,
+        rules=rules,
+        non_run_mapping_rule_count=_slack_non_run_mapping_rule_count(rules),
+    )
+
+
+@app.route("/settings/slack-run-mappings", methods=["GET", "POST"])
+@admin_required
+def settings_slack_run_mappings():
+    if request.method == "POST":
+        action = (request.form.get("action") or "").strip()
+        if action == "reset_defaults":
+            rules = _default_slack_run_field_rules()
+            blob = json.dumps({"rules": rules}, indent=2)
+            existing = db.session.get(SystemSetting, SLACK_RUN_MAPPINGS_KEY)
+            if existing:
+                existing.value = blob
+            else:
+                db.session.add(SystemSetting(
+                    key=SLACK_RUN_MAPPINGS_KEY,
+                    value=blob,
+                    description="Slack derived_json → Run field preview mappings (Phase 1 JSON)",
+                ))
+            db.session.commit()
+            flash("Restored default Slack → Run mapping rules.", "success")
+            return redirect(url_for("settings_slack_run_mappings"))
+
+        if action == "save_json":
+            raw_json = (request.form.get("rules_json") or "").strip()
+            try:
+                data = json.loads(raw_json)
+                rules = data.get("rules")
+                if not isinstance(rules, list):
+                    raise ValueError('Top-level key "rules" must be a JSON array.')
+                _validate_slack_run_field_rules(rules)
+            except (json.JSONDecodeError, ValueError) as e:
+                flash(f"Could not save JSON rules: {e}", "error")
+                rules = _load_slack_run_field_rules()
+                return render_template(
+                    "slack_run_mappings.html",
+                    **_slack_run_mappings_template_kwargs(
+                        rules,
+                        raw_json or json.dumps({"rules": rules}, indent=2),
+                    ),
+                )
+        else:
+            rules = _slack_run_rules_from_mapping_form(request.form)
+            try:
+                _validate_slack_run_field_rules(rules)
+            except ValueError as e:
+                flash(f"Could not save rules: {e}", "error")
+                return render_template(
+                    "slack_run_mappings.html",
+                    **_slack_run_mappings_template_kwargs(rules, json.dumps({"rules": rules}, indent=2)),
+                )
+        blob = json.dumps({"rules": rules}, indent=2)
+        existing = db.session.get(SystemSetting, SLACK_RUN_MAPPINGS_KEY)
+        if existing:
+            existing.value = blob
+        else:
+            db.session.add(SystemSetting(
+                key=SLACK_RUN_MAPPINGS_KEY,
+                value=blob,
+                description="Slack derived_json → Run field preview mappings (Phase 1 JSON)",
+            ))
+        db.session.commit()
+        flash("Slack → Run mapping rules saved. Previews use these rules on the next request.", "success")
+        return redirect(url_for("settings_slack_run_mappings"))
+
+    rules = _load_slack_run_field_rules()
+    pretty = json.dumps({"rules": rules}, indent=2)
+    return render_template(
+        "slack_run_mappings.html",
+        **_slack_run_mappings_template_kwargs(rules, pretty),
+    )
+
+
 @app.route("/api/slack/events", methods=["POST"])
 def slack_events():
     """
@@ -3163,7 +3697,7 @@ def export_csv(entity):
     writer = csv.writer(si)
 
     if entity == "runs":
-        writer.writerow(["Date", "Reactor", "Rollover", "Source", "Lbs Ran", "Grams Ran",
+        writer.writerow(["Date", "Reactor", "Load source (A/B)", "Rollover", "Source", "Lbs Ran", "Grams Ran",
                          "Wet HTE", "Wet THCA", "Dry HTE", "Dry THCA", "Overall Yield %",
                          "THCA Yield %", "HTE Yield %", "Cost/Gram", "Notes"])
         q = Run.query.filter(Run.deleted_at.is_(None))
@@ -3185,7 +3719,7 @@ def export_csv(entity):
                 q = q.filter(func.lower(PurchaseLot.strain_name).like(f"%{strain_filter}%"))
             q = q.distinct()
         for r in q.order_by(Run.run_date.desc()).all():
-            writer.writerow([r.run_date, r.reactor_number, r.is_rollover, r.source_display,
+            writer.writerow([r.run_date, r.reactor_number, r.load_source_reactors or "", r.is_rollover, r.source_display,
                              r.bio_in_reactor_lbs, r.grams_ran, r.wet_hte_g, r.wet_thca_g,
                              r.dry_hte_g, r.dry_thca_g,
                              f"{r.overall_yield_pct:.2f}" if r.overall_yield_pct else "",
@@ -3889,6 +4423,13 @@ def init_db():
     for key, (val, desc) in defaults.items():
         if not db.session.get(SystemSetting, key):
             db.session.add(SystemSetting(key=key, value=val, description=desc))
+
+    if not db.session.get(SystemSetting, SLACK_RUN_MAPPINGS_KEY):
+        db.session.add(SystemSetting(
+            key=SLACK_RUN_MAPPINGS_KEY,
+            value=json.dumps({"rules": _default_slack_run_field_rules()}),
+            description="Slack derived_json → Run field preview mappings (Phase 1 JSON)",
+        ))
 
     # Seed KPI targets
     kpi_defaults = [
