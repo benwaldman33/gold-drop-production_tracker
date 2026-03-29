@@ -17,7 +17,7 @@ SQLite adds the sync config table in `_ensure_sqlite_schema()`; other engines re
 
 ### HTTP / UI
 
-- **Save hints:** `POST /settings` with `form_type=slack_sync_channels`, fields `sync_ch_0` … `sync_ch_5`. Hint change clears `resolved_channel_id` and `last_watermark_ts` for that row.
+- **Save Slack + sync hints:** `POST /settings` with `form_type=slack`, including system settings fields and `sync_ch_0` … `sync_ch_5`. Hint change clears `resolved_channel_id` and `last_watermark_ts` for that row.
 - **Run sync:** `POST /settings/slack_sync_channel` with `sync_days` (1–365). Resolves each non-empty hint via `conversations.list` (or passes through channel IDs), then pages `conversations.history` with helper `_slack_ingest_channel_history`.
 - **Review:** `GET /settings/slack-imports`.
 
@@ -29,7 +29,7 @@ SQLite adds the sync config table in `_ensure_sqlite_schema()`; other engines re
 
 ### Related code (indicative)
 
-- `app.py`: `SLACK_SYNC_CHANNEL_SLOTS`, `_ensure_slack_sync_configs`, `_slack_ingest_channel_history`, `settings_slack_sync_channel`, settings handler `slack_sync_channels`.
+- `app.py`: `SLACK_SYNC_CHANNEL_SLOTS`, `_ensure_slack_sync_configs`, `_slack_ingest_channel_history`, `settings_slack_sync_channel`, settings `form_type=slack` handler (includes sync channel rows).
 - `models.py`: `SlackChannelSyncConfig`, `SlackIngestedMessage`.
 - `templates/settings.html`: Slack card (sync channel form), Maintenance (sync button).
 

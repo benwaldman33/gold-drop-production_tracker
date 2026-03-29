@@ -2411,10 +2411,6 @@ def settings():
                     existing.value = val
                 else:
                     db.session.add(SystemSetting(key=key, value=val, description=desc))
-            db.session.commit()
-            flash("Slack integration settings updated.", "success")
-
-        elif form_type == "slack_sync_channels":
             _ensure_slack_sync_configs()
             for i in range(SLACK_SYNC_CHANNEL_SLOTS):
                 hint = (request.form.get(f"sync_ch_{i}") or "").strip()
@@ -2429,7 +2425,10 @@ def settings():
                         row.resolved_channel_id = None
                         row.last_watermark_ts = None
             db.session.commit()
-            flash("Slack history sync channels saved (up to 6). Each channel keeps its own last-sync cursor.", "success")
+            flash(
+                "Slack integration saved (webhook, tokens, default channel, and up to six history-sync channels).",
+                "success",
+            )
 
         return _settings_redirect()
 

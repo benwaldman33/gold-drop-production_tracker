@@ -495,14 +495,15 @@
 <div class="card" id="settings-slack">
   <div class="card-header"><h3>Slack Integration</h3></div>
 
-  <form method="POST" style="margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--dark-border);">
-    <input type="hidden" name="form_type" value="slack_sync_channels">
+  <form method="POST">
+    <input type="hidden" name="form_type" value="slack">
     <input type="hidden" name="return_to" value="#settings-slack">
-    <div class="form-group">
+    <div class="form-group" style="margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--dark-border);">
       <label>Channel history sync (up to 6)</label>
       <p class="text-sm" style="color:var(--text-muted);margin-bottom:10px;">
         These rows control which channels <strong>Maintenance → Sync Slack channel history</strong> pulls from (not the default channel for outbound posts).
         Enter <code>#channel-name</code> or a channel ID per row. The first run for each channel uses the &ldquo;days back&rdquo; window; later runs use a per-channel cursor (Slack message timestamp). Changing a row clears that channel&rsquo;s resolved ID and cursor.
+        <strong>Use the single Save button below</strong> for both these channels and webhook/token settings.
       </p>
       <div style="display:grid;gap:8px;">
         {% for slot in slack_sync_slots %}
@@ -519,12 +520,6 @@
         {% endfor %}
       </div>
     </div>
-    <button type="submit" class="btn btn-secondary btn-sm">Save sync channels</button>
-  </form>
-
-  <form method="POST">
-    <input type="hidden" name="form_type" value="slack">
-    <input type="hidden" name="return_to" value="#settings-slack">
     <div class="form-group">
       <label style="display:flex;align-items:center;gap:8px; text-transform:none; letter-spacing:0; font-size:0.85rem; color:var(--text-secondary);">
         <input type="checkbox" name="slack_enabled" {% if system_settings.get('slack_enabled', '0') in ('1','true','yes','on') %}checked{% endif %}>
@@ -560,7 +555,7 @@
       <code>/api/slack/command</code> and <code>/api/slack/interactivity</code>.
       Use the same <strong>Signing Secret</strong> here as in Slack → Basic Information.
     </div>
-    <button type="submit" class="btn btn-primary">Save Slack Settings</button>
+    <button type="submit" class="btn btn-primary">Save Slack integration</button>
   </form>
 </div>
 
