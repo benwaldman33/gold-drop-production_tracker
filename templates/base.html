@@ -42,6 +42,11 @@
         <a href="{{ url_for('photos_library') }}" class="{% if request.endpoint == 'photos_library' %}active{% endif %}">
           <span class="icon">🖼️</span><span>Photo Library</span>
         </a>
+        {% if current_user.is_authenticated and current_user.can_slack_import %}
+        <a href="{{ url_for('settings_slack_imports') }}" class="{% if request.endpoint in ('settings_slack_imports', 'settings_slack_import_preview', 'settings_slack_import_apply_run') %}active{% endif %}">
+          <span class="icon">💬</span><span>Slack imports</span>
+        </a>
+        {% endif %}
         {% if current_user.is_super_admin %}
         <a href="{{ url_for('settings') }}" class="{% if request.endpoint == 'settings' %}active{% endif %}">
           <span class="icon">⚙️</span><span>Settings</span>

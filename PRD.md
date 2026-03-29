@@ -321,7 +321,7 @@ Critical requirements:
 
 ## Integrations — Slack
 - **Configuration:** Super Admin stores webhook URL, signing secret, bot token, and default channel in Settings. Outbound notifications post when integration is enabled.
-- **Channel history sync (admin tooling):** Super Admin configures up to **six** Slack channels (by `#name` or channel ID) under **Slack Integration → Channel history sync**, then runs **Maintenance → Sync Slack channel history**. The sync uses Slack `conversations.history`, dedupes messages by **channel ID + message `ts`**, and stores rows for review (yield/production-style parsing hints); it does **not** auto-create Run records. **First sync** for each configured channel uses a configurable rolling window (**Days back**). **Subsequent syncs** use a **per-channel cursor** (last ingested message timestamp / watermark) so each channel incrementally fetches only newer messages. Editing a channel hint clears that slot’s resolved ID and cursor. New installs seed sync slot 0 from **Default Channel** when no sync rows exist yet.
+- **Channel history sync (admin tooling):** Super Admin configures up to **six** Slack channels (by `#name` or channel ID) under **Slack Integration → Channel history sync**, then runs **Maintenance → Sync Slack channel history**. The sync uses Slack `conversations.history`, dedupes messages by **channel ID + message `ts`**, and stores rows for review (yield/production-style parsing hints); sync **by itself** does **not** auto-create Run records. Operators with **Slack Importer** (or Super Admin) use **Slack imports** + **Create run from Slack** to open the Run form prefilled from mappings; Runs are created only when the Run form is **saved** (Phase 2). **First sync** for each configured channel uses a configurable rolling window (**Days back**). **Subsequent syncs** use a **per-channel cursor** (last ingested message timestamp / watermark) so each channel incrementally fetches only newer messages. Editing a channel hint clears that slot’s resolved ID and cursor. New installs seed sync slot 0 from **Default Channel** when no sync rows exist yet.
 - **Inbound HTTP endpoints (no user session):** requests must be verified with Slack’s signing secret (HMAC).
   - **Slash commands:** `POST /api/slack/command`
   - **Interactivity:** `POST /api/slack/interactivity`
@@ -334,7 +334,7 @@ Super Admins need to **configure** how parsed Slack fields (`derived_json` / `me
 
 #### Problem statement
 
-- Today, synced Slack messages are stored in `slack_ingested_messages` with **classifier + regex-derived hints** (`yield_report`, `production_log`, `unknown`). They **do not** create or update Runs, Purchases, Biomass, Inventory, Costs, Suppliers, Strains, or Photo Library records.
+- Synced Slack messages are stored in `slack_ingested_messages` with **classifier + regex-derived hints** (`yield_report`, `production_log`, `unknown`). **Automatic** sync/ingest does **not** create or update operational rows. **Phase 2** adds an explicit **manual apply** path: prefilled **Run** form + save, with Run **backlinks** to `channel_id` + `message_ts`. Other entities (Purchases, Biomass, etc.) remain out of scope for apply until later phases.
 - Operations need a **dashboard / control panel** to define **mappings** (source Slack keys → target entity + field + optional transform) and to revisit those mappings as templates and business rules evolve.
 
 #### Guiding principles
@@ -383,17 +383,57 @@ Super Admins need to **configure** how parsed Slack fields (`derived_json` / `me
 
 **Goal:** Let trusted users **promote** a reviewed import row into operational records with explicit consent.
 
+**Product decisions (locked for v1 implementation)**
+
+1. **Apply path — prefilled Run form (simple workflow)**  
+   - From Slack import / preview, the user opens **New run** with fields **prefilled** from the Run preview payload. Nothing is persisted until they **Save** the Run form (adjust later if this feels too onerous).
+
+2. **Second apply — warn, then allow**  
+   - If a Slack message was already used to start or complete an apply path, show a **clear warning** and require **explicit confirmation** before prefilling again. Operators accept that mistaken duplicates may be **deleted manually** in edge cases.
+
+3. **Permission — Slack Importer**  
+   - New capability: users who may use Slack apply / importer audit flows. **`super_admin` implicitly includes this capability.**  
+   - Additional users may be granted **Slack Importer** via a dedicated flag (or equivalent) in Settings / user admin without making them full Super Admin.
+
+4. **Slack imports — audit and triage**  
+   - Operators need **two orthogonal views** on each imported message: whether anything was **saved from Slack into operations**, and whether **mapping rules** fully used the parsed payload before anyone promotes a Run.
+
+**Slack import triage — two dimensions (both shown on list / filters where practical)**
+
+| Dimension | Labels | Definition |
+|-----------|--------|------------|
+| **Promotion status** | **Not promoted** (aka *unapplied*) / **Linked to Run** | **Not promoted:** no **saved Run** exists whose **Slack backlink** matches this row’s `channel_id` + `message_ts` (Phase 2 adds the backlink on save). **Linked to Run:** at least one such Run exists. This answers: “Has anything been committed from this message?” |
+| **Mapping coverage (Run preview)** | **Full** / **Partial** / **None** | **Heuristic** from the same Run-only preview as Phase 1 (`_preview_slack_to_run_fields`). **None:** no Run-shaped `filled` fields after rules (or no usable `derived_json`). **Partial:** at least one field in `filled` **and** (`unmapped_keys` non-empty **or** `missing_recommended` non-empty). **Full:** at least one field in `filled`, **and** `unmapped_keys` empty, **and** `missing_recommended` empty. Answers: “Are rules leaving gaps before apply?” — *not* whether a Run was saved. |
+
+**Examples**
+
+- **Not promoted + Partial:** Common; improve rules or prefill and save a Run.  
+- **Linked to Run + Partial:** Run was saved from Slack but rules still didn’t use every derived field (or recommended trio wasn’t in the preview); may be fine if the user fixed fields on the form.  
+- **Not promoted + Full:** Ready to promote; preview used all tracked derived keys and recommended Run fields.  
+- **Not promoted + None:** Parsing or mapping gap; tune rules, template, or `message_kind`.
+
+**UI (Phase 2)**
+
+- **Filters:** **date range**, **channel(s)**, and optionally filter by **promotion status** and/or **mapping coverage**.  
+- **Columns or badges** for both dimensions so teams can find “falling through the cracks” messages and batch review.
+
 **Requirements**
 
 1. **Apply actions** (from Slack import row or preview):
-   - Primary v1 target: **Create Run (draft or committed)** or **Open Run form prefilled** from preview payload (product choice: draft record vs redirect to edit form with query params / session—document in implementation).
-   - Store **backlink**: e.g. `slack_import_applied_at`, `slack_import_message_ts`, `slack_import_channel_id` on Run (or junction table) to detect **already applied** rows.
+   - **Open Run form prefilled** from preview payload (query params, short-lived session, or POST redirect—implementation detail).
+   - Phase 2 **Run apply only** uses rules with `destination` **`run`** (or omitted); other destinations remain preview/storage until their modules ship.
+   - On **successful Run save**, store **backlink** on the Run: e.g. `slack_channel_id`, `slack_message_ts`, `slack_import_applied_at` (and optionally `slack_ingested_message_id`) so list views can mark **applied vs not**.
 
 2. **Idempotency:**
-   - Block or warn on **second apply** of the same Slack `channel_id` + `message_ts` unless Super Admin explicitly **re-applies** (with audit).
+   - On second (or subsequent) **apply** for the same `channel_id` + `message_ts`, **warn** and require **confirmation** before opening prefilled form again. Log confirmatory applies in **Audit** where applicable.
 
 3. **Audit:**
-   - `AuditLog` (or equivalent) for every apply: user, import row id, target entity type/id, summary JSON.
+   - `AuditLog` (or equivalent) when a Run is **saved** from a Slack-sourced prefilled flow (and when a duplicate apply is confirmed): user, import row id / Slack ids, run id, summary JSON.
+
+4. **Slack imports list (Phase 2):**
+   - Filters: **date range**, **channel(s)**, **promotion status** (Not promoted / Linked to Run), **mapping coverage** (Full / Partial / None) where technically feasible.  
+   - **Promotion** from backlink lookup on `Run` after save. **Coverage** from computing preview once per row (cache in session or materialized column only if performance requires—implementation detail).  
+   - Help text in UI: coverage is **rule/preview quality**, not legal proof; operators may still save a Run with different values than preview.
 
 **Out of scope for Phase 2 (unless trivial)**
 
@@ -402,8 +442,11 @@ Super Admins need to **configure** how parsed Slack fields (`derived_json` / `me
 
 **Success criteria**
 
-- Operators can take a **single** import row from preview to a **real** Run with traceability.
-- Duplicate apply is prevented or clearly warned.
+- Operators can take a **single** import row to a **saved** Run via the normal form, with traceability.  
+- Slack imports supports finding **Not promoted** rows and rows with **Partial** vs **Full** mapping coverage, with **date** and **channel** filters.  
+- Duplicate apply is **warned**, not silently allowed.
+
+**Implementation (shipped):** **`User.is_slack_importer`** (Settings toggle + create-user checkbox; Super Admin always has importer capability via **`User.can_slack_import`**). Sidebar **Slack imports** for eligible users. **`GET /settings/slack-imports`** with filters (Slack message date, channel(s), promotion **not linked / linked**, coverage **full / partial / none**). **`GET .../preview`** and **`GET .../apply-run`** (`confirm=1` after duplicate interstitial). Session key stores prefilled Run fields; **`GET /runs/new`** hydrates the form; hidden inputs post Slack ids + duplicate flag; **`_save_run`** sets **`Run.slack_channel_id`**, **`slack_message_ts`**, **`slack_import_applied_at`** on new saves; audit **`create`/`run`** with JSON details (and **`slack_duplicate_apply_confirm`** when confirmed). SQLite schema patched in **`_ensure_sqlite_schema`**. Mapping editor remains Super Admin only (`/settings/slack-run-mappings`).
 
 ---
 
@@ -435,8 +478,8 @@ Super Admins need to **configure** how parsed Slack fields (`derived_json` / `me
 
 #### Cross-cutting (all phases)
 
-- **Security:** Super Admin for mapping config; apply actions at least **editor** or **admin** as appropriate.
-- **Documentation:** USER_MANUAL + ENGINEERING describe source keys (`_derive_slack_production_message`), rule schema, and preview vs apply semantics.
+- **Security:** Super Admin for mapping config. **Slack imports UI + apply session:** `slack_importer_required` / **`can_slack_import`** (Super Admin or **`is_slack_importer`**). **Persisting a Run:** **`can_edit`** (**User** or **Super Admin**); Viewers with importer may open a read-only prefilled form until an editor saves.
+- **Documentation:** USER_MANUAL + FAQ + ENGINEERING describe source keys (`_derive_slack_production_message`), rule schema, preview vs apply semantics, triage dimensions, and migrations for non-SQLite DBs.
 - **Migration:** V1 mapping storage backward-compatible (default rules empty → preview shows raw `derived_json` only).
 
 ---

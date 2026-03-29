@@ -17,7 +17,19 @@ After the first successful sync for a channel, the app stores a **per-channel cu
 Saving a new hint clears that row’s **resolved channel ID** and **cursor** so the next sync re-resolves the channel and can use **Days back** again from a clean slate for that slot.
 
 **Does Slack sync create runs or purchases?**  
-No. It stores ingested messages for **review** (`Slack imports` / parsed-field hints). Automation may come later.
+**Sync** only stores rows in **Slack imports** (parsed hints). It does **not** create Runs or Purchases.
+
+**How do I turn a Slack message into a Run?**  
+Someone with **Slack Importer** (or Super Admin) opens **Slack imports** → **Create run** (or **Create run from Slack** on the preview). That opens **New Run** with fields prefilled from your mapping rules. You must still **Save** the run (requires **User** or **Super Admin**).
+
+**Who can open Slack imports?**  
+Users with the **Slack Importer** flag in **Settings → Users**, and all **Super Admins**. The link also appears under Settings as **View Slack imports** for admins.
+
+**What is “Promotion” vs “Coverage” on the imports list?**  
+**Promotion** means a **saved Run** exists with the same Slack `channel` + message `timestamp` backlink. **Coverage** is a **preview heuristic**: whether Run-mapping rules fully used the parsed fields before anyone applies (full / partial / none)—not a guarantee of what was typed on the saved run.
+
+**What if I apply the same Slack message twice?**  
+The app **warns** and asks for **confirm** before prefilling again if a run is already linked. You can still save a second run after confirming; clean up mistakes with **Runs → Delete** if needed.
 
 ## Data & analytics
 

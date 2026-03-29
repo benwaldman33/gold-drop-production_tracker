@@ -20,6 +20,7 @@ class User(UserMixin, db.Model):
     display_name = db.Column(db.String(120), nullable=False)
     role = db.Column(db.String(20), nullable=False, default="viewer")  # super_admin, user, viewer
     is_active_user = db.Column(db.Boolean, default=True)
+    is_slack_importer = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def set_password(self, password):
@@ -43,6 +44,10 @@ class User(UserMixin, db.Model):
     @property
     def can_edit(self):
         return self.role in ("super_admin", "user")
+
+    @property
+    def can_slack_import(self):
+        return self.is_super_admin or bool(self.is_slack_importer)
 
 
 class Supplier(db.Model):
@@ -231,6 +236,9 @@ class Run(db.Model):
     deleted_by = db.Column(db.String(36), db.ForeignKey("users.id"))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     created_by = db.Column(db.String(36), db.ForeignKey("users.id"))
+    slack_channel_id = db.Column(db.String(32))
+    slack_message_ts = db.Column(db.String(32))
+    slack_import_applied_at = db.Column(db.DateTime)
 
     inputs = db.relationship("RunInput", backref="run", lazy="dynamic", cascade="all, delete-orphan")
 

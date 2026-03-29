@@ -74,6 +74,695 @@ def editor_required(f):
     return decorated
 
 
+def slack_importer_required(f):
+    """Super Admin always allowed; others need Settings → Slack Importer flag."""
+    @wraps(f)
+    @login_required
+    def decorated(*args, **kwargs):
+        if not current_user.can_slack_import:
+            flash("Slack import access is not enabled for your account.", "error")
+            return redirect(url_for("dashboard"))
+        return f(*args, **kwargs)
+    return decorated
+
+
+SLACK_RUN_PREFILL_SESSION_KEY = "slack_run_prefill"
+
+
+def _slack_filled_json_safe(filled: dict) -> dict:
+    """Store preview 'filled' in session (JSON-serializable)."""
+    out: dict = {}
+    for k, v in (filled or {}).items():
+        if v is None:
+            continue
+        if isinstance(v, date) and not isinstance(v, datetime):
+            out[k] = v.isoformat()
+        elif isinstance(v, datetime):
+            out[k] = v.date().isoformat()
+        else:
+            out[k] = v
+    return out
+
+
+def _slack_resolution_json_safe(res: dict) -> dict:
+    """Session-safe copy of apply-run resolution (no ORM objects)."""
+    out: dict = {}
+    for k, v in (res or {}).items():
+        if v is None:
+            continue
+        if isinstance(v, date) and not isinstance(v, datetime):
+            out[k] = v.isoformat()
+        elif isinstance(v, datetime):
+            out[k] = v.date().isoformat()
+        elif isinstance(v, bool):
+            out[k] = v
+        elif isinstance(v, (int, float)):
+            out[k] = v
+        else:
+            out[k] = str(v)
+    return out
+
+
+# Form keys echoed through duplicate-confirm POST (preview → confirm → apply-run)
+SLACK_APPLY_PASSTHROUGH_FORM_KEYS = frozenset({
+    "slack_supplier_mode",
+    "slack_supplier_id",
+    "slack_new_supplier_name",
+    "slack_confirm_create_supplier",
+    "slack_confirm_fuzzy_supplier",
+    "slack_biomass_declared",
+    "slack_biomass_strain",
+    "slack_biomass_weight_lbs",
+    "slack_availability_date",
+})
+
+
+def _slack_apply_form_passthrough(form) -> dict[str, str]:
+    """Rebuild POST body for duplicate-confirm step (checkboxes included when checked)."""
+    if not form:
+        return {}
+    out: dict[str, str] = {}
+    for k in SLACK_APPLY_PASSTHROUGH_FORM_KEYS:
+        v = form.get(k)
+        if v is None:
+            continue
+        s = str(v).strip()
+        if s == "":
+            continue
+        out[k] = s
+    return out
+
+
+def _slack_run_prefill_put(
+    *,
+    msg_id: str,
+    channel_id: str,
+    message_ts: str,
+    filled: dict,
+    allow_duplicate: bool,
+    resolution: dict | None = None,
+) -> None:
+    payload: dict = {
+        "ingested_message_id": msg_id,
+        "channel_id": channel_id,
+        "message_ts": message_ts,
+        "filled": _slack_filled_json_safe(filled),
+        "allow_duplicate": bool(allow_duplicate),
+    }
+    if resolution:
+        payload["resolution"] = _slack_resolution_json_safe(resolution)
+    session[SLACK_RUN_PREFILL_SESSION_KEY] = payload
+
+
+def _slack_message_needs_resolution_ui(derived: dict) -> bool:
+    d = derived or {}
+    if (d.get("message_kind") or "").strip() == "biomass_intake":
+        return False
+    if (d.get("source") or "").strip():
+        return True
+    if (d.get("strain") or "").strip():
+        return True
+    return False
+
+
+def _slack_normalize_match_name(value: str) -> str:
+    s = re.sub(r"\s+", " ", (value or "").strip().lower())
+    return s
+
+
+def _slack_supplier_exact_name_match(source_raw: str, supplier: Supplier | None) -> bool:
+    if not supplier:
+        return False
+    return _slack_normalize_match_name(source_raw) == _slack_normalize_match_name(supplier.name)
+
+
+def _slack_supplier_mapping_needs_fuzzy_confirm(source_raw: str, supplier_id: str | None) -> bool:
+    if not (source_raw or "").strip() or not (supplier_id or "").strip():
+        return False
+    sup = db.session.get(Supplier, supplier_id)
+    return not _slack_supplier_exact_name_match(source_raw, sup)
+
+
+def _slack_supplier_candidates_for_source(source_raw: str, limit: int = 12) -> list:
+    """Active suppliers: case-insensitive exact name first, else token substring search."""
+    norm = _slack_normalize_match_name(source_raw)
+    if not norm:
+        return []
+    exact = Supplier.query.filter(
+        func.lower(Supplier.name) == norm,
+        Supplier.is_active.is_(True),
+    ).order_by(Supplier.name).limit(limit).all()
+    if exact:
+        return exact
+    tokens = [t for t in re.split(r"[^\w]+", norm) if len(t) > 1][:5]
+    q = Supplier.query.filter(Supplier.is_active.is_(True))
+    if not tokens:
+        return q.order_by(Supplier.name).limit(limit).all()
+    conds = [func.lower(Supplier.name).like(f"%{t}%") for t in tokens]
+    return q.filter(db.or_(*conds)).order_by(Supplier.name).limit(limit).all()
+
+
+def _slack_default_bio_weight_lbs(derived: dict) -> float:
+    for k in ("bio_lbs", "bio_weight_lbs"):
+        v = (derived or {}).get(k)
+        if v is None or v == "":
+            continue
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            pass
+    return 0.0
+
+
+def _slack_default_availability_date_iso(derived: dict, message_ts: str) -> str | None:
+    sd = ((derived or {}).get("slack_message_date") or "").strip()
+    if len(sd) >= 10:
+        return sd[:10]
+    dv = _slack_ts_to_date_value(message_ts)
+    return dv.isoformat() if dv else None
+
+
+def _slack_resolution_from_apply_form(
+    form,
+    *,
+    derived: dict,
+    message_ts: str,
+) -> tuple[dict | None, str | None]:
+    """
+    Build session resolution dict from preview/confirm POST.
+    Returns (resolution, error_message). resolution None means nothing extra to apply on save.
+    """
+    derived = derived or {}
+    source_raw = (derived.get("source") or "").strip()
+    strain_raw = (derived.get("strain") or "").strip()
+    needs_supplier_line = bool(source_raw)
+
+    supplier_mode = (form.get("slack_supplier_mode") or "").strip() or "skip"
+    supplier_id = (form.get("slack_supplier_id") or "").strip() or None
+    new_name = (form.get("slack_new_supplier_name") or "").strip()
+    confirm_create = form.get("slack_confirm_create_supplier") == "1"
+    confirm_fuzzy = form.get("slack_confirm_fuzzy_supplier") == "1"
+
+    biomass_declared = form.get("slack_biomass_declared") == "1"
+    biomass_strain = (form.get("slack_biomass_strain") or "").strip()
+    bw_raw = (form.get("slack_biomass_weight_lbs") or "").strip()
+    if bw_raw:
+        try:
+            biomass_weight = float(bw_raw)
+        except ValueError:
+            return None, "Biomass weight must be a number."
+    else:
+        biomass_weight = _slack_default_bio_weight_lbs(derived)
+    if biomass_weight < 0:
+        return None, "Biomass weight cannot be negative."
+
+    avail_raw = (form.get("slack_availability_date") or "").strip()
+    if avail_raw and len(avail_raw) >= 10:
+        try:
+            datetime.strptime(avail_raw[:10], "%Y-%m-%d")
+            availability_date = avail_raw[:10]
+        except ValueError:
+            return None, "Availability date must be YYYY-MM-DD."
+    else:
+        availability_date = _slack_default_availability_date_iso(derived, message_ts)
+
+    if needs_supplier_line:
+        if supplier_mode not in ("existing", "create"):
+            return None, "Slack message includes source: — choose an existing supplier or confirm creating a new one."
+        if supplier_mode == "existing":
+            if not supplier_id:
+                return None, "Select a supplier that matches the Slack source line."
+            if _slack_supplier_mapping_needs_fuzzy_confirm(source_raw, supplier_id) and not confirm_fuzzy:
+                return None, (
+                    "The selected supplier name does not exactly match the Slack source line — "
+                    'check "Confirm supplier mapping" or pick a different supplier.'
+                )
+        else:
+            if not new_name:
+                return None, "Enter the new supplier name to create."
+            if not confirm_create:
+                return None, "Check the box to confirm creating this supplier."
+
+    elif biomass_declared:
+        if supplier_mode not in ("existing", "create"):
+            return None, "Declared biomass requires a supplier — pick existing or create new."
+        if supplier_mode == "existing" and not supplier_id:
+            return None, "Select a supplier for the biomass pipeline row."
+        if supplier_mode == "create":
+            if not new_name:
+                return None, "Enter the supplier name for the biomass pipeline row."
+            if not confirm_create:
+                return None, "Confirm creating the supplier for this biomass row."
+
+    if biomass_declared:
+        if not (biomass_strain or strain_raw or "").strip():
+            return None, "Strain is required for a declared biomass pipeline row (enter it or ensure Slack parsed strain:)."
+
+    resolution: dict = {
+        "source_raw": source_raw,
+        "strain_raw": strain_raw,
+        "supplier_mode": supplier_mode,
+        "supplier_id": supplier_id,
+        "new_supplier_name": new_name if supplier_mode == "create" else "",
+        "confirm_create_supplier": bool(confirm_create),
+        "confirm_fuzzy_supplier": bool(confirm_fuzzy),
+        "biomass_declared": bool(biomass_declared),
+        "biomass_strain": (biomass_strain or strain_raw or "").strip(),
+        "biomass_weight_lbs": float(biomass_weight),
+        "availability_date": availability_date or "",
+    }
+    has_work = (
+        needs_supplier_line
+        or biomass_declared
+        or (supplier_mode == "create" and confirm_create and new_name)
+    )
+    if not has_work and not biomass_declared:
+        return None, None
+
+    if not needs_supplier_line and not biomass_declared and supplier_mode == "skip":
+        return None, None
+
+    return resolution, None
+
+
+def _slack_resolution_materialize_supplier(res: dict, slack_meta: dict) -> str | None:
+    """Create or return supplier_id for Slack apply resolution (same transaction as run)."""
+    mode = (res.get("supplier_mode") or "").strip()
+    if mode == "existing":
+        sid = (res.get("supplier_id") or "").strip()
+        if not sid:
+            raise ValueError("Slack import: supplier was not selected.")
+        sup = db.session.get(Supplier, sid)
+        if not sup:
+            raise ValueError("Slack import: selected supplier no longer exists.")
+        return sid
+    if mode == "create":
+        if not res.get("confirm_create_supplier"):
+            raise ValueError("Slack import: new supplier was not confirmed.")
+        name = (res.get("new_supplier_name") or "").strip()
+        if not name:
+            raise ValueError("Slack import: new supplier name missing.")
+        existing = Supplier.query.filter(func.lower(Supplier.name) == name.lower()).first()
+        if existing:
+            return existing.id
+        prov = {
+            "source": "slack_import_apply",
+            "slack_ingested_message_id": slack_meta.get("ingested_message_id"),
+            "channel_id": slack_meta.get("channel_id"),
+            "message_ts": slack_meta.get("message_ts"),
+            "parsed_source_raw": res.get("source_raw"),
+        }
+        note_line = (
+            f"Created from Slack import (channel {slack_meta.get('channel_id')}, ts {slack_meta.get('message_ts')}). "
+            f"Parsed source line: {res.get('source_raw') or '—'}."
+        )
+        sup = Supplier(name=name, is_active=True, notes=note_line)
+        db.session.add(sup)
+        db.session.flush()
+        log_audit("create", "supplier", sup.id, details=json.dumps(prov))
+        return sup.id
+    return None
+
+
+def _slack_resolution_create_declared_biomass(res: dict, supplier_id: str, slack_meta: dict, run_date: date) -> None:
+    if not res.get("biomass_declared"):
+        return
+    strain = (res.get("biomass_strain") or res.get("strain_raw") or "").strip()
+    if not strain:
+        raise ValueError("Slack import: biomass strain missing.")
+    ad_iso = (res.get("availability_date") or "").strip()
+    if len(ad_iso) >= 10:
+        try:
+            availability_date = datetime.strptime(ad_iso[:10], "%Y-%m-%d").date()
+        except ValueError:
+            availability_date = run_date
+    else:
+        availability_date = run_date
+    weight = float(res.get("biomass_weight_lbs") or 0)
+    prov = (
+        f"Declared from Slack import — channel {slack_meta.get('channel_id')}, ts {slack_meta.get('message_ts')}, "
+        f"ingested row {slack_meta.get('ingested_message_id') or '—'}. "
+        f"Slack source: {res.get('source_raw') or '—'}; parsed strain: {res.get('strain_raw') or '—'}."
+    )
+    b = BiomassAvailability(
+        supplier_id=supplier_id,
+        availability_date=availability_date,
+        strain_name=strain,
+        declared_weight_lbs=weight,
+        stage="declared",
+        notes=prov,
+    )
+    db.session.add(b)
+    db.session.flush()
+    log_audit(
+        "create",
+        "biomass_availability",
+        b.id,
+        details=json.dumps({
+            "source": "slack_import_apply",
+            "slack_ingested_message_id": slack_meta.get("ingested_message_id"),
+            "channel_id": slack_meta.get("channel_id"),
+            "message_ts": slack_meta.get("message_ts"),
+            "supplier_id": supplier_id,
+            "strain": strain,
+        }),
+    )
+
+
+def _hydrate_run_from_slack_prefill(prefill: dict, today: date) -> Run:
+    """Ephemeral Run for form display only (not persisted)."""
+    r = Run()
+    filled = dict(prefill.get("filled") or {})
+    rd = filled.pop("run_date", None)
+    if isinstance(rd, str) and rd.strip():
+        try:
+            r.run_date = datetime.strptime(rd.strip()[:10], "%Y-%m-%d").date()
+        except ValueError:
+            r.run_date = today
+    elif isinstance(rd, date):
+        r.run_date = rd
+    else:
+        r.run_date = today
+
+    def _flt(key):
+        x = filled.pop(key, None)
+        if x is None or x == "":
+            return None
+        try:
+            return float(x)
+        except (TypeError, ValueError):
+            return None
+
+    def _int(key):
+        x = filled.pop(key, None)
+        if x is None or x == "":
+            return None
+        try:
+            return int(float(x))
+        except (TypeError, ValueError):
+            return None
+
+    r.reactor_number = _int("reactor_number") or 1
+    r.load_source_reactors = filled.pop("load_source_reactors", None) or None
+    if r.load_source_reactors is not None:
+        r.load_source_reactors = str(r.load_source_reactors).strip() or None
+    r.bio_in_reactor_lbs = _flt("bio_in_reactor_lbs")
+    r.bio_in_house_lbs = _flt("bio_in_house_lbs")
+    r.grams_ran = _flt("grams_ran")
+    r.butane_in_house_lbs = _flt("butane_in_house_lbs")
+    r.solvent_ratio = _flt("solvent_ratio")
+    r.system_temp = _flt("system_temp")
+    r.wet_hte_g = _flt("wet_hte_g")
+    r.wet_thca_g = _flt("wet_thca_g")
+    r.dry_hte_g = _flt("dry_hte_g")
+    r.dry_thca_g = _flt("dry_thca_g")
+    r.overall_yield_pct = _flt("overall_yield_pct")
+    r.thca_yield_pct = _flt("thca_yield_pct")
+    r.hte_yield_pct = _flt("hte_yield_pct")
+    r.fuel_consumption = _flt("fuel_consumption")
+    rt = filled.pop("run_type", None)
+    if rt is not None:
+        rt = str(rt).strip().lower()
+        if rt in ("standard", "kief", "ld"):
+            r.run_type = rt
+    notes = filled.pop("notes", None)
+    if notes is not None:
+        r.notes = str(notes).strip() or None
+    return r
+
+
+def _slack_linked_run_ids_index() -> dict[tuple[str, str], list[str]]:
+    out: dict[tuple[str, str], list[str]] = {}
+    rows = Run.query.filter(
+        Run.deleted_at.is_(None),
+        Run.slack_channel_id.isnot(None),
+        Run.slack_message_ts.isnot(None),
+    ).all()
+    for run in rows:
+        key = (run.slack_channel_id, run.slack_message_ts)
+        out.setdefault(key, []).append(run.id)
+    return out
+
+
+SLACK_IMPORT_KIND_FILTER_CHOICES = (
+    ("all", "All kinds"),
+    ("yield_report", "yield_report"),
+    ("production_log", "production_log"),
+    ("biomass_intake", "biomass_intake"),
+    ("unknown", "unknown"),
+)
+SLACK_IMPORT_TEXT_FILTER_OPS = (
+    ("contains", "Contains"),
+    ("not_contains", "Does not contain"),
+    ("equals", "Equals (whole message)"),
+)
+SLACK_IMPORT_TEXT_OPS_ALLOWED = frozenset({"contains", "not_contains", "equals"})
+
+
+def _slack_imports_row_matches_kind_text(
+    kind_filter: str,
+    text_q: str,
+    text_op: str,
+    effective_kind: str,
+    raw_text: str | None,
+) -> bool:
+    """Apply parsed kind + optional raw-text filter (contains / not_contains / equals; case-insensitive)."""
+    kf = (kind_filter or "all").strip().lower()
+    if kf != "all":
+        ek = (effective_kind or "unknown").strip().lower()
+        if ek != kf:
+            return False
+    tq = (text_q or "").strip()
+    if not tq:
+        return True
+    op = (text_op or "contains").strip().lower()
+    if op not in SLACK_IMPORT_TEXT_OPS_ALLOWED:
+        op = "contains"
+    raw = raw_text or ""
+    rt = raw.casefold()
+    qt = tq.casefold()
+    if op == "equals":
+        return raw.strip().casefold() == qt
+    if op == "not_contains":
+        return qt not in rt
+    return qt in rt
+
+
+def _slack_coverage_label(preview: dict) -> str:
+    """Heuristic: full / partial / none (mapping coverage before promotion)."""
+    filled = (preview or {}).get("filled") or {}
+    if not filled:
+        return "none"
+    unmapped = (preview or {}).get("unmapped_keys") or []
+    missing = (preview or {}).get("missing_recommended") or []
+    if not unmapped and not missing:
+        return "full"
+    return "partial"
+
+
+def _first_run_for_slack_message(channel_id: str | None, message_ts: str | None) -> Run | None:
+    if not channel_id or not message_ts:
+        return None
+    return Run.query.filter(
+        Run.slack_channel_id == channel_id,
+        Run.slack_message_ts == message_ts,
+        Run.deleted_at.is_(None),
+    ).first()
+
+
+def _find_intake_purchase_candidates(manifest_key: str) -> list:
+    """Match Purchases by batch_id (exact, then substring) for Slack manifest / intake reports."""
+    m = (manifest_key or "").strip().upper()
+    if len(m) < 2:
+        return []
+    q = Purchase.query.filter(Purchase.deleted_at.is_(None))
+    exact = q.filter(Purchase.batch_id == m).order_by(Purchase.updated_at.desc(), Purchase.created_at.desc()).all()
+    if exact:
+        return exact[:25]
+    return (
+        q.filter(
+            Purchase.batch_id.isnot(None),
+            Purchase.batch_id != "",
+            Purchase.batch_id.ilike(f"%{m}%"),
+        )
+        .order_by(Purchase.updated_at.desc(), Purchase.created_at.desc())
+        .limit(25)
+        .all()
+    )
+
+
+def _purchase_sync_biomass_pipeline(p: Purchase) -> None:
+    """Mirror _save_purchase biomass link behavior after programmatic purchase edits."""
+    linked = BiomassAvailability.query.filter(BiomassAvailability.purchase_id == p.id).first()
+    if not linked:
+        return
+    status = (p.status or "").strip()
+    if status in ("ordered", "in_transit", "committed"):
+        linked.stage = "committed"
+    elif status in ("in_testing", "available"):
+        linked.stage = "testing"
+    elif status in ("delivered", "processing", "complete"):
+        linked.stage = "delivered"
+    elif status == "cancelled":
+        linked.stage = "cancelled"
+    else:
+        linked.stage = status if status in ("declared", "testing") else "delivered"
+    linked.committed_on = p.purchase_date
+    linked.committed_delivery_date = p.delivery_date
+    linked.committed_weight_lbs = p.actual_weight_lbs or p.stated_weight_lbs
+    linked.committed_price_per_lb = p.price_per_lb
+
+
+def _slack_intake_supplier_from_form(form) -> Supplier:
+    mode = (form.get("intake_supplier_mode") or "").strip()
+    if mode == "existing":
+        sid = (form.get("intake_supplier_id") or "").strip()
+        if not sid:
+            raise ValueError("Select a supplier for this intake purchase.")
+        sup = db.session.get(Supplier, sid)
+        if not sup:
+            raise ValueError("Selected supplier was not found.")
+        return sup
+    if mode == "create":
+        if form.get("intake_confirm_create_supplier") != "1":
+            raise ValueError("Check the box to confirm creating this supplier.")
+        name = (form.get("intake_new_supplier_name") or "").strip()
+        if not name:
+            raise ValueError("New supplier name is required.")
+        existing = Supplier.query.filter(func.lower(Supplier.name) == name.lower()).first()
+        if existing:
+            return existing
+        note_line = "Created from Slack biomass intake apply."
+        sup = Supplier(name=name, is_active=True, notes=note_line)
+        db.session.add(sup)
+        db.session.flush()
+        log_audit(
+            "create",
+            "supplier",
+            sup.id,
+            details=json.dumps({"source": "slack_biomass_intake"}),
+        )
+        return sup
+    raise ValueError("Choose an existing supplier or confirm creating the farm / supplier.")
+
+
+def _apply_slack_intake_update_purchase(
+    purchase: Purchase,
+    derived: dict,
+    row: SlackIngestedMessage,
+    *,
+    manifest_wt: float | None,
+    actual_wt: float | None,
+    received: date | None,
+) -> None:
+    if received:
+        purchase.delivery_date = received
+    if manifest_wt is not None:
+        purchase.stated_weight_lbs = float(manifest_wt)
+    if actual_wt is not None:
+        purchase.actual_weight_lbs = float(actual_wt)
+    if purchase.status in ("ordered", "in_transit", "committed"):
+        purchase.status = "delivered"
+    weight = purchase.actual_weight_lbs or purchase.stated_weight_lbs
+    if weight and purchase.price_per_lb:
+        purchase.total_cost = weight * purchase.price_per_lb
+    if purchase.tested_potency_pct and purchase.stated_potency_pct and purchase.actual_weight_lbs:
+        rate = SystemSetting.get_float("potency_rate", 1.50)
+        purchase.true_up_amount = (
+            (purchase.tested_potency_pct - purchase.stated_potency_pct) * rate * purchase.actual_weight_lbs
+        )
+        if not purchase.true_up_status:
+            purchase.true_up_status = "pending"
+
+    strain = (derived.get("strain") or "").strip()
+    active_lots = [lt for lt in purchase.lots if lt.deleted_at is None]
+    if len(active_lots) == 1 and actual_wt is not None:
+        lot = active_lots[0]
+        consumed = max(0.0, float(lot.weight_lbs) - float(lot.remaining_weight_lbs))
+        lot.weight_lbs = float(actual_wt)
+        lot.remaining_weight_lbs = max(0.0, float(actual_wt) - consumed)
+        if strain:
+            lot.strain_name = strain[:200]
+
+    tail = (
+        f"Slack biomass intake ({row.channel_id} ts {row.message_ts}): "
+        f"manifest {manifest_wt} lbs, actual {actual_wt} lbs."
+    )
+    purchase.notes = f"{purchase.notes}\n{tail}".strip() if purchase.notes else tail
+
+
+def _create_purchase_from_slack_intake(
+    supplier: Supplier,
+    derived: dict,
+    row: SlackIngestedMessage,
+    *,
+    manifest_key: str,
+    manifest_wt: float,
+    actual_wt: float | None,
+    received: date | None,
+    intake_order: date | None,
+) -> Purchase:
+    pd = intake_order or received or date.today()
+    dd = received
+    aw = actual_wt if actual_wt is not None else float(manifest_wt)
+    p = Purchase(
+        supplier_id=supplier.id,
+        purchase_date=pd,
+        delivery_date=dd,
+        status="delivered",
+        stated_weight_lbs=float(manifest_wt),
+        actual_weight_lbs=float(aw),
+    )
+    db.session.add(p)
+    db.session.flush()
+    bid = manifest_key.strip().upper()
+    if bid:
+        conflict = Purchase.query.filter(
+            Purchase.batch_id == bid,
+            Purchase.deleted_at.is_(None),
+            Purchase.id != p.id,
+        ).first()
+        if conflict:
+            raise ValueError(
+                f"Batch / manifest ID {bid} is already used on another purchase. "
+                "Use “Update existing purchase” instead."
+            )
+        p.batch_id = bid
+    else:
+        p.batch_id = _ensure_unique_batch_id(
+            _generate_batch_id(supplier.name, dd or pd, aw),
+            exclude_purchase_id=p.id,
+        )
+    strain = ((derived.get("strain") or "").strip() or "Unknown")[:200]
+    lot = PurchaseLot(
+        purchase_id=p.id,
+        strain_name=strain,
+        weight_lbs=float(aw),
+        remaining_weight_lbs=float(aw),
+    )
+    db.session.add(lot)
+    p.notes = (
+        f"Created from Slack biomass intake ({row.channel_id} ts {row.message_ts})."
+    )
+    if p.stated_potency_pct and not p.price_per_lb:
+        p.price_per_lb = SystemSetting.get_float("potency_rate", 1.50) * p.stated_potency_pct
+    weight = p.actual_weight_lbs or p.stated_weight_lbs
+    if weight and p.price_per_lb:
+        p.total_cost = weight * p.price_per_lb
+    log_audit(
+        "create",
+        "purchase",
+        p.id,
+        details=json.dumps({
+            "slack_biomass_intake": True,
+            "channel_id": row.channel_id,
+            "message_ts": row.message_ts,
+            "manifest_id": bid or p.batch_id,
+        }),
+    )
+    return p
+
+
 def log_audit(action, entity_type, entity_id, details=None, user_id=None):
     entry = AuditLog(
         user_id=(user_id if user_id is not None else (current_user.id if current_user.is_authenticated else None)),
@@ -173,12 +862,22 @@ def _slack_web_api(token: str, method: str, params: dict) -> dict:
         return json.loads(resp.read().decode("utf-8"))
 
 
+def _slack_looks_like_conversation_id(hint: str) -> bool:
+    """Reference: public C…, private G…, DM D… — pass through so conversations.history works."""
+    h = (hint or "").strip()
+    if len(h) < 9:
+        return False
+    if h[0].upper() not in "CGD":
+        return False
+    return all(ch.isalnum() for ch in h[1:])
+
+
 def _slack_resolve_channel_id(token: str, channel_setting: str) -> str | None:
     """Resolve #name or channel ID from Settings default channel."""
     hint = (channel_setting or "").strip()
     if not hint:
         return None
-    if hint.upper().startswith("C") and len(hint) >= 9:
+    if _slack_looks_like_conversation_id(hint):
         return hint
     name = hint.lstrip("#").strip().lower()
     cursor = None
@@ -258,9 +957,20 @@ def _slack_ingest_channel_history(
             if not txt:
                 if msg.get("files"):
                     txt = "[attachment or file only]"
+                elif msg.get("blocks"):
+                    txt = "[block kit / rich layout — see raw in Slack]"
                 else:
+                    for att in msg.get("attachments") or []:
+                        if not isinstance(att, dict):
+                            continue
+                        piece = (att.get("text") or att.get("fallback") or "").strip()
+                        if piece:
+                            txt = piece
+                            break
+                if not txt:
                     continue
             derived = _derive_slack_production_message(txt)
+            _ensure_slack_message_date_derived(derived, str(ts))
             db.session.add(SlackIngestedMessage(
                 channel_id=channel_id,
                 message_ts=str(ts),
@@ -277,12 +987,63 @@ def _slack_ingest_channel_history(
     return new_rows, scanned, max_ts_seen, None
 
 
+def _ensure_slack_message_date_derived(derived: dict, message_ts: str) -> None:
+    """Set slack_message_date (YYYY-MM-DD UTC from Slack ts) when missing — sync + preview backfill."""
+    if not (message_ts or "").strip():
+        return
+    if derived.get("slack_message_date"):
+        return
+    dv = _slack_ts_to_date_value(message_ts)
+    if dv:
+        derived["slack_message_date"] = dv.isoformat()
+
+
+def _slack_strip_slack_links(value: str | None) -> str:
+    """Turn Slack markup like <tel:0010471676|0010471676> into visible text."""
+    if not value:
+        return ""
+    s = str(value).strip()
+    s = re.sub(r"<[^|>]+\|([^>]+)>", r"\1", s)
+    s = re.sub(r"<([^>]+)>", r"\1", s)
+    return s.strip()
+
+
+def _slack_parse_mdy_date(value: str | None) -> date | None:
+    """Parse labels like 3/18/26 or 03/18/2026."""
+    if not (value or "").strip():
+        return None
+    m = re.match(r"^\s*(\d{1,2})/(\d{1,2})/(\d{2,4})\s*$", value.strip())
+    if not m:
+        return None
+    mo, d, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    if y < 100:
+        y += 2000
+    try:
+        return date(y, mo, d)
+    except ValueError:
+        return None
+
+
+def _slack_intake_manifest_normalized(manifest_raw: str | None) -> str:
+    """Batch / manifest id for matching Purchase.batch_id (uppercased alphanumerics)."""
+    s = _slack_strip_slack_links(manifest_raw or "")
+    s = re.sub(r"[\s#]+", "", s)
+    s = re.sub(r"[^\w-]", "", s)
+    return s.upper().strip()
+
+
 def _derive_slack_production_message(raw: str) -> dict:
-    """Lightweight classifier + field extraction for production / yield Slack templates."""
+    """Lightweight classifier + field extraction for production / yield / intake Slack templates."""
     text = raw or ""
     lower = text.lower()
     kind = "unknown"
-    if re.search(r"wet\s*thca|wet\s*hte", lower) and re.search(r"bio\s*:\s*[\d,]+", lower):
+    if (
+        re.search(r"received\s*:", lower)
+        and re.search(r"manifest", lower)
+        and (re.search(r"actual\s*wt", lower) or re.search(r"manifest\s*wt", lower))
+    ):
+        kind = "biomass_intake"
+    elif re.search(r"wet\s*thca|wet\s*hte", lower) and re.search(r"bio\s*:\s*[\d,]+", lower):
         kind = "yield_report"
     elif re.search(r"reactor\s*:", lower) and re.search(r"strain\s*:", lower):
         kind = "production_log"
@@ -290,6 +1051,46 @@ def _derive_slack_production_message(raw: str) -> dict:
     def grab(pat: str):
         m = re.search(pat, text, flags=re.I)
         return m.group(1).strip() if m else None
+
+    if kind == "biomass_intake":
+        out: dict = {"message_kind": kind}
+        recv_raw = grab(r"received\s*:\s*([^\n]+)")
+        intake_raw = grab(r"intake\s*:\s*([^\n]+)")
+        src_raw = grab(r"source\s*:\s*([^\n]+)")
+        man_raw = grab(r"manifest\s*#\s*([^\n]+)")
+        if src_raw:
+            out["source"] = _slack_strip_slack_links(src_raw)
+        if man_raw:
+            out["manifest_raw"] = man_raw.strip()
+            out["manifest_id_normalized"] = _slack_intake_manifest_normalized(man_raw)
+        strain = grab(r"strain\s*:\s*([^\n]+)")
+        if strain:
+            out["strain"] = _slack_strip_slack_links(strain)
+        rd = _slack_parse_mdy_date(_slack_strip_slack_links(recv_raw))
+        if rd:
+            out["intake_received_date"] = rd.isoformat()
+        idt = _slack_parse_mdy_date(_slack_strip_slack_links(intake_raw))
+        if idt:
+            out["intake_order_date"] = idt.isoformat()
+        mw = grab(r"manifest\s*wt\s*:\s*([-\d.,]+)")
+        if mw:
+            try:
+                out["manifest_wt_lbs"] = float(mw.replace(",", ""))
+            except ValueError:
+                pass
+        aw = grab(r"actual\s*wt\s*:\s*([-\d.,]+)")
+        if aw:
+            try:
+                out["actual_wt_lbs"] = float(aw.replace(",", ""))
+            except ValueError:
+                pass
+        disc = grab(r"discrepancy\s*:\s*([-\d.,]+)")
+        if disc:
+            try:
+                out["discrepancy_lbs"] = float(disc.replace(",", ""))
+            except ValueError:
+                pass
+        return out
 
     out: dict = {"message_kind": kind, "source": grab(r"source\s*:\s*([^\n]+)")}
     strain = grab(r"strain\s*:\s*([^\n]+)")
@@ -328,6 +1129,17 @@ def _derive_slack_production_message(raw: str) -> dict:
     notes = grab(r"notes\s*:\s*([^\n]+)")
     if notes:
         out["notes_line"] = notes
+
+    for pat, dkey in (
+        (r"end\s*time\s*:\s*([^\n]+)", "end_time"),
+        (r"mixer\s*time\s*:\s*([^\n]+)", "mixer_time"),
+        (r"flush\s*time\s*start\s*:\s*([^\n]+)", "flush_time_start"),
+        (r"recovery\s+at\s*:\s*([^\n]+)", "recovery_at"),
+        (r"flush\s+at\s*:\s*([^\n]+)", "flush_at"),
+    ):
+        v = grab(pat)
+        if v:
+            out[dkey] = v.strip()
     return out
 
 
@@ -338,8 +1150,12 @@ SLACK_RUN_MAPPINGS_KEY = "slack_run_field_mappings"
 # Derived keys from `_derive_slack_production_message` plus Slack `message_ts` virtual source
 SLACK_MAPPING_ALLOWED_SOURCE_KEYS = frozenset({
     "__message_ts__",
+    "slack_message_date",
     "strain", "source", "bio_lbs", "bio_weight_lbs", "wet_thca_g", "wet_hte_g", "wet_total_g",
     "yield_pct_mentioned", "reactor", "notes_line", "message_kind",
+    "end_time", "mixer_time", "flush_time_start", "recovery_at", "flush_at",
+    "manifest_raw", "manifest_id_normalized", "manifest_wt_lbs", "actual_wt_lbs", "discrepancy_lbs",
+    "intake_received_date", "intake_order_date",
 })
 
 # Run columns that Phase 1 preview may populate (subset of Run model / run form)
@@ -362,13 +1178,14 @@ def _slack_mapping_grid_row_count(rules: list | None) -> int:
     return min(SLACK_RUN_MAPPING_MAX_FORM_ROWS, max(2, n + 2))
 
 
-SLACK_MAPPING_MESSAGE_KINDS = frozenset({"yield_report", "production_log", "unknown"})
+SLACK_MAPPING_MESSAGE_KINDS = frozenset({"yield_report", "production_log", "biomass_intake", "unknown"})
 SLACK_MAPPING_TRANSFORM_TYPES = (
-    "passthrough", "slack_ts_to_date", "to_float", "to_reactor_int", "multiply", "prefix", "suffix",
+    "passthrough", "slack_ts_to_date", "from_iso_date", "to_float", "to_reactor_int", "multiply", "prefix", "suffix",
 )
 # Short hints for the mapping GUI (source = keys in derived_json or __message_ts__)
 SLACK_MAPPING_SOURCE_HELP = {
-    "__message_ts__": "Slack message time → run date",
+    "__message_ts__": "Slack message time (raw ts) → run date",
+    "slack_message_date": "Calendar date from Slack post time (YYYY-MM-DD in derived_json; use with from_iso_date → run_date)",
     "strain": "Parsed strain (yield / production templates)",
     "source": "Parsed source/supplier line",
     "bio_lbs": "Bio lbs (yield template)",
@@ -380,6 +1197,11 @@ SLACK_MAPPING_SOURCE_HELP = {
     "reactor": "Reactor token (e.g. A) — map twice for load source + equipment #",
     "notes_line": "Parsed notes line",
     "message_kind": "Classifier string as data (rare)",
+    "end_time": "Line End Time: …",
+    "mixer_time": "Line Mixer Time: …",
+    "flush_time_start": "Line Flush Time Start: …",
+    "recovery_at": "Line Recovery at: …",
+    "flush_at": "Line Flush at: …",
 }
 SLACK_MAPPING_TARGET_HELP = {
     "run_date": "Run date",
@@ -406,6 +1228,7 @@ SLACK_MAPPING_KIND_PRESETS = (
     ("all", "All message kinds"),
     ("yield_report", "yield_report only"),
     ("production_log", "production_log only"),
+    ("biomass_intake", "biomass_intake only"),
     ("unknown", "unknown only"),
     ("yield_report,production_log", "yield_report + production_log"),
 )
@@ -551,7 +1374,7 @@ def _validate_slack_run_field_rules(rules: list) -> None:
             if k not in SLACK_MAPPING_MESSAGE_KINDS:
                 raise ValueError(
                     f"Rule {i + 1}: invalid message_kind {k!r} "
-                    f"(use yield_report, production_log, unknown, or leave scope as “all”).",
+                    f"(use yield_report, production_log, biomass_intake, unknown, or leave scope as “all”).",
                 )
         sk = r.get("source_key")
         if sk not in SLACK_MAPPING_ALLOWED_SOURCE_KEYS:
@@ -578,7 +1401,10 @@ def _validate_slack_run_field_rules(rules: list) -> None:
         if tr is not None and not isinstance(tr, dict):
             raise ValueError(f"Rule {i + 1}: transform must be an object.")
         ttype = (tr or {}).get("type") or "passthrough"
-        if ttype not in ("passthrough", "slack_ts_to_date", "to_float", "to_reactor_int", "multiply", "prefix", "suffix"):
+        if ttype not in (
+            "passthrough", "slack_ts_to_date", "from_iso_date", "to_float", "to_reactor_int",
+            "multiply", "prefix", "suffix",
+        ):
             raise ValueError(f"Rule {i + 1}: unsupported transform type {ttype!r}.")
 
 
@@ -597,6 +1423,14 @@ def _apply_slack_mapping_transform(raw_val, transform: dict | None, message_ts: 
     t = tr.get("type") or "passthrough"
     if t == "slack_ts_to_date":
         return _slack_ts_to_date_value(raw_val or message_ts)
+    if t == "from_iso_date":
+        s = str(raw_val).strip()
+        if len(s) >= 10:
+            try:
+                return datetime.strptime(s[:10], "%Y-%m-%d").date()
+            except ValueError:
+                return None
+        return None
     if t == "to_float":
         try:
             return float(raw_val)
@@ -637,6 +1471,8 @@ def _preview_slack_to_run_fields(
     rules: list,
 ) -> dict:
     """Phase 1: Run-shaped preview only; no database writes."""
+    derived = dict(derived or {})
+    _ensure_slack_message_date_derived(derived, message_ts)
     notes_parts: list[str] = []
     filled: dict = {}
     consumed_sources: set[str] = set()
@@ -1057,6 +1893,11 @@ def _ensure_sqlite_schema():
         if "field_photo_paths_json" not in cols:
             db.session.execute(text("ALTER TABLE biomass_availabilities ADD COLUMN field_photo_paths_json TEXT"))
 
+    if has_table("users"):
+        cols = column_names("users")
+        if "is_slack_importer" not in cols:
+            db.session.execute(text("ALTER TABLE users ADD COLUMN is_slack_importer BOOLEAN DEFAULT 0"))
+
     # Runs: cost_per_gram_thca / cost_per_gram_hte
     if has_table("runs"):
         cols = column_names("runs")
@@ -1070,6 +1911,12 @@ def _ensure_sqlite_schema():
             db.session.execute(text("ALTER TABLE runs ADD COLUMN deleted_by VARCHAR(36)"))
         if "load_source_reactors" not in cols:
             db.session.execute(text("ALTER TABLE runs ADD COLUMN load_source_reactors VARCHAR(120)"))
+        if "slack_channel_id" not in cols:
+            db.session.execute(text("ALTER TABLE runs ADD COLUMN slack_channel_id VARCHAR(32)"))
+        if "slack_message_ts" not in cols:
+            db.session.execute(text("ALTER TABLE runs ADD COLUMN slack_message_ts VARCHAR(32)"))
+        if "slack_import_applied_at" not in cols:
+            db.session.execute(text("ALTER TABLE runs ADD COLUMN slack_import_applied_at DATETIME"))
 
     if has_table("purchase_lots"):
         cols = column_names("purchase_lots")
@@ -1739,17 +2586,57 @@ def runs_list():
 
 
 @app.route("/runs/new", methods=["GET", "POST"])
-@editor_required
+@login_required
 def run_new():
     if request.method == "POST":
+        if not current_user.can_edit:
+            flash("Saving runs requires User or Super Admin access.", "error")
+            return redirect(url_for("dashboard"))
         return _save_run(None)
+
+    slack_prefill = session.get(SLACK_RUN_PREFILL_SESSION_KEY)
+    if not current_user.can_edit and not (slack_prefill and current_user.can_slack_import):
+        flash("Edit access required.", "error")
+        return redirect(url_for("dashboard"))
+
+    today = date.today()
+    if slack_prefill:
+        if not current_user.can_slack_import:
+            session.pop(SLACK_RUN_PREFILL_SESSION_KEY, None)
+            flash("Slack import access is not enabled for your account.", "error")
+            return redirect(url_for("dashboard"))
+        display_run = _hydrate_run_from_slack_prefill(slack_prefill, today)
+        res = slack_prefill.get("resolution") or {}
+        hints: list[str] = []
+        if res.get("biomass_declared"):
+            hints.append("Saving will add a declared biomass pipeline row (strain / weight from the Slack apply form).")
+        if (res.get("supplier_mode") or "").strip() == "create" and (res.get("new_supplier_name") or "").strip():
+            hints.append("Saving will create a new supplier record from the Slack apply form.")
+        slack_meta = {
+            "ingested_message_id": slack_prefill.get("ingested_message_id"),
+            "channel_id": slack_prefill.get("channel_id"),
+            "message_ts": slack_prefill.get("message_ts"),
+            "allow_duplicate": bool(slack_prefill.get("allow_duplicate")),
+            "resolution_hints": hints,
+        }
+    else:
+        display_run = None
+        slack_meta = None
 
     lots = PurchaseLot.query.join(Purchase).filter(
         PurchaseLot.remaining_weight_lbs > 0,
         PurchaseLot.deleted_at.is_(None),
         Purchase.deleted_at.is_(None),
     ).all()
-    return render_template("run_form.html", run=None, lots=lots, today=date.today())
+    can_save_run = bool(current_user.can_edit)
+    return render_template(
+        "run_form.html",
+        run=display_run,
+        lots=lots,
+        today=today,
+        slack_meta=slack_meta,
+        can_save_run=can_save_run,
+    )
 
 
 @app.route("/runs/<run_id>/edit", methods=["GET", "POST"])
@@ -1769,10 +2656,27 @@ def run_edit(run_id):
         db.or_(PurchaseLot.remaining_weight_lbs > 0,
                PurchaseLot.id.in_([i.lot_id for i in run.inputs]))
     ).all()
-    return render_template("run_form.html", run=run, lots=lots, today=date.today())
+    return render_template(
+        "run_form.html",
+        run=run,
+        lots=lots,
+        today=date.today(),
+        slack_meta=None,
+        can_save_run=True,
+    )
 
 
 def _save_run(existing_run):
+    today = date.today()
+    slack_meta = None
+    if request.form.get("slack_ingested_message_id"):
+        slack_meta = {
+            "ingested_message_id": (request.form.get("slack_ingested_message_id") or "").strip(),
+            "channel_id": (request.form.get("slack_channel_id") or "").strip(),
+            "message_ts": (request.form.get("slack_message_ts") or "").strip(),
+            "allow_duplicate": request.form.get("slack_apply_allow_duplicate") == "1",
+        }
+
     try:
         if existing_run:
             run = existing_run
@@ -1814,6 +2718,20 @@ def _save_run(existing_run):
 
         run.calculate_yields()
 
+        if not existing_run and slack_meta and slack_meta.get("channel_id") and slack_meta.get("message_ts"):
+            dup = _first_run_for_slack_message(slack_meta["channel_id"], slack_meta["message_ts"])
+            if dup and not slack_meta.get("allow_duplicate"):
+                flash(
+                    "A run is already linked to this Slack message. Re-open the apply flow and confirm if you need a duplicate.",
+                    "error",
+                )
+                lots = PurchaseLot.query.join(Purchase).filter(
+                    PurchaseLot.remaining_weight_lbs > 0,
+                    PurchaseLot.deleted_at.is_(None),
+                    Purchase.deleted_at.is_(None),
+                ).all()
+                return render_template("run_form.html", run=run, lots=lots, today=today, slack_meta=slack_meta)
+
         if not existing_run:
             db.session.add(run)
         db.session.flush()
@@ -1832,8 +2750,40 @@ def _save_run(existing_run):
                         lot.remaining_weight_lbs = max(0, lot.remaining_weight_lbs - weight)
 
         run.calculate_cost()
-        log_audit("update" if existing_run else "create", "run", run.id)
+
+        slack_prefill_snapshot = (session.get(SLACK_RUN_PREFILL_SESSION_KEY) or {}) if not existing_run else {}
+        resolution = slack_prefill_snapshot.get("resolution")
+        if not existing_run and slack_meta and resolution:
+            mode = (resolution.get("supplier_mode") or "").strip()
+            need_supplier_materialize = mode == "create" or bool(resolution.get("biomass_declared"))
+            if need_supplier_materialize:
+                sid = _slack_resolution_materialize_supplier(resolution, slack_meta)
+                if resolution.get("biomass_declared") and sid:
+                    _slack_resolution_create_declared_biomass(resolution, sid, slack_meta, run.run_date)
+
+        audit_details = None
+        if not existing_run and slack_meta and slack_meta.get("channel_id") and slack_meta.get("message_ts"):
+            run.slack_channel_id = slack_meta["channel_id"]
+            run.slack_message_ts = slack_meta["message_ts"]
+            run.slack_import_applied_at = datetime.utcnow()
+            audit_payload = {
+                "slack_import": True,
+                "slack_ingested_message_id": slack_meta.get("ingested_message_id"),
+                "channel_id": run.slack_channel_id,
+                "message_ts": run.slack_message_ts,
+                "duplicate_apply": bool(slack_meta.get("allow_duplicate")),
+                "prefill_keys": sorted(slack_prefill_snapshot.get("filled") or []),
+            }
+            if resolution:
+                audit_payload["slack_resolution"] = {
+                    "supplier_mode": resolution.get("supplier_mode"),
+                    "biomass_declared": bool(resolution.get("biomass_declared")),
+                }
+            audit_details = json.dumps(audit_payload)
+        log_audit("update" if existing_run else "create", "run", run.id, details=audit_details)
         db.session.commit()
+        if not existing_run and slack_meta and slack_meta.get("channel_id") and slack_meta.get("message_ts"):
+            session.pop(SLACK_RUN_PREFILL_SESSION_KEY, None)
         flash("Run saved successfully.", "success")
         return redirect(url_for("runs_list"))
 
@@ -1845,7 +2795,13 @@ def _save_run(existing_run):
             PurchaseLot.deleted_at.is_(None),
             Purchase.deleted_at.is_(None),
         ).all()
-        return render_template("run_form.html", run=existing_run, lots=lots, today=date.today())
+        return render_template(
+            "run_form.html",
+            run=existing_run,
+            lots=lots,
+            today=today,
+            slack_meta=slack_meta,
+        )
 
 
 @app.route("/runs/<run_id>/delete", methods=["POST"])
@@ -2778,6 +3734,8 @@ def settings():
                         return _settings_redirect()
                     u = User(username=username, display_name=display, role=role)
                     u.set_password(password)
+                    if role != "super_admin":
+                        u.is_slack_importer = bool(request.form.get("new_slack_importer"))
                     db.session.add(u)
                     db.session.commit()
                     flash(f"User '{display}' created.", "success")
@@ -2974,6 +3932,31 @@ def user_toggle_active(user_id):
     )
     db.session.commit()
     flash(f"User {'activated' if u.is_active_user else 'disabled'}.", "success")
+    return _settings_redirect()
+
+
+@app.route("/settings/users/<user_id>/toggle_slack_importer", methods=["POST"])
+@admin_required
+def user_toggle_slack_importer(user_id):
+    u = db.session.get(User, user_id)
+    if not u:
+        flash("User not found.", "error")
+        return _settings_redirect()
+    if u.is_super_admin:
+        flash("Super Admins always have Slack import access.", "info")
+        return _settings_redirect()
+    u.is_slack_importer = not bool(getattr(u, "is_slack_importer", False))
+    log_audit(
+        "user_slack_importer",
+        "user",
+        u.id,
+        details=json.dumps({"username": u.username, "enabled": u.is_slack_importer}),
+    )
+    db.session.commit()
+    flash(
+        f"Slack Importer {'enabled' if u.is_slack_importer else 'disabled'} for {u.username}.",
+        "success",
+    )
     return _settings_redirect()
 
 
@@ -3445,6 +4428,7 @@ def settings_slack_sync_channel():
             hint = cfg.channel_hint.strip()
             channel_id = _slack_resolve_channel_id(token, hint)
             if not channel_id:
+                app.logger.warning("Slack sync: could not resolve channel hint %r (need #name bot can list, or full ID starting with C/G/D)", hint)
                 errors.append(hint)
                 continue
             cfg.resolved_channel_id = channel_id
@@ -3473,6 +4457,7 @@ def settings_slack_sync_channel():
             flash(
                 "Could not sync any channel. Check names or IDs, invite the bot, and add OAuth scopes "
                 "channels:history, channels:read (private: groups:history, groups:read). "
+                "If you paste a channel ID, use the full ID (public C…, private G…, DM D…). "
                 f"Details: {', '.join(errors)}",
                 "error",
             )
@@ -3487,6 +4472,8 @@ def settings_slack_sync_channel():
             f"Slack sync: {total_new} new message(s) saved, {total_scanned} row(s) seen "
             f"across {len(audit_channels)} channel(s)."
         )
+        if total_new == 0 and total_scanned > 0:
+            msg += " (Everything seen was already imported, or had no ingestible text — increase Days back only helps before the first successful sync for that channel, or after clearing that channel row to reset the cursor.)"
         if errors:
             msg += " Could not sync: " + "; ".join(errors) + "."
         msg += " Open Slack imports to review parsed fields."
@@ -3502,32 +4489,119 @@ def settings_slack_sync_channel():
 
 
 @app.route("/settings/slack-imports")
-@admin_required
+@slack_importer_required
 def settings_slack_imports():
-    rows = SlackIngestedMessage.query.order_by(
-        desc(SlackIngestedMessage.message_ts),
-    ).limit(400).all()
-    for r in rows:
-        try:
-            r.derived = json.loads(r.derived_json) if r.derived_json else {}
-        except Exception:
-            r.derived = {}
-    return render_template("slack_imports.html", rows=rows)
+    start_raw = (request.args.get("start_date") or "").strip()
+    end_raw = (request.args.get("end_date") or "").strip()
+    channel_pick = [c for c in request.args.getlist("channel_id") if (c or "").strip()]
+    promotion = (request.args.get("promotion") or "all").strip().lower()
+    if promotion not in ("all", "not_linked", "linked"):
+        promotion = "all"
+    coverage_f = (request.args.get("coverage") or "all").strip().lower()
+    if coverage_f not in ("all", "full", "partial", "none"):
+        coverage_f = "all"
+
+    kind_filter = (request.args.get("kind_filter") or "all").strip().lower()
+    allowed_kinds = {c[0] for c in SLACK_IMPORT_KIND_FILTER_CHOICES}
+    if kind_filter not in allowed_kinds:
+        kind_filter = "all"
+    text_filter_raw = (request.args.get("text_filter") or "").strip()
+    text_op = (request.args.get("text_op") or "contains").strip().lower()
+    if text_op not in SLACK_IMPORT_TEXT_OPS_ALLOWED:
+        text_op = "contains"
+
+    try:
+        start_d = datetime.strptime(start_raw, "%Y-%m-%d").date() if start_raw else None
+        end_d = datetime.strptime(end_raw, "%Y-%m-%d").date() if end_raw else None
+    except ValueError:
+        start_d, end_d = None, None
+
+    channel_options = [
+        cid for (cid,) in db.session.query(SlackIngestedMessage.channel_id).distinct().order_by(
+            SlackIngestedMessage.channel_id,
+        ).all() if cid
+    ]
+
+    rules = _load_slack_run_field_rules()
+    link_index = _slack_linked_run_ids_index()
+
+    pool = SlackIngestedMessage.query.order_by(desc(SlackIngestedMessage.message_ts)).limit(2500).all()
+    rows: list = []
+    for r in pool:
+        ts_date = _slack_ts_to_date_value(r.message_ts)
+        if start_d and (ts_date is None or ts_date < start_d):
+            continue
+        if end_d and (ts_date is None or ts_date > end_d):
+            continue
+        if channel_pick and r.channel_id not in channel_pick:
+            continue
+        linked = link_index.get((r.channel_id, r.message_ts), [])
+        if promotion == "not_linked" and linked:
+            continue
+        if promotion == "linked" and not linked:
+            continue
+        derived = _derive_slack_production_message(r.raw_text or "")
+        eff_kind = (derived.get("message_kind") or r.message_kind or "unknown").strip()
+        if not _slack_imports_row_matches_kind_text(
+            kind_filter, text_filter_raw, text_op, eff_kind, r.raw_text,
+        ):
+            continue
+        preview = _preview_slack_to_run_fields(derived, str(r.message_ts or ""), eff_kind, rules)
+        cov = _slack_coverage_label(preview)
+        if coverage_f != "all" and cov != coverage_f:
+            continue
+        r.derived = derived
+        r._preview = preview
+        r._linked_run_ids = linked
+        r._coverage = cov
+        rows.append(r)
+        if len(rows) >= 500:
+            break
+
+    return render_template(
+        "slack_imports.html",
+        rows=rows,
+        start_date=start_raw,
+        end_date=end_raw,
+        channel_pick=channel_pick,
+        promotion=promotion,
+        coverage=coverage_f,
+        channel_options=channel_options,
+        kind_filter=kind_filter,
+        text_filter=text_filter_raw,
+        text_op=text_op,
+        slack_import_kind_choices=SLACK_IMPORT_KIND_FILTER_CHOICES,
+        slack_import_text_ops=SLACK_IMPORT_TEXT_FILTER_OPS,
+    )
 
 
 @app.route("/settings/slack-imports/<msg_id>/preview")
-@admin_required
+@slack_importer_required
 def settings_slack_import_preview(msg_id):
     row = db.session.get(SlackIngestedMessage, msg_id)
     if not row:
         flash("Slack import row not found.", "error")
         return redirect(url_for("settings_slack_imports"))
-    try:
-        derived = json.loads(row.derived_json) if row.derived_json else {}
-    except Exception:
-        derived = {}
+    derived = _derive_slack_production_message(row.raw_text or "")
+    eff_kind = derived.get("message_kind") or row.message_kind
     rules = _load_slack_run_field_rules()
-    preview = _preview_slack_to_run_fields(derived, str(row.message_ts or ""), row.message_kind, rules)
+    preview = _preview_slack_to_run_fields(derived, str(row.message_ts or ""), eff_kind, rules)
+    link_index = _slack_linked_run_ids_index()
+    linked = link_index.get((row.channel_id, row.message_ts), [])
+    dup_run = _first_run_for_slack_message(row.channel_id, row.message_ts)
+    needs_res = _slack_message_needs_resolution_ui(derived)
+    source_raw = (derived.get("source") or "").strip()
+    strain_raw = (derived.get("strain") or "").strip()
+    suppliers_all = Supplier.query.filter(Supplier.is_active.is_(True)).order_by(Supplier.name).all()
+    supplier_candidates = _slack_supplier_candidates_for_source(source_raw) if source_raw else []
+    default_availability = _slack_default_availability_date_iso(derived, str(row.message_ts or "")) or ""
+    default_bio_weight = _slack_default_bio_weight_lbs(derived)
+    intake_candidates: list = []
+    intake_manifest_key = ""
+    if (derived.get("message_kind") or "") == "biomass_intake":
+        intake_manifest_key = (derived.get("manifest_id_normalized") or "").strip()
+        if intake_manifest_key:
+            intake_candidates = _find_intake_purchase_candidates(intake_manifest_key)
     return render_template(
         "slack_import_preview.html",
         row=row,
@@ -3535,7 +4609,185 @@ def settings_slack_import_preview(msg_id):
         preview=preview,
         rules=rules,
         non_run_mapping_rule_count=_slack_non_run_mapping_rule_count(rules),
+        coverage_label=_slack_coverage_label(preview),
+        linked_run_ids=linked,
+        duplicate_run=dup_run,
+        needs_resolution_ui=needs_res,
+        supplier_all=suppliers_all,
+        supplier_candidates=supplier_candidates,
+        source_raw=source_raw,
+        strain_raw=strain_raw,
+        default_availability_date=default_availability,
+        default_bio_weight=default_bio_weight,
+        intake_candidates=intake_candidates,
+        intake_manifest_key=intake_manifest_key,
+        can_edit_purchase=bool(current_user.can_edit),
     )
+
+
+@app.route("/settings/slack-imports/<msg_id>/apply-run", methods=["GET", "POST"])
+@slack_importer_required
+def settings_slack_import_apply_run(msg_id):
+    row = db.session.get(SlackIngestedMessage, msg_id)
+    if not row:
+        flash("Slack import row not found.", "error")
+        return redirect(url_for("settings_slack_imports"))
+
+    derived = _derive_slack_production_message(row.raw_text or "")
+
+    if request.method == "GET" and _slack_message_needs_resolution_ui(derived):
+        flash(
+            "This Slack message includes source: and/or strain: — use the preview page, then apply using the form "
+            "(supplier / optional biomass) before a run is opened.",
+            "warning",
+        )
+        return redirect(url_for("settings_slack_import_preview", msg_id=msg_id))
+
+    resolution = None
+    if request.method == "POST":
+        resolution, res_err = _slack_resolution_from_apply_form(
+            request.form,
+            derived=derived,
+            message_ts=str(row.message_ts or ""),
+        )
+        if res_err:
+            flash(res_err, "error")
+            return redirect(url_for("settings_slack_import_preview", msg_id=msg_id))
+
+    confirm = request.form.get("slack_apply_confirm_duplicate") == "1" or (
+        request.method == "GET" and (request.args.get("confirm") or "").strip() == "1"
+    )
+
+    dup = _first_run_for_slack_message(row.channel_id, row.message_ts)
+    if dup and not confirm:
+        passthrough = _slack_apply_form_passthrough(request.form) if request.method == "POST" else None
+        return render_template(
+            "slack_import_apply_confirm.html",
+            row=row,
+            existing_run=dup,
+            apply_passthrough=passthrough,
+        )
+
+    if dup and confirm:
+        log_audit(
+            "slack_duplicate_apply_confirm",
+            "slack_ingested_message",
+            row.id,
+            details=json.dumps({
+                "channel_id": row.channel_id,
+                "message_ts": row.message_ts,
+                "existing_run_id": dup.id,
+            }),
+        )
+        db.session.commit()
+
+    rules = _load_slack_run_field_rules()
+    eff_kind = derived.get("message_kind") or row.message_kind
+    preview = _preview_slack_to_run_fields(derived, str(row.message_ts or ""), eff_kind, rules)
+    _slack_run_prefill_put(
+        msg_id=row.id,
+        channel_id=row.channel_id,
+        message_ts=row.message_ts,
+        filled=preview.get("filled") or {},
+        allow_duplicate=bool(dup and confirm),
+        resolution=resolution,
+    )
+    flash("Opening new run with Slack prefilled fields. Review and save when ready.", "success")
+    return redirect(url_for("run_new"))
+
+
+@app.route("/settings/slack-imports/<msg_id>/apply-intake", methods=["POST"])
+@slack_importer_required
+def settings_slack_import_apply_intake(msg_id):
+    if not current_user.can_edit:
+        flash("Saving purchases requires User or Super Admin access.", "error")
+        return redirect(url_for("settings_slack_import_preview", msg_id=msg_id))
+    row = db.session.get(SlackIngestedMessage, msg_id)
+    if not row:
+        flash("Slack import row not found.", "error")
+        return redirect(url_for("settings_slack_imports"))
+    derived = _derive_slack_production_message(row.raw_text or "")
+    if derived.get("message_kind") != "biomass_intake":
+        flash("This message is not classified as a biomass intake report.", "error")
+        return redirect(url_for("settings_slack_import_preview", msg_id=msg_id))
+    mkey = (derived.get("manifest_id_normalized") or "").strip()
+    if not mkey:
+        flash(
+            "Could not parse a manifest / batch id (Manifest # …). Check the message format or paste the id manually on the Purchase.",
+            "error",
+        )
+        return redirect(url_for("settings_slack_import_preview", msg_id=msg_id))
+    manifest_wt = derived.get("manifest_wt_lbs")
+    actual_wt = derived.get("actual_wt_lbs")
+    if manifest_wt is None and actual_wt is None:
+        flash("Manifest weight or actual weight is required in the Slack text.", "error")
+        return redirect(url_for("settings_slack_import_preview", msg_id=msg_id))
+    if manifest_wt is None:
+        manifest_wt = actual_wt
+    if actual_wt is None:
+        actual_wt = manifest_wt
+
+    received = None
+    if derived.get("intake_received_date"):
+        try:
+            received = datetime.strptime(str(derived["intake_received_date"])[:10], "%Y-%m-%d").date()
+        except ValueError:
+            received = None
+    intake_order = None
+    if derived.get("intake_order_date"):
+        try:
+            intake_order = datetime.strptime(str(derived["intake_order_date"])[:10], "%Y-%m-%d").date()
+        except ValueError:
+            intake_order = None
+
+    action = (request.form.get("intake_action") or "").strip()
+    try:
+        if action == "update":
+            pid = (request.form.get("intake_purchase_id") or "").strip()
+            if not pid:
+                raise ValueError("Select which purchase to update.")
+            p = db.session.get(Purchase, pid)
+            if not p or p.deleted_at:
+                raise ValueError("Purchase not found.")
+            _apply_slack_intake_update_purchase(
+                p, derived, row,
+                manifest_wt=float(manifest_wt) if manifest_wt is not None else None,
+                actual_wt=float(actual_wt) if actual_wt is not None else None,
+                received=received,
+            )
+            _purchase_sync_biomass_pipeline(p)
+            log_audit(
+                "update",
+                "purchase",
+                p.id,
+                details=json.dumps({
+                    "slack_biomass_intake": True,
+                    "channel_id": row.channel_id,
+                    "message_ts": row.message_ts,
+                }),
+            )
+            db.session.commit()
+            flash("Purchase updated from Slack biomass intake.", "success")
+            return redirect(url_for("purchase_edit", purchase_id=p.id))
+        if action == "create":
+            sup = _slack_intake_supplier_from_form(request.form)
+            p = _create_purchase_from_slack_intake(
+                sup, derived, row,
+                manifest_key=mkey,
+                manifest_wt=float(manifest_wt),
+                actual_wt=float(actual_wt),
+                received=received,
+                intake_order=intake_order,
+            )
+            _purchase_sync_biomass_pipeline(p)
+            db.session.commit()
+            flash("Purchase created from Slack biomass intake.", "success")
+            return redirect(url_for("purchase_edit", purchase_id=p.id))
+        raise ValueError("Choose whether to update an existing purchase or create a new one.")
+    except ValueError as e:
+        db.session.rollback()
+        flash(str(e), "error")
+        return redirect(url_for("settings_slack_import_preview", msg_id=msg_id))
 
 
 @app.route("/settings/slack-run-mappings", methods=["GET", "POST"])

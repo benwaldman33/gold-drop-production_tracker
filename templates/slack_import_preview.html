@@ -9,8 +9,160 @@
 
 <div class="card" style="margin-bottom:16px;">
   <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;margin-bottom:8px;">Message</h4>
-  <p class="text-sm"><strong>Kind:</strong> {{ row.message_kind or '—' }} &nbsp; <strong>Slack ts:</strong> <span class="text-mono">{{ row.message_ts }}</span> &nbsp; <strong>Channel:</strong> <span class="text-mono">{{ row.channel_id }}</span></p>
-  <p class="text-sm" style="color:var(--text-muted);margin-top:8px;"><strong>Phase 1:</strong> Values below are a <em>Run preview</em> only (not saved to Runs).{% if non_run_mapping_rule_count %} This message may also match <strong>{{ non_run_mapping_rule_count }}</strong> saved rule(s) for <strong>other destinations</strong> (Biomass, Purchases, …); those are not shown here yet.{% endif %}</p>
+  <p class="text-sm"><strong>Kind:</strong> {{ derived.get('message_kind') or row.message_kind or '—' }} &nbsp; <strong>Slack ts:</strong> <span class="text-mono">{{ row.message_ts }}</span> &nbsp; <strong>Channel:</strong> <span class="text-mono">{{ row.channel_id }}</span></p>
+  <p class="text-sm" style="color:var(--text-muted);margin-top:8px;">
+    <strong>Preview + apply:</strong> mapped Run fields are hints until you open the run form and save.
+    Coverage: <span class="badge {% if coverage_label == 'full' %}badge-green{% elif coverage_label == 'partial' %}badge-gold{% else %}badge-gray{% endif %}">{{ coverage_label }}</span>
+    {% if linked_run_ids %}
+    &nbsp;·&nbsp; Linked: {% for rid in linked_run_ids %}<a href="{{ url_for('run_edit', run_id=rid) }}">open run</a>{% if not loop.last %}, {% endif %}{% endfor %}
+    {% endif %}
+    {% if non_run_mapping_rule_count %} This message may also match <strong>{{ non_run_mapping_rule_count }}</strong> saved rule(s) for <strong>other destinations</strong> (Biomass, Purchases, …); those are not applied here yet.{% endif %}
+  </p>
+  <p class="text-sm" style="margin-top:10px;color:var(--text-muted);">
+    Messages with <strong>source:</strong> or <strong>strain:</strong> require choosing how suppliers and optional pipeline rows are resolved. Suppliers are never auto-created from ingest alone; creation runs only after you confirm on this page and save the new run.
+  </p>
+</div>
+
+{% if derived.get('message_kind') == 'biomass_intake' %}
+<div class="card" style="margin-bottom:16px;border-left:3px solid var(--gold);" id="slack-intake-apply">
+  <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;margin-bottom:10px;">Biomass intake → Purchases</h4>
+  <p class="text-sm cell-muted" style="margin-bottom:12px;">
+    These messages are routed to <strong>Purchases</strong> (not extraction runs). We match on <strong>Batch ID</strong> = normalized manifest
+    (<span class="text-mono">{{ intake_manifest_key or '—' }}</span>). Existing <strong>ordered / committed / in-transit</strong> rows can be updated with arrival date and weights; otherwise create a full purchase.
+  </p>
+  <div class="table-wrap text-sm" style="margin-bottom:14px;">
+    <table>
+      <tbody>
+        <tr><td class="text-mono">received</td><td>{{ derived.get('intake_received_date') or '—' }}</td></tr>
+        <tr><td class="text-mono">intake</td><td>{{ derived.get('intake_order_date') or '—' }}</td></tr>
+        <tr><td class="text-mono">source</td><td>{{ derived.get('source') or '—' }}</td></tr>
+        <tr><td class="text-mono">manifest</td><td>{{ derived.get('manifest_raw') or '—' }}</td></tr>
+        <tr><td class="text-mono">manifest_wt_lbs</td><td>{{ derived.get('manifest_wt_lbs') if derived.get('manifest_wt_lbs') is not none else '—' }}</td></tr>
+        <tr><td class="text-mono">actual_wt_lbs</td><td>{{ derived.get('actual_wt_lbs') if derived.get('actual_wt_lbs') is not none else '—' }}</td></tr>
+        <tr><td class="text-mono">discrepancy_lbs</td><td>{{ derived.get('discrepancy_lbs') if derived.get('discrepancy_lbs') is not none else '—' }}</td></tr>
+        <tr><td class="text-mono">strain</td><td>{{ derived.get('strain') or '—' }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+  {% if not can_edit_purchase %}
+  <div class="flash flash-error text-sm">Only <strong>User</strong> or <strong>Super Admin</strong> can save purchases. Sign in with an editor account to apply intake.</div>
+  {% else %}
+    {% if intake_candidates %}
+    <h4 style="font-size:0.95rem;margin:16px 0 8px 0;">Update existing purchase</h4>
+    <form method="post" action="{{ url_for('settings_slack_import_apply_intake', msg_id=row.id) }}" class="text-sm" style="margin-bottom:20px;">
+      <input type="hidden" name="intake_action" value="update">
+      <p class="text-sm cell-muted" style="margin-bottom:8px;">Matches (batch id equals or contains manifest). Pick one — we set <strong>delivery date</strong> from Received, <strong>stated</strong> = manifest wt, <strong>actual</strong> wt, status → <strong>delivered</strong> if it was ordered/in transit/committed; one lot gets weight/strain adjusted when there is a single active lot.</p>
+      {% for c in intake_candidates %}
+      <label class="text-sm" style="display:block;margin-bottom:6px;">
+ <input type="radio" name="intake_purchase_id" value="{{ c.id }}" {% if loop.first %}checked{% endif %}>
+        <span class="text-mono">{{ c.batch_id or c.id[:8] }}</span> — {{ c.supplier_name }} — {{ c.status }} — stated {{ c.stated_weight_lbs }} lbs
+ <a href="{{ url_for('purchase_edit', purchase_id=c.id) }}" target="_blank" rel="noopener">open</a>
+      </label>
+      {% endfor %}
+      <button type="submit" class="btn btn-primary" style="margin-top:10px;">Update selected purchase</button>
+    </form>
+    {% else %}
+    <p class="text-sm cell-muted" style="margin-bottom:12px;">No purchase has this manifest as <strong>Batch ID</strong> (exact or substring). Create a new purchase below, or add/edit Batch ID on an existing purchase first.</p>
+    {% endif %}
+
+    <h4 style="font-size:0.95rem;margin:16px 0 8px 0;">Create new purchase</h4>
+    <form method="post" action="{{ url_for('settings_slack_import_apply_intake', msg_id=row.id) }}" class="text-sm" style="max-width:40rem;">
+      <input type="hidden" name="intake_action" value="create">
+      <label class="text-sm" style="display:block;margin-bottom:6px;"><input type="radio" name="intake_supplier_mode" value="existing" checked> Existing supplier</label>
+      <div class="form-group" style="margin-left:1.25rem;margin-bottom:12px;">
+        <select name="intake_supplier_id" style="max-width:100%;">
+          <option value="">— Select —</option>
+          {% for s in supplier_all %}
+          <option value="{{ s.id }}">{{ s.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <label class="text-sm" style="display:block;margin-bottom:6px;"><input type="radio" name="intake_supplier_mode" value="create"> New supplier (farm)</label>
+      <div class="form-group" style="margin-left:1.25rem;margin-bottom:12px;">
+        <input type="text" name="intake_new_supplier_name" value="{{ derived.get('source') or '' }}" placeholder="Name from Source: line" style="max-width:100%;">
+        <label class="text-sm" style="display:block;margin-top:6px;"><input type="checkbox" name="intake_confirm_create_supplier" value="1"> Confirm creating this supplier</label>
+      </div>
+      <button type="submit" class="btn btn-primary">Create purchase from intake</button>
+      <p class="text-sm cell-muted" style="margin-top:10px;">Batch ID will be set to <span class="text-mono">{{ intake_manifest_key or '—' }}</span>; purchase status <strong>delivered</strong>; one lot for strain/weight.</p>
+    </form>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="card" style="margin-bottom:16px;" id="slack-run-apply">
+  <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;margin-bottom:8px;">Open run form (apply)</h4>
+  {% if derived.get('message_kind') == 'biomass_intake' %}
+  <p class="text-sm cell-muted">Run logging does not apply to biomass intake messages — use the <a href="#slack-intake-apply">Purchase section</a> above.</p>
+  {% elif needs_resolution_ui %}
+  <p class="text-sm" style="margin-bottom:14px;color:var(--text-muted);">
+    Parsed <strong>source</strong>: {{ source_raw or '—' }} · <strong>strain</strong>: {{ strain_raw or '—' }}
+  </p>
+  <form method="post" action="{{ url_for('settings_slack_import_apply_run', msg_id=row.id) }}" class="text-sm" style="max-width:52rem;">
+    <div class="form-section" style="margin-bottom:16px;">
+      <h4 style="margin:0 0 10px 0;font-size:1rem;">Supplier</h4>
+      {% if source_raw %}
+      <p class="text-sm cell-muted" style="margin-bottom:10px;">Slack included a supplier line. Link it to an existing record or confirm a new supplier (audit + notes reference this Slack message).</p>
+      {% if supplier_candidates %}
+      <p class="text-sm" style="margin-bottom:8px;"><strong>Suggested matches</strong> (substring / name search — not automatic): {{ supplier_candidates | map(attribute='name') | join(', ') }}</p>
+      {% endif %}
+      {% else %}
+      <p class="text-sm cell-muted" style="margin-bottom:10px;">No <code>source:</code> line parsed. Choose a supplier only if you are adding a declared biomass row below.</p>
+      {% endif %}
+      <label class="text-sm" style="display:block;margin-bottom:6px;"><input type="radio" name="slack_supplier_mode" value="existing" checked> Use existing supplier</label>
+      <div class="form-group" style="margin-left:1.25rem;">
+        <label>Supplier</label>
+        <select name="slack_supplier_id" class="text-sm" style="max-width:100%;">
+          <option value="">— Select —</option>
+          {% for s in supplier_all %}
+          <option value="{{ s.id }}">{{ s.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <label class="text-sm" style="display:block;margin:12px 0 6px 0;"><input type="checkbox" name="slack_confirm_fuzzy_supplier" value="1"> Confirm supplier mapping (required if the record name does not exactly match the Slack <code>source:</code> line)</label>
+
+      <label class="text-sm" style="display:block;margin-top:14px;margin-bottom:6px;"><input type="radio" name="slack_supplier_mode" value="create"> Create new supplier</label>
+      <div class="form-group" style="margin-left:1.25rem;">
+        <label>New supplier name</label>
+        <input type="text" name="slack_new_supplier_name" value="{{ source_raw }}" style="max-width:100%;" placeholder="Legal / trade name" autocomplete="organization">
+        <label class="text-sm" style="display:block;margin-top:8px;"><input type="checkbox" name="slack_confirm_create_supplier" value="1"> I confirm creating this supplier (required)</label>
+      </div>
+    </div>
+
+    <div class="form-section" style="margin-bottom:16px;">
+      <h4 style="margin:0 0 10px 0;font-size:1rem;">Biomass pipeline (optional)</h4>
+      <p class="text-sm cell-muted" style="margin-bottom:8px;">Adds a <strong>declared</strong> <code>BiomassAvailability</code> row (not a Purchase / lot). Requires strain text and a resolved supplier.</p>
+      <label class="text-sm" style="display:block;margin-bottom:8px;"><input type="checkbox" name="slack_biomass_declared" value="1" {% if strain_raw %}checked{% endif %}> Add declared biomass row from this message</label>
+      <div class="form-row" style="gap:12px;flex-wrap:wrap;">
+        <div class="form-group">
+          <label>Strain</label>
+          <input type="text" name="slack_biomass_strain" value="{{ strain_raw }}" placeholder="Strain name">
+        </div>
+        <div class="form-group">
+          <label>Declared weight (lbs)</label>
+          <input type="number" name="slack_biomass_weight_lbs" value="{{ default_bio_weight if default_bio_weight else '' }}" step="0.01" min="0" placeholder="0">
+        </div>
+        <div class="form-group">
+          <label>Availability date</label>
+          <input type="date" name="slack_availability_date" value="{{ default_availability_date }}">
+        </div>
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Create run from Slack</button>
+    {% if duplicate_run %}
+    <span class="text-sm" style="margin-left:12px;color:var(--yellow);">Already linked — you will confirm before a duplicate apply.</span>
+    {% endif %}
+  </form>
+  {% else %}
+  <form method="post" action="{{ url_for('settings_slack_import_apply_run', msg_id=row.id) }}" style="display:inline;">
+    <input type="hidden" name="slack_supplier_mode" value="skip">
+    <button type="submit" class="btn btn-primary">Create run from Slack</button>
+  </form>
+  {% if duplicate_run %}
+  <span class="text-sm" style="margin-left:12px;color:var(--yellow);">Already linked — you will be asked to confirm a duplicate.</span>
+  {% endif %}
+  <p class="text-sm cell-muted" style="margin-top:12px;">This message has no parsed <code>source:</code> or <code>strain:</code> line — optional supplier/biomass controls are skipped.</p>
+  {% endif %}
 </div>
 
 <div class="card" style="margin-bottom:16px;">

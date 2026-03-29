@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Confirm Slack run apply{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Slack message already linked to a run</h2>
+  <a href="{{ url_for('settings_slack_import_preview', msg_id=row.id) }}" class="btn btn-secondary">← Back to preview</a>
+</div>
+
+<div class="card">
+  <p class="text-sm">
+    A saved run is already tied to this Slack message (<span class="text-mono">{{ row.channel_id }}</span> /
+    <span class="text-mono">{{ row.message_ts }}</span>):
+    <a href="{{ url_for('run_edit', run_id=existing_run.id) }}">open run {{ existing_run.run_date.strftime('%Y-%m-%d') if existing_run.run_date else '' }} · reactor {{ existing_run.reactor_number }}</a>.
+  </p>
+  <p class="text-sm" style="margin-top:12px;color:var(--text-muted);">
+    You can still create <strong>another</strong> run with prefilled fields from this message if you confirm below.
+    Use sparingly—mistaken duplicates can be cleaned up with a soft delete from Runs.
+  </p>
+  <div style="margin-top:20px;display:flex;gap:12px;flex-wrap:wrap;">
+    {% if apply_passthrough %}
+    <form method="post" action="{{ url_for('settings_slack_import_apply_run', msg_id=row.id) }}" style="display:inline;">
+      {% for key, val in apply_passthrough.items() %}
+      <input type="hidden" name="{{ key }}" value="{{ val | e }}">
+      {% endfor %}
+      <input type="hidden" name="slack_apply_confirm_duplicate" value="1">
+      <button type="submit" class="btn btn-primary">Confirm and open new run</button>
+    </form>
+    {% else %}
+    <a href="{{ url_for('settings_slack_import_apply_run', msg_id=row.id, confirm=1) }}" class="btn btn-primary">Confirm and open new run</a>
+    {% endif %}
+    <a href="{{ url_for('settings_slack_imports') }}" class="btn btn-secondary">Cancel</a>
+  </div>
+</div>
+{% endblock %}

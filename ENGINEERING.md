@@ -19,7 +19,8 @@ SQLite adds the sync config table in `_ensure_sqlite_schema()`; other engines re
 
 - **Save Slack + sync hints:** `POST /settings` with `form_type=slack`, including system settings fields and `sync_ch_0` … `sync_ch_5`. Hint change clears `resolved_channel_id` and `last_watermark_ts` for that row.
 - **Run sync:** `POST /settings/slack_sync_channel` with `sync_days` (1–365). Resolves each non-empty hint via `conversations.list` (or passes through channel IDs), then pages `conversations.history` with helper `_slack_ingest_channel_history`.
-- **Review:** `GET /settings/slack-imports`.
+- **Imports / triage / apply:** `GET /settings/slack-imports` — filtered list (date range, channels, promotion, coverage). `GET /settings/slack-imports/<msg_id>/preview` — Run preview. `GET /settings/slack-imports/<msg_id>/apply-run` — session prefill + redirect to `run_new`; optional `confirm=1` after duplicate interstitial. All three use **`slack_importer_required`** (`User.can_slack_import`: Super Admin or `is_slack_importer`).
+- **User flag:** `POST /settings/users/<id>/toggle_slack_importer` (`@admin_required`), audit action `user_slack_importer`. Create-user form optional `new_slack_importer` (ignored for `super_admin` role).
 
 ### Sync semantics
 
@@ -33,12 +34,23 @@ SQLite adds the sync config table in `_ensure_sqlite_schema()`; other engines re
 - `models.py`: `SlackChannelSyncConfig`, `SlackIngestedMessage`.
 - `templates/settings.html`: Slack card (sync channel form), Maintenance (sync button).
 
+### Slack apply / Run backlink (Phase 2)
+
+- **Models (`models.py`):** `User.is_slack_importer`; `User.can_slack_import` property. `Run.slack_channel_id`, `Run.slack_message_ts`, `Run.slack_import_applied_at` (set on **new** run save when form includes Slack hidden fields).
+- **SQLite:** `_ensure_sqlite_schema()` adds the new columns on existing DBs. **PostgreSQL / other:** ensure equivalent DDL via your migration process (`ALTER TABLE users …`, `ALTER TABLE runs …`).
+- **Session prefill:** `SLACK_RUN_PREFILL_SESSION_KEY`; `_slack_run_prefill_put`, `_slack_filled_json_safe`, `_hydrate_run_from_slack_prefill` (ephemeral `Run` for template). Cleared after successful Slack-linked save.
+- **Guards:** `slack_importer_required`; `run_new` is `@login_required` with branch logic: GET allows `can_slack_import` + session prefill without `can_edit`; POST and normal new-run GET still require `can_edit` except prefill viewer path.
+- **Duplicate policy:** `_first_run_for_slack_message` before `db.session.add(run)`; interstitial template `slack_import_apply_confirm.html`. Hidden field `slack_apply_allow_duplicate`. Confirm path logs `slack_duplicate_apply_confirm` on `slack_ingested_message`.
+- **Triage helpers:** `_slack_linked_run_ids_index`, `_slack_coverage_label(preview)` (full / partial / none aligned with PRD heuristic).
+- **Audit:** Run `create` with JSON `details` when saved from Slack (`slack_import`, ids, `duplicate_apply`, `prefill_keys`).
+- **Templates:** `slack_imports.html`, `slack_import_preview.html`, `slack_import_apply_confirm.html`, `run_form.html` (hidden Slack fields + `can_save_run`). `base.html` sidebar link when `current_user.can_slack_import`.
+
 ### Slack → field mappings (Phase 1)
 
 - **Storage:** `SystemSetting` key `slack_run_field_mappings`, JSON `{"rules": [ ... ]}`. Seeded in `init_db()` when missing.
 - **Rule shape:** `source_key`, `target_field`, `message_kinds`, `transform`; optional **`destination`** (`run` default). Allowed destinations: `run`, `biomass`, `purchase`, `inventory`, `photo_library`, `supplier`, `strain`, `cost`. For `run`, `target_field` must be in `SLACK_MAPPING_ALLOWED_TARGET_FIELDS`; for others, a **snake_case** placeholder string (`SLACK_NON_RUN_TARGET_FIELD_RE`) until that module ships an allowlist.
 - **Editor:** `GET/POST /settings/slack-run-mappings` — grid: destination, Slack source, target (Run = select; other = text), message-kind scope, transform + arg. Initial row count is `_slack_mapping_grid_row_count(rules)`; client script grows/shrinks trailing blank rows. Hints update live. POST scans `rule_destination_i`, `rule_target_select_i` / `rule_target_text_i`, etc. **Save mappings** / **Reset** / **Save JSON** as before.
-- **Preview:** `GET /settings/slack-imports/<msg_id>/preview` — `_preview_slack_to_run_fields` applies only rules with `destination` **`run`** (or omitted); keys consumed by other destinations are still marked consumed for **unmapped** derivation. **No writes** to `runs`.
+- **Preview:** `GET /settings/slack-imports/<msg_id>/preview` — `_preview_slack_to_run_fields` applies only rules with `destination` **`run`** (or omitted); keys consumed by other destinations are still marked consumed for **unmapped** derivation. Preview is also used for **apply** prefill; persistence to `runs` happens only via the Run form save path.
 - **Helpers:** `_apply_slack_mapping_transform`, `_validate_slack_run_field_rules`, `_load_slack_run_field_rules`, `_slack_non_run_mapping_rule_count`, `_preview_slack_to_run_fields` in `app.py`.
 
 ### Gunicorn / multi-worker startup

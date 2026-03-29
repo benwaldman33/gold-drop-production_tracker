@@ -1,13 +1,35 @@
 {% extends "base.html" %}
-{% block title %}{% if run %}Edit Run{% else %}New Run{% endif %}{% endblock %}
+{% block title %}{% if run and run.id %}Edit Run{% else %}New Run{% endif %}{% endblock %}
 {% block content %}
 <div class="page-header">
-  <h2>{% if run %}Edit Run{% else %}Log New Run{% endif %}</h2>
+  <h2>{% if run and run.id %}Edit Run{% else %}Log New Run{% endif %}</h2>
   <a href="{{ url_for('runs_list') }}" class="btn btn-secondary">← Back to Runs</a>
 </div>
 
 <div class="card">
   <form method="POST">
+    {% if slack_meta and slack_meta.ingested_message_id %}
+    <input type="hidden" name="slack_ingested_message_id" value="{{ slack_meta.ingested_message_id }}">
+    <input type="hidden" name="slack_channel_id" value="{{ slack_meta.channel_id or '' }}">
+    <input type="hidden" name="slack_message_ts" value="{{ slack_meta.message_ts or '' }}">
+    <input type="hidden" name="slack_apply_allow_duplicate" value="{{ '1' if slack_meta.allow_duplicate else '0' }}">
+    <div class="flash flash-success" style="margin-bottom:16px;">
+      <strong>Slack apply:</strong> fields below were prefilled from a Slack import. Nothing is stored until you save.
+      {% if slack_meta.allow_duplicate %}<span class="text-sm"> (duplicate apply confirmed)</span>{% endif %}
+      {% if slack_meta.resolution_hints %}
+      <ul class="text-sm" style="margin:10px 0 0 1.1rem;padding:0;">
+        {% for hint in slack_meta.resolution_hints %}
+        <li style="margin-bottom:4px;">{{ hint }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% if slack_meta and slack_meta.ingested_message_id and not can_save_run %}
+    <div class="flash flash-error" style="margin-bottom:16px;">
+      Your account can review this prefilled run but only <strong>User</strong> or <strong>Super Admin</strong> can save runs. Ask an admin to upgrade your role or copy values into a run under an editor account.
+    </div>
+    {% endif %}
     <div class="form-section">
       <h4>Run Details</h4>
       <div class="form-row-3">
@@ -161,7 +183,7 @@
     {% endif %}
 
     <div class="form-actions">
-      {% if run %}
+      {% if run and run.id %}
       <form method="POST" action="{{ url_for('run_delete', run_id=run.id) }}" style="display:inline;" onsubmit="return confirm('Delete this run?');">
         <button type="submit" class="btn btn-danger">Delete Run</button>
       </form>
@@ -172,7 +194,11 @@
       {% endif %}
       {% endif %}
       <a href="{{ url_for('runs_list') }}" class="btn btn-secondary">Cancel</a>
+      {% if can_save_run|default(true) %}
       <button type="submit" class="btn btn-primary">Save Run</button>
+      {% else %}
+      <button type="button" class="btn btn-secondary" disabled title="User or Super Admin role required">Save Run</button>
+      {% endif %}
     </div>
   </form>
 </div>

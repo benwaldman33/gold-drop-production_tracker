@@ -25,6 +25,7 @@ Use the left sidebar:
 - **Suppliers**: supplier performance analytics
 - **Strains**: strain performance analytics
 - **Photo Library**: searchable media across supplier/purchase/field contexts
+- **Slack imports** (Slack Importer capability or Super Admin): triage synced Slack messages, preview mapped Run fields, **create run from Slack** (prefilled form)
 - **Settings** (Super Admin only): system parameters, KPIs, users, maintenance actions
 - **Import**: CSV import review + confirm
 
@@ -58,6 +59,21 @@ The **Bio in House** field is now auto-populated from inventory (not manually en
 2. Fill in the run details and outputs.
 3. Add **input lots** (the biomass lots consumed by this run) and the weight used from each lot.
 4. Save.
+
+### Creating a run from Slack (optional)
+If your account has **Slack Importer** access (or you are a Super Admin), you can promote a synced channel message into a **prefilled** new run:
+
+1. Open **Slack imports** in the sidebar (or **Settings → View Slack imports** if you are a Super Admin).
+2. Use **filters** (message date, channel, promotion status, mapping coverage) to find the row you want.
+3. Click **Preview** to see mapped Run fields, or **Create run** / **Create run from Slack** on the preview page.
+4. The app opens **New Run** with values filled from your active **Slack → Run** mapping rules. Review everything; add input lots if needed.
+5. **Save** the run to store it. Nothing is written to Runs until you save.
+
+**Roles:** Opening the Slack imports UI and the apply flow requires the **Slack Importer** flag (Settings → Users) or **Super Admin**. **Saving** the run still requires **User** or **Super Admin** (edit access). If you are a **Viewer** with Slack Importer, you can review the prefilled form, but Save stays disabled until an editor saves the run (or your role is upgraded).
+
+**Second apply / duplicates:** If a run is already linked to the same Slack message (`channel` + message `ts`), the app warns you and asks for **explicit confirmation** before opening another prefilled run. Saving a second run is allowed after you confirm; use sparingly and soft-delete mistaken duplicates from **Runs** if needed.
+
+**Traceability:** When you save a new run started from Slack apply, the run stores a **backlink** to that Slack message (`slack_channel_id`, `slack_message_ts`, and applied timestamp). The Slack imports list shows **Promotion** (not promoted vs linked runs) and **Coverage** (how completely mapping rules used the parsed payload—heuristic, not a guarantee of what you typed on the form).
 
 ### What happens on save
 - **Yields** are recalculated automatically (overall, THCA, HTE).
@@ -250,6 +266,7 @@ Set KPI targets and green/yellow thresholds to match operational goals.
 Admins can create users and assign roles. (This manual does not include any credentials.)
 - Disabled users can be reactivated.
 - Permanent delete is available only when no historical audit activity exists.
+- **Slack Importer:** For accounts that are not Super Admin, you can grant **Slack import** (sidebar **Slack imports**, preview, and apply-to-new-run). Super Admins always have this capability. Optionally check **Slack Importer** when creating a user. Editors with this flag can complete the full apply flow; **Viewer + Slack Importer** can review prefilled runs but cannot save them.
 
 ### Field links/tokens
 - Tokens can be revoked immediately.
@@ -260,7 +277,8 @@ Admins can create users and assign roles. (This manual does not include any cred
 - **Outbound:** notifications for key actions (when enabled).
 - **Inbound:** Slash commands and interactivity use `/api/slack/command` and `/api/slack/interactivity`.
 - **Event Subscriptions:** In the Slack app, set the Request URL to `https://your-site/api/slack/events` (HTTPS). The app answers Slack’s URL challenge and accepts `event_callback` pings (extend later for channel messages). The **Signing Secret** in Slack must match the value saved in Settings.
-- **Channel history sync:** Under **Settings → Slack Integration → Channel history sync**, configure up to **six** channels (`#name` or channel ID), then use **Settings → Maintenance → Sync Slack channel history**. The **Days back** value applies to the **first** sync of each channel; after that, each channel keeps its own cursor (last message timestamp) so only newer messages are scanned. The bot must be **invited** to every channel and have `channels:history` + `channels:read` (and for private channels, `groups:history` + `groups:read`). Each message is stored once (deduped by channel + Slack timestamp). Open **View Slack imports** to see raw text and automatically derived fields (yield report vs production log hints). This does not create Run records yet—it is for review and future automation.
+- **Channel history sync:** Under **Settings → Slack Integration → Channel history sync**, configure up to **six** channels (`#name` or channel ID), then use **Settings → Maintenance → Sync Slack channel history**. The **Days back** value applies to the **first** sync of each channel; after that, each channel keeps its own cursor (last message timestamp) so only newer messages are scanned. The bot must be **invited** to every channel and have `channels:history` + `channels:read` (and for private channels, `groups:history` + `groups:read`). Each message is stored once (deduped by channel + Slack timestamp).
+- **Slack imports & apply (Phase 2):** Sync **stores messages only**—it does not create Runs. Users with **Slack Importer** (or Super Admin) use **Slack imports** to filter/triage rows, open **Run preview**, and **Create run from Slack** so the normal Run form opens prefilled from **Settings → Slack → field mappings** (Run destination rules). Runs are created only when someone **saves** the Run form. Mapping rules for non-Run destinations remain preview/storage for future modules. Super Admins edit mappings at **`/settings/slack-run-mappings`**; the imports list is at **`/settings/slack-imports`** and is also linked from the sidebar for importers.
 
 ### Maintenance: Recalculate all run costs
 Use **Recalculate All Run Costs** after:
@@ -317,4 +335,7 @@ Use exports for reporting, reconciliation, or offline analysis.
 - **Supplier/Strain analytics look “low”**: check if “exclude runs missing $/lb” is enabled in Settings.
 - **Cost numbers changed after adding costs**: that’s expected; run $/g reflects operational costs in the relevant date ranges.
 - **A pipeline record didn’t create a purchase**: set stage to **Committed** (or Delivered) and save; ensure required fields are valid.
+- **I don’t see Slack imports in the sidebar**: ask a Super Admin to enable **Slack Importer** on your user (Super Admins always have access).
+- **Slack prefilled run won’t save**: you need **User** or **Super Admin** to save Runs; Viewer accounts can only review the prefilled form.
+- **Slack says this message is already linked to a run**: expected after a successful apply; confirm only if you intentionally need a second run from the same Slack message.
 

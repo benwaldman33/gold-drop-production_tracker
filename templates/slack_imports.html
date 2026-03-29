@@ -3,21 +3,101 @@
 {% block content %}
 <div class="page-header">
   <h2>Slack channel imports</h2>
+  {% if current_user.is_super_admin %}
   <a href="{{ url_for('settings') }}#settings-maintenance" class="btn btn-secondary">← Settings</a>
+  {% endif %}
+  {% if current_user.is_super_admin %}
   <a href="{{ url_for('settings_slack_run_mappings') }}" class="btn btn-secondary">Slack → field mappings</a>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <p class="text-sm" style="color:var(--text-muted);">
+    Rows come from channel history sync (Super Admin → Settings → Slack). Each message is deduped by channel + Slack <code>ts</code>.
+    <strong>Phase 2:</strong> use <strong>Create run from Slack</strong> to open the Run form prefilled from mapping rules; linkage is stored when you save the run.
+    <strong>Triage:</strong> <em>Promotion</em> = whether a saved run backlinks this message; <em>Coverage</em> = whether Run-target rules used the full derived payload (heuristic).
+  </p>
+
+  <form method="GET" action="{{ url_for('settings_slack_imports') }}" style="margin-top:14px;display:grid;gap:10px;">
+    <div class="form-row-3">
+      <div class="form-group" style="margin:0;">
+        <label class="text-sm">Date from (message UTC)</label>
+        <input type="date" name="start_date" value="{{ start_date or '' }}" title="Slack message timestamp converted to UTC date">
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label class="text-sm">Date to (inclusive)</label>
+        <input type="date" name="end_date" value="{{ end_date or '' }}">
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label class="text-sm">Channel</label>
+        <select name="channel_id" multiple size="3" style="min-height:72px;">
+          {% for cid in channel_options %}
+          <option value="{{ cid }}" {% if cid in channel_pick %}selected{% endif %}>{{ cid }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="form-row-3">
+      <div class="form-group" style="margin:0;">
+        <label class="text-sm">Message kind <span class="cell-muted">(parsed)</span></label>
+        <select name="kind_filter">
+          {% for val, label in slack_import_kind_choices %}
+          <option value="{{ val }}" {% if kind_filter == val %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label class="text-sm">Raw text</label>
+        <input type="text" name="text_filter" value="{{ text_filter or '' }}" placeholder="Optional search on message body" autocomplete="off" style="max-width:100%;">
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label class="text-sm">Raw text match</label>
+        <select name="text_op">
+          {% for val, label in slack_import_text_ops %}
+          <option value="{{ val }}" {% if text_op == val %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="form-row-3">
+      <div class="form-group" style="margin:0;">
+        <label class="text-sm">Promotion</label>
+        <select name="promotion">
+          <option value="all" {% if promotion == 'all' %}selected{% endif %}>All</option>
+          <option value="not_linked" {% if promotion == 'not_linked' %}selected{% endif %}>Not promoted (no run link)</option>
+          <option value="linked" {% if promotion == 'linked' %}selected{% endif %}>Linked to run</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label class="text-sm">Mapping coverage</label>
+        <select name="coverage">
+          <option value="all" {% if coverage == 'all' %}selected{% endif %}>All</option>
+          <option value="full" {% if coverage == 'full' %}selected{% endif %}>Full</option>
+          <option value="partial" {% if coverage == 'partial' %}selected{% endif %}>Partial</option>
+          <option value="none" {% if coverage == 'none' %}selected{% endif %}>None</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin:0;align-self:end;">
+        <button type="submit" class="btn btn-primary">Apply filters</button>
+        <a href="{{ url_for('settings_slack_imports') }}" class="btn btn-secondary">Reset</a>
+      </div>
+    </div>
+    <p class="text-sm cell-muted" style="margin:0;">
+      <strong>Contains</strong> / <strong>Does not contain</strong> use case-insensitive substring tests on the raw body.
+      <strong>Equals</strong> compares the entire message (after trimming). Kind uses live parsing (same as Preview).
+    </p>
+  </form>
 </div>
 
 <div class="card">
-  <p class="text-sm" style="color:var(--text-muted);">
-    Rows come from <strong>Settings → Maintenance → Sync Slack channel</strong>. Only messages not already stored (by Slack timestamp) are added.
-    Parsed fields are hints for yield vs production-log templates. <strong>Phase 1:</strong> use <strong>Run preview</strong> on a row to see mapped Run fields—mappings (including future Biomass, Purchases, etc.) are under <strong>Slack → field mappings</strong>; nothing is applied automatically yet.
-  </p>
   <div class="table-wrap" style="margin-top:12px;">
     <table>
       <thead>
         <tr>
           <th>Slack ts</th>
           <th>Kind</th>
+          <th>Promotion</th>
+          <th>Coverage</th>
           <th>Derived</th>
           <th>Raw (trimmed)</th>
           <th></th>
@@ -27,21 +107,34 @@
         {% for r in rows %}
         <tr>
           <td class="text-mono text-sm">{{ r.message_ts }}</td>
-          <td><span class="badge badge-gray">{{ r.message_kind or '—' }}</span></td>
-          <td class="text-sm" style="max-width:320px;word-break:break-word;">
+          <td><span class="badge badge-gray">{{ r.derived.get('message_kind') or r.message_kind or '—' }}</span></td>
+          <td class="text-sm">
+            {% if r._linked_run_ids %}
+              {% for rid in r._linked_run_ids %}
+              <a href="{{ url_for('run_edit', run_id=rid) }}">Run</a>{% if not loop.last %}, {% endif %}
+              {% endfor %}
+            {% else %}
+              <span class="badge badge-gray">Not promoted</span>
+            {% endif %}
+          </td>
+          <td><span class="badge {% if r._coverage == 'full' %}badge-green{% elif r._coverage == 'partial' %}badge-gold{% else %}badge-gray{% endif %}">{{ r._coverage }}</span></td>
+          <td class="text-sm" style="max-width:260px;word-break:break-word;">
             {% if r.derived %}
               {% for k, v in r.derived.items() %}
-                <strong>{{ k }}</strong>: {{ v }}{% if not loop.last %}<br>{% endif %}
+              <strong>{{ k }}</strong>: {{ v }}{% if not loop.last %}<br>{% endif %}
               {% endfor %}
             {% else %}
               —
             {% endif %}
           </td>
-          <td class="text-sm" style="max-width:420px;white-space:pre-wrap;word-break:break-word;">{{ (r.raw_text or '')[:800] }}{% if r.raw_text and r.raw_text|length > 800 %}…{% endif %}</td>
-          <td><a href="{{ url_for('settings_slack_import_preview', msg_id=r.id) }}" class="btn btn-secondary btn-sm">Run preview</a></td>
+          <td class="text-sm" style="max-width:320px;white-space:pre-wrap;word-break:break-word;">{{ (r.raw_text or '')[:500] }}{% if r.raw_text and r.raw_text|length > 500 %}…{% endif %}</td>
+          <td style="white-space:nowrap;">
+            <a href="{{ url_for('settings_slack_import_preview', msg_id=r.id) }}" class="btn btn-secondary btn-sm">Preview</a>
+            <a href="{{ url_for('settings_slack_import_preview', msg_id=r.id) }}{% if r.derived.get('message_kind') == 'biomass_intake' %}#slack-intake-apply{% else %}#slack-run-apply{% endif %}" class="btn btn-primary btn-sm">{% if r.derived.get('message_kind') == 'biomass_intake' %}Apply{% else %}Apply run{% endif %}</a>
+          </td>
         </tr>
         {% else %}
-        <tr><td colspan="5" class="text-center cell-muted" style="padding:24px;">No imported messages yet. Run sync from Settings.</td></tr>
+        <tr><td colspan="7" class="text-center cell-muted" style="padding:24px;">No rows match these filters.</td></tr>
         {% endfor %}
       </tbody>
     </table>

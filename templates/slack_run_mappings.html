@@ -9,7 +9,7 @@
 
 <div class="card">
   <p class="text-sm" style="color:var(--text-muted);margin-bottom:12px;">
-    Each row sends one <strong>parsed Slack field</strong> (from <code>derived_json</code>) to a <strong>destination module</strong> and <strong>target field</strong>.
+    Read rows left to right: <strong>Message kinds</strong> (which Slack template), <strong>Slack source</strong> (parsed field), <strong>Transform</strong>, <strong>Destination</strong> (module), <strong>Target field</strong> (column in that module), <strong>Arg</strong> (multiply factor or prefix/suffix text). Each row sends one parsed field (from <code>derived_json</code>) through that pipeline.
     <strong>Runs</strong>: target fields use the dropdown; the <strong>Slack imports → Run preview</strong> reflects these rules today.
     <strong>Biomass Pipeline, Purchases, Inventory, Photo Library, Suppliers, Strains, Costs</strong>: you can save snake_case target labels now so routing is ready; module-specific previews and apply/import (e.g. photo attachments to the library) will ship in later phases.
     <strong>Preview only</strong> for Runs — nothing is written automatically. Rule order matters for Runs: later rows overwrite the same Run field, except <code>notes</code> (lines are combined).
@@ -19,18 +19,81 @@
 
 <div class="card" style="overflow-x:auto;">
   <p class="text-sm" id="slack-map-row-cap-hint" style="color:var(--text-muted);margin:0 0 10px 0;"></p>
+  <style>
+    /* Fixed column widths + full-width controls so rows/columns align evenly */
+    .slack-mappings-grid {
+      table-layout: fixed;
+      width: 100%;
+      min-width: 960px;
+      font-size: 0.82rem;
+      border-collapse: collapse;
+    }
+    .slack-mappings-grid thead th {
+      text-align: left;
+      color: var(--gold);
+      vertical-align: bottom;
+      padding: 8px 6px;
+      font-weight: 600;
+      border-bottom: 1px solid var(--dark-border);
+    }
+    .slack-mappings-grid tbody td {
+      vertical-align: top;
+      padding: 8px 6px;
+      word-wrap: break-word;
+    }
+    .slack-mappings-grid .slack-map-cell-num {
+      width: 2rem;
+      text-align: center;
+      padding-top: 10px;
+      color: var(--text-muted);
+    }
+    .slack-mappings-grid select,
+    .slack-mappings-grid input[type="text"] {
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      min-width: 0;
+    }
+    .slack-mappings-grid .slack-map-col-arg {
+      width: 7.5rem;
+    }
+    /* Keep hint rows a consistent height (long text truncates with ellipsis after 2 lines) */
+    .slack-mappings-grid .slack-map-source-hint,
+    .slack-mappings-grid .slack-map-target-hint {
+      font-size: 0.72rem;
+      line-height: 1.35;
+      color: var(--text-muted);
+      margin-top: 4px;
+      min-height: 2.7em;
+      max-height: 2.7em;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+    }
+  </style>
   <form method="POST" id="slack-map-form">
     <input type="hidden" name="action" value="">
-    <table style="width:100%;min-width:1080px;font-size:0.82rem;">
+    <table class="slack-mappings-grid">
+      <colgroup>
+        <col class="slack-map-cell-num">
+        <col style="width:16%">
+        <col style="width:18%">
+        <col style="width:14%">
+        <col style="width:16%">
+        <col style="width:22%">
+        <col class="slack-map-col-arg">
+      </colgroup>
       <thead>
-        <tr style="text-align:left;color:var(--gold);">
-          <th style="padding:6px;">#</th>
-          <th style="padding:6px;width:12%;">Destination</th>
-          <th style="padding:6px;width:19%;">Slack source</th>
-          <th style="padding:6px;width:19%;">Target field</th>
-          <th style="padding:6px;">Message kinds</th>
-          <th style="padding:6px;">Transform</th>
-          <th style="padding:6px;">Arg</th>
+        <tr>
+          <th>#</th>
+          <th>Message kinds</th>
+          <th>Slack source</th>
+          <th>Transform</th>
+          <th>Destination</th>
+          <th>Target field</th>
+          <th>Arg</th>
         </tr>
       </thead>
       <tbody id="slack-map-rules-tbody">
@@ -44,42 +107,9 @@
         {% set raw_dest = ((r.destination if r and r.destination else 'run') | trim) or 'run' %}
         {% set dest = raw_dest if raw_dest in destination_values else 'run' %}
         <tr class="slack-map-rule-row" style="border-top:1px solid var(--dark-border);">
-          <td class="slack-map-row-num" style="padding:6px;color:var(--text-muted);">{{ loop.index }}</td>
-          <td style="padding:6px;">
-            <select name="rule_destination_{{ i }}" class="slack-map-rule-destination" data-row="{{ i }}" style="max-width:100%;">
-              {% for val, label in destination_choices %}
-              <option value="{{ val }}" {% if raw_dest == val %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-              {% if r and raw_dest not in destination_values %}
-              <option value="{{ raw_dest }}" selected>{{ raw_dest }} (saved)</option>
-              {% endif %}
-            </select>
-          </td>
-          <td style="padding:6px;">
-            <select name="rule_source_{{ i }}" class="slack-map-rule-source" data-row="{{ i }}" style="max-width:100%;">
-              <option value="">—</option>
-              {% for sk in source_keys %}
-              <option value="{{ sk }}" {% if r and r.source_key == sk %}selected{% endif %}>{{ sk }}</option>
-              {% endfor %}
-            </select>
-            <div class="text-sm slack-map-source-hint" data-row="{{ i }}" style="color:var(--text-muted);margin-top:4px;min-height:1.25em;"></div>
-          </td>
-          <td style="padding:6px;">
-            <select name="rule_target_select_{{ i }}" class="slack-map-target-run" data-row="{{ i }}" style="max-width:100%;{% if raw_dest != 'run' %}display:none{% endif %}" {% if raw_dest != 'run' %}disabled{% endif %}>
-              <option value="">—</option>
-              {% for tf in target_fields %}
-              <option value="{{ tf }}" {% if r and raw_dest == 'run' and r.target_field == tf %}selected{% endif %}>{{ tf }}</option>
-              {% endfor %}
-            </select>
-            <input type="text" name="rule_target_text_{{ i }}" class="slack-map-target-other" data-row="{{ i }}" autocomplete="off"
-              value="{% if r and raw_dest != 'run' %}{{ r.target_field }}{% endif %}"
-              placeholder="snake_case (e.g. notes_hint)"
-              style="max-width:100%;width:100%;box-sizing:border-box;margin-top:0;{% if raw_dest == 'run' %}display:none{% endif %}"
-              {% if raw_dest == 'run' %}disabled{% endif %}>
-            <div class="text-sm slack-map-target-hint" data-row="{{ i }}" style="color:var(--text-muted);margin-top:4px;min-height:1.25em;"></div>
-          </td>
-          <td style="padding:6px;">
-            <select name="rule_kinds_{{ i }}" class="slack-map-rule-kinds" data-row="{{ i }}" style="max-width:160px;">
+          <td class="slack-map-row-num slack-map-cell-num">{{ loop.index }}</td>
+          <td>
+            <select name="rule_kinds_{{ i }}" class="slack-map-rule-kinds" data-row="{{ i }}">
               {% for val, label in kind_presets %}
               <option value="{{ val }}" {% if kv == val %}selected{% endif %}>{{ label }}</option>
               {% endfor %}
@@ -89,15 +119,48 @@
               {% endif %}
             </select>
           </td>
-          <td style="padding:6px;">
+          <td>
+            <select name="rule_source_{{ i }}" class="slack-map-rule-source" data-row="{{ i }}">
+              <option value="">—</option>
+              {% for sk in source_keys %}
+              <option value="{{ sk }}" {% if r and r.source_key == sk %}selected{% endif %}>{{ sk }}</option>
+              {% endfor %}
+            </select>
+            <div class="slack-map-source-hint" data-row="{{ i }}"></div>
+          </td>
+          <td>
             <select name="rule_transform_{{ i }}" class="slack-map-rule-transform" data-row="{{ i }}">
               {% for t in transform_types %}
               <option value="{{ t }}" {% if tt == t %}selected{% endif %}>{{ t }}</option>
               {% endfor %}
             </select>
           </td>
-          <td style="padding:6px;">
-            <input type="text" name="rule_transform_arg_{{ i }}" class="slack-map-rule-arg" data-row="{{ i }}" value="{{ ta }}" placeholder="factor / prefix / suffix" style="width:130px;">
+          <td>
+            <select name="rule_destination_{{ i }}" class="slack-map-rule-destination" data-row="{{ i }}">
+              {% for val, label in destination_choices %}
+              <option value="{{ val }}" {% if raw_dest == val %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+              {% if r and raw_dest not in destination_values %}
+              <option value="{{ raw_dest }}" selected>{{ raw_dest }} (saved)</option>
+              {% endif %}
+            </select>
+          </td>
+          <td>
+            <select name="rule_target_select_{{ i }}" class="slack-map-target-run" data-row="{{ i }}" style="{% if raw_dest != 'run' %}display:none{% endif %}" {% if raw_dest != 'run' %}disabled{% endif %}>
+              <option value="">—</option>
+              {% for tf in target_fields %}
+              <option value="{{ tf }}" {% if r and raw_dest == 'run' and r.target_field == tf %}selected{% endif %}>{{ tf }}</option>
+              {% endfor %}
+            </select>
+            <input type="text" name="rule_target_text_{{ i }}" class="slack-map-target-other" data-row="{{ i }}" autocomplete="off"
+              value="{% if r and raw_dest != 'run' %}{{ r.target_field }}{% endif %}"
+              placeholder="snake_case (e.g. notes_hint)"
+              style="{% if raw_dest == 'run' %}display:none{% endif %}"
+              {% if raw_dest == 'run' %}disabled{% endif %}>
+            <div class="slack-map-target-hint" data-row="{{ i }}"></div>
+          </td>
+          <td class="slack-map-col-arg">
+            <input type="text" name="rule_transform_arg_{{ i }}" class="slack-map-rule-arg" data-row="{{ i }}" value="{{ ta }}" placeholder="factor / prefix / suffix">
           </td>
         </tr>
         {% endfor %}
@@ -275,94 +338,19 @@
     tr.style.borderTop = '1px solid var(--dark-border)';
 
     var tdNum = document.createElement('td');
-    tdNum.className = 'slack-map-row-num';
-    tdNum.style.padding = '6px';
-    tdNum.style.color = 'var(--text-muted)';
+    tdNum.className = 'slack-map-row-num slack-map-cell-num';
     tr.appendChild(tdNum);
 
-    function cellWithPadding() {
-      var td = document.createElement('td');
-      td.style.padding = '6px';
-      return td;
+    function td() {
+      return document.createElement('td');
     }
 
-    var tdD = cellWithPadding();
-    var selD = document.createElement('select');
-    selD.name = 'rule_destination_' + idx;
-    selD.className = 'slack-map-rule-destination';
-    selD.setAttribute('data-row', idx);
-    selD.style.maxWidth = '100%';
-    destChoices.forEach(function (dc) {
-      var o = document.createElement('option');
-      o.value = dc.value;
-      o.textContent = dc.label;
-      if (dc.value === 'run') o.selected = true;
-      selD.appendChild(o);
-    });
-    tdD.appendChild(selD);
-    tr.appendChild(tdD);
-
-    var tdS = cellWithPadding();
-    var selS = document.createElement('select');
-    selS.name = 'rule_source_' + idx;
-    selS.className = 'slack-map-rule-source';
-    selS.setAttribute('data-row', idx);
-    selS.style.maxWidth = '100%';
-    var o0 = document.createElement('option');
-    o0.value = '';
-    o0.textContent = '—';
-    selS.appendChild(o0);
-    appendSelectOptions(selS, sourceKeys, null);
-    tdS.appendChild(selS);
-    var hintS = document.createElement('div');
-    hintS.className = 'text-sm slack-map-source-hint';
-    hintS.setAttribute('data-row', idx);
-    hintS.style.color = 'var(--text-muted)';
-    hintS.style.marginTop = '4px';
-    hintS.style.minHeight = '1.25em';
-    tdS.appendChild(hintS);
-    tr.appendChild(tdS);
-
-    var tdT = cellWithPadding();
-    var selT = document.createElement('select');
-    selT.name = 'rule_target_select_' + idx;
-    selT.className = 'slack-map-target-run';
-    selT.setAttribute('data-row', idx);
-    selT.style.maxWidth = '100%';
-    var o1 = document.createElement('option');
-    o1.value = '';
-    o1.textContent = '—';
-    selT.appendChild(o1);
-    appendSelectOptions(selT, targetFields, null);
-    tdT.appendChild(selT);
-    var inpT = document.createElement('input');
-    inpT.type = 'text';
-    inpT.name = 'rule_target_text_' + idx;
-    inpT.className = 'slack-map-target-other';
-    inpT.setAttribute('data-row', idx);
-    inpT.placeholder = 'snake_case (e.g. notes_hint)';
-    inpT.autocomplete = 'off';
-    inpT.style.maxWidth = '100%';
-    inpT.style.width = '100%';
-    inpT.style.boxSizing = 'border-box';
-    inpT.style.display = 'none';
-    inpT.disabled = true;
-    tdT.appendChild(inpT);
-    var hintT = document.createElement('div');
-    hintT.className = 'text-sm slack-map-target-hint';
-    hintT.setAttribute('data-row', idx);
-    hintT.style.color = 'var(--text-muted)';
-    hintT.style.marginTop = '4px';
-    hintT.style.minHeight = '1.25em';
-    tdT.appendChild(hintT);
-    tr.appendChild(tdT);
-
-    var tdK = cellWithPadding();
+    /* Order: message kinds → Slack source → transform → destination → target field → arg */
+    var tdK = td();
     var selK = document.createElement('select');
     selK.name = 'rule_kinds_' + idx;
     selK.className = 'slack-map-rule-kinds';
     selK.setAttribute('data-row', idx);
-    selK.style.maxWidth = '160px';
     kindPresets.forEach(function (kp, j) {
       var o = document.createElement('option');
       o.value = kp.value;
@@ -373,7 +361,24 @@
     tdK.appendChild(selK);
     tr.appendChild(tdK);
 
-    var tdTr = cellWithPadding();
+    var tdS = td();
+    var selS = document.createElement('select');
+    selS.name = 'rule_source_' + idx;
+    selS.className = 'slack-map-rule-source';
+    selS.setAttribute('data-row', idx);
+    var o0 = document.createElement('option');
+    o0.value = '';
+    o0.textContent = '—';
+    selS.appendChild(o0);
+    appendSelectOptions(selS, sourceKeys, null);
+    tdS.appendChild(selS);
+    var hintS = document.createElement('div');
+    hintS.className = 'slack-map-source-hint';
+    hintS.setAttribute('data-row', idx);
+    tdS.appendChild(hintS);
+    tr.appendChild(tdS);
+
+    var tdTr = td();
     var selTr = document.createElement('select');
     selTr.name = 'rule_transform_' + idx;
     selTr.className = 'slack-map-rule-transform';
@@ -388,14 +393,56 @@
     tdTr.appendChild(selTr);
     tr.appendChild(tdTr);
 
-    var tdA = cellWithPadding();
+    var tdD = td();
+    var selD = document.createElement('select');
+    selD.name = 'rule_destination_' + idx;
+    selD.className = 'slack-map-rule-destination';
+    selD.setAttribute('data-row', idx);
+    destChoices.forEach(function (dc) {
+      var o = document.createElement('option');
+      o.value = dc.value;
+      o.textContent = dc.label;
+      if (dc.value === 'run') o.selected = true;
+      selD.appendChild(o);
+    });
+    tdD.appendChild(selD);
+    tr.appendChild(tdD);
+
+    var tdTgt = td();
+    var selT = document.createElement('select');
+    selT.name = 'rule_target_select_' + idx;
+    selT.className = 'slack-map-target-run';
+    selT.setAttribute('data-row', idx);
+    var o1 = document.createElement('option');
+    o1.value = '';
+    o1.textContent = '—';
+    selT.appendChild(o1);
+    appendSelectOptions(selT, targetFields, null);
+    tdTgt.appendChild(selT);
+    var inpT = document.createElement('input');
+    inpT.type = 'text';
+    inpT.name = 'rule_target_text_' + idx;
+    inpT.className = 'slack-map-target-other';
+    inpT.setAttribute('data-row', idx);
+    inpT.placeholder = 'snake_case (e.g. notes_hint)';
+    inpT.autocomplete = 'off';
+    inpT.style.display = 'none';
+    inpT.disabled = true;
+    tdTgt.appendChild(inpT);
+    var hintT = document.createElement('div');
+    hintT.className = 'slack-map-target-hint';
+    hintT.setAttribute('data-row', idx);
+    tdTgt.appendChild(hintT);
+    tr.appendChild(tdTgt);
+
+    var tdA = td();
+    tdA.className = 'slack-map-col-arg';
     var inp = document.createElement('input');
     inp.type = 'text';
     inp.name = 'rule_transform_arg_' + idx;
     inp.className = 'slack-map-rule-arg';
     inp.setAttribute('data-row', idx);
     inp.placeholder = 'factor / prefix / suffix';
-    inp.style.width = '130px';
     tdA.appendChild(inp);
     tr.appendChild(tdA);
 
