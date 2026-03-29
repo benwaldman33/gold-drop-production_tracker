@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Field Intake — Potential Purchase</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <div class="login-page">
+    <div class="login-box" style="max-width:820px;">
+      <h1>Potential Purchase</h1>
+      <p class="subtitle">Field Intake (requires admin approval)</p>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="flash flash-{{ category }}" style="margin-bottom:12px;">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+      {% endwith %}
+
+      <form method="POST" enctype="multipart/form-data">
+        <input type="hidden" name="t" value="{{ token_value }}">
+
+        <div class="form-row-3">
+          <div class="form-group">
+            <label>Supplier *</label>
+            <select name="supplier_id" id="supplier_id">
+              <option value="">Select supplier...</option>
+              {% for s in suppliers %}
+                <option value="{{ s.id }}">{{ s.name }}</option>
+              {% endfor %}
+            </select>
+            <div class="text-sm" style="color:var(--text-muted); margin-top:6px;">
+              Pick an existing supplier, or enter a new supplier name below.
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Purchase Date *</label>
+            <input type="date" name="purchase_date" value="{{ today }}" required>
+          </div>
+          <div class="form-group">
+            <label>Expected Delivery Date</label>
+            <input type="date" name="delivery_date" value="">
+          </div>
+          <div class="form-group">
+            <label>Harvest Date</label>
+            <input type="date" name="harvest_date" value="">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>New supplier name (if not in list)</label>
+          <input type="text" name="new_supplier_name" id="new_supplier_name" placeholder="e.g. Farmlane">
+        </div>
+        <div class="form-row-3">
+          <div class="form-group">
+            <label>New supplier location (optional)</label>
+            <input type="text" name="new_supplier_location" id="new_supplier_location" placeholder="e.g. Salinas, CA">
+          </div>
+          <div class="form-group">
+            <label>New supplier phone (optional)</label>
+            <input type="text" name="new_supplier_phone" id="new_supplier_phone" placeholder="e.g. (555) 123-4567">
+          </div>
+          <div class="form-group">
+            <label>New supplier email (optional)</label>
+            <input type="email" name="new_supplier_email" id="new_supplier_email" placeholder="e.g. buyer@farm.com">
+          </div>
+        </div>
+
+        <div class="form-row-3">
+          <div class="form-group">
+            <label>Estimated Potency (%)</label>
+            <input type="number" name="estimated_potency_pct" step="0.1" placeholder="e.g. 14.0">
+          </div>
+          <div class="form-group">
+            <label>Price/lb</label>
+            <input type="number" name="price_per_lb" step="0.01" placeholder="e.g. 28.00">
+          </div>
+          <div class="form-group">
+            <label>Queue Placement</label>
+            <select name="queue_placement">
+              <option value="">Select queue...</option>
+              <option value="aggregate">Aggregate</option>
+              <option value="indoor">Indoor</option>
+              <option value="outdoor">Outdoor</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Storage Note</label>
+          <input type="text" name="storage_note" placeholder="How this material is stored in field/staging">
+        </div>
+
+        <div class="form-group">
+          <label>License Information</label>
+          <input type="text" name="license_info" placeholder="Farm/handler license details">
+        </div>
+
+        <div class="form-group">
+          <label>Testing / COA Status</label>
+          <input type="text" name="coa_status_text" placeholder="e.g. Pending COA from lab, received 01/14">
+        </div>
+
+        <div class="form-section" style="margin-top:8px;">
+          <h4>Lots / Strains</h4>
+          <div id="lots-container">
+            <div class="lot-row" style="grid-template-columns:1fr 120px 40px;">
+              <input type="text" name="lot_strains[]" placeholder="Strain name (optional)">
+              <input type="number" name="lot_weights[]" placeholder="Lbs (optional)" step="0.1">
+              <button type="button" class="remove-lot" onclick="removeLotRow(this)">✕</button>
+            </div>
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm mt-2" onclick="addLot()">+ Add Lot</button>
+          <div class="text-sm" style="color:var(--text-muted); margin-top:6px;">
+            Lot strain and pounds are both optional for field submission.
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea name="notes" rows="3" placeholder="Any extra context..."></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>Supplier / License Photos (optional)</label>
+          <input type="file" name="supplier_photos" accept="image/*" multiple>
+          <div class="text-sm" style="color:var(--text-muted); margin-top:6px;">
+            Upload docs/licenses for supplier records (JPG, PNG, WEBP, HEIC, HEIF; max 20 MB each).
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Biomass Photos (optional)</label>
+          <input type="file" name="biomass_photos" accept="image/*" multiple>
+          <div class="text-sm" style="color:var(--text-muted); margin-top:6px;">
+            Upload photos of biomass material for this purchase.
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Testing / COA Photos (optional)</label>
+          <input type="file" name="coa_photos" accept="image/*" multiple>
+          <div class="text-sm" style="color:var(--text-muted); margin-top:6px;">
+            Upload test result photos/COA screenshots.
+          </div>
+        </div>
+
+        <div class="form-actions" style="justify-content:space-between;">
+          <a class="btn btn-secondary" href="{{ url_for('field_home', t=token_value) }}">Back</a>
+          <button type="submit" class="btn btn-primary">Submit for Approval</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // If user selects a supplier, clear "new supplier" field; if they type a new supplier, clear selection.
+    const supplierSelect = document.getElementById('supplier_id');
+    const newSupplier = document.getElementById('new_supplier_name');
+    if (supplierSelect && newSupplier) {
+      supplierSelect.addEventListener('change', () => {
+        if (supplierSelect.value) {
+          newSupplier.value = '';
+          const loc = document.getElementById('new_supplier_location');
+          const phone = document.getElementById('new_supplier_phone');
+          const email = document.getElementById('new_supplier_email');
+          if (loc) loc.value = '';
+          if (phone) phone.value = '';
+          if (email) email.value = '';
+        }
+      });
+      newSupplier.addEventListener('input', () => {
+        if (newSupplier.value.trim().length) supplierSelect.value = '';
+      });
+    }
+
+    function addLot() {
+      const container = document.getElementById('lots-container');
+      const row = document.createElement('div');
+      row.className = 'lot-row';
+      row.style.gridTemplateColumns = '1fr 120px 40px';
+      row.innerHTML = `
+        <input type="text" name="lot_strains[]" placeholder="Strain name (optional)">
+        <input type="number" name="lot_weights[]" placeholder="Lbs (optional)" step="0.1">
+        <button type="button" class="remove-lot" onclick="removeLotRow(this)">✕</button>
+      `;
+      container.appendChild(row);
+    }
+    function removeLotRow(btn) {
+      const container = document.getElementById('lots-container');
+      if (container.children.length <= 1) return;
+      btn.parentElement.remove();
+    }
+  </script>
+</body>
+</html>
+

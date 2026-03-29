@@ -2,6 +2,8 @@
 
 **Product requirements** live in `PRD.md`.
 **User guide** lives in `USER_MANUAL.md` (no credentials included).
+**FAQ** lives in `FAQ.md`.
+**Engineering notes** (implementation-oriented) live in `ENGINEERING.md`.
 
 ## Quick Start (Local Development)
 
@@ -38,6 +40,14 @@ Open http://localhost:5000 in your browser.
 - **Purchases** — Record purchases with potency-based pricing and true-up tracking
 - **Batch IDs** — Unique, readable batch IDs for all purchases (auto-generated if blank)
 - **Biomass Pipeline** — Track farm availability from declared → testing → committed → delivered/cancelled (syncs to Purchases)
+- **Field Photo Uploads** — Field users can attach multiple photos to biomass and purchase submissions (JPG/JPEG/PNG/WEBP/HEIC/HEIF, max 20 MB each)
+- **Field Purchase Intake Enhancements** — Harvest date, storage note, license info, queue placement, testing/COA status, and categorized photo uploads
+- **Soft Delete + Admin Hard Delete** — Runs and purchases support safe delete plus super-admin permanent cleanup
+- **Historical Lab Tracking** — Supplier-level lab test history and file attachments (including PDF lab docs)
+- **Photo Library** — Central searchable media index with supplier/purchase/category/tag filters
+- **Photo Audit Linkage** — Approved field photos are auto-linked to supplier docs (license) and purchase audit records (biomass/COA)
+- **Advanced Exports** — Date range and criteria filters (supplier/status/potency/strain) across operational tabs
+- **Slack Integration** — Outbound notifications; inbound slash commands, interactivity, and Events API URL (`/api/slack/events`); optional **channel history sync** for up to six channels with per-channel cursors (`conversations.history` → Slack imports review UI)
 - **Supplier Performance** — All-time, 90-day, and last-batch analytics per farm
 - **Strain Performance** — Compare yields and cost/gram across strains and suppliers
 - **Data Quality Controls** — Flag runs missing $/lb; optionally exclude unpriced runs from analytics
@@ -55,9 +65,14 @@ gold-drop/
 ├── models.py           # SQLAlchemy database models
 ├── requirements.txt    # Python dependencies
 ├── PRD.md              # Product requirements document
+├── USER_MANUAL.md      # End-user / operator guide
+├── FAQ.md              # Short frequently asked questions
+├── ENGINEERING.md      # Implementation and schema notes for developers
 ├── static/
-│   └── css/
-│       └── style.css   # Application styles
+│   ├── css/
+│   │   └── style.css       # Application styles
+│   └── uploads/field/      # Field-submitted photos (created at runtime)
+│   └── uploads/labs/       # Lab tests + supplier attachment files (created at runtime)
 └── templates/
     ├── base.html           # Layout with sidebar navigation
     ├── login.html          # Login page
@@ -150,6 +165,9 @@ The system will:
 - **Suppliers** → **Purchases** → **Lots** (one-to-many chain)
 - **Suppliers** → **Biomass Pipeline** (one-to-many)
 - **Biomass Pipeline** → **Purchase** (one-to-one once committed/delivered/cancelled)
+- **Field submissions** may include photo arrays stored as JSON paths to files in `static/uploads/field/`
+- **Lab tests / supplier attachments** are stored as file references under `static/uploads/labs/`
+- **Photo assets** are indexed in `photo_assets` for cross-screen search/filter and audit traceability
 - **Cost Entries** are allocated across total dry grams in their date ranges
 - **Lots** → **Run Inputs** → **Runs** (many-to-many through run_inputs)
 - Lot `remaining_weight_lbs` is automatically decremented when used in a run

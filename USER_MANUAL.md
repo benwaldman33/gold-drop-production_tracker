@@ -2,6 +2,8 @@
 
 This guide explains how to use the Gold Drop web app day-to-day. It intentionally **does not include any usernames or passwords**. Ask your administrator for access.
 
+**Other documents:** `FAQ.md` (quick answers), `PRD.md` (product requirements), `ENGINEERING.md` (technical implementation notes for developers).
+
 ---
 
 ## Getting started
@@ -22,6 +24,7 @@ Use the left sidebar:
 - **Biomass Pipeline**: pre-purchase pipeline tracking (declared → testing → committed → delivered/cancelled)
 - **Suppliers**: supplier performance analytics
 - **Strains**: strain performance analytics
+- **Photo Library**: searchable media across supplier/purchase/field contexts
 - **Settings** (Super Admin only): system parameters, KPIs, users, maintenance actions
 - **Import**: CSV import review + confirm
 
@@ -48,6 +51,8 @@ Typical fields include:
 - Wet and dry output for **HTE** and **THCA**
 - Notes
 
+The **Bio in House** field is now auto-populated from inventory (not manually entered).
+
 ### Adding a new run
 1. Go to **Runs** → **+ New Run**
 2. Fill in the run details and outputs.
@@ -71,6 +76,7 @@ These badges help identify runs that may skew cost analytics.
 ### Editing or deleting runs
 - **Edit**: updates calculations again on save.
 - **Delete**: restores lot remaining weights (so inventory stays correct).
+- **Hard Delete (Super Admin)**: permanently removes run records for sandbox cleanup.
 
 ---
 
@@ -125,6 +131,10 @@ Purchase status affects:
 - Whether it is treated as in-transit vs on-hand inventory views
 - If the purchase is linked to a Biomass Pipeline record, the pipeline stage is kept in sync
 
+### Purchase deletion
+- **Delete Purchase** performs a safe (soft) delete.
+- **Hard Delete (Super Admin)** is available for sandbox cleanup when no run history depends on the purchase.
+
 ### Adding lots to an existing purchase
 Open a purchase and use “Add Lot to This Purchase” to add strain lots. Lots create inventory that can be consumed by runs.
 
@@ -150,6 +160,28 @@ The Biomass Pipeline tracks farm availability before it becomes a purchase.
 - When a pipeline record is moved to **Committed** (or Delivered), the app will create a linked Purchase if one does not already exist.
 - If a linked Purchase exists, key fields stay synchronized (supplier/date/weights/potency/$/lb/status).
 - The pipeline list shows the linked Batch ID (when present) and links directly to the Purchase.
+
+### Adding field photos
+Both field intake forms (biomass and purchase request) support optional photo uploads.
+
+What users can do:
+- Attach one or more photos from camera or gallery before submitting.
+- Upload formats: JPG, JPEG, PNG, WEBP, HEIC, HEIF.
+- Max size per image: 20 MB.
+
+What admins can see:
+- In **Settings**, pending purchase submissions show categorized thumbnails (supplier/license, biomass, testing/COA).
+- Clicking a thumbnail opens the full image in a new tab.
+
+### Updated mobile purchase form fields
+The field purchase form supports:
+- Harvest date
+- Storage note
+- License information
+- Queue placement (Aggregate, Indoor, Outdoor)
+- Testing/COA status text
+- Optional strain names on lot lines
+- Optional lot weights on lot lines
 
 ### Validation and error messages
 If something is missing or invalid (bad date, negative weight, invalid stage), you’ll see a clear error message. Fix the input and save again.
@@ -182,6 +214,12 @@ Operational costs are allocated as:
 Suppliers shows performance analytics by farm, including:
 - All-time and recent averages (yield %, THCA %, cost/gram)
 - Last-batch performance snapshot
+- Best-yielding supplier month-over-month spotlight
+
+Supplier profiles also include:
+- Historical lab test records
+- Supplier lab attachments (COAs/results/licenses)
+- Field-approved supplier/license photos are automatically added into supplier attachments
 
 If the “exclude runs missing $/lb” setting is enabled, these analytics ignore runs with incomplete biomass pricing.
 
@@ -210,6 +248,19 @@ Set KPI targets and green/yellow thresholds to match operational goals.
 
 ### Users
 Admins can create users and assign roles. (This manual does not include any credentials.)
+- Disabled users can be reactivated.
+- Permanent delete is available only when no historical audit activity exists.
+
+### Field links/tokens
+- Tokens can be revoked immediately.
+- Revoked or expired tokens can be deleted from the table to keep Settings clean.
+
+### Slack integration
+- Configure webhook URL, signing secret, bot token, and default channel in Settings.
+- **Outbound:** notifications for key actions (when enabled).
+- **Inbound:** Slash commands and interactivity use `/api/slack/command` and `/api/slack/interactivity`.
+- **Event Subscriptions:** In the Slack app, set the Request URL to `https://your-site/api/slack/events` (HTTPS). The app answers Slack’s URL challenge and accepts `event_callback` pings (extend later for channel messages). The **Signing Secret** in Slack must match the value saved in Settings.
+- **Channel history sync:** Under **Settings → Slack Integration → Channel history sync**, configure up to **six** channels (`#name` or channel ID), then use **Settings → Maintenance → Sync Slack channel history**. The **Days back** value applies to the **first** sync of each channel; after that, each channel keeps its own cursor (last message timestamp) so only newer messages are scanned. The bot must be **invited** to every channel and have `channels:history` + `channels:read` (and for private channels, `groups:history` + `groups:read`). Each message is stored once (deduped by channel + Slack timestamp). Open **View Slack imports** to see raw text and automatically derived fields (yield report vs production log hints). This does not create Run records yet—it is for review and future automation.
 
 ### Maintenance: Recalculate all run costs
 Use **Recalculate All Run Costs** after:
@@ -218,6 +269,14 @@ Use **Recalculate All Run Costs** after:
 - correcting biomass pricing
 
 This recomputes cost-per-gram fields for all historical runs using current rules.
+
+### Maintenance: Historical photo backfill
+Use **Run Photo Backfill** if you have older approved field submissions from before photo indexing was enabled.
+
+What it does:
+- Adds missing supplier attachments for supplier/license photos from approved field submissions.
+- Creates searchable photo-library records for supplier, biomass, and COA images tied to those submissions.
+- Safe to run more than once (deduplicates existing records).
 
 ---
 
@@ -243,6 +302,11 @@ Most list screens include **Export CSV**. Exports available include:
 - Purchases
 - Inventory
 - Biomass Pipeline
+- Suppliers
+- Strains
+- Costs
+
+Exports support criteria filters (depending on tab), including date range, supplier/status, strain text, and potency range.
 
 Use exports for reporting, reconciliation, or offline analysis.
 

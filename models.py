@@ -32,6 +32,11 @@ class User(UserMixin, db.Model):
         return self.id
 
     @property
+    def is_active(self):
+        """Flask-Login integration: disabled users cannot be authenticated."""
+        return bool(self.is_active_user)
+
+    @property
     def is_super_admin(self):
         return self.role == "super_admin"
 
@@ -98,9 +103,15 @@ class Purchase(db.Model):
     true_up_amount = db.Column(db.Float)
     true_up_status = db.Column(db.String(20))
     harvest_date = db.Column(db.Date)
+    storage_note = db.Column(db.Text)
+    license_info = db.Column(db.Text)
+    queue_placement = db.Column(db.String(20))  # aggregate, indoor, outdoor
+    coa_status_text = db.Column(db.Text)
     clean_or_dirty = db.Column(db.String(10))
     indoor_outdoor = db.Column(db.String(20))
     notes = db.Column(db.Text)
+    deleted_at = db.Column(db.DateTime)
+    deleted_by = db.Column(db.String(36), db.ForeignKey("users.id"))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -150,6 +161,9 @@ class BiomassAvailability(db.Model):
     # Overall stage
     stage = db.Column(db.String(20), nullable=False, default="declared")  # declared, testing, committed, delivered, cancelled
 
+    # Optional field-intake photo paths (JSON array of relative static paths)
+    field_photo_paths_json = db.Column(db.Text)
+
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -171,6 +185,8 @@ class PurchaseLot(db.Model):
     milled = db.Column(db.Boolean, default=False)
     location = db.Column(db.String(200))
     notes = db.Column(db.Text)
+    deleted_at = db.Column(db.DateTime)
+    deleted_by = db.Column(db.String(36), db.ForeignKey("users.id"))
 
     run_inputs = db.relationship("RunInput", backref="lot", lazy="dynamic")
 
@@ -188,6 +204,8 @@ class Run(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
     run_date = db.Column(db.Date, nullable=False)
     reactor_number = db.Column(db.Integer, nullable=False)
+    # Which upstream load reactor(s) this biomass came from (e.g. A, B, A+B); not the processing vessel # above.
+    load_source_reactors = db.Column(db.String(120))
     is_rollover = db.Column(db.Boolean, default=False)
     bio_in_house_lbs = db.Column(db.Float)
     bio_in_reactor_lbs = db.Column(db.Float)
@@ -209,6 +227,8 @@ class Run(db.Model):
     fuel_consumption = db.Column(db.Float)
     run_type = db.Column(db.String(20), default="standard")  # standard, kief, ld
     notes = db.Column(db.Text)
+    deleted_at = db.Column(db.DateTime)
+    deleted_by = db.Column(db.String(36), db.ForeignKey("users.id"))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     created_by = db.Column(db.String(36), db.ForeignKey("users.id"))
 
@@ -271,6 +291,7 @@ class Run(db.Model):
                 total_grams_in_period = db.session.query(func.sum(dry_expr)).filter(
                     Run.run_date >= e.start_date,
                     Run.run_date <= e.end_date,
+                    Run.deleted_at.is_(None),
                 ).scalar() or 0
                 if total_grams_in_period and total_grams_in_period > 0:
                     op_rate += (e.total_cost or 0) / float(total_grams_in_period)
@@ -420,3 +441,152 @@ class CostEntry(db.Model):
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     created_by = db.Column(db.String(36), db.ForeignKey("users.id"))
+
+
+class FieldAccessToken(db.Model):
+    """
+    Revocable access token for field/mobile data entry without site login.
+
+    The plain token is only shown at creation time; we store only a SHA-256 hash.
+    """
+    __tablename__ = "field_access_tokens"
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    label = db.Column(db.String(200), nullable=False)
+    token_hash = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_by = db.Column(db.String(36), db.ForeignKey("users.id"))
+    expires_at = db.Column(db.DateTime)
+    revoked_at = db.Column(db.DateTime)
+    last_used_at = db.Column(db.DateTime)
+
+    @property
+    def is_active(self):
+        if self.revoked_at is not None:
+            return False
+        if self.expires_at is not None and datetime.utcnow() > self.expires_at:
+            return False
+        return True
+
+
+class FieldPurchaseSubmission(db.Model):
+    """
+    Field-submitted potential purchase data.
+
+    Submissions require admin approval before creating a real Purchase record.
+    """
+    __tablename__ = "field_purchase_submissions"
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    submitted_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    source_token_id = db.Column(db.String(36), db.ForeignKey("field_access_tokens.id"))
+    source_token = db.relationship("FieldAccessToken", foreign_keys=[source_token_id])
+
+    # What the field user provided
+    supplier_id = db.Column(db.String(36), db.ForeignKey("suppliers.id"), nullable=False)
+    supplier = db.relationship("Supplier", foreign_keys=[supplier_id])
+    purchase_date = db.Column(db.Date, nullable=False)
+    delivery_date = db.Column(db.Date)
+    harvest_date = db.Column(db.Date)
+    estimated_potency_pct = db.Column(db.Float)
+    price_per_lb = db.Column(db.Float)
+    storage_note = db.Column(db.Text)
+    license_info = db.Column(db.Text)
+    queue_placement = db.Column(db.String(20))  # aggregate, indoor, outdoor
+    coa_status_text = db.Column(db.Text)
+    notes = db.Column(db.Text)
+
+    # Lot lines as JSON: [{"strain": "...", "weight_lbs": 123.4}, ...]
+    lots_json = db.Column(db.Text)
+    # Optional field photos (JSON array of relative static paths)
+    photos_json = db.Column(db.Text)
+    # Optional categorized photos
+    supplier_photos_json = db.Column(db.Text)
+    biomass_photos_json = db.Column(db.Text)
+    coa_photos_json = db.Column(db.Text)
+
+    # Review / approval
+    status = db.Column(db.String(20), nullable=False, default="pending")  # pending, approved, rejected
+    reviewed_at = db.Column(db.DateTime)
+    reviewed_by = db.Column(db.String(36), db.ForeignKey("users.id"))
+    review_notes = db.Column(db.Text)
+
+    approved_purchase_id = db.Column(db.String(36), db.ForeignKey("purchases.id"))
+    approved_purchase = db.relationship("Purchase", foreign_keys=[approved_purchase_id])
+
+
+class LabTest(db.Model):
+    __tablename__ = "lab_tests"
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    supplier_id = db.Column(db.String(36), db.ForeignKey("suppliers.id"), nullable=False)
+    purchase_id = db.Column(db.String(36), db.ForeignKey("purchases.id"))
+    test_date = db.Column(db.Date, nullable=False)
+    test_type = db.Column(db.String(50), nullable=False, default="coa")
+    status_text = db.Column(db.Text)
+    potency_pct = db.Column(db.Float)
+    notes = db.Column(db.Text)
+    result_paths_json = db.Column(db.Text)  # JSON array of files under static/uploads/labs
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_by = db.Column(db.String(36), db.ForeignKey("users.id"))
+
+    supplier = db.relationship("Supplier", foreign_keys=[supplier_id])
+    purchase = db.relationship("Purchase", foreign_keys=[purchase_id])
+
+
+class SupplierAttachment(db.Model):
+    __tablename__ = "supplier_attachments"
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    supplier_id = db.Column(db.String(36), db.ForeignKey("suppliers.id"), nullable=False)
+    document_type = db.Column(db.String(50), nullable=False, default="coa")
+    title = db.Column(db.String(200))
+    file_path = db.Column(db.String(500), nullable=False)
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+    uploaded_by = db.Column(db.String(36), db.ForeignKey("users.id"))
+
+    supplier = db.relationship("Supplier", foreign_keys=[supplier_id])
+
+
+class PhotoAsset(db.Model):
+    __tablename__ = "photo_assets"
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    supplier_id = db.Column(db.String(36), db.ForeignKey("suppliers.id"))
+    purchase_id = db.Column(db.String(36), db.ForeignKey("purchases.id"))
+    submission_id = db.Column(db.String(36), db.ForeignKey("field_purchase_submissions.id"))
+    source_type = db.Column(db.String(50), nullable=False, default="manual")  # field_submission, supplier_attachment, lab_test, purchase_upload
+    category = db.Column(db.String(50), nullable=False, default="other")  # supplier_license, biomass, coa, lab_result, supplier_doc
+    title = db.Column(db.String(200))
+    tags = db.Column(db.String(500))  # comma-separated searchable tags
+    file_path = db.Column(db.String(500), nullable=False)
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+    uploaded_by = db.Column(db.String(36), db.ForeignKey("users.id"))
+
+    supplier = db.relationship("Supplier", foreign_keys=[supplier_id])
+    purchase = db.relationship("Purchase", foreign_keys=[purchase_id])
+
+
+class SlackIngestedMessage(db.Model):
+    """
+    One row per Slack channel message ingested via conversations.history (deduped by channel + ts).
+    """
+    __tablename__ = "slack_ingested_messages"
+    __table_args__ = (db.UniqueConstraint("channel_id", "message_ts", name="uq_slack_channel_ts"),)
+
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    channel_id = db.Column(db.String(32), nullable=False)
+    message_ts = db.Column(db.String(32), nullable=False)
+    slack_user_id = db.Column(db.String(32))
+    raw_text = db.Column(db.Text)
+    message_kind = db.Column(db.String(40))  # yield_report, production_log, unknown
+    derived_json = db.Column(db.Text)
+    ingested_at = db.Column(db.DateTime, default=datetime.utcnow)
+    ingested_by = db.Column(db.String(36), db.ForeignKey("users.id"))
+
+
+class SlackChannelSyncConfig(db.Model):
+    """Up to six Slack channels for history sync, each with its own cursor (last message ts)."""
+    __tablename__ = "slack_channel_sync_configs"
+    __table_args__ = (db.UniqueConstraint("slot_index", name="uq_slack_sync_slot"),)
+
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    slot_index = db.Column(db.Integer, nullable=False)
+    channel_hint = db.Column(db.String(200), nullable=False, default="")
+    resolved_channel_id = db.Column(db.String(32))
+    last_watermark_ts = db.Column(db.String(32))

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Slack imports{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Slack channel imports</h2>
+  <a href="{{ url_for('settings') }}#settings-maintenance" class="btn btn-secondary">← Settings</a>
+  <a href="{{ url_for('settings_slack_run_mappings') }}" class="btn btn-secondary">Slack → field mappings</a>
+</div>
+
+<div class="card">
+  <p class="text-sm" style="color:var(--text-muted);">
+    Rows come from <strong>Settings → Maintenance → Sync Slack channel</strong>. Only messages not already stored (by Slack timestamp) are added.
+    Parsed fields are hints for yield vs production-log templates. <strong>Phase 1:</strong> use <strong>Run preview</strong> on a row to see mapped Run fields—mappings (including future Biomass, Purchases, etc.) are under <strong>Slack → field mappings</strong>; nothing is applied automatically yet.
+  </p>
+  <div class="table-wrap" style="margin-top:12px;">
+    <table>
+      <thead>
+        <tr>
+          <th>Slack ts</th>
+          <th>Kind</th>
+          <th>Derived</th>
+          <th>Raw (trimmed)</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td class="text-mono text-sm">{{ r.message_ts }}</td>
+          <td><span class="badge badge-gray">{{ r.message_kind or '—' }}</span></td>
+          <td class="text-sm" style="max-width:320px;word-break:break-word;">
+            {% if r.derived %}
+              {% for k, v in r.derived.items() %}
+                <strong>{{ k }}</strong>: {{ v }}{% if not loop.last %}<br>{% endif %}
+              {% endfor %}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td class="text-sm" style="max-width:420px;white-space:pre-wrap;word-break:break-word;">{{ (r.raw_text or '')[:800] }}{% if r.raw_text and r.raw_text|length > 800 %}…{% endif %}</td>
+          <td><a href="{{ url_for('settings_slack_import_preview', msg_id=r.id) }}" class="btn btn-secondary btn-sm">Run preview</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-center cell-muted" style="padding:24px;">No imported messages yet. Run sync from Settings.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

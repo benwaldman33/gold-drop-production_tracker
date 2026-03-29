@@ -43,6 +43,46 @@
   </div>
 </div>
 
+<div class="summary-row">
+  <div class="summary-stat">
+    <div class="label">This Week Lbs Ran</div>
+    <div class="value">{{ "{:,.0f}".format(wtd_lbs) }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">This Week Dry THCA (g)</div>
+    <div class="value">{{ "{:,.0f}".format(wtd_dry_thca) }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">This Week Dry HTE (g)</div>
+    <div class="value">{{ "{:,.0f}".format(wtd_dry_hte) }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Best Supplier MoM</div>
+    <div class="value">
+      {% if best_supplier_mom %}
+        {{ best_supplier_mom.name }}
+      {% else %}
+        —
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% if best_supplier_mom %}
+<div class="card" style="margin-bottom:12px;">
+  <div class="card-header"><h3>Best Yield Supplier (Month-over-Month)</h3></div>
+  <div class="text-sm" style="color:var(--text-secondary);">
+    {{ best_supplier_mom.name }} is averaging <strong>{{ "{:.2f}".format(best_supplier_mom.current) }}%</strong> overall yield this month.
+    {% if best_supplier_mom.previous is not none %}
+      Last month: {{ "{:.2f}".format(best_supplier_mom.previous) }}%
+      {% if best_supplier_mom.pct_change is not none %}
+        ({{ "{:+.1f}".format(best_supplier_mom.pct_change) }}%).
+      {% endif %}
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
 <!-- KPI Cards -->
 <div class="card">
   <div class="card-header">

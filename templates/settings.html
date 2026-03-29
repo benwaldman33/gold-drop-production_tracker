@@ -6,10 +6,11 @@
 </div>
 
 <!-- System Settings -->
-<div class="card">
+<div class="card" id="settings-system">
   <div class="card-header"><h3>Operational Parameters</h3></div>
   <form method="POST">
     <input type="hidden" name="form_type" value="system">
+    <input type="hidden" name="return_to" value="#settings-system">
     <div class="form-row-3">
       <div class="form-group">
         <label>Potency Rate ($/lb/%pt)</label>
@@ -89,10 +90,11 @@
 </div>
 
 <!-- KPI Targets -->
-<div class="card">
+<div class="card" id="settings-kpis">
   <div class="card-header"><h3>KPI Targets</h3></div>
   <form method="POST">
     <input type="hidden" name="form_type" value="kpi">
+    <input type="hidden" name="return_to" value="#settings-kpis">
     <div class="table-wrap">
       <table>
         <thead>
@@ -136,12 +138,12 @@
 </div>
 
 <!-- User Management -->
-<div class="card">
+<div class="card" id="settings-users">
   <div class="card-header"><h3>Users</h3></div>
   <div class="table-wrap mb-2">
     <table>
       <thead>
-        <tr><th>Username</th><th>Display Name</th><th>Role</th><th>Created</th></tr>
+        <tr><th>Username</th><th>Display Name</th><th>Role</th><th>Status</th><th>Created</th><th></th></tr>
       </thead>
       <tbody>
         {% for u in users %}
@@ -149,7 +151,32 @@
           <td>{{ u.username }}</td>
           <td>{{ u.display_name }}</td>
           <td><span class="badge badge-gold">{{ u.role.replace('_', ' ') }}</span></td>
+          <td>
+            {% if u.is_active_user %}
+              <span class="badge badge-green">Active</span>
+            {% else %}
+              <span class="badge badge-gray">Disabled</span>
+            {% endif %}
+          </td>
           <td>{{ u.created_at.strftime('%m/%d/%y') if u.created_at else '—' }}</td>
+          <td style="white-space:nowrap;">
+            {% if u.id == current_user.id %}
+              <span class="text-sm" style="color:var(--text-muted);">Current</span>
+            {% else %}
+              <form method="POST" action="{{ url_for('user_toggle_active', user_id=u.id) }}" style="display:inline;" onsubmit="return confirm('Are you sure? This will {{ 'disable' if u.is_active_user else 'activate' }} the user account.');">
+                <input type="hidden" name="return_to" value="#settings-users">
+                {% if u.is_active_user %}
+                  <button type="submit" class="btn btn-danger btn-sm">Disable</button>
+                {% else %}
+                  <button type="submit" class="btn btn-secondary btn-sm">Activate</button>
+                {% endif %}
+              </form>
+              <form method="POST" action="{{ url_for('user_delete', user_id=u.id) }}" style="display:inline;" onsubmit="return confirm('Permanently delete this user? This only works if no historical activity exists.');">
+                <input type="hidden" name="return_to" value="#settings-users">
+                <button type="submit" class="btn btn-secondary btn-sm">Delete</button>
+              </form>
+            {% endif %}
+          </td>
         </tr>
         {% endfor %}
       </tbody>
@@ -158,6 +185,7 @@
 
   <form method="POST">
     <input type="hidden" name="form_type" value="user">
+    <input type="hidden" name="return_to" value="#settings-users">
     <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:16px 0 12px;">Add New User</h4>
     <div class="form-row-3">
       <div class="form-group">
@@ -185,8 +213,354 @@
   </form>
 </div>
 
+<!-- Password Management -->
+<div class="card" id="settings-passwords">
+  <div class="card-header"><h3>Password Management</h3></div>
+
+  <div style="padding:16px;">
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:0 0 12px;">Change My Password</h4>
+    <form method="POST" style="display:grid;grid-template-columns: 1fr 1fr 1fr auto; gap:10px; align-items:end; margin-bottom:18px;">
+      <input type="hidden" name="form_type" value="password_self">
+      <input type="hidden" name="return_to" value="#settings-passwords">
+      <div class="form-group" style="margin:0;">
+        <label>Current Password</label>
+        <input type="password" name="current_password" required>
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label>New Password</label>
+        <input type="password" name="new_password" minlength="8" required>
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label>Confirm New Password</label>
+        <input type="password" name="confirm_password" minlength="8" required>
+      </div>
+      <button type="submit" class="btn btn-primary">Update</button>
+    </form>
+
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:0 0 12px;">Set Password for a User</h4>
+    <form method="POST" style="display:grid;grid-template-columns: 220px 1fr 1fr auto; gap:10px; align-items:end;">
+      <input type="hidden" name="form_type" value="password_user">
+      <input type="hidden" name="return_to" value="#settings-passwords">
+      <div class="form-group" style="margin:0;">
+        <label>User</label>
+        <select name="user_id" required>
+          <option value="">Select user...</option>
+          {% for u in users %}
+            <option value="{{ u.id }}">{{ u.display_name }} ({{ u.username }}){% if not u.is_active_user %} — disabled{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label>New Password</label>
+        <input type="password" name="new_password" minlength="8" required>
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label>Confirm New Password</label>
+        <input type="password" name="confirm_password" minlength="8" required>
+      </div>
+      <button type="submit" class="btn btn-secondary" onclick="return confirm('Set a new password for this user?');">Set Password</button>
+    </form>
+    <div class="text-sm" style="color:var(--text-muted); margin-top:8px;">
+      Passwords must be at least 8 characters. Password changes are audited, but passwords are never stored in audit logs.
+    </div>
+  </div>
+</div>
+
+<!-- Field Intake -->
+<div class="card" id="settings-field-intake">
+  <div class="card-header"><h3>Field Intake (Mobile Links + Submissions)</h3></div>
+  <div style="padding:16px;">
+    {% if last_field_link %}
+    <div class="card" style="padding:14px 16px; margin-bottom:14px; border-color: rgba(34, 197, 94, 0.25);">
+      <div style="font-weight:600;">New field link ready to share</div>
+      <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">
+        This link is only shown once. If you lose it, create a new token.
+      </div>
+
+      <div class="form-group" style="margin-top:10px;">
+        <label>Field Link</label>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input id="field-link" type="text" value="{{ last_field_link }}" readonly class="text-mono" style="flex:1;">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="copyText('field-link')">Copy link</button>
+        </div>
+      </div>
+
+      <div class="form-row-3" style="margin-top:6px;">
+        <div class="form-group" style="grid-column: span 3; margin:0;">
+          <label>SMS share text</label>
+          <div style="display:flex; gap:8px; align-items:flex-start;">
+            <textarea id="field-sms" rows="2" readonly style="flex:1;">{{ last_field_sms }}</textarea>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="copyText('field-sms')">Copy SMS</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-row-3" style="margin-top:6px;">
+        <div class="form-group" style="grid-column: span 3; margin:0;">
+          <label>Email subject</label>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input id="field-email-subject" type="text" value="{{ last_field_email_subject }}" readonly style="flex:1;">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="copyText('field-email-subject')">Copy subject</button>
+          </div>
+        </div>
+        <div class="form-group" style="grid-column: span 3; margin:0;">
+          <label>Email body</label>
+          <div style="display:flex; gap:8px; align-items:flex-start;">
+            <textarea id="field-email-body" rows="4" readonly style="flex:1;">{{ last_field_email_body }}</textarea>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="copyText('field-email-body')">Copy body</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:0 0 12px;">Create Field Access Link</h4>
+    <form method="POST" action="{{ url_for('field_token_create') }}" style="display:grid;grid-template-columns: 1fr 140px auto; gap:10px; align-items:end; margin-bottom:14px;">
+      <input type="hidden" name="return_to" value="#settings-field-intake">
+      <div class="form-group" style="margin:0;">
+        <label>Label</label>
+        <input type="text" name="label" placeholder="e.g. Field Purchasers (SMS link)" required>
+      </div>
+      <div class="form-group" style="margin:0;">
+        <label>Expires (days)</label>
+        <input type="number" name="expires_days" value="30" min="1" max="365" required>
+      </div>
+      <button type="submit" class="btn btn-primary">Create Link</button>
+    </form>
+    <div class="text-sm" style="color:var(--text-muted); margin-bottom:16px;">
+      After creating a link, copy it from the green success message and send via SMS or email. Tokens are revocable.
+    </div>
+
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:0 0 12px;">Active / Recent Tokens</h4>
+    <div class="table-wrap mb-2">
+      <table>
+        <thead>
+          <tr><th>Label</th><th>Status</th><th>Expires</th><th>Last Used</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for t in field_tokens %}
+          <tr>
+            <td><strong>{{ t.label }}</strong></td>
+            <td>
+              {% if t.revoked_at %}
+                <span class="badge badge-gray">Revoked</span>
+              {% elif t.expires_at and t.expires_at < server_now %}
+                <span class="badge badge-gray">Expired</span>
+              {% else %}
+                <span class="badge badge-green">Active</span>
+              {% endif %}
+            </td>
+            <td>{{ t.expires_at.strftime('%m/%d/%y') if t.expires_at else '—' }}</td>
+            <td>{{ t.last_used_at.strftime('%m/%d/%y %H:%M') if t.last_used_at else '—' }}</td>
+            <td>
+              {% if not t.revoked_at %}
+              <form method="POST" action="{{ url_for('field_token_revoke', token_id=t.id) }}" style="display:inline;" onsubmit="return confirm('Revoke this token? Existing links will stop working.');">
+                <input type="hidden" name="return_to" value="#settings-field-intake">
+                <button type="submit" class="btn btn-danger btn-sm">Revoke</button>
+              </form>
+              {% endif %}
+              {% if t.revoked_at or (t.expires_at and t.expires_at < server_now) %}
+              <form method="POST" action="{{ url_for('field_token_delete', token_id=t.id) }}" style="display:inline;" onsubmit="return confirm('Delete this revoked/expired token record?');">
+                <input type="hidden" name="return_to" value="#settings-field-intake">
+                <button type="submit" class="btn btn-secondary btn-sm">Delete</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-center cell-muted" style="padding:20px;">No field tokens created yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:18px 0 12px;">Pending Purchase Submissions</h4>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Submitted</th>
+            <th>Supplier</th>
+            <th class="text-right">Lots</th>
+            <th class="text-right">$/lb</th>
+            <th class="text-right">Potency %</th>
+            <th>Field Details</th>
+            <th>Photos</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in field_submissions %}
+          <tr>
+            <td>{{ s.submitted_at.strftime('%m/%d/%y %H:%M') if s.submitted_at else '—' }}</td>
+            <td><strong>{{ s.supplier.name if s.supplier else '—' }}</strong></td>
+            <td class="text-right text-mono">{{ s.lots_count }}</td>
+            <td class="text-right text-mono">{{ "${:,.2f}".format(s.price_per_lb) if s.price_per_lb else '—' }}</td>
+            <td class="text-right text-mono">{{ "{:.1f}".format(s.estimated_potency_pct) if s.estimated_potency_pct else '—' }}</td>
+            <td>
+              <div class="text-sm" style="color:var(--text-muted);">
+                Harvest: {{ s.harvest_date.strftime('%m/%d/%y') if s.harvest_date else '—' }}<br>
+                Queue: {{ s.queue_placement.title() if s.queue_placement else '—' }}<br>
+                License: {{ s.license_info if s.license_info else '—' }}<br>
+                COA: {{ s.coa_status_text if s.coa_status_text else '—' }}
+              </div>
+            </td>
+            <td>
+              {% if s.supplier_photo_paths or s.biomass_photo_paths or s.coa_photo_paths %}
+                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                  {% for p in s.supplier_photo_paths %}
+                    <a href="{{ url_for('static', filename=p) }}" target="_blank" rel="noopener" title="supplier/license photo">
+                      <img src="{{ url_for('static', filename=p) }}" alt="supplier photo" style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--dark-border);">
+                    </a>
+                  {% endfor %}
+                  {% for p in s.biomass_photo_paths %}
+                    <a href="{{ url_for('static', filename=p) }}" target="_blank" rel="noopener" title="biomass photo">
+                      <img src="{{ url_for('static', filename=p) }}" alt="biomass photo" style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--dark-border);">
+                    </a>
+                  {% endfor %}
+                  {% for p in s.coa_photo_paths %}
+                    <a href="{{ url_for('static', filename=p) }}" target="_blank" rel="noopener">
+                      <img src="{{ url_for('static', filename=p) }}" alt="coa photo" style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--dark-border);">
+                    </a>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <span class="text-sm" style="color:var(--text-muted);">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if s.status == 'pending' %}<span class="badge badge-yellow">Pending</span>
+              {% elif s.status == 'approved' %}<span class="badge badge-green">Approved</span>
+              {% else %}<span class="badge badge-gray">Rejected</span>{% endif %}
+            </td>
+            <td style="white-space:nowrap;">
+              {% if s.status == 'pending' %}
+                <form method="POST" action="{{ url_for('field_submission_approve', submission_id=s.id) }}" style="display:inline;" onsubmit="return confirm('Approve this submission and create a Purchase?');">
+                  <input type="hidden" name="return_to" value="#settings-field-intake">
+                  <button type="submit" class="btn btn-primary btn-sm">Approve</button>
+                </form>
+                <form method="POST" action="{{ url_for('field_submission_reject', submission_id=s.id) }}" style="display:inline;" onsubmit="return confirm('Reject this submission?');">
+                  <input type="hidden" name="return_to" value="#settings-field-intake">
+                  <button type="submit" class="btn btn-danger btn-sm">Reject</button>
+                </form>
+              {% elif s.approved_purchase %}
+                <a href="{{ url_for('purchase_edit', purchase_id=s.approved_purchase.id) }}" class="btn btn-secondary btn-sm">View Purchase</a>
+              {% else %}
+                <span class="text-sm" style="color:var(--text-muted);">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="9" class="text-center cell-muted" style="padding:20px;">No submissions yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:18px 0 12px;">Reviewed Submissions</h4>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Submitted</th><th>Supplier</th><th>Status</th><th>Reviewed</th><th>Notes</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in reviewed_field_submissions %}
+          <tr>
+            <td>{{ s.submitted_at.strftime('%m/%d/%y %H:%M') if s.submitted_at else '—' }}</td>
+            <td>{{ s.supplier.name if s.supplier else '—' }}</td>
+            <td>{% if s.status == 'approved' %}<span class="badge badge-green">Approved</span>{% else %}<span class="badge badge-gray">Rejected</span>{% endif %}</td>
+            <td>{{ s.reviewed_at.strftime('%m/%d/%y %H:%M') if s.reviewed_at else '—' }}</td>
+            <td>{{ s.review_notes or '—' }}</td>
+            <td>
+              {% if s.approved_purchase %}
+                <a href="{{ url_for('purchase_edit', purchase_id=s.approved_purchase.id) }}" class="btn btn-secondary btn-sm">View Purchase</a>
+              {% else %}
+                <span class="text-sm" style="color:var(--text-muted);">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-center cell-muted" style="padding:20px;">No reviewed submissions yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Slack Integration -->
+<div class="card" id="settings-slack">
+  <div class="card-header"><h3>Slack Integration</h3></div>
+
+  <form method="POST">
+    <input type="hidden" name="form_type" value="slack">
+    <input type="hidden" name="return_to" value="#settings-slack">
+    <div class="form-group" style="margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--dark-border);">
+      <label>Channel history sync (up to 6)</label>
+      <p class="text-sm" style="color:var(--text-muted);margin-bottom:10px;">
+        These rows control which channels <strong>Maintenance → Sync Slack channel history</strong> pulls from (not the default channel for outbound posts).
+        Enter <code>#channel-name</code> or a channel ID per row. The first run for each channel uses the &ldquo;days back&rdquo; window; later runs use a per-channel cursor (Slack message timestamp). Changing a row clears that channel&rsquo;s resolved ID and cursor.
+        <strong>Use the single Save button below</strong> for both these channels and webhook/token settings.
+      </p>
+      <div style="display:grid;gap:8px;">
+        {% for slot in slack_sync_slots %}
+        <div style="display:grid;grid-template-columns:1fr minmax(140px,auto);gap:10px;align-items:end;">
+          <div class="form-group" style="margin:0;">
+            <label style="font-size:0.75rem;text-transform:none;letter-spacing:0;">Sync channel {{ loop.index }}</label>
+            <input type="text" name="sync_ch_{{ slot.slot_index }}" value="{{ slot.channel_hint or '' }}" placeholder="#example-{{ loop.index }}">
+          </div>
+          <div class="text-sm" style="color:var(--text-muted);margin-bottom:6px;">
+            {% if slot.resolved_channel_id %}<span title="Resolved Slack channel ID">{{ slot.resolved_channel_id }}</span>{% else %}&mdash;{% endif %}
+            {% if slot.last_watermark_ts %}<span title="Last ingested message ts (cursor)"> · {{ slot.last_watermark_ts }}</span>{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px; text-transform:none; letter-spacing:0; font-size:0.85rem; color:var(--text-secondary);">
+        <input type="checkbox" name="slack_enabled" {% if system_settings.get('slack_enabled', '0') in ('1','true','yes','on') %}checked{% endif %}>
+        Enable Slack integration
+      </label>
+    </div>
+    <div class="form-row-3">
+      <div class="form-group">
+        <label>Webhook URL (outbound notifications)</label>
+        <input type="text" name="slack_webhook_url" value="{{ system_settings.get('slack_webhook_url', '') }}">
+      </div>
+      <div class="form-group">
+        <label>Signing Secret (verify inbound requests)</label>
+        <input type="text" name="slack_signing_secret" value="{{ system_settings.get('slack_signing_secret', '') }}">
+      </div>
+      <div class="form-group">
+        <label>Bot Token (bidirectional actions)</label>
+        <input type="text" name="slack_bot_token" value="{{ system_settings.get('slack_bot_token', '') }}">
+      </div>
+    </div>
+    <div class="form-row-3">
+      <div class="form-group">
+        <label>Default Channel</label>
+        <input type="text" name="slack_default_channel" value="{{ system_settings.get('slack_default_channel', '') }}" placeholder="#ops-alerts">
+      </div>
+      <div class="form-group"></div>
+      <div class="form-group"></div>
+    </div>
+    <div class="text-sm" style="color:var(--text-muted); margin-bottom:10px;">
+      In your Slack app, set <strong>Event Subscriptions</strong> Request URL to
+      <code>https://&lt;your-site&gt;/api/slack/events</code> (HTTPS).
+      Set <strong>Slash Command</strong> and <strong>Interactivity</strong> to
+      <code>/api/slack/command</code> and <code>/api/slack/interactivity</code>.
+      Use the same <strong>Signing Secret</strong> here as in Slack → Basic Information.
+    </div>
+    <button type="submit" class="btn btn-primary">Save Slack integration</button>
+  </form>
+</div>
+
 <!-- Maintenance -->
-<div class="card">
+<div class="card" id="settings-maintenance">
   <div class="card-header"><h3>Maintenance</h3></div>
   <div style="background:var(--dark);border:1px solid var(--dark-border);border-radius:var(--radius);padding:16px;">
     <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Recalculate Run Costs</h4>
@@ -196,8 +570,61 @@
     </p>
     <form method="POST" action="{{ url_for('settings_recalculate_costs') }}"
           onsubmit="return confirm('Recalculate cost-per-gram for ALL runs? This may take a moment.');">
+      <input type="hidden" name="return_to" value="#settings-maintenance">
       <button type="submit" class="btn btn-secondary btn-sm">Recalculate All Run Costs</button>
     </form>
   </div>
+  <div style="background:var(--dark);border:1px solid var(--dark-border);border-radius:var(--radius);padding:16px;margin-top:12px;">
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Backfill Historical Photo Records</h4>
+    <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:12px;">
+      One-time migration for historical approved field submissions. Creates Supplier Attachments for supplier/license photos and indexes all related images into the Photo Library for searchable audit history.
+    </p>
+    <form method="POST" action="{{ url_for('settings_backfill_photo_assets') }}"
+          onsubmit="return confirm('Run one-time photo backfill for historical approved submissions? This can be run again safely if needed.');">
+      <input type="hidden" name="return_to" value="#settings-maintenance">
+      <button type="submit" class="btn btn-secondary btn-sm">Run Photo Backfill</button>
+    </form>
+  </div>
+  <div style="background:var(--dark);border:1px solid var(--dark-border);border-radius:var(--radius);padding:16px;margin-top:12px;">
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Sync Slack channel history</h4>
+    <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:12px;">
+      Fetches messages via Slack <code>conversations.history</code> for each channel listed under
+      <strong>Settings → Slack Integration → Channel history sync</strong> (up to 6). Only <strong>new</strong>
+      messages (never seen Slack timestamps) are saved. Each channel stores a <strong>last-sync cursor</strong> after a successful run.
+      <strong>Days back</strong> applies only when that channel has <em>no</em> cursor yet (first sync), or after you change/clear a channel row under Slack Integration (which resets its cursor). Otherwise a smaller &ldquo;days back&rdquo; does not shrink an already-ingested window.
+      Invite the bot to each channel and grant OAuth scopes: <code>channels:history</code>, <code>channels:read</code>;
+      for private channels add <code>groups:history</code>, <code>groups:read</code>.
+    </p>
+    <form method="POST" action="{{ url_for('settings_slack_sync_channel') }}" style="display:flex;flex-wrap:wrap;gap:10px;align-items:end;">
+      <input type="hidden" name="return_to" value="#settings-maintenance">
+      <div class="form-group" style="margin:0;">
+        <label>Days back</label>
+        <input type="number" name="sync_days" value="{{ slack_sync_days_pref }}" min="1" max="365" style="width:90px;">
+      </div>
+      <button type="submit" class="btn btn-secondary btn-sm" onclick="return confirm('Fetch Slack history for all configured sync channels? This may take a moment for busy channels.');">Sync Slack channels</button>
+    </form>
+    <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+      <a href="{{ url_for('settings_slack_imports') }}" class="btn btn-secondary btn-sm">View Slack imports</a>
+      <a href="{{ url_for('settings_slack_run_mappings') }}" class="btn btn-secondary btn-sm">Slack → field mappings</a>
+    </div>
+  </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function copyText(elementId) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    const value = el.value || el.textContent || '';
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(value);
+      return;
+    }
+    // Fallback
+    el.focus();
+    el.select && el.select();
+    try { document.execCommand('copy'); } catch (e) {}
+  }
+</script>
 {% endblock %}

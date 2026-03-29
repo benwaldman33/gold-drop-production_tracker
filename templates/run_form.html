@@ -16,12 +16,13 @@
           <input type="date" name="run_date" value="{{ run.run_date.strftime('%Y-%m-%d') if run and run.run_date else today }}" required>
         </div>
         <div class="form-group">
-          <label>Reactor # *</label>
+          <label>Processing reactor # *</label>
           <select name="reactor_number" required>
             <option value="1" {% if run and run.reactor_number == 1 %}selected{% endif %}>Reactor 1</option>
             <option value="2" {% if run and run.reactor_number == 2 %}selected{% endif %}>Reactor 2</option>
             <option value="3" {% if run and run.reactor_number == 3 %}selected{% endif %}>Reactor 3</option>
           </select>
+          <span class="text-sm" style="color:var(--text-muted);">Extraction equipment used for this log.</span>
         </div>
         <div class="form-group">
           <label>Run Type</label>
@@ -39,6 +40,13 @@
 
     <div class="form-section">
       <h4>Source Material</h4>
+      <div class="form-group">
+        <label>Biomass load source (A / B / combined)</label>
+        <input type="text" name="load_source_reactors" value="{{ run.load_source_reactors if run and run.load_source_reactors else '' }}" placeholder="e.g. A, B, A+B" maxlength="120">
+        <span class="text-sm" style="color:var(--text-muted);display:block;margin-top:4px;">
+          Which load reactor(s) this biomass came from (your A/B naming). Larger loads (e.g. ~200 lb) often combine A+B; smaller (e.g. ≤100 lb) may be a single letter. Optional but recommended for yield attribution.
+        </span>
+      </div>
       <div id="lot-container" class="lot-inputs">
         {% if run and run.inputs.count() > 0 %}
           {% for inp in run.inputs %}
@@ -79,8 +87,8 @@
           <input type="number" name="bio_in_reactor_lbs" value="{{ run.bio_in_reactor_lbs if run and run.bio_in_reactor_lbs else '' }}" step="0.1" required>
         </div>
         <div class="form-group">
-          <label>Bio in House (lbs)</label>
-          <input type="number" name="bio_in_house_lbs" value="{{ run.bio_in_house_lbs if run and run.bio_in_house_lbs else '' }}" step="0.1">
+          <label>Bio in House (auto from inventory)</label>
+          <input type="number" value="{{ run.bio_in_house_lbs if run and run.bio_in_house_lbs else '' }}" step="0.1" disabled>
         </div>
         <div class="form-group">
           <label>Butane in House (lbs)</label>
@@ -157,6 +165,11 @@
       <form method="POST" action="{{ url_for('run_delete', run_id=run.id) }}" style="display:inline;" onsubmit="return confirm('Delete this run?');">
         <button type="submit" class="btn btn-danger">Delete Run</button>
       </form>
+      {% if current_user.is_super_admin %}
+      <form method="POST" action="{{ url_for('run_hard_delete', run_id=run.id) }}" style="display:inline;" onsubmit="return confirm('Hard delete this run permanently?');">
+        <button type="submit" class="btn btn-secondary">Hard Delete</button>
+      </form>
+      {% endif %}
       {% endif %}
       <a href="{{ url_for('runs_list') }}" class="btn btn-secondary">Cancel</a>
       <button type="submit" class="btn btn-primary">Save Run</button>

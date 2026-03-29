@@ -7,15 +7,43 @@
     {% if current_user.can_edit %}
     <a href="{{ url_for('biomass_new') }}" class="btn btn-primary">+ New Availability</a>
     {% endif %}
-    <a href="{{ url_for('export_csv', entity='biomass') }}" class="btn btn-secondary">Export CSV</a>
+    <a href="{{ url_for('export_csv', entity='biomass', status=stage_filter, supplier_id=supplier_filter, start_date=start_date, end_date=end_date, strain=strain_filter) }}" class="btn btn-secondary">Export CSV</a>
   </div>
+</div>
+
+<div class="card" style="margin-bottom:12px;">
+  <form method="GET" style="display:grid;grid-template-columns:180px 160px 160px 1fr auto;gap:8px;align-items:end;">
+    <div class="form-group" style="margin:0;">
+      <label>Supplier</label>
+      <select name="supplier_id">
+        <option value="">All suppliers</option>
+        {% for s in suppliers %}
+          <option value="{{ s.id }}" {% if supplier_filter == s.id %}selected{% endif %}>{{ s.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>Start Date</label>
+      <input type="date" name="start_date" value="{{ start_date }}">
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>End Date</label>
+      <input type="date" name="end_date" value="{{ end_date }}">
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>Strain Contains</label>
+      <input type="text" name="strain" value="{{ strain_filter }}">
+    </div>
+    <input type="hidden" name="stage" value="{{ stage_filter }}">
+    <button type="submit" class="btn btn-secondary">Apply Filters</button>
+  </form>
 </div>
 
 <div class="view-toggle">
   <div class="btn-group">
-    <a href="?stage=" class="btn {% if not stage_filter %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">All</a>
+    <a href="?stage=&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&strain={{ strain_filter }}" class="btn {% if not stage_filter %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">All</a>
     {% for s in ['declared','testing','committed','delivered','cancelled'] %}
-      <a href="?stage={{ s }}" class="btn {% if stage_filter == s %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">{{ s.replace('_',' ').title() }}</a>
+      <a href="?stage={{ s }}&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&strain={{ strain_filter }}" class="btn {% if stage_filter == s %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">{{ s.replace('_',' ').title() }}</a>
     {% endfor %}
   </div>
 </div>

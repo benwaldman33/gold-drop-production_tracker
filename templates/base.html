@@ -39,6 +39,9 @@
         <a href="{{ url_for('strains_list') }}" class="{% if request.endpoint == 'strains_list' %}active{% endif %}">
           <span class="icon">🧬</span><span>Strains</span>
         </a>
+        <a href="{{ url_for('photos_library') }}" class="{% if request.endpoint == 'photos_library' %}active{% endif %}">
+          <span class="icon">🖼️</span><span>Photo Library</span>
+        </a>
         {% if current_user.is_super_admin %}
         <a href="{{ url_for('settings') }}" class="{% if request.endpoint == 'settings' %}active{% endif %}">
           <span class="icon">⚙️</span><span>Settings</span>
@@ -72,5 +75,24 @@
     </main>
   </div>
   {% block scripts %}{% endblock %}
+  <script>
+    (function () {
+      const scrollKey = "gd-scroll:" + window.location.pathname + window.location.search + window.location.hash;
+      const savedY = sessionStorage.getItem(scrollKey);
+      if (savedY !== null) {
+        window.scrollTo(0, parseInt(savedY, 10) || 0);
+        sessionStorage.removeItem(scrollKey);
+      }
+      const saveScroll = function () {
+        sessionStorage.setItem(scrollKey, String(window.scrollY || window.pageYOffset || 0));
+      };
+      window.addEventListener("beforeunload", saveScroll);
+      document.addEventListener("submit", function (event) {
+        if (event.target && event.target.tagName === "FORM") {
+          saveScroll();
+        }
+      }, true);
+    })();
+  </script>
 </body>
 </html>

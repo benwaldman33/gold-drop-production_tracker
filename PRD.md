@@ -68,6 +68,25 @@ Tracks availability before it becomes a Purchase. Key stages:
 - `cancelled`
 
 It may link **one-to-one** to a Purchase once committed/delivered/cancelled.
+It can also include optional **field photos** (multiple images) captured at intake.
+
+### Field intake submissions
+Field users can submit data through secure links for:
+- Biomass availability declarations
+- Purchase requests (including multiple lot lines)
+
+Both field forms support optional photo uploads:
+- Allowed formats: `.jpg`, `.jpeg`, `.png`, `.webp`, `.heic`, `.heif`
+- Max file size: 20 MB per photo
+- Files are stored under `static/uploads/field/` and referenced by relative path in JSON fields
+
+Field purchase intake requires/accepts:
+- Purchase date, expected delivery date, harvest date
+- Storage note and license information text
+- Queue placement (`aggregate`, `indoor`, `outdoor`)
+- Testing/COA status text
+- Separate image categories for supplier/license docs, biomass photos, and testing/COA photos
+- Lot line strain and lot line weight are optional in field intake (at least one lot row can still be submitted for context)
 
 ### Purchases (batch-level financial/receiving record)
 Represents the committed/delivered batch. Contains:
@@ -107,11 +126,13 @@ Fields:
 - Declared $/lb (>= 0, optional)
 - Estimated potency % (0–100, optional)
 - Strain name (optional)
+- Photos (optional, multiple images)
 
 Acceptance criteria:
 - User can create a record in stage `declared`.
 - Validation errors show friendly messages; no stack traces are flashed.
 - Audit log entry is written for create/update/delete.
+- Invalid photo type or oversized photo shows a friendly validation message.
 
 #### Testing
 Fields:
@@ -143,6 +164,33 @@ Audit requirements:
 ---
 
 ### 2) Purchases workflow
+#### Field purchase submissions
+Secure field links can submit purchase requests with:
+- Supplier, date, estimated potency, $/lb, notes
+- One or more lot lines (weight required, strain optional)
+- Optional categorized photos (supplier/license, biomass, testing/COA)
+
+Review requirements:
+- Pending table only shows unreviewed submissions.
+- Reviewed submissions are retained in a separate history table.
+- Admin review table displays categorized submission photo thumbnails when present.
+- Clicking a thumbnail opens the full image in a new tab.
+- On approval, supplier/license photos are promoted into supplier attachments for persistent supplier document review.
+- On approval, biomass/COA photos are retained as purchase-linked audit media.
+
+Photo library requirements:
+- The app provides a central photo/media library view.
+- Library supports filtering by supplier, purchase, and category.
+- Library supports free-text search against tags/title/path metadata.
+- Assets are indexed from field submissions, supplier attachments, and lab test uploads.
+- PDFs should remain accessible in the library with non-image preview handling.
+
+Delete/cleanup requirements:
+- Runs and purchases support soft delete for operational safety.
+- Super admin can hard-delete runs/purchases for sandbox cleanup.
+- Revoked/expired field tokens can be removed from Settings.
+- User accounts remain disable-first; hard delete is blocked when audit history exists.
+
 #### Batch ID generation
 - Batch IDs are **unique** and **human-readable**.
 - Default format: `PREFIX-DDMONYY-WEIGHT` (example `FARML-15FEB26-200`)
@@ -244,6 +292,8 @@ When enabled, Dashboard/Supplier/Strain analytics:
 Acceptance criteria:
 - Dashboard shows a banner when the filter is enabled.
 - Supplier and Strain pages do not break under group-by queries when filter is enabled.
+- Dashboard includes week-to-date quick metrics (lbs ran, dry THCA, dry HTE).
+- Dashboard includes best-yielding supplier month-over-month view.
 
 ---
 
@@ -258,6 +308,136 @@ Critical requirements:
 - Biomass create/update/delete actions must be logged.
 - Purchase create/update/delete actions must be logged.
 - Purchases created/updated indirectly via Biomass Pipeline must also generate purchase audit log entries indicating source = biomass_pipeline and biomass_id.
+- Purchase and supplier media must remain traceable from source submission/document to final record context.
+
+## Maintenance & Backfill Requirements
+- Super Admin can run a one-time historical media backfill from Settings.
+- Backfill processes approved field submissions and:
+  - creates missing supplier attachments for supplier/license images,
+  - creates searchable media index records for supplier/purchase audit photos.
+- Backfill must be idempotent (safe to re-run without duplicating records).
+
+---
+
+## Integrations — Slack
+- **Configuration:** Super Admin stores webhook URL, signing secret, bot token, and default channel in Settings. Outbound notifications post when integration is enabled.
+- **Channel history sync (admin tooling):** Super Admin configures up to **six** Slack channels (by `#name` or channel ID) under **Slack Integration → Channel history sync**, then runs **Maintenance → Sync Slack channel history**. The sync uses Slack `conversations.history`, dedupes messages by **channel ID + message `ts`**, and stores rows for review (yield/production-style parsing hints); it does **not** auto-create Run records. **First sync** for each configured channel uses a configurable rolling window (**Days back**). **Subsequent syncs** use a **per-channel cursor** (last ingested message timestamp / watermark) so each channel incrementally fetches only newer messages. Editing a channel hint clears that slot’s resolved ID and cursor. New installs seed sync slot 0 from **Default Channel** when no sync rows exist yet.
+- **Inbound HTTP endpoints (no user session):** requests must be verified with Slack’s signing secret (HMAC).
+  - **Slash commands:** `POST /api/slack/command`
+  - **Interactivity:** `POST /api/slack/interactivity`
+  - **Events API:** `POST /api/slack/events` — must respond to `url_verification` with JSON `{ "challenge": "<value>" }`; must acknowledge `event_callback` within Slack’s timeout (hook for future channel/message automation).
+- **Production:** Event Subscriptions Request URL must use **HTTPS** on the public hostname nginx serves.
+
+### Proposed: Field mapping control panel (phased roadmap)
+
+Super Admins need to **configure** how parsed Slack fields (`derived_json` / `message_kind`) relate to operational entities without code changes. The following phases are **proposed**; scope and sequencing may be adjusted after Phase 1 validation.
+
+#### Problem statement
+
+- Today, synced Slack messages are stored in `slack_ingested_messages` with **classifier + regex-derived hints** (`yield_report`, `production_log`, `unknown`). They **do not** create or update Runs, Purchases, Biomass, Inventory, Costs, Suppliers, Strains, or Photo Library records.
+- Operations need a **dashboard / control panel** to define **mappings** (source Slack keys → target entity + field + optional transform) and to revisit those mappings as templates and business rules evolve.
+
+#### Guiding principles
+
+- **Configurable**: mappings editable in-app (Super Admin); persisted (e.g. JSON in `SystemSetting` and/or normalized tables as complexity grows).
+- **Safe by default**: Phase 1 is **preview-only**; no silent bulk writes to core operational tables.
+- **Idempotent**: later phases must avoid duplicate application of the same Slack message (`channel_id` + `message_ts`) unless explicitly re-run with audit.
+- **Auditable**: any apply action logs **who**, **when**, **which import row**, and **what** changed (AuditLog or dedicated apply log).
+
+---
+
+#### Phase 1 — Mapping catalog + preview (no writes to Runs et al.)
+
+**Goal:** Prove value and correctness before automating data entry.
+
+**Requirements**
+
+1. **Mapping configuration UI** (Super Admin), minimal first slice:
+   - Support rules scoped by **`message_kind`** (`yield_report`, `production_log`, and optionally `unknown` / catch-all).
+   - Each rule: **source key** (from `derived_json`, e.g. `strain`, `wet_thca_g`, `bio_lbs`, `reactor`) → **target descriptor**: entity name (initial focus **Run** only) + **logical field** (align with Run model / form fields operators care about).
+   - Optional **transform** (v1): passthrough, numeric scale, prefix/suffix string, map `message_ts` to a suggested **run date** (display only in preview).
+   - Ordered list; later rules may override earlier (document resolution order).
+
+2. **Preview on Slack imports (or linked screen):**
+   - For a selected `SlackIngestedMessage`, compute and display **“would-be”** field values from active mappings + `derived_json` + `message_ts`.
+   - Show **unmapped** source keys and **unfilled** required Run fields so gaps are obvious.
+   - **No** `INSERT`/`UPDATE` to `runs`, `purchases`, `biomass_availabilities`, etc.
+
+**Out of scope for Phase 1**
+
+- Entity resolution (matching Slack `source` / `strain` text to Supplier ID or PurchaseLot ID).
+- Automatic apply, scheduling, Photo Library file ingest from Slack uploads.
+- Full coverage of Purchases, Costs, Biomass, Inventory, Strains, Suppliers (beyond what is needed to **describe** a Run preview).
+
+**Success criteria**
+
+- Super Admin can add/edit/disable mapping rules without a deploy.
+- Preview output is **repeatable** and matches documented rule order.
+- No production data mutation from Phase 1 alone.
+
+**Implementation (shipped):** Super Admin → **Settings → Slack → field mappings** (`/settings/slack-run-mappings`): JSON rule list stored as `SystemSetting` `slack_run_field_mappings` (seeded on first `init_db`). Each rule may set optional **`destination`** (`run`, `biomass`, `purchase`, `inventory`, `photo_library`, `supplier`, `strain`, `cost`); omitting it means **`run`**. **Run** targets use the known Run preview field allowlist; other destinations store a **snake_case target label** until that module gains a preview/apply workflow. **Slack imports** adds **Run preview** per row (`/settings/slack-imports/<id>/preview`) showing mapped Run fields only, unmapped derived keys (after any destination consumes a source), and gaps vs recommended `run_date` / `reactor_number` / `bio_in_reactor_lbs`.
+
+---
+
+#### Phase 2 — Manual apply + linkage + idempotency
+
+**Goal:** Let trusted users **promote** a reviewed import row into operational records with explicit consent.
+
+**Requirements**
+
+1. **Apply actions** (from Slack import row or preview):
+   - Primary v1 target: **Create Run (draft or committed)** or **Open Run form prefilled** from preview payload (product choice: draft record vs redirect to edit form with query params / session—document in implementation).
+   - Store **backlink**: e.g. `slack_import_applied_at`, `slack_import_message_ts`, `slack_import_channel_id` on Run (or junction table) to detect **already applied** rows.
+
+2. **Idempotency:**
+   - Block or warn on **second apply** of the same Slack `channel_id` + `message_ts` unless Super Admin explicitly **re-applies** (with audit).
+
+3. **Audit:**
+   - `AuditLog` (or equivalent) for every apply: user, import row id, target entity type/id, summary JSON.
+
+**Out of scope for Phase 2 (unless trivial)**
+
+- Bulk apply hundreds of rows in one click without review.
+- Full Biomass/Purchase/Inventory creation from one Slack message (unless a narrow, specified workflow is added).
+
+**Success criteria**
+
+- Operators can take a **single** import row from preview to a **real** Run with traceability.
+- Duplicate apply is prevented or clearly warned.
+
+---
+
+#### Phase 3 — Resolution, breadth, optional automation
+
+**Goal:** Reduce manual matching work and extend mapping beyond Runs where justified.
+
+**Requirements** (prioritize by business need)
+
+1. **Entity resolution strategies** (configurable per mapping or global defaults):
+   - Match Slack `source` / supplier-like strings to **Supplier** (exact, fuzzy, manual pick list in UI).
+   - Match `strain` to **Strain** / **PurchaseLot** context where applicable.
+   - Clarify behavior when **no match**: block apply, create placeholder note, or require manual selection.
+
+2. **Additional entity targets** (as separate mapping rules):
+   - **Purchases** / **Biomass Pipeline** / **Inventory**-related notes or fields (many may be “append note” or “suggested follow-up” rather than strict column mapping).
+   - **Costs**: conservative design—likely **suggestions** or notes unless product defines a clear Cost Entry shape from Slack.
+   - **Photo Library**: only if Slack posts include **usable file URLs or file IDs** and legal/retention policies allow ingest; scope separately.
+
+3. **Optional automation** (off by default):
+   - Post-sync hook: “auto-preview queue” or “auto-create draft Run” for messages matching strict rules, with notification and rollback path.
+
+**Success criteria**
+
+- Measurable reduction in manual keystrokes vs Phase 2 for the same channel templates.
+- Documented limits: which Slack templates are supported end-to-end vs preview-only.
+
+---
+
+#### Cross-cutting (all phases)
+
+- **Security:** Super Admin for mapping config; apply actions at least **editor** or **admin** as appropriate.
+- **Documentation:** USER_MANUAL + ENGINEERING describe source keys (`_derive_slack_production_message`), rule schema, and preview vs apply semantics.
+- **Migration:** V1 mapping storage backward-compatible (default rules empty → preview shows raw `derived_json` only).
 
 ---
 
@@ -276,6 +456,7 @@ Critical requirements:
 ---
 
 ## Future Improvements (Roadmap)
+- **Slack → operational mapping:** phased roadmap under **Integrations — Slack** → **Proposed: Field mapping control panel (phased roadmap)** (Phase 1: mapping UI + preview; Phase 2: manual apply; Phase 3: resolution + breadth + optional automation).
 - Consider consolidating Biomass Pipeline into Purchases by expanding purchase statuses to include pre-commitment stages (declared/testing), reducing duplication and sync logic.
 - Add richer analytics screens (time series, variance by reactor/operator).
 - Add COA upload + parsing, and stronger validation rules around potency/pricing.

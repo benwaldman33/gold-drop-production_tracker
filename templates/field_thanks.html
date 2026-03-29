@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Field Intake — Submitted</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <div class="login-page">
+    <div class="login-box" style="max-width:560px;">
+      <h1>Submitted</h1>
+      <p class="subtitle">Field Intake</p>
+
+      <div class="card" style="padding:14px 16px; margin-top:16px;">
+        {% if kind == 'purchase' %}
+          <div style="color:var(--text-primary); font-weight:600;">Purchase submission sent for approval.</div>
+          <div class="text-sm" style="color:var(--text-muted); margin-top:6px; line-height:1.6;">
+            An admin will review it in Settings → Field Submissions.
+          </div>
+        {% else %}
+          <div style="color:var(--text-primary); font-weight:600;">Biomass availability submitted.</div>
+          <div class="text-sm" style="color:var(--text-muted); margin-top:6px; line-height:1.6;">
+            It will appear in the Biomass Pipeline immediately.
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="btn-group" style="margin-top:14px; display:flex;">
+        <a class="btn btn-secondary" style="flex:1; justify-content:center;" href="{{ url_for('field_home', t=token_value) }}">Back to Field Home</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+

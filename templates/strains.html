@@ -3,9 +3,12 @@
 {% block content %}
 <div class="page-header">
   <h2>Strain Performance</h2>
-  <div class="period-selector">
-    <a href="?view=all" class="{% if view == 'all' %}active{% endif %}">All Time</a>
-    <a href="?view=90" class="{% if view == '90' %}active{% endif %}">Last 90 Days</a>
+  <div class="btn-group">
+    <div class="period-selector">
+      <a href="?view=all" class="{% if view == 'all' %}active{% endif %}">All Time</a>
+      <a href="?view=90" class="{% if view == '90' %}active{% endif %}">Last 90 Days</a>
+    </div>
+    <a href="{{ url_for('export_csv', entity='strains') }}" class="btn btn-secondary">Export CSV</a>
   </div>
 </div>
 

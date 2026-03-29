@@ -3,9 +3,27 @@
 {% block content %}
 <div class="page-header">
   <h2>Operational Costs</h2>
-  {% if current_user.can_edit %}
-  <a href="{{ url_for('cost_new') }}" class="btn btn-primary">+ New Cost Entry</a>
-  {% endif %}
+  <div class="btn-group">
+    {% if current_user.can_edit %}
+    <a href="{{ url_for('cost_new') }}" class="btn btn-primary">+ New Cost Entry</a>
+    {% endif %}
+    <a href="{{ url_for('export_csv', entity='costs', status=cost_type, start_date=start_date, end_date=end_date) }}" class="btn btn-secondary">Export CSV</a>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:12px;">
+  <form method="GET" style="display:grid;grid-template-columns:160px 160px auto;gap:8px;align-items:end;">
+    <div class="form-group" style="margin:0;">
+      <label>Start Date</label>
+      <input type="date" name="start_date" value="{{ start_date }}">
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>End Date</label>
+      <input type="date" name="end_date" value="{{ end_date }}">
+    </div>
+    <input type="hidden" name="type" value="{{ cost_type }}">
+    <button type="submit" class="btn btn-secondary">Apply Filters</button>
+  </form>
 </div>
 
 <div class="summary-row">
@@ -29,10 +47,10 @@
 
 <div class="card" style="padding:12px 16px;">
   <div style="display:flex;gap:8px;">
-    <a href="{{ url_for('costs_list') }}" class="btn btn-sm {% if not cost_type %}btn-primary{% else %}btn-secondary{% endif %}">All</a>
-    <a href="{{ url_for('costs_list', type='solvent') }}" class="btn btn-sm {% if cost_type == 'solvent' %}btn-primary{% else %}btn-secondary{% endif %}">Solvents</a>
-    <a href="{{ url_for('costs_list', type='personnel') }}" class="btn btn-sm {% if cost_type == 'personnel' %}btn-primary{% else %}btn-secondary{% endif %}">Personnel</a>
-    <a href="{{ url_for('costs_list', type='overhead') }}" class="btn btn-sm {% if cost_type == 'overhead' %}btn-primary{% else %}btn-secondary{% endif %}">Overhead</a>
+    <a href="{{ url_for('costs_list', start_date=start_date, end_date=end_date) }}" class="btn btn-sm {% if not cost_type %}btn-primary{% else %}btn-secondary{% endif %}">All</a>
+    <a href="{{ url_for('costs_list', type='solvent', start_date=start_date, end_date=end_date) }}" class="btn btn-sm {% if cost_type == 'solvent' %}btn-primary{% else %}btn-secondary{% endif %}">Solvents</a>
+    <a href="{{ url_for('costs_list', type='personnel', start_date=start_date, end_date=end_date) }}" class="btn btn-sm {% if cost_type == 'personnel' %}btn-primary{% else %}btn-secondary{% endif %}">Personnel</a>
+    <a href="{{ url_for('costs_list', type='overhead', start_date=start_date, end_date=end_date) }}" class="btn btn-sm {% if cost_type == 'overhead' %}btn-primary{% else %}btn-secondary{% endif %}">Overhead</a>
   </div>
 </div>
 
