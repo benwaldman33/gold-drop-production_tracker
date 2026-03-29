@@ -494,6 +494,34 @@
 <!-- Slack Integration -->
 <div class="card" id="settings-slack">
   <div class="card-header"><h3>Slack Integration</h3></div>
+
+  <form method="POST" style="margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--dark-border);">
+    <input type="hidden" name="form_type" value="slack_sync_channels">
+    <input type="hidden" name="return_to" value="#settings-slack">
+    <div class="form-group">
+      <label>Channel history sync (up to 6)</label>
+      <p class="text-sm" style="color:var(--text-muted);margin-bottom:10px;">
+        These rows control which channels <strong>Maintenance → Sync Slack channel history</strong> pulls from (not the default channel for outbound posts).
+        Enter <code>#channel-name</code> or a channel ID per row. The first run for each channel uses the &ldquo;days back&rdquo; window; later runs use a per-channel cursor (Slack message timestamp). Changing a row clears that channel&rsquo;s resolved ID and cursor.
+      </p>
+      <div style="display:grid;gap:8px;">
+        {% for slot in slack_sync_slots %}
+        <div style="display:grid;grid-template-columns:1fr minmax(140px,auto);gap:10px;align-items:end;">
+          <div class="form-group" style="margin:0;">
+            <label style="font-size:0.75rem;text-transform:none;letter-spacing:0;">Sync channel {{ loop.index }}</label>
+            <input type="text" name="sync_ch_{{ slot.slot_index }}" value="{{ slot.channel_hint or '' }}" placeholder="#example-{{ loop.index }}">
+          </div>
+          <div class="text-sm" style="color:var(--text-muted);margin-bottom:6px;">
+            {% if slot.resolved_channel_id %}<span title="Resolved Slack channel ID">{{ slot.resolved_channel_id }}</span>{% else %}&mdash;{% endif %}
+            {% if slot.last_watermark_ts %}<span title="Last ingested message ts (cursor)"> · {{ slot.last_watermark_ts }}</span>{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    <button type="submit" class="btn btn-secondary btn-sm">Save sync channels</button>
+  </form>
+
   <form method="POST">
     <input type="hidden" name="form_type" value="slack">
     <input type="hidden" name="return_to" value="#settings-slack">
@@ -533,33 +561,6 @@
       Use the same <strong>Signing Secret</strong> here as in Slack → Basic Information.
     </div>
     <button type="submit" class="btn btn-primary">Save Slack Settings</button>
-  </form>
-
-  <form method="POST" style="margin-top:20px;padding-top:16px;border-top:1px solid var(--dark-border);">
-    <input type="hidden" name="form_type" value="slack_sync_channels">
-    <input type="hidden" name="return_to" value="#settings-slack">
-    <div class="form-group">
-      <label>Channel history sync (up to 6)</label>
-      <p class="text-sm" style="color:var(--text-muted);margin-bottom:10px;">
-        Enter <code>#channel-name</code> or a channel ID per row. The Maintenance action pulls history for every non-empty row.
-        The first run for each channel uses the &ldquo;days back&rdquo; window; later runs use a per-channel cursor (Slack message timestamp) so only new traffic is scanned. Changing a row clears that channel&rsquo;s resolved ID and cursor.
-      </p>
-      <div style="display:grid;gap:8px;">
-        {% for slot in slack_sync_slots %}
-        <div style="display:grid;grid-template-columns:1fr minmax(140px,auto);gap:10px;align-items:end;">
-          <div class="form-group" style="margin:0;">
-            <label style="font-size:0.75rem;text-transform:none;letter-spacing:0;">Channel {{ loop.index }}</label>
-            <input type="text" name="sync_ch_{{ slot.slot_index }}" value="{{ slot.channel_hint or '' }}" placeholder="#example-{{ loop.index }}">
-          </div>
-          <div class="text-sm" style="color:var(--text-muted);margin-bottom:6px;">
-            {% if slot.resolved_channel_id %}<span title="Resolved Slack channel ID">{{ slot.resolved_channel_id }}</span>{% else %}&mdash;{% endif %}
-            {% if slot.last_watermark_ts %}<span title="Last ingested message ts (cursor)"> · {{ slot.last_watermark_ts }}</span>{% endif %}
-          </div>
-        </div>
-        {% endfor %}
-      </div>
-    </div>
-    <button type="submit" class="btn btn-secondary btn-sm">Save sync channels</button>
   </form>
 </div>
 

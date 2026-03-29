@@ -19,6 +19,7 @@ from flask import (Flask, render_template, request, redirect, url_for, flash,
 from flask_login import (LoginManager, login_user, logout_user, login_required,
                          current_user)
 from sqlalchemy import func, desc, and_, text, select, exists
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from werkzeug.security import generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -3848,7 +3849,15 @@ def api_lots_available():
 
 def init_db():
     """Create tables and seed initial data."""
-    db.create_all()
+    # Each Gunicorn worker imports this module and runs init_db(); concurrent create_all()
+    # races on new tables (e.g. slack_ingested_messages). Treat harmless DDL conflicts as OK.
+    try:
+        db.create_all()
+    except (OperationalError, ProgrammingError) as e:
+        db.session.rollback()
+        err_txt = str(getattr(e, "orig", None) or e).lower()
+        if "already exists" not in err_txt and "duplicate" not in err_txt:
+            raise
     _ensure_sqlite_schema()
 
     # Create default admin if none exists

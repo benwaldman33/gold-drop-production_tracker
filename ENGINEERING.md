@@ -32,3 +32,7 @@ SQLite adds the sync config table in `_ensure_sqlite_schema()`; other engines re
 - `app.py`: `SLACK_SYNC_CHANNEL_SLOTS`, `_ensure_slack_sync_configs`, `_slack_ingest_channel_history`, `settings_slack_sync_channel`, settings handler `slack_sync_channels`.
 - `models.py`: `SlackChannelSyncConfig`, `SlackIngestedMessage`.
 - `templates/settings.html`: Slack card (sync channel form), Maintenance (sync button).
+
+### Gunicorn / multi-worker startup
+
+`init_db()` runs at import time (see bottom of `app.py`). With multiple sync workers, `db.create_all()` can race and one worker may see “table already exists” / duplicate relation. `init_db()` ignores those specific errors and continues; you can also set **`--preload`** on Gunicorn so the app loads once before workers fork (see `golddrop.service` `ExecStart`).
