@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Suppliers{% endblock %}
 {% block content %}
+<div id="supplierListIncompleteBanner" class="supplier-list-incomplete-banner" hidden role="status" aria-live="polite">
+  <span class="supplier-list-incomplete-banner__text"></span>
+</div>
 <div class="page-header">
   <h2>Supplier Performance</h2>
   <div class="btn-group">
@@ -28,15 +31,15 @@
 {% endif %}
 
 {% for ss in supplier_stats %}
-<details class="card" style="margin-bottom:10px;">
-  <summary style="display:flex; align-items:center; justify-content:space-between; cursor:pointer; list-style:none;">
-    <h3 style="text-transform:none;font-size:1.1rem;color:var(--text-primary); margin:0;">
+<div class="card supplier-hover-card" data-profile-incomplete="{{ '1' if ss.profile_incomplete else '0' }}" data-supplier-name="{{ ss.supplier.name|e }}">
+  <div class="supplier-hover-card__header" tabindex="0">
+    <h3 class="supplier-hover-card__title">
       {{ ss.supplier.name }}
       {% if not ss.supplier.is_active %}<span class="badge badge-gray">Inactive</span>{% endif %}
     </h3>
-    <span class="text-sm" style="color:var(--text-muted); margin-right:8px;">{{ ss.all_time.runs }} runs · {{ "{:,.0f}".format(ss.all_time.lbs) }} lbs processed</span>
-  </summary>
-  <div style="margin-top:12px;">
+    <span class="text-sm supplier-hover-card__meta">{{ ss.all_time.runs }} runs · {{ "{:,.0f}".format(ss.all_time.lbs) }} lbs processed</span>
+  </div>
+  <div class="supplier-hover-card__body">
     {% if current_user.can_edit %}
     <div class="btn-group" style="margin-bottom:10px;">
       <a href="{{ url_for('supplier_edit', sid=ss.supplier.id) }}" class="btn btn-secondary btn-sm">Edit</a>
@@ -106,6 +109,68 @@
   <p class="cell-muted text-sm">No runs recorded for this supplier.</p>
   {% endif %}
   </div>
-</details>
+</div>
 {% endfor %}
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var banner = document.getElementById("supplierListIncompleteBanner");
+  var textEl = banner && banner.querySelector(".supplier-list-incomplete-banner__text");
+  var hideTimer = null;
+  function showBannerForCard(card) {
+    if (!banner || !textEl) return;
+    clearTimeout(hideTimer);
+    if (card.getAttribute("data-profile-incomplete") !== "1") {
+      hideBanner();
+      return;
+    }
+    var name = card.getAttribute("data-supplier-name") || "Supplier";
+    textEl.textContent =
+      name +
+      " — profile incomplete: open Edit to add contact name, phone, email, and location.";
+    banner.hidden = false;
+    document.body.classList.add("supplier-incomplete-banner-on");
+  }
+  function hideBanner() {
+    if (!banner) return;
+    clearTimeout(hideTimer);
+    banner.hidden = true;
+    document.body.classList.remove("supplier-incomplete-banner-on");
+  }
+  function scheduleHideBanner() {
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(hideBanner, 150);
+  }
+  var canHover = window.matchMedia("(hover: hover)").matches;
+  document.querySelectorAll(".supplier-hover-card").forEach(function (card) {
+    var header = card.querySelector(".supplier-hover-card__header");
+    if (!header) return;
+    // Always listen for mouse — many “touch” laptops still fire mouseenter; gating on (hover:hover) broke those.
+    card.addEventListener("mouseenter", function () {
+      showBannerForCard(card);
+    });
+    card.addEventListener("mouseleave", function () {
+      scheduleHideBanner();
+    });
+    header.addEventListener("click", function () {
+      if (canHover) return;
+      card.classList.toggle("is-touch-open");
+      if (card.classList.contains("is-touch-open")) {
+        showBannerForCard(card);
+      } else {
+        hideBanner();
+      }
+    });
+    card.addEventListener("focusin", function () {
+      showBannerForCard(card);
+    });
+    card.addEventListener("focusout", function (e) {
+      if (!card.contains(e.relatedTarget)) {
+        scheduleHideBanner();
+      }
+    });
+  });
+})();
+</script>
 {% endblock %}

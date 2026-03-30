@@ -4,7 +4,7 @@
 <div class="page-header">
   <h2>Purchases</h2>
   <div class="btn-group">
-    {% if current_user.can_edit %}
+    {% if current_user.can_edit_purchases %}
     <a href="{{ url_for('purchase_new') }}" class="btn btn-primary">+ New Purchase</a>
     {% endif %}
     <a href="{{ url_for('export_csv', entity='purchases', status=status_filter, start_date=start_date, end_date=end_date, supplier_id=supplier_filter, min_potency=min_potency, max_potency=max_potency) }}" class="btn btn-secondary">Export CSV</a>
@@ -93,7 +93,7 @@
         </td>
         <td>{{ p.lots.count() }} lots</td>
         <td>
-          {% if current_user.can_edit %}
+          {% if current_user.can_edit_purchases %}
           <a href="{{ url_for('purchase_edit', purchase_id=p.id) }}" class="btn btn-secondary btn-sm">Edit</a>
           {% endif %}
         </td>

@@ -77,7 +77,8 @@ Field users can submit data through secure links for:
 
 Both field forms support optional photo uploads:
 - Allowed formats: `.jpg`, `.jpeg`, `.png`, `.webp`, `.heic`, `.heif`
-- Max file size: 20 MB per photo
+- Max file size: 50 MB per photo (field intake); 50 MB per file for supplier lab/attachment uploads, photo library uploads, and purchase supporting documents
+- Max **count** per photo bucket (default 30 per category on purchase intake; same for the single biomass-availability bucket): overridable via `FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET`. UI uses **one native file input per photo** (required for iOS / many WebViews); **Add photo** adds a row; **Take or choose photo** opens the picker; **Remove** drops the row before submit.
 - Files are stored under `static/uploads/field/` and referenced by relative path in JSON fields
 
 Field purchase intake requires/accepts:

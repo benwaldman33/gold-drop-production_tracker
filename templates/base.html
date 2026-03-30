@@ -16,7 +16,10 @@
       </div>
       <div class="sidebar-nav">
         <a href="{{ url_for('dashboard') }}" class="{% if request.endpoint == 'dashboard' %}active{% endif %}">
-          <span class="icon">📊</span><span>Dashboard</span>
+          <span class="icon">📊</span><span>Extraction</span>
+        </a>
+        <a href="{{ url_for('biomass_purchasing_dashboard') }}" class="{% if request.endpoint == 'biomass_purchasing_dashboard' %}active{% endif %}">
+          <span class="icon">🛒</span><span>Biomass purchasing</span>
         </a>
         <a href="{{ url_for('runs_list') }}" class="{% if request.endpoint in ('runs_list', 'run_new', 'run_edit') %}active{% endif %}">
           <span class="icon">⚗️</span><span>Runs</span>
@@ -47,6 +50,11 @@
           <span class="icon">💬</span><span>Slack imports</span>
         </a>
         {% endif %}
+        {% if current_user.is_authenticated and current_user.is_super_buyer %}
+        <a href="{{ url_for('field_approvals') }}" class="{% if request.endpoint == 'field_approvals' %}active{% endif %}">
+          <span class="icon">✅</span><span>Field approvals</span>
+        </a>
+        {% endif %}
         {% if current_user.is_super_admin %}
         <a href="{{ url_for('settings') }}" class="{% if request.endpoint == 'settings' %}active{% endif %}">
           <span class="icon">⚙️</span><span>Settings</span>
@@ -56,6 +64,55 @@
           <span class="icon">📥</span><span>Import</span>
         </a>
       </div>
+      {% if current_user.is_authenticated %}
+      <div class="sidebar-biomass-budget" aria-label="Weekly biomass purchasing">
+        <div class="sidebar-biomass-budget-title">This week <span style="opacity:0.75;font-weight:400;">({{ biomass_sidebar_week_label }})</span></div>
+        {% if biomass_purchase_weekly_budget_usd and biomass_purchase_weekly_budget_usd > 0 %}
+        {% set pct_usd = (biomass_purchase_week_spend / biomass_purchase_weekly_budget_usd * 100) if biomass_purchase_weekly_budget_usd > 0 else 0 %}
+        {% set pct_capped = 100 if pct_usd > 100 else pct_usd %}
+        <div class="sidebar-biomass-budget-row">
+          <span>Spend</span>
+          <span class="text-mono">${{ "{:,.0f}".format(biomass_purchase_week_spend) }} / ${{ "{:,.0f}".format(biomass_purchase_weekly_budget_usd) }}</span>
+        </div>
+        <div class="sidebar-biomass-budget-bar" title="Share of weekly budget"><span class="sidebar-biomass-budget-bar-fill" style="width: {{ '%.1f'|format(pct_capped) }}%;"></span></div>
+        {% else %}
+        <div class="sidebar-biomass-budget-row text-sm">
+          <span>Spend (week)</span>
+          <span class="text-mono">${{ "{:,.0f}".format(biomass_purchase_week_spend) }}</span>
+        </div>
+        {% if current_user.is_super_admin %}
+        <div class="text-sm" style="color:var(--text-muted); margin-top:4px;"><a href="{{ url_for('settings') }}#settings-biomass-budget">Set weekly $ target</a></div>
+        {% endif %}
+        {% endif %}
+        {% if biomass_purchase_weekly_target_lbs and biomass_purchase_weekly_target_lbs > 0 %}
+        {% set pct_lb = (biomass_purchase_week_lbs / biomass_purchase_weekly_target_lbs * 100) if biomass_purchase_weekly_target_lbs > 0 else 0 %}
+        {% set pct_lb_c = 100 if pct_lb > 100 else pct_lb %}
+        <div class="sidebar-biomass-budget-row">
+          <span>Lbs</span>
+          <span class="text-mono">{{ "{:,.0f}".format(biomass_purchase_week_lbs) }} / {{ "{:,.0f}".format(biomass_purchase_weekly_target_lbs) }}</span>
+        </div>
+        <div class="sidebar-biomass-budget-bar" title="Share of weekly lbs target"><span class="sidebar-biomass-budget-bar-fill" style="width: {{ '%.1f'|format(pct_lb_c) }}%; opacity:0.85;"></span></div>
+        {% else %}
+        <div class="sidebar-biomass-budget-row text-sm">
+          <span>Lbs purchased</span>
+          <span class="text-mono">{{ "{:,.0f}".format(biomass_purchase_week_lbs) }}</span>
+        </div>
+        {% endif %}
+        {% if biomass_purchase_weekly_target_potency_pct %}
+        <div class="sidebar-biomass-budget-row text-sm" style="margin-top:8px;">
+          <span>Target %</span>
+          <span class="text-mono">{{ "{:.1f}".format(biomass_purchase_weekly_target_potency_pct) }}</span>
+        </div>
+        {% endif %}
+        {% if biomass_purchase_week_avg_potency_pct is not none %}
+        <div class="sidebar-biomass-budget-row text-sm">
+          <span>Avg %</span>
+          <span class="text-mono">{{ "{:.1f}".format(biomass_purchase_week_avg_potency_pct) }}</span>
+        </div>
+        {% endif %}
+        <div class="text-sm" style="margin-top:8px;"><a href="{{ url_for('biomass_purchasing_dashboard') }}">Full dashboard →</a></div>
+      </div>
+      {% endif %}
       <div class="sidebar-user">
         <span>{{ current_user.display_name }}</span>
         <span class="role">{{ current_user.role.replace('_', ' ') }}</span>

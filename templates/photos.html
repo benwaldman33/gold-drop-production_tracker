@@ -5,6 +5,64 @@
   <h2>Photo Library</h2>
 </div>
 
+{% if current_user.can_edit %}
+<div class="card">
+  <div class="card-header"><h3>Upload to library</h3></div>
+  <p class="text-sm" style="color:var(--text-muted);margin:0 0 12px 0;">
+    Images and PDFs, up to 50 MB per file. Optionally link to a supplier and/or purchase for filtering. Uploaded items appear in the grid below and in search.
+  </p>
+  <form method="POST" action="{{ url_for('photos_upload') }}" enctype="multipart/form-data" class="form-section">
+    <input type="hidden" name="ret_q" value="{{ q }}">
+    <input type="hidden" name="ret_supplier_id" value="{{ supplier_id or '' }}">
+    <input type="hidden" name="ret_purchase_id" value="{{ purchase_id or '' }}">
+    <input type="hidden" name="ret_category" value="{{ category or '' }}">
+    <div class="form-row-3">
+      <div class="form-group">
+        <label>Files *</label>
+        <input type="file" name="files" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif" required>
+      </div>
+      <div class="form-group">
+        <label>Category</label>
+        <select name="category">
+          {% for c in ['other', 'supporting_doc', 'contract', 'invoice', 'coa', 'lab_result', 'supplier_doc', 'supplier_license', 'biomass'] %}
+          <option value="{{ c }}">{{ c.replace('_', ' ').title() }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Title (optional)</label>
+        <input type="text" name="title" placeholder="Short label">
+      </div>
+    </div>
+    <div class="form-row-3">
+      <div class="form-group">
+        <label>Tags (optional, comma-separated)</label>
+        <input type="text" name="tags" placeholder="license, indoor">
+      </div>
+      <div class="form-group">
+        <label>Link supplier (optional)</label>
+        <select name="supplier_id">
+          <option value="">—</option>
+          {% for s in suppliers %}
+          <option value="{{ s.id }}">{{ s.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Link purchase (optional)</label>
+        <select name="purchase_id">
+          <option value="">—</option>
+          {% for p in purchases %}
+          <option value="{{ p.id }}">{{ p.batch_id or p.id }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">Upload</button>
+  </form>
+</div>
+{% endif %}
+
 <div class="card">
   <form method="GET">
     <div class="form-row-3">
@@ -75,6 +133,14 @@
         <div>Tags: {{ a.tags or '—' }}</div>
         <div class="text-mono" style="font-size:0.72rem;word-break:break-all;">{{ a.file_path }}</div>
       </div>
+      {% if current_user.can_edit and a.source_type in ('manual', 'purchase_upload') %}
+      <form method="POST" action="{{ url_for('photo_asset_delete', asset_id=a.id) }}" style="margin-top:8px;" onsubmit="return confirm('Remove this file from the library? The file will be deleted if nothing else references it.');">
+        <input type="hidden" name="next" value="{{ request.full_path }}">
+        <button type="submit" class="btn btn-danger btn-sm" style="width:100%;">Delete</button>
+      </form>
+      {% elif current_user.can_edit %}
+      <p class="text-sm" style="margin-top:8px;color:var(--text-muted);">Delete via the original workflow (field/supplier/lab).</p>
+      {% endif %}
     </div>
     {% endfor %}
   </div>

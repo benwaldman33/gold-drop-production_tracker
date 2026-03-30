@@ -127,25 +127,37 @@
 
         <div class="form-group">
           <label>Supplier / License Photos (optional)</label>
-          <input type="file" name="supplier_photos" accept="image/*" multiple>
+          <div class="field-photo-bucket" data-field-photo-bucket data-max="{{ field_photo_max|default(30) }}" data-input-name="supplier_photos">
+            <input type="file" name="supplier_photos" class="field-photo-fallback" accept="image/*" multiple>
+            <button type="button" class="btn btn-secondary btn-sm field-photo-add-btn" hidden>Add photo</button>
+            <div class="field-photo-rows"></div>
+          </div>
           <div class="text-sm" style="color:var(--text-muted); margin-top:6px;">
-            Upload docs/licenses for supplier records (JPG, PNG, WEBP, HEIC, HEIF; max 20 MB each).
+            Up to {{ field_photo_max|default(30) }} images (JPG, PNG, WEBP, HEIC, HEIF; max 50 MB each). Tap <strong>Add photo</strong> for each image (opens camera or gallery). Tap <strong>Remove</strong> on a row to unselect it before submitting.
           </div>
         </div>
 
         <div class="form-group">
           <label>Biomass Photos (optional)</label>
-          <input type="file" name="biomass_photos" accept="image/*" multiple>
+          <div class="field-photo-bucket" data-field-photo-bucket data-max="{{ field_photo_max|default(30) }}" data-input-name="biomass_photos">
+            <input type="file" name="biomass_photos" class="field-photo-fallback" accept="image/*" multiple>
+            <button type="button" class="btn btn-secondary btn-sm field-photo-add-btn" hidden>Add photo</button>
+            <div class="field-photo-rows"></div>
+          </div>
           <div class="text-sm" style="color:var(--text-muted); margin-top:6px;">
-            Upload photos of biomass material for this purchase.
+            Same as above: one <strong>Add photo</strong> per picture; <strong>Remove</strong> to drop a row.
           </div>
         </div>
 
         <div class="form-group">
           <label>Testing / COA Photos (optional)</label>
-          <input type="file" name="coa_photos" accept="image/*" multiple>
+          <div class="field-photo-bucket" data-field-photo-bucket data-max="{{ field_photo_max|default(30) }}" data-input-name="coa_photos">
+            <input type="file" name="coa_photos" class="field-photo-fallback" accept="image/*" multiple>
+            <button type="button" class="btn btn-secondary btn-sm field-photo-add-btn" hidden>Add photo</button>
+            <div class="field-photo-rows"></div>
+          </div>
           <div class="text-sm" style="color:var(--text-muted); margin-top:6px;">
-            Upload test result photos/COA screenshots.
+            Same as above: one <strong>Add photo</strong> per picture; <strong>Remove</strong> to drop a row.
           </div>
         </div>
 
@@ -196,6 +208,7 @@
       btn.parentElement.remove();
     }
   </script>
+  <script src="{{ url_for('static', filename='js/field_intake_photos.js') }}?v=2"></script>
 </body>
 </html>
 
