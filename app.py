@@ -275,9 +275,20 @@ def _enforce_weekly_biomass_purchase_limits(purchase: Purchase, new_snap: tuple,
 def _decorate_field_submission_rows(submissions) -> None:
     for s in submissions:
         try:
-            s.lots_count = len(json.loads(s.lots_json or "[]"))
+            lot_rows = json.loads(s.lots_json or "[]")
+            s.lots_count = len(lot_rows)
+            tw = 0.0
+            for row in lot_rows:
+                w = row.get("weight_lbs")
+                if w is not None:
+                    try:
+                        tw += float(w)
+                    except (TypeError, ValueError):
+                        pass
+            s.total_weight_lbs = tw
         except Exception:
             s.lots_count = 0
+            s.total_weight_lbs = 0.0
         try:
             photo_paths = json.loads(s.photos_json or "[]")
             s.photo_paths = [p for p in photo_paths if isinstance(p, str) and p.strip()]
@@ -301,6 +312,9 @@ def _decorate_field_submission_rows(submissions) -> None:
 
 
 def _field_submission_error_redirect():
+    rt = (request.form.get("return_to") or "").strip()
+    if rt == "biomass-purchasing":
+        return redirect(url_for("biomass_purchasing_dashboard"))
     if current_user.is_super_admin:
         return _settings_redirect()
     return redirect(url_for("field_approvals"))
@@ -308,6 +322,8 @@ def _field_submission_error_redirect():
 
 def _field_approval_return_redirect():
     rt = (request.form.get("return_to") or "").strip()
+    if rt == "biomass-purchasing":
+        return redirect(url_for("biomass_purchasing_dashboard"))
     if rt.startswith("#") and current_user.is_super_admin:
         return redirect(url_for("settings") + rt)
     return redirect(url_for("field_approvals"))
@@ -2435,6 +2451,131 @@ def _get_or_create_supplier_from_field_form(token):
     return sup, True
 
 
+def _get_or_create_supplier_from_desk_purchase_form():
+    """Desk/office purchase proposal: same rules as field form, logged-in user in audit trail."""
+    supplier_id = (request.form.get("supplier_id") or "").strip()
+    new_name = (request.form.get("new_supplier_name") or "").strip()
+
+    if supplier_id:
+        sup = db.session.get(Supplier, supplier_id)
+        if not sup:
+            raise ValueError("Selected supplier was not found.")
+        return sup, False
+
+    if not new_name:
+        raise ValueError("Supplier is required (pick one or enter a new supplier name).")
+
+    new_location = (request.form.get("new_supplier_location") or "").strip() or None
+    new_phone = (request.form.get("new_supplier_phone") or "").strip() or None
+    new_email = (request.form.get("new_supplier_email") or "").strip() or None
+
+    existing = Supplier.query.filter(func.lower(Supplier.name) == new_name.lower()).first()
+    if existing:
+        return existing, False
+
+    sup = Supplier(
+        name=new_name,
+        location=new_location,
+        contact_phone=new_phone,
+        contact_email=new_email,
+        is_active=True,
+        notes="Created via office purchase intake",
+    )
+    db.session.add(sup)
+    db.session.flush()
+    log_audit(
+        "create",
+        "supplier",
+        sup.id,
+        details=json.dumps({
+            "source": "desk_purchase_intake",
+            "name": new_name,
+            "location": new_location,
+            "contact_phone": new_phone,
+            "contact_email": new_email,
+        }),
+        user_id=current_user.id,
+    )
+    return sup, True
+
+
+def _parse_field_purchase_intake_form_to_submission(supplier: Supplier, *, source_token_id: str | None):
+    """Build a FieldPurchaseSubmission from the shared HTTP form (field + desk). Not added to session."""
+    pd = (request.form.get("purchase_date") or "").strip()
+    if not pd:
+        raise ValueError("Purchase Date is required.")
+    purchase_date = datetime.strptime(pd, "%Y-%m-%d").date()
+
+    dd = (request.form.get("delivery_date") or "").strip()
+    delivery_date = datetime.strptime(dd, "%Y-%m-%d").date() if dd else None
+    hd = (request.form.get("harvest_date") or "").strip()
+    harvest_date = datetime.strptime(hd, "%Y-%m-%d").date() if hd else None
+
+    ep = (request.form.get("estimated_potency_pct") or "").strip()
+    estimated_potency = float(ep) if ep else None
+    if estimated_potency is not None and not (0 <= estimated_potency <= 100):
+        raise ValueError("Estimated Potency must be between 0 and 100.")
+
+    ppl = (request.form.get("price_per_lb") or "").strip()
+    price_per_lb = float(ppl) if ppl else None
+    if price_per_lb is not None and price_per_lb < 0:
+        raise ValueError("Price/lb cannot be negative.")
+    queue_placement = ((request.form.get("queue_placement") or "").strip() or None)
+    if queue_placement and queue_placement not in ("aggregate", "indoor", "outdoor"):
+        raise ValueError("Queue Placement must be Aggregate, Indoor, or Outdoor.")
+
+    lot_strains = request.form.getlist("lot_strains[]")
+    lot_weights = request.form.getlist("lot_weights[]")
+    lots = []
+    for strain, w in zip(lot_strains, lot_weights):
+        strain = (strain or "").strip()
+        w = (w or "").strip()
+        if not strain and not w:
+            continue
+        if w:
+            try:
+                weight = float(w)
+            except ValueError:
+                raise ValueError("Lot weight must be a number.")
+            if weight <= 0:
+                raise ValueError("Lot weight must be greater than 0.")
+        else:
+            weight = None
+        lots.append({"strain": strain or None, "weight_lbs": weight})
+
+    supplier_photos = request.files.getlist("supplier_photos")
+    biomass_photos = request.files.getlist("biomass_photos")
+    coa_photos = request.files.getlist("coa_photos")
+    _validate_field_intake_photo_bucket(supplier_photos, "Supplier / License photos")
+    _validate_field_intake_photo_bucket(biomass_photos, "Biomass photos")
+    _validate_field_intake_photo_bucket(coa_photos, "Testing / COA photos")
+    saved_supplier_paths = _save_field_photos(supplier_photos, prefix="purchase-supplier")
+    saved_biomass_paths = _save_field_photos(biomass_photos, prefix="purchase-biomass")
+    saved_coa_paths = _save_field_photos(coa_photos, prefix="purchase-coa")
+    all_paths = saved_supplier_paths + saved_biomass_paths + saved_coa_paths
+
+    return FieldPurchaseSubmission(
+        source_token_id=source_token_id,
+        supplier_id=supplier.id,
+        purchase_date=purchase_date,
+        delivery_date=delivery_date,
+        harvest_date=harvest_date,
+        estimated_potency_pct=estimated_potency,
+        price_per_lb=price_per_lb,
+        storage_note=((request.form.get("storage_note") or "").strip() or None),
+        license_info=((request.form.get("license_info") or "").strip() or None),
+        queue_placement=queue_placement,
+        coa_status_text=((request.form.get("coa_status_text") or "").strip() or None),
+        notes=((request.form.get("notes") or "").strip() or None),
+        lots_json=json.dumps(lots),
+        photos_json=(json.dumps(all_paths) if all_paths else None),
+        supplier_photos_json=(json.dumps(saved_supplier_paths) if saved_supplier_paths else None),
+        biomass_photos_json=(json.dumps(saved_biomass_paths) if saved_biomass_paths else None),
+        coa_photos_json=(json.dumps(saved_coa_paths) if saved_coa_paths else None),
+        status="pending",
+    ), lots, all_paths
+
+
 @app.route("/field")
 @field_token_required
 def field_home(token):
@@ -2536,81 +2677,7 @@ def field_purchase_new(token):
     if request.method == "POST":
         try:
             sup, _created = _get_or_create_supplier_from_field_form(token)
-
-            pd = (request.form.get("purchase_date") or "").strip()
-            if not pd:
-                raise ValueError("Purchase Date is required.")
-            purchase_date = datetime.strptime(pd, "%Y-%m-%d").date()
-
-            dd = (request.form.get("delivery_date") or "").strip()
-            delivery_date = datetime.strptime(dd, "%Y-%m-%d").date() if dd else None
-            hd = (request.form.get("harvest_date") or "").strip()
-            harvest_date = datetime.strptime(hd, "%Y-%m-%d").date() if hd else None
-
-            ep = (request.form.get("estimated_potency_pct") or "").strip()
-            estimated_potency = float(ep) if ep else None
-            if estimated_potency is not None and not (0 <= estimated_potency <= 100):
-                raise ValueError("Estimated Potency must be between 0 and 100.")
-
-            ppl = (request.form.get("price_per_lb") or "").strip()
-            price_per_lb = float(ppl) if ppl else None
-            if price_per_lb is not None and price_per_lb < 0:
-                raise ValueError("Price/lb cannot be negative.")
-            queue_placement = ((request.form.get("queue_placement") or "").strip() or None)
-            if queue_placement and queue_placement not in ("aggregate", "indoor", "outdoor"):
-                raise ValueError("Queue Placement must be Aggregate, Indoor, or Outdoor.")
-
-            # Lots (at least one)
-            lot_strains = request.form.getlist("lot_strains[]")
-            lot_weights = request.form.getlist("lot_weights[]")
-            lots = []
-            for strain, w in zip(lot_strains, lot_weights):
-                strain = (strain or "").strip()
-                w = (w or "").strip()
-                if not strain and not w:
-                    continue
-                if w:
-                    try:
-                        weight = float(w)
-                    except ValueError:
-                        raise ValueError("Lot weight must be a number.")
-                    if weight <= 0:
-                        raise ValueError("Lot weight must be greater than 0.")
-                else:
-                    weight = None
-                lots.append({"strain": strain or None, "weight_lbs": weight})
-
-            supplier_photos = request.files.getlist("supplier_photos")
-            biomass_photos = request.files.getlist("biomass_photos")
-            coa_photos = request.files.getlist("coa_photos")
-            _validate_field_intake_photo_bucket(supplier_photos, "Supplier / License photos")
-            _validate_field_intake_photo_bucket(biomass_photos, "Biomass photos")
-            _validate_field_intake_photo_bucket(coa_photos, "Testing / COA photos")
-            saved_supplier_paths = _save_field_photos(supplier_photos, prefix="purchase-supplier")
-            saved_biomass_paths = _save_field_photos(biomass_photos, prefix="purchase-biomass")
-            saved_coa_paths = _save_field_photos(coa_photos, prefix="purchase-coa")
-            all_paths = saved_supplier_paths + saved_biomass_paths + saved_coa_paths
-
-            sub = FieldPurchaseSubmission(
-                source_token_id=token.id,
-                supplier_id=sup.id,
-                purchase_date=purchase_date,
-                delivery_date=delivery_date,
-                harvest_date=harvest_date,
-                estimated_potency_pct=estimated_potency,
-                price_per_lb=price_per_lb,
-                storage_note=((request.form.get("storage_note") or "").strip() or None),
-                license_info=((request.form.get("license_info") or "").strip() or None),
-                queue_placement=queue_placement,
-                coa_status_text=((request.form.get("coa_status_text") or "").strip() or None),
-                notes=((request.form.get("notes") or "").strip() or None),
-                lots_json=json.dumps(lots),
-                photos_json=(json.dumps(all_paths) if all_paths else None),
-                supplier_photos_json=(json.dumps(saved_supplier_paths) if saved_supplier_paths else None),
-                biomass_photos_json=(json.dumps(saved_biomass_paths) if saved_biomass_paths else None),
-                coa_photos_json=(json.dumps(saved_coa_paths) if saved_coa_paths else None),
-                status="pending",
-            )
+            sub, lots, all_paths = _parse_field_purchase_intake_form_to_submission(sup, source_token_id=token.id)
             db.session.add(sub)
             db.session.flush()
             log_audit(
@@ -2640,6 +2707,55 @@ def field_purchase_new(token):
     return render_template(
         "field_purchase_form.html",
         token_value=_get_field_token_value(),
+        suppliers=suppliers,
+        today=date.today(),
+        field_photo_max=int(app.config.get("FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET", 30)),
+    )
+
+
+@app.route("/biomass-purchasing/new-submission", methods=["GET", "POST"])
+@login_required
+def desk_field_purchase_submission():
+    """Logged-in buyers: submit purchase lots for approval (same workflow as mobile field intake)."""
+    if not current_user.can_edit_purchases:
+        flash("You don't have permission to submit purchase proposals.", "error")
+        return redirect(url_for("biomass_purchasing_dashboard"))
+    suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
+    if request.method == "POST":
+        try:
+            sup, _created = _get_or_create_supplier_from_desk_purchase_form()
+            sub, lots, all_paths = _parse_field_purchase_intake_form_to_submission(sup, source_token_id=None)
+            db.session.add(sub)
+            db.session.flush()
+            log_audit(
+                "create",
+                "field_purchase_submission",
+                sub.id,
+                details=json.dumps({
+                    "source": "desk_purchase_intake",
+                    "supplier": sup.name,
+                    "lots_count": len(lots),
+                    "photos_count": len(all_paths),
+                }),
+                user_id=current_user.id,
+            )
+            db.session.commit()
+            notify_slack(
+                f"New office purchase submission from {sup.name} ({current_user.display_name}): "
+                f"{len(lots)} lot row(s), pending review."
+            )
+            flash("Purchase proposal submitted for approval.", "success")
+            return redirect(url_for("biomass_purchasing_dashboard"))
+        except ValueError as e:
+            db.session.rollback()
+            flash(str(e), "error")
+        except Exception:
+            db.session.rollback()
+            app.logger.exception("Desk purchase intake failed")
+            flash("Could not submit. Please check your inputs and try again.", "error")
+
+    return render_template(
+        "desk_purchase_intake_form.html",
         suppliers=suppliers,
         today=date.today(),
         field_photo_max=int(app.config.get("FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET", 30)),
@@ -2899,12 +3015,40 @@ def biomass_purchasing_dashboard():
             "potency_variance_pct": pot_var,
         })
 
+    pending_field_submissions = FieldPurchaseSubmission.query.filter_by(status="pending").order_by(
+        FieldPurchaseSubmission.submitted_at.desc()
+    ).all()
+    reviewed_field_submissions = FieldPurchaseSubmission.query.filter(
+        FieldPurchaseSubmission.status.in_(("approved", "rejected"))
+    ).order_by(FieldPurchaseSubmission.submitted_at.desc()).all()
+    _decorate_field_submission_rows(pending_field_submissions + reviewed_field_submissions)
+    pending_submissions_total_lbs = sum(
+        float(getattr(s, "total_weight_lbs", 0) or 0) for s in pending_field_submissions
+    )
+    reviewed_approved_total_lbs = sum(
+        float(getattr(s, "total_weight_lbs", 0) or 0)
+        for s in reviewed_field_submissions
+        if s.status == "approved"
+    )
+    reviewed_rejected_total_lbs = sum(
+        float(getattr(s, "total_weight_lbs", 0) or 0)
+        for s in reviewed_field_submissions
+        if s.status == "rejected"
+    )
+
     return render_template(
         "biomass_purchasing_dashboard.html",
         weeks=weeks,
         weekly_budget_usd=weekly_budget_usd,
         weekly_target_lbs=weekly_target_lbs,
         weekly_target_potency_pct=target_pot if target_pot > 0 else None,
+        field_submissions=pending_field_submissions,
+        reviewed_field_submissions=reviewed_field_submissions,
+        submission_return_to="biomass-purchasing",
+        show_submission_approval_buttons=current_user.can_approve_field_purchases,
+        pending_submissions_total_lbs=pending_submissions_total_lbs,
+        reviewed_approved_total_lbs=reviewed_approved_total_lbs,
+        reviewed_rejected_total_lbs=reviewed_rejected_total_lbs,
     )
 
 
@@ -4493,6 +4637,20 @@ def settings():
         slack_sync_days_pref = 90
     slack_sync_days_pref = max(1, min(365, slack_sync_days_pref))
 
+    pending_submissions_total_lbs = sum(
+        float(getattr(s, "total_weight_lbs", 0) or 0) for s in pending_field_submissions
+    )
+    reviewed_approved_total_lbs = sum(
+        float(getattr(s, "total_weight_lbs", 0) or 0)
+        for s in reviewed_field_submissions
+        if s.status == "approved"
+    )
+    reviewed_rejected_total_lbs = sum(
+        float(getattr(s, "total_weight_lbs", 0) or 0)
+        for s in reviewed_field_submissions
+        if s.status == "rejected"
+    )
+
     return render_template(
         "settings.html",
         system_settings=system_settings,
@@ -4503,6 +4661,11 @@ def settings():
         field_tokens=field_tokens,
         field_submissions=pending_field_submissions,
         reviewed_field_submissions=reviewed_field_submissions,
+        submission_return_to="#settings-field-intake",
+        show_submission_approval_buttons=True,
+        pending_submissions_total_lbs=pending_submissions_total_lbs,
+        reviewed_approved_total_lbs=reviewed_approved_total_lbs,
+        reviewed_rejected_total_lbs=reviewed_rejected_total_lbs,
         server_now=datetime.utcnow(),
         last_field_link=last_field_link,
         last_field_sms=last_field_sms,
@@ -4694,10 +4857,28 @@ def field_approvals():
         FieldPurchaseSubmission.status.in_(("approved", "rejected"))
     ).order_by(FieldPurchaseSubmission.submitted_at.desc()).all()
     _decorate_field_submission_rows(pending_field_submissions + reviewed_field_submissions)
+    pending_submissions_total_lbs = sum(
+        float(getattr(s, "total_weight_lbs", 0) or 0) for s in pending_field_submissions
+    )
+    reviewed_approved_total_lbs = sum(
+        float(getattr(s, "total_weight_lbs", 0) or 0)
+        for s in reviewed_field_submissions
+        if s.status == "approved"
+    )
+    reviewed_rejected_total_lbs = sum(
+        float(getattr(s, "total_weight_lbs", 0) or 0)
+        for s in reviewed_field_submissions
+        if s.status == "rejected"
+    )
     return render_template(
         "field_approvals.html",
         field_submissions=pending_field_submissions,
         reviewed_field_submissions=reviewed_field_submissions,
+        submission_return_to="",
+        show_submission_approval_buttons=True,
+        pending_submissions_total_lbs=pending_submissions_total_lbs,
+        reviewed_approved_total_lbs=reviewed_approved_total_lbs,
+        reviewed_rejected_total_lbs=reviewed_rejected_total_lbs,
     )
 
 

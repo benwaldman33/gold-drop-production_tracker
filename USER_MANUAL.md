@@ -99,6 +99,14 @@ These badges help identify runs that may skew cost analytics.
 ## Inventory
 Inventory shows the current biomass position.
 
+### Summary tiles (top of the page)
+- **On Hand**: total **remaining** pounds on lots from purchases that have arrived (operational statuses such as delivered, in testing, available, processing, complete).
+- **In Transit**: total **stated** pounds on purchases that are committed, ordered, or in transit—not yet treated as on-hand inventory.
+- **Total**: **On Hand + In Transit**—your combined pounds in-house and on the way.
+- **Days of Supply**: how many days the **On Hand** amount would last at your configured **Daily Throughput Target** (Settings). **In-transit weight is not included** in this number; it only reflects material already on hand.
+
+If you filter by **supplier**, all four summaries and both tables use that supplier. If you also filter by **strain** (text match on lot strain), only the **on-hand** table and the **On Hand** and **Days of Supply** tiles use that strain slice; **In Transit** (and the portion of **Total** that comes from in-transit) still includes every in-transit purchase for the selected supplier, not strain-filtered.
+
 ### Biomass On Hand
 This table lists lots with remaining weight, including:
 - Strain, supplier
@@ -113,10 +121,8 @@ This table lists purchases that are not yet fully received, including:
 - Order date and expected delivery
 - Price per lb (if known)
 
-### Days of Supply
-Days of supply is based on:
-- Total on-hand biomass
-- Your configured **Daily Throughput Target** (set in Settings)
+### Days of Supply (detail)
+Same as the **Days of Supply** summary tile: **on-hand lbs ÷ Daily Throughput Target**. It does not add in-transit pounds. If the target is zero or unset in a way that makes it zero, the app shows **0** days.
 
 ---
 

@@ -3,12 +3,18 @@
 {% block content %}
 <div class="page-header">
   <h2>Biomass purchasing dashboard</h2>
-  <a href="{{ url_for('purchases_list') }}" class="btn btn-secondary">Purchases</a>
+  <div class="btn-group">
+    {% if current_user.can_edit_purchases %}
+    <a href="{{ url_for('desk_field_purchase_submission') }}" class="btn btn-primary">+ New purchase proposal</a>
+    {% endif %}
+    <a href="{{ url_for('purchases_list') }}" class="btn btn-secondary">Purchases</a>
+  </div>
 </div>
 
 <p class="text-sm" style="color:var(--text-muted);max-width:920px;margin:-8px 0 20px;">
   Weeks run <strong>Monday–Sunday</strong> (purchase date). Actuals include purchases from <strong>committed</strong> through <strong>complete</strong> only. Spend uses recorded <strong>total cost</strong>, or lbs × price/lb when total cost is missing.
   Weekly targets below are set in {% if current_user.is_super_admin %}<a href="{{ url_for('settings') }}#settings-biomass-budget">Settings → Biomass purchasing</a>{% else %}Settings (Super Admin){% endif %}.
+  {% if current_user.can_edit_purchases %}Use <strong>New purchase proposal</strong> above to enter lots like mobile field intake (pending until approved).{% endif %}
 </p>
 
 <div class="card" style="margin-bottom:16px;">
@@ -117,4 +123,10 @@
     Dirty biomass can still yield THCA similarly while materially affecting <strong>HTE</strong> quality and value — this dashboard is the forward home for tracking that split once data is captured.
   </p>
 </div>
+
+<h3 style="margin:24px 0 12px;font-size:1rem;color:var(--gold);text-transform:uppercase;letter-spacing:0.06em;">Field &amp; desk submissions</h3>
+<p class="text-sm" style="color:var(--text-muted);margin:-4px 0 14px;">
+  Pending and reviewed proposals from the field link and from desk intake. Totals reflect summed lot weights on each submission.
+</p>
+{% include 'partials/field_purchase_submission_tables.html' %}
 {% endblock %}
