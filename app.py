@@ -11,7 +11,8 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
+from zoneinfo import ZoneInfo
 from functools import wraps
 
 from flask import (Flask, render_template, request, redirect, url_for, flash,
@@ -1659,6 +1660,27 @@ def _slack_ts_to_date_value(ts_str: str | None):
         return datetime.utcfromtimestamp(sec).date()
     except (ValueError, OSError, TypeError, OverflowError):
         return None
+
+
+_SLACK_IMPORTS_DISPLAY_TZ = ZoneInfo("America/Los_Angeles")
+
+
+def _slack_ts_to_la_datetime_str(ts_str: str | None) -> str:
+    """Format Slack `message_ts` (UTC unix seconds) for UI in America/Los_Angeles."""
+    if not (ts_str or "").strip():
+        return "—"
+    try:
+        sec = float(str(ts_str).split(".")[0])
+        utc_dt = datetime.fromtimestamp(sec, tz=timezone.utc)
+        local_dt = utc_dt.astimezone(_SLACK_IMPORTS_DISPLAY_TZ)
+        return local_dt.strftime("%b %d, %Y %I:%M:%S %p %Z")
+    except (ValueError, OSError, TypeError, OverflowError):
+        return "—"
+
+
+@app.template_filter("slack_ts_la")
+def slack_ts_la_template_filter(ts_str):
+    return _slack_ts_to_la_datetime_str(ts_str)
 
 
 def _apply_slack_mapping_transform(raw_val, transform: dict | None, message_ts: str, source_key: str):

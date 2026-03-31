@@ -15,6 +15,12 @@
     <input type="hidden" name="slack_apply_allow_duplicate" value="{{ '1' if slack_meta.allow_duplicate else '0' }}">
     <div class="flash flash-success" style="margin-bottom:16px;">
       <strong>Slack apply:</strong> fields below were prefilled from a Slack import. Nothing is stored until you save.
+      {% if slack_meta.message_ts %}
+      <span class="text-sm" style="display:block;margin-top:6px;">
+        Message time (Los Angeles): <strong>{{ slack_meta.message_ts | slack_ts_la }}</strong>
+        <span class="text-mono cell-muted" title="Slack API timestamp">({{ slack_meta.message_ts }})</span>
+      </span>
+      {% endif %}
       {% if slack_meta.allow_duplicate %}<span class="text-sm"> (duplicate apply confirmed)</span>{% endif %}
       {% if slack_meta.resolution_hints %}
       <ul class="text-sm" style="margin:10px 0 0 1.1rem;padding:0;">
