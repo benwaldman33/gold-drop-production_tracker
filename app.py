@@ -1,4 +1,6 @@
 """Gold Drop Biomass Inventory & Extraction Tracking System."""
+from __future__ import annotations
+
 import os
 import csv
 import io
@@ -15,10 +17,10 @@ from datetime import datetime, date, timedelta
 from functools import wraps
 
 from flask import (Flask, render_template, request, redirect, url_for, flash,
-                   jsonify, Response, session)
+                   jsonify, Response, session, abort)
 from flask_login import (LoginManager, login_user, logout_user, login_required,
                          current_user)
-from sqlalchemy import func, desc, and_, text, select, exists
+from sqlalchemy import func, desc, and_, or_, text, select, exists
 from sqlalchemy.exc import OperationalError, ProgrammingError
 from werkzeug.security import generate_password_hash
 from werkzeug.utils import secure_filename
@@ -1892,11 +1894,19 @@ def _ensure_sqlite_schema():
             db.session.execute(text("ALTER TABLE biomass_availabilities ADD COLUMN purchase_id VARCHAR(36)"))
         if "field_photo_paths_json" not in cols:
             db.session.execute(text("ALTER TABLE biomass_availabilities ADD COLUMN field_photo_paths_json TEXT"))
+        if "purchase_approved_at" not in cols:
+            db.session.execute(text("ALTER TABLE biomass_availabilities ADD COLUMN purchase_approved_at DATETIME"))
+        if "purchase_approved_by_user_id" not in cols:
+            db.session.execute(text("ALTER TABLE biomass_availabilities ADD COLUMN purchase_approved_by_user_id VARCHAR(36)"))
+        if "deleted_at" not in cols:
+            db.session.execute(text("ALTER TABLE biomass_availabilities ADD COLUMN deleted_at DATETIME"))
 
     if has_table("users"):
         cols = column_names("users")
         if "is_slack_importer" not in cols:
             db.session.execute(text("ALTER TABLE users ADD COLUMN is_slack_importer BOOLEAN DEFAULT 0"))
+        if "is_purchase_approver" not in cols:
+            db.session.execute(text("ALTER TABLE users ADD COLUMN is_purchase_approver BOOLEAN DEFAULT 0"))
 
     # Runs: cost_per_gram_thca / cost_per_gram_hte
     if has_table("runs"):
@@ -2319,6 +2329,426 @@ def field_thanks(token):
     return render_template("field_thanks.html", kind=kind, token_value=_get_field_token_value())
 
 
+def _calendar_week_bounds(today=None):
+    """Monday–Sunday week containing `today` (local date)."""
+    today = today or date.today()
+    start = today - timedelta(days=today.weekday())
+    end = start + timedelta(days=6)
+    return start, end
+
+
+def _purchase_obligation_dollars(p):
+    """Best-effort $ for budget views: total_cost if set, else weight × $/lb."""
+    if p.total_cost is not None:
+        return float(p.total_cost)
+    w = p.actual_weight_lbs or p.stated_weight_lbs
+    if w and p.price_per_lb is not None:
+        return float(w) * float(p.price_per_lb)
+    return 0.0
+
+
+def _weekly_finance_snapshot():
+    """Calendar-week budget vs commitments vs purchases (shared: Dashboard + Finance dept)."""
+    week_start, week_end = _calendar_week_bounds()
+    weekly_dollar_budget = SystemSetting.get_float("weekly_dollar_budget", 0.0)
+    commitment_q = Purchase.query.join(
+        BiomassAvailability, BiomassAvailability.purchase_id == Purchase.id
+    ).filter(
+        Purchase.deleted_at.is_(None),
+        BiomassAvailability.stage.in_(("committed", "delivered")),
+    )
+    week_commitment_filter = or_(
+        and_(
+            BiomassAvailability.purchase_approved_at.isnot(None),
+            func.date(BiomassAvailability.purchase_approved_at) >= week_start,
+            func.date(BiomassAvailability.purchase_approved_at) <= week_end,
+        ),
+        and_(
+            BiomassAvailability.purchase_approved_at.is_(None),
+            BiomassAvailability.committed_on.isnot(None),
+            BiomassAvailability.committed_on >= week_start,
+            BiomassAvailability.committed_on <= week_end,
+        ),
+    )
+    week_commitment_dollars = sum(
+        _purchase_obligation_dollars(p)
+        for p in commitment_q.filter(week_commitment_filter).all()
+    )
+    week_purchase_rows = Purchase.query.filter(
+        Purchase.deleted_at.is_(None),
+        Purchase.purchase_date >= week_start,
+        Purchase.purchase_date <= week_end,
+    ).all()
+    week_purchase_dollars = sum(_purchase_obligation_dollars(p) for p in week_purchase_rows)
+    return {
+        "week_start": week_start,
+        "week_end": week_end,
+        "weekly_dollar_budget": weekly_dollar_budget,
+        "week_commitment_dollars": week_commitment_dollars,
+        "week_purchase_dollars": week_purchase_dollars,
+    }
+
+
+# Department landing pages (PRD: many views on the same data). Ordered slug → config.
+DEPARTMENT_PAGES = {
+    "finance": {
+        "title": "Finance",
+        "intro": "Weekly dollar budget, pipeline commitments, purchase spend, and operational costs.",
+        "links": [
+            {"label": "Dashboard", "endpoint": "dashboard"},
+            {"label": "Purchases", "endpoint": "purchases_list"},
+            {"label": "Costs", "endpoint": "costs_list"},
+            {"label": "Settings (budget & throughput)", "endpoint": "settings", "anchor": "settings-system"},
+        ],
+    },
+    "biomass-purchasing": {
+        "title": "Biomass purchasing",
+        "intro": "Potential batches, sourcing, pipeline stages, and commitments.",
+        "links": [
+            {"label": "Biomass pipeline (current)", "endpoint": "biomass_list", "url_kwargs": {"bucket": "current"}},
+            {"label": "Old Lots", "endpoint": "biomass_list", "url_kwargs": {"bucket": "old"}},
+            {"label": "Suppliers", "endpoint": "suppliers_list"},
+            {"label": "Strains", "endpoint": "strains_list"},
+            {"label": "Import", "endpoint": "import_csv"},
+        ],
+    },
+    "biomass-intake": {
+        "title": "Biomass intake",
+        "intro": "Receiving, field submissions, purchases in motion, and inventory-bound lots.",
+        "links": [
+            {"label": "Purchases", "endpoint": "purchases_list"},
+            {"label": "Inventory", "endpoint": "inventory"},
+            {"label": "Field intake (tokens)", "endpoint": "settings", "anchor": "settings-field-intake"},
+            {"label": "Photo library", "endpoint": "photos_library"},
+        ],
+    },
+    "biomass-extraction": {
+        "title": "Biomass extraction",
+        "intro": "Extraction runs, reactors, and throughput vs targets.",
+        "links": [
+            {"label": "Runs", "endpoint": "runs_list"},
+            {"label": "Inventory", "endpoint": "inventory"},
+            {"label": "Settings (reactors / throughput)", "endpoint": "settings", "anchor": "settings-system"},
+        ],
+    },
+    "thca-processing": {
+        "title": "THCA processing",
+        "intro": "Dry THCA output from extraction runs (yields and cost allocation).",
+        "links": [
+            {"label": "Runs", "endpoint": "runs_list"},
+            {"label": "Dashboard", "endpoint": "dashboard"},
+        ],
+    },
+    "hte-processing": {
+        "title": "HTE processing",
+        "intro": "Dry HTE output from extraction runs.",
+        "links": [
+            {"label": "Runs", "endpoint": "runs_list"},
+            {"label": "Strains", "endpoint": "strains_list"},
+        ],
+    },
+    "liquid-diamonds": {
+        "title": "Liquid Diamonds processing",
+        "intro": "Runs tagged as Liquid Diamond (run type) and related outputs.",
+        "links": [
+            {"label": "Runs", "endpoint": "runs_list"},
+        ],
+    },
+    "terpenes-distillation": {
+        "title": "Terpenes distillation",
+        "intro": "Downstream refinement; track via runs, notes, and strain analytics until a dedicated module exists.",
+        "links": [
+            {"label": "Runs", "endpoint": "runs_list"},
+            {"label": "Strains", "endpoint": "strains_list"},
+        ],
+    },
+    "testing": {
+        "title": "Testing",
+        "intro": "Lab tests, COAs, and supplier-level test history.",
+        "links": [
+            {"label": "Suppliers (lab history)", "endpoint": "suppliers_list"},
+            {"label": "Purchases", "endpoint": "purchases_list"},
+            {"label": "Photo library", "endpoint": "photos_library"},
+        ],
+    },
+    "bulk-sales": {
+        "title": "Bulk sales",
+        "intro": "Finished inventory positions; v1 tracks on-hand lots — record sales by adjusting inventory/purchases as your process defines.",
+        "links": [
+            {"label": "Inventory", "endpoint": "inventory"},
+            {"label": "Purchases", "endpoint": "purchases_list"},
+        ],
+    },
+}
+
+
+def _department_stat_sections(slug):
+    """Return list of {title, rows: [(label, value), ...]} for a department page."""
+    today = date.today()
+    d7 = today - timedelta(days=7)
+    d30 = today - timedelta(days=30)
+    sections = []
+
+    if slug == "finance":
+        fin = _weekly_finance_snapshot()
+        ce = CostEntry.query.count()
+        sections.append({
+            "title": "This calendar week",
+            "rows": [
+                ("Week", f"{fin['week_start'].strftime('%m/%d/%y')} – {fin['week_end'].strftime('%m/%d/%y')}"),
+                ("Weekly $ budget", f"${fin['weekly_dollar_budget']:,.0f}"),
+                ("Commitments (pipeline)", f"${fin['week_commitment_dollars']:,.0f}"),
+                ("Purchases (purchase dates in week)", f"${fin['week_purchase_dollars']:,.0f}"),
+            ],
+        })
+        sections.append({
+            "title": "Costs",
+            "rows": [
+                ("Cost entries (all time)", f"{ce}"),
+            ],
+        })
+        return sections
+
+    if slug == "biomass-purchasing":
+        n1, n2 = _potential_lot_age_days()
+        now = datetime.utcnow()
+        cut_n1 = now - timedelta(days=n1)
+        cut_n2 = now - timedelta(days=n2)
+        base = BiomassAvailability.query.filter(BiomassAvailability.deleted_at.is_(None))
+        declared = base.filter(BiomassAvailability.stage == "declared").count()
+        testing = base.filter(BiomassAvailability.stage == "testing").count()
+        current_pot = base.filter(
+            BiomassAvailability.stage.in_(POTENTIAL_BIOMASS_STAGES),
+            BiomassAvailability.created_at > cut_n1,
+        ).count()
+        old_pot = base.filter(
+            BiomassAvailability.stage.in_(POTENTIAL_BIOMASS_STAGES),
+            BiomassAvailability.created_at <= cut_n1,
+            BiomassAvailability.created_at > cut_n2,
+        ).count()
+        committed = base.filter(BiomassAvailability.stage.in_(("committed", "delivered"))).count()
+        sections.append({
+            "title": "Pipeline snapshot",
+            "rows": [
+                ("Declared rows", str(declared)),
+                ("Testing rows", str(testing)),
+                ("Potential — current list (< N₁ days)", str(current_pot)),
+                ("Potential — Old Lots", str(old_pot)),
+                ("Committed / delivered rows", str(committed)),
+                ("N₁ / N₂ (settings)", f"{n1} / {n2} days"),
+            ],
+        })
+        return sections
+
+    if slug == "biomass-intake":
+        pending = FieldPurchaseSubmission.query.filter_by(status="pending").count()
+        inbound = Purchase.query.filter(
+            Purchase.deleted_at.is_(None),
+            Purchase.status.in_(("declared", "committed", "ordered", "in_transit", "in_testing")),
+        ).count()
+        recent_del = Purchase.query.filter(
+            Purchase.deleted_at.is_(None),
+            Purchase.status == "delivered",
+            Purchase.delivery_date.isnot(None),
+            Purchase.delivery_date >= d7,
+        ).count()
+        on_hand = db.session.query(func.sum(PurchaseLot.remaining_weight_lbs)).join(Purchase).filter(
+            PurchaseLot.remaining_weight_lbs > 0,
+            PurchaseLot.deleted_at.is_(None),
+            Purchase.deleted_at.is_(None),
+            Purchase.status.in_(("delivered", "in_testing", "available", "processing", "complete")),
+        ).scalar() or 0
+        sections.append({
+            "title": "Intake & receiving",
+            "rows": [
+                ("Field purchase submissions pending review", str(pending)),
+                ("Purchases not yet delivered (approx.)", str(inbound)),
+                ("Delivered in last 7 days (by delivery date)", str(recent_del)),
+                ("Inventory on hand (lbs remaining)", f"{float(on_hand):,.0f}"),
+            ],
+        })
+        return sections
+
+    if slug == "biomass-extraction":
+        runs7 = Run.query.filter(Run.deleted_at.is_(None), Run.run_date >= d7).all()
+        lbs7 = sum(r.bio_in_reactor_lbs or 0 for r in runs7)
+        runs30 = Run.query.filter(Run.deleted_at.is_(None), Run.run_date >= d30).count()
+        daily_tgt = SystemSetting.get_float("daily_throughput_target", 500)
+        reactors = int(SystemSetting.get_float("num_reactors", 2))
+        sections.append({
+            "title": "Extraction activity",
+            "rows": [
+                ("Runs last 7 days", str(len(runs7))),
+                ("Lbs processed last 7 days", f"{lbs7:,.0f}"),
+                ("Runs last 30 days", str(runs30)),
+                ("Daily throughput target (settings)", f"{daily_tgt:,.0f} lbs/day"),
+                ("Reactors (settings)", str(reactors)),
+            ],
+        })
+        return sections
+
+    if slug == "thca-processing":
+        runs30 = Run.query.filter(Run.deleted_at.is_(None), Run.run_date >= d30).all()
+        g_thca = sum(r.dry_thca_g or 0 for r in runs30)
+        sections.append({
+            "title": "THCA (last 30 days)",
+            "rows": [
+                ("Runs in window", str(len(runs30))),
+                ("Total dry THCA (g)", f"{g_thca:,.0f}"),
+            ],
+        })
+        return sections
+
+    if slug == "hte-processing":
+        runs30 = Run.query.filter(Run.deleted_at.is_(None), Run.run_date >= d30).all()
+        g_hte = sum(r.dry_hte_g or 0 for r in runs30)
+        sections.append({
+            "title": "HTE (last 30 days)",
+            "rows": [
+                ("Runs in window", str(len(runs30))),
+                ("Total dry HTE (g)", f"{g_hte:,.0f}"),
+            ],
+        })
+        return sections
+
+    if slug == "liquid-diamonds":
+        ld_runs = Run.query.filter(
+            Run.deleted_at.is_(None),
+            Run.run_date >= d30,
+            Run.run_type == "ld",
+        ).all()
+        g_thca = sum(r.dry_thca_g or 0 for r in ld_runs)
+        sections.append({
+            "title": "Liquid Diamond runs (last 30 days)",
+            "rows": [
+                ("Runs with type LD", str(len(ld_runs))),
+                ("Dry THCA from LD runs (g)", f"{g_thca:,.0f}"),
+            ],
+        })
+        return sections
+
+    if slug == "terpenes-distillation":
+        sections.append({
+            "title": "Overview",
+            "rows": [
+                ("Note", "No separate terpene/distillate entity yet — use Runs + notes; HTE totals below as a related signal."),
+            ],
+        })
+        runs30 = Run.query.filter(Run.deleted_at.is_(None), Run.run_date >= d30).all()
+        g_hte = sum(r.dry_hte_g or 0 for r in runs30)
+        sections.append({
+            "title": "HTE output (last 30 days, related)",
+            "rows": [
+                ("Runs in window", str(len(runs30))),
+                ("Total dry HTE (g)", f"{g_hte:,.0f}"),
+            ],
+        })
+        return sections
+
+    if slug == "testing":
+        lt_total = LabTest.query.count()
+        lt30 = LabTest.query.filter(LabTest.test_date >= d30).count()
+        sections.append({
+            "title": "Lab tests",
+            "rows": [
+                ("Total lab test records", str(lt_total)),
+                ("Tests with date in last 30 days", str(lt30)),
+            ],
+        })
+        return sections
+
+    if slug == "bulk-sales":
+        on_hand = db.session.query(func.sum(PurchaseLot.remaining_weight_lbs)).join(Purchase).filter(
+            PurchaseLot.remaining_weight_lbs > 0,
+            PurchaseLot.deleted_at.is_(None),
+            Purchase.deleted_at.is_(None),
+            Purchase.status.in_(("delivered", "in_testing", "available", "processing", "complete")),
+        ).scalar() or 0
+        complete30 = Purchase.query.filter(
+            Purchase.deleted_at.is_(None),
+            Purchase.status == "complete",
+            Purchase.purchase_date >= d30,
+        ).count()
+        sections.append({
+            "title": "Inventory & movement",
+            "rows": [
+                ("On-hand inventory (lbs remaining, all strains)", f"{float(on_hand):,.0f}"),
+                ("Purchases marked complete (purchase date in last 30 days)", str(complete30)),
+            ],
+        })
+        return sections
+
+    return sections
+
+
+# Pipeline rows in declared/testing age out to Old Lots / soft-delete (PRD); committed+ do not.
+POTENTIAL_BIOMASS_STAGES = frozenset({"declared", "testing"})
+
+
+def _potential_lot_age_days():
+    """N₁ = days until Old Lots; N₂ = total days until soft delete. Validates N₂ ≥ N₁."""
+    n1 = int(SystemSetting.get_float("potential_lot_days_to_old", 10))
+    n2 = int(SystemSetting.get_float("potential_lot_days_to_soft_delete", 30))
+    if n1 < 1:
+        n1 = 1
+    if n2 < n1:
+        n2 = n1
+    return n1, n2
+
+
+def _apply_biomass_potential_soft_delete():
+    """
+    Soft-delete unapproved potential biomass rows at created_at + N₂ (declared/testing only).
+    Idempotent; safe to call frequently (e.g. biomass list view).
+    """
+    _n1, n2 = _potential_lot_age_days()
+    now = datetime.utcnow()
+    cutoff = now - timedelta(days=n2)
+    rows = BiomassAvailability.query.filter(
+        BiomassAvailability.stage.in_(POTENTIAL_BIOMASS_STAGES),
+        BiomassAvailability.deleted_at.is_(None),
+        BiomassAvailability.created_at <= cutoff,
+    ).all()
+    if not rows:
+        return 0
+    for b in rows:
+        b.deleted_at = now
+    log_audit(
+        "biomass_potential_soft_delete",
+        "biomass_availability",
+        "bulk",
+        details=json.dumps({"count": len(rows), "n2_days": n2}),
+    )
+    db.session.commit()
+    return len(rows)
+
+
+def _biomass_bucket_filter(query, bucket, n1, n2):
+    """Restrict biomass query by list bucket (anchor: created_at)."""
+    now = datetime.utcnow()
+    cut_n1 = now - timedelta(days=n1)
+    cut_n2 = now - timedelta(days=n2)
+    b = (bucket or "current").strip().lower()
+    if b == "deleted":
+        return query.filter(BiomassAvailability.deleted_at.isnot(None))
+    query = query.filter(BiomassAvailability.deleted_at.is_(None))
+    if b == "old":
+        return query.filter(
+            BiomassAvailability.stage.in_(POTENTIAL_BIOMASS_STAGES),
+            BiomassAvailability.created_at <= cut_n1,
+            BiomassAvailability.created_at > cut_n2,
+        )
+    if b == "all":
+        return query
+    # current — default: non-deleted; potential rows only if younger than N₁ days
+    return query.filter(
+        or_(
+            BiomassAvailability.stage.notin_(POTENTIAL_BIOMASS_STAGES),
+            BiomassAvailability.created_at > cut_n1,
+        )
+    )
+
+
 # ── Dashboard ────────────────────────────────────────────────────────────────
 
 @app.route("/")
@@ -2510,13 +2940,41 @@ def dashboard():
         else:
             best_supplier_mom["pct_change"] = None
 
+    fin = _weekly_finance_snapshot()
+
     return render_template("dashboard.html",
                            kpi_cards=kpi_cards, period=period,
                            total_runs=total_runs, total_lbs=total_lbs,
                            total_dry_output=total_dry_output, on_hand=on_hand,
                            exclude_unpriced=exclude_unpriced,
                            wtd_lbs=wtd_lbs, wtd_dry_thca=wtd_dry_thca, wtd_dry_hte=wtd_dry_hte,
-                           best_supplier_mom=best_supplier_mom)
+                           best_supplier_mom=best_supplier_mom,
+                           week_start=fin["week_start"], week_end=fin["week_end"],
+                           weekly_dollar_budget=fin["weekly_dollar_budget"],
+                           week_commitment_dollars=fin["week_commitment_dollars"],
+                           week_purchase_dollars=fin["week_purchase_dollars"])
+
+
+@app.route("/dept")
+@app.route("/dept/")
+@login_required
+def dept_index():
+    return render_template("dept_index.html", departments=DEPARTMENT_PAGES)
+
+
+@app.route("/dept/<slug>")
+@login_required
+def dept_view(slug):
+    cfg = DEPARTMENT_PAGES.get(slug)
+    if not cfg:
+        abort(404)
+    stat_sections = _department_stat_sections(slug)
+    return render_template(
+        "dept_view.html",
+        slug=slug,
+        dept=cfg,
+        stat_sections=stat_sections,
+    )
 
 
 # ── Runs ─────────────────────────────────────────────────────────────────────
@@ -3705,6 +4163,51 @@ def settings():
                     value=exclude_val,
                     description="Exclude unpriced/unlinked runs from yield and cost analytics",
                 ))
+            wb_raw = (request.form.get("weekly_dollar_budget") or "").strip()
+            try:
+                wb_val = float(wb_raw) if wb_raw else 0.0
+            except ValueError:
+                wb_val = 0.0
+            if wb_val < 0:
+                wb_val = 0.0
+            wb_existing = db.session.get(SystemSetting, "weekly_dollar_budget")
+            if wb_existing:
+                wb_existing.value = str(wb_val)
+            else:
+                db.session.add(SystemSetting(
+                    key="weekly_dollar_budget",
+                    value=str(wb_val),
+                    description="Weekly dollar budget for buyer/finance snapshot (Dashboard)",
+                ))
+
+            n1_raw = (request.form.get("potential_lot_days_to_old") or "").strip()
+            n2_raw = (request.form.get("potential_lot_days_to_soft_delete") or "").strip()
+            try:
+                n1 = int(float(n1_raw)) if n1_raw else 10
+            except ValueError:
+                n1 = 10
+            try:
+                n2 = int(float(n2_raw)) if n2_raw else 30
+            except ValueError:
+                n2 = 30
+            if n1 < 1:
+                n1 = 1
+            if n2 < n1:
+                n2 = n1
+                flash(
+                    "Potential lot “days to soft-delete” was raised to match “days to Old Lots” (must be ≥).",
+                    "info",
+                )
+            for key, val, desc in (
+                ("potential_lot_days_to_old", str(n1), "Days before potential biomass moves to Old Lots"),
+                ("potential_lot_days_to_soft_delete", str(n2), "Total days from created_at before soft-delete (potential rows)"),
+            ):
+                ex = db.session.get(SystemSetting, key)
+                if ex:
+                    ex.value = val
+                else:
+                    db.session.add(SystemSetting(key=key, value=val, description=desc))
+
             db.session.commit()
             flash("System settings updated.", "success")
 
@@ -3736,6 +4239,7 @@ def settings():
                     u.set_password(password)
                     if role != "super_admin":
                         u.is_slack_importer = bool(request.form.get("new_slack_importer"))
+                        u.is_purchase_approver = bool(request.form.get("new_purchase_approver"))
                     db.session.add(u)
                     db.session.commit()
                     flash(f"User '{display}' created.", "success")
@@ -3955,6 +4459,31 @@ def user_toggle_slack_importer(user_id):
     db.session.commit()
     flash(
         f"Slack Importer {'enabled' if u.is_slack_importer else 'disabled'} for {u.username}.",
+        "success",
+    )
+    return _settings_redirect()
+
+
+@app.route("/settings/users/<user_id>/toggle_purchase_approver", methods=["POST"])
+@admin_required
+def user_toggle_purchase_approver(user_id):
+    u = db.session.get(User, user_id)
+    if not u:
+        flash("User not found.", "error")
+        return _settings_redirect()
+    if u.is_super_admin:
+        flash("Super Admins always have purchase approval.", "info")
+        return _settings_redirect()
+    u.is_purchase_approver = not bool(getattr(u, "is_purchase_approver", False))
+    log_audit(
+        "user_purchase_approver",
+        "user",
+        u.id,
+        details=json.dumps({"username": u.username, "enabled": u.is_purchase_approver}),
+    )
+    db.session.commit()
+    flash(
+        f"Purchase approval {'enabled' if u.is_purchase_approver else 'disabled'} for {u.username}.",
         "success",
     )
     return _settings_redirect()
@@ -5024,9 +5553,16 @@ def export_csv(entity):
             "Testing Timing", "Testing Status", "Testing Date", "Tested Potency %",
             "Committed On", "Delivery Date", "Committed Lbs", "Committed $/lb",
             "Batch ID", "Purchase Status",
-            "Notes",
+            "Archived (soft-deleted)", "Notes",
         ])
+        n1, n2 = _potential_lot_age_days()
+        bucket = (request.args.get("bucket") or "all").strip().lower()
         q = BiomassAvailability.query.join(Supplier)
+        if request.args.get("include_deleted") == "1" and current_user.is_super_admin:
+            q = q.filter(BiomassAvailability.deleted_at.isnot(None))
+        else:
+            q = q.filter(BiomassAvailability.deleted_at.is_(None))
+            q = _biomass_bucket_filter(q, bucket, n1, n2)
         if start_date:
             q = q.filter(BiomassAvailability.availability_date >= start_date)
         if end_date:
@@ -5056,6 +5592,7 @@ def export_csv(entity):
                 b.committed_price_per_lb,
                 b.purchase.batch_id if b.purchase else "",
                 b.purchase.status if b.purchase else "",
+                "yes" if b.deleted_at else "no",
                 b.notes or "",
             ])
     elif entity == "suppliers":
@@ -5339,6 +5876,12 @@ def lot_new(purchase_id):
 @app.route("/biomass")
 @login_required
 def biomass_list():
+    _apply_biomass_potential_soft_delete()
+    n1, n2 = _potential_lot_age_days()
+    bucket = (request.args.get("bucket") or "current").strip().lower()
+    if bucket == "deleted" and not current_user.is_super_admin:
+        bucket = "current"
+        flash("Only Super Admins can view soft-deleted biomass rows.", "info")
     stage = request.args.get("stage", "").strip()
     start_raw = (request.args.get("start_date") or "").strip()
     end_raw = (request.args.get("end_date") or "").strip()
@@ -5351,6 +5894,7 @@ def biomass_list():
         start_date = None
         end_date = None
     query = BiomassAvailability.query.join(Supplier)
+    query = _biomass_bucket_filter(query, bucket, n1, n2)
     if stage:
         query = query.filter(BiomassAvailability.stage == stage)
     if start_date:
@@ -5367,6 +5911,9 @@ def biomass_list():
         "biomass.html",
         items=items,
         stage_filter=stage,
+        bucket_filter=bucket,
+        potential_days_to_old=n1,
+        potential_days_to_soft_delete=n2,
         suppliers=suppliers,
         supplier_filter=supplier_filter,
         start_date=start_raw,
@@ -5391,14 +5938,34 @@ def biomass_edit(item_id):
     if not item:
         flash("Biomass availability record not found.", "error")
         return redirect(url_for("biomass_list"))
+    if item.deleted_at and not current_user.is_super_admin:
+        flash("This biomass row was archived (soft-deleted). Super Admins can view it from the Archived list.", "error")
+        return redirect(url_for("biomass_list"))
     if request.method == "POST":
         return _save_biomass(item)
     suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
     return render_template("biomass_form.html", item=item, suppliers=suppliers, today=date.today())
 
 
+@app.route("/biomass/<item_id>/restore", methods=["POST"])
+@admin_required
+def biomass_restore(item_id):
+    item = db.session.get(BiomassAvailability, item_id)
+    if not item or not item.deleted_at:
+        flash("Nothing to restore.", "error")
+        return redirect(url_for("biomass_list"))
+    item.deleted_at = None
+    log_audit("restore", "biomass_availability", item.id, details=json.dumps({"source": "soft_delete_archive"}))
+    db.session.commit()
+    flash("Biomass row restored from archive.", "success")
+    return redirect(url_for("biomass_edit", item_id=item_id))
+
+
 def _save_biomass(existing):
     try:
+        if existing and existing.deleted_at:
+            raise ValueError("This row is archived. Restore it from the biomass list before editing.")
+        prev_stage = existing.stage if existing else None
         b = existing or BiomassAvailability()
         supplier_id = (request.form.get("supplier_id") or "").strip()
         if not supplier_id:
@@ -5510,6 +6077,18 @@ def _save_biomass(existing):
         b.stage = stage
         b.notes = request.form.get("notes", "").strip() or None
 
+        enters_commitment = stage in ("committed", "delivered") and prev_stage not in ("committed", "delivered")
+        leaves_commitment = prev_stage in ("committed", "delivered") and stage not in ("committed", "delivered")
+        if enters_commitment or leaves_commitment:
+            if not current_user.can_approve_purchase:
+                raise ValueError(
+                    "Only Super Admin or users with purchase approval permission can move a batch "
+                    "to or from Committed / Delivered."
+                )
+        if enters_commitment:
+            b.purchase_approved_at = datetime.utcnow()
+            b.purchase_approved_by_user_id = current_user.id
+
         if not existing:
             db.session.add(b)
         db.session.flush()
@@ -5581,6 +6160,18 @@ def _save_biomass(existing):
                         "status": purchase.status,
                     }),
                 )
+
+        if enters_commitment:
+            log_audit(
+                "purchase_approval",
+                "biomass_availability",
+                b.id,
+                details=json.dumps({
+                    "approver_user_id": current_user.id,
+                    "stage": b.stage,
+                    "purchase_id": b.purchase_id,
+                }),
+            )
 
         log_audit("update" if existing else "create", "biomass_availability", b.id)
         db.session.commit()
@@ -5668,6 +6259,9 @@ def init_db():
         "operating_days": ("7", "Operating Days Per Week"),
         "daily_throughput_target": ("500", "Daily Throughput Target (lbs)"),
         "weekly_throughput_target": ("3500", "Weekly Throughput Target (lbs)"),
+        "weekly_dollar_budget": ("0", "Weekly dollar budget (buyer/finance snapshot)"),
+        "potential_lot_days_to_old": ("10", "Days before potential biomass moves to Old Lots"),
+        "potential_lot_days_to_soft_delete": ("30", "Total days from created_at before soft-delete (potential rows)"),
         "exclude_unpriced_batches": ("0", "Exclude unpriced/unlinked runs from yield and cost analytics"),
         "cost_allocation_method": ("per_gram_uniform", "Cost allocation method for THCA vs HTE cost/gram"),
         "cost_allocation_thca_pct": ("50", "Custom cost allocation: percent of total run cost allocated to THCA"),
@@ -5880,4 +6474,7 @@ with app.app_context():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    # Default 5050: on macOS, port 5000 is often taken by AirPlay Receiver.
+    _port = int(os.environ.get("PORT", "5050"))
+    print(f" * Open http://127.0.0.1:{_port}/  (set PORT=5000 if you prefer and nothing else is using it)")
+    app.run(debug=True, host="0.0.0.0", port=_port)

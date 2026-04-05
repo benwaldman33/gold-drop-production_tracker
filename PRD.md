@@ -9,6 +9,8 @@ Gold Drop is an operations tracker for biomass intake → inventory → extracti
 - **Analytics controls** to exclude runs missing biomass pricing,
 - **Audit logging** for traceability and compliance.
 
+**Cross-cutting product direction (department views & governance):** the same underlying data should be exposed through **department-focused UIs** (finance, purchasing, intake, extraction, downstream processing, testing, sales) without duplicating business rules; **Slack** remains the **authoritative operational input channel** for floor capture until a future phase (e.g. barcodes, connected scales). **Purchase approval** uses **per-user capabilities**; a single approval promotes a potential purchase to a **system-wide commitment**, including the **weekly budget dashboard**. **Potential** pipeline lines that never close otherwise **age out** to **Old Lots** and then **soft-delete** on a configurable schedule anchored to **`created_at`**.
+
 This PRD describes the problem, users, workflows, data requirements, calculations, settings, and acceptance criteria.
 
 ---
@@ -38,18 +40,28 @@ Operations needs a single system to answer:
 - Automated lab COAs ingestion (manual entry only)
 - Multi-facility support
 - Replacing the Biomass Pipeline model by merging it fully into Purchases (see “Future improvements”)
+- **Department UIs (initial scope):** replacing Slack as the authoritative capture layer for weights/production logs (see **Operational input authority** below); full barcode / Wi‑Fi or Bluetooth scale integration (roadmap)
 
 ---
 
 ## Users & Permissions
-- **Super Admin**
-  - Full access
-  - Can manage Users
-  - Can access Settings + Maintenance actions (e.g., recalculate all run costs)
-- **User**
-  - Can create/edit operational data (runs, purchases, biomass pipeline, costs)
-- **Viewer**
-  - Read-only access
+
+### Base roles (existing)
+- **Super Admin** — Full access; can manage users; Settings + Maintenance (e.g. recalculate all run costs).
+- **User** — Can create/edit operational data (runs, purchases, biomass pipeline, costs), subject to capabilities below.
+- **Viewer** — Read-only access; cannot approve purchases or persist operational edits.
+
+### Capabilities (preferred model)
+Authorization should use **named capabilities per user** (flags or equivalent), not a separate database “role enum” for every combination of job duties. Examples: **`can_approve_purchase`**, existing **Slack Importer** (`is_slack_importer` / `can_slack_import`), and future narrow grants as needed. **Super-Buyer**, **COO**, and **Super Admin** are **business labels**; provisioning may default certain flags for those accounts, but enforcement is always via capabilities.
+
+### Purchase approval
+- **Eligible approvers:** any account with **`can_approve_purchase`**. The business requires that **Super-Buyer**, **COO**, and **Super Admin** users be able to approve; it is **any one** of these (or any user with the flag)—**not** a multi-signature workflow.
+- **Effect on approve:** the potential purchase becomes a **commitment everywhere** the product represents commitments: pipeline linkage, purchase/financial obligation views, logistics and intake planning, and the **buyer weekly budget dashboard** (budget vs commitments vs actual purchases). All surfaces must derive from the **same** approval/commitment state.
+- **Audit:** log **who** approved and **when**; approval is **idempotent** (subsequent approve actions are no-ops or blocked with a clear message).
+
+### Operational input authority
+- **Today:** **Slack** is the **authoritative** channel for operational posts (e.g. intake weights, photos, production variables) that operators treat as ground truth; the app **ingests, links, or mirrors** that information per existing Slack integration behavior.
+- **Future:** optional **barcode** and **connected scales** as additional input channels; department web UIs prioritize **visibility**, **rollup**, and **downstream data entry** that does not conflict with Slack authority until product explicitly changes this.
 
 ---
 
@@ -498,7 +510,69 @@ Super Admins need to **configure** how parsed Slack fields (`derived_json` / `me
 
 ---
 
+## Operational departments & shared data model
+
+Departments are **views and workflows on the same canonical data** (suppliers, biomass pipeline, purchases, lots, runs, costs, inventory, lab/testing artifacts, finished goods). They are **not** separate silos with duplicated rules.
+
+### Planning and capacity controls
+Throughput, reactors, shifts, and related **planning knobs** already live in **Settings** and existing screens. Department-facing work should **reuse** those values and present **focused, output-oriented** summaries (KPIs, WIP, variance, obligations)—not rebuild parallel configuration UIs unless a gap is documented and accepted.
+
+### Department surfaces (roadmap)
+Each row is a **primary lens**; several departments share the same underlying entities.
+
+| Department | Primary intent (illustrative) |
+|------------|-------------------------------|
+| **Finance** | Obligations, spend vs budget, cost visibility tied to commitments and purchases |
+| **Biomass purchasing** | Sourcing, pipeline, potential → approval handoff, strain/quantity/quality signals |
+| **Biomass intake** | Receipt, weigh-in variance vs promised, photos, strain receipt into inventory |
+| **Biomass extraction** | Reactor loads, batch sizing, production variables tied to runs |
+| **THCA processing** | Wet/dry THCA path, yields, disposition toward powder vs further refinement |
+| **HTE processing** | Wet/dry HTE path, yields, disposition toward sale vs distillation |
+| **Liquid Diamonds processing** | THCA refinement path where product strategy routes material here |
+| **Terpenes distillation** | Terpene/distillate path from HTE refinement |
+| **Testing** | Potency and lab timing (before/after commitment, pre/post pickup), pesticide and repricing hooks |
+| **Bulk sales** | **v1:** decrement **finished inventory** so on-hand balances stay correct; extended CRM/order management is out of scope until specified |
+
+Acceptance criteria (department initiative):
+- Navigation and layouts may differ by department; **numbers** for the same entity match across views.
+- New department pages **respect** base role + capability gates (see **Users & Permissions**).
+
+### Canonical material flow (narrative)
+1. Buyer sources **potential** biomass (field intake); weekly **volume** and **quality** goals align with plant throughput targets (e.g. lbs/day targets—configurable).
+2. An approver promotes a line to **commitment** → **financial obligation**, logistics, and intake planning; testing may occur before or after commitment; **commercial terms** (e.g. pesticide repricing) must be representable in data.
+3. Intake weighs and documents receipt; variance vs promised matters; media may flow through **Slack**; strains enter **inventory**.
+4. Extraction consumes lots in **runs** (e.g. batch sizes, multiple reactors); production variables captured per operational policy (**Slack**-authoritative today).
+5. Outputs split into **wet THCA** and **wet HTE**, then dry weights; downstream: THCA → powder or Liquid Diamonds; HTE → sale or **terpenes / distillate** paths.
+6. **Bulk sales** reduces finished inventory.
+
+---
+
+## Potential pipeline records — Old Lots and soft deletion
+
+Some **potential** purchase / pipeline lines will never be approved. The product must avoid an ever-growing “current” list while keeping history available for a bounded time.
+
+### Aging model (single clock)
+- **Anchor:** strictly **`created_at`** on the record (no sliding window based on `updated_at` or last activity unless the product explicitly changes—**default is `created_at` only**).
+- **Parameter `N₁` (default: 10 days):** after **`created_at` + N₁**, the record leaves the default “current” potential list and appears only under **Old Lots** (or equivalent filter). It remains **active data**, not deleted.
+- **Parameter `N₂` (default: 30 days):** after **`created_at` + N₂**, the record is **soft-deleted** (hidden from normal operational lists; recoverable only via admin/audit paths as implemented).
+- **Total age:** **`N₂` is total age from `created_at`** toward soft delete (consistent with **Option A**: e.g. days 1–10 current, 11–29 Old Lots, day 30 soft delete for defaults).
+
+### Settings validation
+- **`N₁`** and **`N₂`** are **admin-configurable** system settings.
+- **Validation:** **`N₂` ≥ `N₁`**. Invalid combinations must be rejected or clamped with a clear message at save time.
+
+### Soft delete semantics
+- Soft-deleted rows **remain in the database** with deletion metadata (`deleted_at` / `is_deleted` or equivalent) for audit and optional recovery; **hard purge** is a separate future policy if required.
+
+### Relationship to approval
+- **Approve** transitions a potential line to **commitment** and removes it from the “unapproved potential” problem by definition.
+- **Aging** applies to lines that remain **unapproved** (and not otherwise terminal—e.g. cancelled—per existing pipeline rules).
+
+---
+
 ## Future Improvements (Roadmap)
+- **Department UIs + governance:** implement **capabilities** (e.g. `can_approve_purchase`), **single-step purchase approval** with **commitment propagation** (including budget dashboard), **Old Lots** + **soft delete** aging job, then phased **department** templates per **Operational departments & shared data model**.
+- **Explicit close-out reasons** for potential lines (declined, lost, withdrawn) — optional enhancement beyond aging; supports analytics such as win rate by supplier without relying on soft-delete alone.
 - **Slack → operational mapping:** phased roadmap under **Integrations — Slack** → **Proposed: Field mapping control panel (phased roadmap)** (Phase 1: mapping UI + preview; Phase 2: manual apply; Phase 3: resolution + breadth + optional automation).
 - Consider consolidating Biomass Pipeline into Purchases by expanding purchase statuses to include pre-commitment stages (declared/testing), reducing duplication and sync logic.
 - Add richer analytics screens (time series, variance by reactor/operator).

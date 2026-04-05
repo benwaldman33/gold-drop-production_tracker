@@ -1,9 +1,9 @@
 # Gold Drop — Biomass Inventory & Extraction Tracking System
 
-**Product requirements** live in `PRD.md`.
+**Product requirements** live in `PRD.md` (Summary plus **Operational departments & shared data model**, **Users & Permissions**, **Potential pipeline records — Old Lots and soft deletion**).
 **User guide** lives in `USER_MANUAL.md` (no credentials included).
 **FAQ** lives in `FAQ.md`.
-**Engineering notes** (implementation-oriented) live in `ENGINEERING.md`.
+**Engineering notes** (implementation-oriented) live in `ENGINEERING.md` (see **PRD implementation notes — departments, approvals, aging**).
 
 ## Quick Start (Local Development)
 
@@ -15,7 +15,7 @@ pip install -r requirements.txt
 python app.py
 ```
 
-Open http://localhost:5000 in your browser.
+Open **http://localhost:5050** in your browser (default dev port; **5000** is often busy on macOS because of AirPlay). To use another port: `PORT=5000 python app.py` or `PORT=8080 python app.py`.
 
 ### Default Login Credentials
 

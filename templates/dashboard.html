@@ -68,6 +68,32 @@
   </div>
 </div>
 
+<div class="card" style="margin-bottom:12px;">
+  <div class="card-header"><h3>This week — buyer budget snapshot</h3></div>
+  <div style="padding:12px 16px;">
+    <div class="text-sm" style="color:var(--text-muted); margin-bottom:10px;">
+      Calendar week {{ week_start.strftime('%m/%d/%y') }} – {{ week_end.strftime('%m/%d/%y') }} (commitments use pipeline approval dates; purchases use purchase date).
+    </div>
+    <div class="summary-row" style="margin:0;">
+      <div class="summary-stat">
+        <div class="label">Weekly $ budget</div>
+        <div class="value">${{ "{:,.0f}".format(weekly_dollar_budget) }}</div>
+      </div>
+      <div class="summary-stat">
+        <div class="label">Commitments (pipeline)</div>
+        <div class="value">${{ "{:,.0f}".format(week_commitment_dollars) }}</div>
+      </div>
+      <div class="summary-stat">
+        <div class="label">Purchases (week)</div>
+        <div class="value">${{ "{:,.0f}".format(week_purchase_dollars) }}</div>
+      </div>
+    </div>
+    <div class="text-sm" style="color:var(--text-muted); margin-top:10px;">
+      Set the weekly dollar budget under <strong>Settings → Operational Parameters</strong>. Grant purchase approval under <strong>Settings → Users</strong>.
+    </div>
+  </div>
+</div>
+
 {% if best_supplier_mom %}
 <div class="card" style="margin-bottom:12px;">
   <div class="card-header"><h3>Best Yield Supplier (Month-over-Month)</h3></div>

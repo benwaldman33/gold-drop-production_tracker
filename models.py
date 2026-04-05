@@ -21,10 +21,12 @@ class User(UserMixin, db.Model):
     role = db.Column(db.String(20), nullable=False, default="viewer")  # super_admin, user, viewer
     is_active_user = db.Column(db.Boolean, default=True)
     is_slack_importer = db.Column(db.Boolean, default=False)
+    is_purchase_approver = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
+        # pbkdf2 works on all Python builds; Werkzeug's default (scrypt) needs hashlib.scrypt (OpenSSL).
+        self.password_hash = generate_password_hash(password, method="pbkdf2:sha256")
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
@@ -48,6 +50,11 @@ class User(UserMixin, db.Model):
     @property
     def can_slack_import(self):
         return self.is_super_admin or bool(self.is_slack_importer)
+
+    @property
+    def can_approve_purchase(self):
+        """Super Admin always; otherwise explicit is_purchase_approver flag (PRD: Super-Buyer, COO, etc.)."""
+        return self.is_super_admin or bool(getattr(self, "is_purchase_approver", False))
 
 
 class Supplier(db.Model):
@@ -172,6 +179,15 @@ class BiomassAvailability(db.Model):
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    purchase_approved_at = db.Column(db.DateTime)
+    purchase_approved_by_user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
+    purchase_approved_by = db.relationship(
+        "User",
+        foreign_keys=[purchase_approved_by_user_id],
+    )
+
+    deleted_at = db.Column(db.DateTime)
 
     @property
     def supplier_name(self):

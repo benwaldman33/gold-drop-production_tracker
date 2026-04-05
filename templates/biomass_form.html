@@ -7,6 +7,14 @@
 </div>
 
 <div class="card">
+  {% if item and item.deleted_at and current_user.is_super_admin %}
+  <div style="padding:12px 16px; margin:-1px -1px 16px -1px; border-radius:8px; border:1px solid rgba(239,68,68,0.35); background:rgba(239,68,68,0.08);">
+    <div class="text-sm" style="font-weight:600; margin-bottom:8px;">This row is archived (soft-deleted). Restore it to edit.</div>
+    <form method="POST" action="{{ url_for('biomass_restore', item_id=item.id) }}" style="display:inline;">
+      <button type="submit" class="btn btn-primary btn-sm">Restore from archive</button>
+    </form>
+  </div>
+  {% endif %}
   <form method="POST">
     <div class="form-section">
       <h4>Step 1 — Declaration of Availability</h4>
@@ -115,10 +123,21 @@
           <select name="stage">
             <option value="declared" {% if st == 'declared' %}selected{% endif %}>Declared</option>
             <option value="testing" {% if st == 'testing' %}selected{% endif %}>Testing</option>
+            {% if current_user.can_approve_purchase %}
             <option value="committed" {% if st == 'committed' %}selected{% endif %}>Committed</option>
             <option value="delivered" {% if st == 'delivered' %}selected{% endif %}>Delivered</option>
+            {% elif st == 'committed' %}
+            <option value="committed" selected>Committed</option>
+            {% elif st == 'delivered' %}
+            <option value="delivered" selected>Delivered</option>
+            {% endif %}
             <option value="cancelled" {% if st == 'cancelled' %}selected{% endif %}>Cancelled</option>
           </select>
+          {% if not current_user.can_approve_purchase %}
+          <div class="text-sm" style="color:var(--text-muted); margin-top:6px;">
+            Moving to <strong>Committed</strong> or <strong>Delivered</strong> requires Super Admin or purchase approval permission.
+          </div>
+          {% endif %}
         </div>
         <div class="form-group" style="grid-column: span 2;">
           <label>Notes</label>
@@ -128,6 +147,15 @@
       {% if item and item.purchase %}
       <p class="text-sm" style="color:var(--text-muted);margin-top:6px;">
         Linked Purchase batch: <a href="{{ url_for('purchase_edit', purchase_id=item.purchase.id) }}" class="text-mono">{{ item.purchase.batch_id or '—' }}</a>
+      </p>
+      {% endif %}
+      {% if item and item.purchase_approved_at %}
+      <p class="text-sm" style="color:var(--text-muted);margin-top:6px;">
+        Commitment approved
+        {% if item.purchase_approved_by %}
+          by {{ item.purchase_approved_by.display_name }}
+        {% endif %}
+        on {{ item.purchase_approved_at.strftime('%Y-%m-%d %H:%M UTC') }}.
       </p>
       {% endif %}
     </div>
@@ -146,7 +174,7 @@
       </div>
       <div class="btn-group">
         <a href="{{ url_for('biomass_list') }}" class="btn btn-secondary">Cancel</a>
-        <button type="submit" class="btn btn-primary">Save</button>
+        <button type="submit" class="btn btn-primary" {% if item and item.deleted_at %}disabled aria-disabled="true"{% endif %}>Save</button>
       </div>
     </div>
   </form>

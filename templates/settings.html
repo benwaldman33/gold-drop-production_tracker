@@ -44,6 +44,27 @@
         <label>Weekly Throughput Target (lbs)</label>
         <input type="number" name="weekly_throughput_target" value="{{ system_settings.get('weekly_throughput_target', '3500') }}">
       </div>
+      <div class="form-group">
+        <label>Weekly Dollar Budget ($)</label>
+        <input type="number" name="weekly_dollar_budget" value="{{ system_settings.get('weekly_dollar_budget', '0') }}" step="0.01" min="0">
+        <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">
+          Used on the Dashboard for the weekly buyer/finance snapshot (commitments vs purchases).
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Potential lot → Old Lots (days)</label>
+        <input type="number" name="potential_lot_days_to_old" value="{{ system_settings.get('potential_lot_days_to_old', '10') }}" min="1" step="1">
+        <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">
+          Declared/testing rows older than this (from <strong>created_at</strong>) leave the default list.
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Potential lot soft-delete (total days)</label>
+        <input type="number" name="potential_lot_days_to_soft_delete" value="{{ system_settings.get('potential_lot_days_to_soft_delete', '30') }}" min="1" step="1">
+        <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">
+          Must be ≥ Old Lots days. Unapproved potential rows are soft-deleted after this many days from <strong>created_at</strong>.
+        </div>
+      </div>
     </div>
     <div class="form-group" style="margin-top:8px;">
       <label style="display:flex;align-items:center;gap:8px; text-transform:none; letter-spacing:0; font-size:0.85rem; color:var(--text-secondary);">
@@ -143,7 +164,7 @@
   <div class="table-wrap mb-2">
     <table>
       <thead>
-        <tr><th>Username</th><th>Display Name</th><th>Role</th><th>Slack import</th><th>Status</th><th>Created</th><th></th></tr>
+        <tr><th>Username</th><th>Display Name</th><th>Role</th><th>Slack import</th><th>Approve $</th><th>Status</th><th>Created</th><th></th></tr>
       </thead>
       <tbody>
         {% for u in users %}
@@ -155,6 +176,15 @@
             {% if u.is_super_admin %}
               <span class="badge badge-green">always</span>
             {% elif u.is_slack_importer %}
+              <span class="badge badge-green">yes</span>
+            {% else %}
+              <span class="badge badge-gray">no</span>
+            {% endif %}
+          </td>
+          <td class="text-sm">
+            {% if u.is_super_admin %}
+              <span class="badge badge-green">always</span>
+            {% elif u.is_purchase_approver %}
               <span class="badge badge-green">yes</span>
             {% else %}
               <span class="badge badge-gray">no</span>
@@ -178,6 +208,14 @@
                   <button type="submit" class="btn btn-secondary btn-sm">Slack off</button>
                 {% else %}
                   <button type="submit" class="btn btn-secondary btn-sm">Slack import</button>
+                {% endif %}
+                <input type="hidden" name="return_to" value="#settings-users">
+              </form>
+              <form method="POST" action="{{ url_for('user_toggle_purchase_approver', user_id=u.id) }}" style="display:inline;">
+                {% if u.is_purchase_approver %}
+                  <button type="submit" class="btn btn-secondary btn-sm">Approver off</button>
+                {% else %}
+                  <button type="submit" class="btn btn-secondary btn-sm">Approve $</button>
                 {% endif %}
                 <input type="hidden" name="return_to" value="#settings-users">
               </form>
@@ -230,6 +268,9 @@
     </div>
     <div class="form-group" style="max-width:420px;">
       <label><input type="checkbox" name="new_slack_importer" value="1"> Slack Importer (run apply + imports UI; needs <strong>User</strong> role to save runs)</label>
+    </div>
+    <div class="form-group" style="max-width:420px;">
+      <label><input type="checkbox" name="new_purchase_approver" value="1"> Purchase approver (move pipeline batches to Committed / Delivered)</label>
     </div>
     <button type="submit" class="btn btn-primary">Create User</button>
   </form>

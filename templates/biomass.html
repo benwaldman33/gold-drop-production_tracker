@@ -7,7 +7,7 @@
     {% if current_user.can_edit %}
     <a href="{{ url_for('biomass_new') }}" class="btn btn-primary">+ New Availability</a>
     {% endif %}
-    <a href="{{ url_for('export_csv', entity='biomass', status=stage_filter, supplier_id=supplier_filter, start_date=start_date, end_date=end_date, strain=strain_filter) }}" class="btn btn-secondary">Export CSV</a>
+    <a href="{{ url_for('export_csv', entity='biomass', status=stage_filter, supplier_id=supplier_filter, start_date=start_date, end_date=end_date, strain=strain_filter, bucket=bucket_filter) }}" class="btn btn-secondary">Export CSV</a>
   </div>
 </div>
 
@@ -35,15 +35,30 @@
       <input type="text" name="strain" value="{{ strain_filter }}">
     </div>
     <input type="hidden" name="stage" value="{{ stage_filter }}">
+    <input type="hidden" name="bucket" value="{{ bucket_filter }}">
     <button type="submit" class="btn btn-secondary">Apply Filters</button>
   </form>
 </div>
 
 <div class="view-toggle">
   <div class="btn-group">
-    <a href="?stage=&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&strain={{ strain_filter }}" class="btn {% if not stage_filter %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">All</a>
+    <a href="?bucket=current&stage={{ stage_filter }}&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&strain={{ strain_filter }}" class="btn {% if bucket_filter == 'current' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">Current</a>
+    <a href="?bucket=old&stage={{ stage_filter }}&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&strain={{ strain_filter }}" class="btn {% if bucket_filter == 'old' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">Old Lots</a>
+    <a href="?bucket=all&stage={{ stage_filter }}&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&strain={{ strain_filter }}" class="btn {% if bucket_filter == 'all' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">All (no age filter)</a>
+    {% if current_user.is_super_admin %}
+    <a href="?bucket=deleted&stage={{ stage_filter }}&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&strain={{ strain_filter }}" class="btn {% if bucket_filter == 'deleted' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">Archived</a>
+    {% endif %}
+  </div>
+  <div class="text-sm" style="color:var(--text-muted); margin-top:8px;">
+    Potential rows (declared/testing) use <strong>created_at</strong>: default list shows rows newer than <strong>{{ potential_days_to_old }}</strong> days; <strong>Old Lots</strong> holds the next window until day <strong>{{ potential_days_to_soft_delete }}</strong> soft-archives them. Committed/delivered/cancelled rows always appear on <strong>Current</strong>.
+  </div>
+</div>
+
+<div class="view-toggle">
+  <div class="btn-group">
+    <a href="?bucket={{ bucket_filter }}&stage=&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&strain={{ strain_filter }}" class="btn {% if not stage_filter %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">All stages</a>
     {% for s in ['declared','testing','committed','delivered','cancelled'] %}
-      <a href="?stage={{ s }}&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&strain={{ strain_filter }}" class="btn {% if stage_filter == s %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">{{ s.replace('_',' ').title() }}</a>
+      <a href="?bucket={{ bucket_filter }}&stage={{ s }}&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&strain={{ strain_filter }}" class="btn {% if stage_filter == s %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">{{ s.replace('_',' ').title() }}</a>
     {% endfor %}
   </div>
 </div>
@@ -62,6 +77,7 @@
         <th class="text-right">Est Potency %</th>
         <th>Testing</th>
         <th>Committed</th>
+        <th>Archived</th>
         <th></th>
       </tr>
     </thead>
@@ -109,13 +125,20 @@
           </div>
         </td>
         <td>
+          {% if b.deleted_at %}
+            <span class="badge badge-red">yes</span>
+          {% else %}
+            <span class="badge badge-gray">—</span>
+          {% endif %}
+        </td>
+        <td>
           {% if current_user.can_edit %}
           <a href="{{ url_for('biomass_edit', item_id=b.id) }}" class="btn btn-secondary btn-sm">Edit</a>
           {% endif %}
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="11" class="text-center cell-muted" style="padding:40px;">No biomass availability records yet.</td></tr>
+      <tr><td colspan="12" class="text-center cell-muted" style="padding:40px;">No biomass availability records in this view.</td></tr>
       {% endfor %}
     </tbody>
   </table>

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Departments{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Departments</h2>
+  <p class="text-sm" style="color:var(--text-muted); max-width:720px;">
+    Focused views on the same operational data — each page links to existing modules and shows live rollups.
+  </p>
+</div>
+
+<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:12px;">
+  {% for slug, cfg in departments.items() %}
+  <a href="{{ url_for('dept_view', slug=slug) }}" class="card" style="text-decoration:none; color:inherit; display:block; padding:16px; transition: border-color 0.15s;">
+    <h3 style="margin:0 0 8px 0; font-size:1rem; color:var(--gold);">{{ cfg.title }}</h3>
+    <p class="text-sm" style="color:var(--text-secondary); margin:0; line-height:1.45;">{{ cfg.intro }}</p>
+    <div class="text-sm" style="margin-top:10px; color:var(--text-muted);">Open →</div>
+  </a>
+  {% endfor %}
+</div>
+{% endblock %}

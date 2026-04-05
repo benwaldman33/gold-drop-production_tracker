@@ -2,6 +2,39 @@
 
 Developer-facing implementation details. Product behavior belongs in `PRD.md`; operator steps in `USER_MANUAL.md`.
 
+## PRD implementation notes — departments, approvals, aging
+
+Product requirements live in **`PRD.md`** under **Operational departments & shared data model**, **Users & Permissions** (capabilities), **Potential pipeline records — Old Lots and soft deletion**. This section is the **engineering appendix** for that initiative.
+
+### Capabilities vs composite roles
+
+- **Today (`models.py`):** `User.role` is `super_admin` | `user` | `viewer`; **`is_slack_importer`** exists for Slack apply flows; **`is_purchase_approver`** backs pipeline commitment authorization.
+- **`User.can_approve_purchase` (property):** `True` if `super_admin` **or** `is_purchase_approver`. Settings: per-user toggle **Approve $** / create-user checkbox; **`user_purchase_approver`** audit action.
+- **Guards:** `_save_biomass` requires `can_approve_purchase` to move a biomass row **to or from** `committed` / `delivered` (first transition stamps **`purchase_approved_at`** / **`purchase_approved_by_user_id`**; audit **`purchase_approval`**).
+
+### Purchase approval → commitment
+
+- **Biomass pipeline:** approval is the transition into **`committed` / `delivered`**, which creates/updates the linked **`Purchase`** as before. **`purchase_approval`** audit rows supplement biomass/purchase audit logs.
+- **Dashboard — buyer weekly snapshot:** **`weekly_dollar_budget`** (`SystemSetting`); **commitments** = linked purchases for biomass in `committed`/`delivered` whose approval (`purchase_approved_at`) or legacy **`committed_on`** falls in the current ISO week; **purchases** = all non-deleted purchases with **`purchase_date`** in that week. Dollar amount uses **`total_cost`** or **weight × $/lb** via **`_purchase_obligation_dollars`**.
+
+### Potential-lot aging job
+
+- **Settings keys:** `potential_lot_days_to_old` (**N₁**, default 10), `potential_lot_days_to_soft_delete` (**N₂**, default 30). Saved under **Operational Parameters**; if **`N₂` < `N₁`**, **`N₂`** is raised to **`N₁`** with an info flash.
+- **Clock:** **`created_at`** only (see PRD). Applies only to **declared** / **testing** rows (not committed/delivered/cancelled).
+- **Execution:** **`_apply_biomass_potential_soft_delete()`** runs at the start of **`GET /biomass`** (idempotent; sets **`BiomassAvailability.deleted_at`** when age ≥ **N₂**). Safe to call frequently.
+- **List buckets (`_biomass_bucket_filter`):** **Current** (default) — non-deleted; potential rows only if **`created_at` > now − N₁**; committed+ stages ignore age. **Old Lots** — potential rows with N₁ ≤ age < N₂. **All** — all non-deleted (no age filter). **Archived** — **`deleted_at` not null** (Super Admin only). **`BiomassAvailability.deleted_at`** column; **restore** via **`POST /biomass/<id>/restore`** (Super Admin). Edits blocked until restored.
+
+### Department UIs
+
+- **Routes:** `GET /dept/` (`dept_index`) lists all department tiles; `GET /dept/<slug>` (`dept_view`) shows intro, **Quick links** (existing `url_for` targets + optional `#anchor`), and **`_department_stat_sections(slug)`** rollups (same DB as core screens).
+- **Slugs:** `finance`, `biomass-purchasing`, `biomass-intake`, `biomass-extraction`, `thca-processing`, `hte-processing`, `liquid-diamonds`, `terpenes-distillation`, `testing`, `bulk-sales` — see `DEPARTMENT_PAGES` in `app.py`.
+- **Weekly finance snapshot:** `_weekly_finance_snapshot()` shared with Dashboard buyer budget card.
+- **Data access:** reuse existing queries and models; no duplicate business rules.
+
+### Slack remains authoritative for floor capture
+
+- Ingestion/linking behavior continues to follow **Integrations — Slack** in `PRD.md` and the **Slack channel history sync** section below. Department pages should not assume web forms replace Slack until product changes **Operational input authority** in the PRD.
+
 ## Slack channel history sync
 
 ### Data model
