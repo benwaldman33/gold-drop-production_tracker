@@ -17,7 +17,7 @@
       <strong>Slack apply:</strong> fields below were prefilled from a Slack import. Nothing is stored until you save.
       {% if slack_meta.message_ts %}
       <span class="text-sm" style="display:block;margin-top:6px;">
-        Message time (Los Angeles): <strong>{{ slack_meta.message_ts | slack_ts_la }}</strong>
+        Message time ({{ app_display_timezone_name }}): <strong>{{ slack_meta.message_ts | slack_ts_la }}</strong>
         <span class="text-mono cell-muted" title="Slack API timestamp">({{ slack_meta.message_ts }})</span>
       </span>
       {% endif %}

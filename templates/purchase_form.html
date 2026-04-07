@@ -158,6 +158,9 @@
     {% if not purchase %}
     <div class="form-section">
       <h4>Lots / Strains in This Purchase</h4>
+      <p class="text-sm" style="color:var(--text-muted);margin-top:0;">
+        Optional if you enter strains below. If you leave this empty and set status to <strong>delivered</strong> (or in testing / available / processing), a single inventory line <strong>Purchase total</strong> is created from <em>actual</em> or <em>stated</em> weight. Runs subtract from that line by the lbs you log per run.
+      </p>
       <div id="lots-container">
         <div class="lot-row" style="grid-template-columns:1fr 120px 40px;">
           <input type="text" name="lot_strains[]" placeholder="Strain name">

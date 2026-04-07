@@ -620,6 +620,8 @@ class SlackIngestedMessage(db.Model):
     derived_json = db.Column(db.Text)
     ingested_at = db.Column(db.DateTime, default=datetime.utcnow)
     ingested_by = db.Column(db.String(36), db.ForeignKey("users.id"))
+    # User dismissed from triage list (noise / will never promote); not the same as run-linked "imported".
+    hidden_from_imports = db.Column(db.Boolean, default=False, nullable=False)
 
 
 class SlackChannelSyncConfig(db.Model):

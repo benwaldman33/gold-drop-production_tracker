@@ -15,7 +15,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, date, timedelta, timezone
 from functools import wraps
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from flask import (Flask, render_template, request, redirect, url_for, flash,
                    jsonify, Response, session, abort)
@@ -59,6 +59,71 @@ def load_user(user_id):
     if u and not getattr(u, "is_active_user", True):
         return None
     return u
+
+
+# IANA tz for Slack timestamps, date filters, and derived slack_message_date (Settings → Operational).
+APP_DISPLAY_TIMEZONE_DEFAULT = "America/Los_Angeles"
+APP_DISPLAY_TIMEZONE_CHOICES = (
+    ("America/Los_Angeles", "Pacific — Los Angeles"),
+    ("America/Vancouver", "Pacific — Vancouver"),
+    ("America/Phoenix", "Mountain — Phoenix (no DST)"),
+    ("America/Denver", "Mountain — Denver"),
+    ("America/Chicago", "Central — Chicago"),
+    ("America/New_York", "Eastern — New York"),
+    ("America/Toronto", "Eastern — Toronto"),
+    ("America/Anchorage", "Alaska"),
+    ("Pacific/Honolulu", "Hawaii"),
+    ("UTC", "UTC"),
+)
+
+
+def _app_display_timezone_name() -> str:
+    raw = (SystemSetting.get("app_display_timezone", APP_DISPLAY_TIMEZONE_DEFAULT) or "").strip()
+    return raw or APP_DISPLAY_TIMEZONE_DEFAULT
+
+
+def _app_display_zoneinfo() -> ZoneInfo:
+    name = _app_display_timezone_name()
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, TypeError, ValueError):
+        return ZoneInfo(APP_DISPLAY_TIMEZONE_DEFAULT)
+
+
+def _slack_resolved_channel_hint_map() -> dict[str, str]:
+    """Map Slack API channel id → configured hint text (Settings → Slack history sync)."""
+    out: dict[str, str] = {}
+    for cfg in SlackChannelSyncConfig.query.order_by(SlackChannelSyncConfig.slot_index).all():
+        cid = (cfg.resolved_channel_id or "").strip()
+        hint = (cfg.channel_hint or "").strip()
+        if cid and hint:
+            out[cid] = hint
+    return out
+
+
+def _slack_channel_filter_label(channel_id: str, hint_by_id: dict[str, str]) -> str:
+    if not (channel_id or "").strip():
+        return ""
+    hint = (hint_by_id.get(channel_id) or "").strip()
+    if not hint:
+        return f"{channel_id} — set name in Settings → Slack → Channel history sync"
+    if hint == channel_id or hint.lstrip("#").strip() == channel_id:
+        return channel_id
+    hnorm = hint.lstrip("#").strip()
+    if " " not in hnorm and re.match(r"^[a-z0-9._-]+$", hnorm, re.I):
+        disp = "#" + hnorm
+    else:
+        disp = hint
+    return f"{disp} ({channel_id})"
+
+
+@app.context_processor
+def inject_app_display_timezone():
+    try:
+        name = _app_display_timezone_name()
+    except Exception:
+        name = APP_DISPLAY_TIMEZONE_DEFAULT
+    return {"app_display_timezone_name": name}
 
 
 @app.context_processor
@@ -1234,7 +1299,7 @@ def _slack_ingest_channel_history(
 
 
 def _ensure_slack_message_date_derived(derived: dict, message_ts: str) -> None:
-    """Set slack_message_date (YYYY-MM-DD UTC from Slack ts) when missing — sync + preview backfill."""
+    """Set slack_message_date (YYYY-MM-DD in app display timezone from Slack ts) when missing."""
     if not (message_ts or "").strip():
         return
     if derived.get("slack_message_date"):
@@ -1655,26 +1720,26 @@ def _validate_slack_run_field_rules(rules: list) -> None:
 
 
 def _slack_ts_to_date_value(ts_str: str | None):
+    """Calendar date of Slack `message_ts` in the app display timezone (Settings → Operational)."""
     if not ts_str:
         return None
     try:
         sec = float(str(ts_str).split(".")[0])
-        return datetime.utcfromtimestamp(sec).date()
+        utc_dt = datetime.fromtimestamp(sec, tz=timezone.utc)
+        local_dt = utc_dt.astimezone(_app_display_zoneinfo())
+        return local_dt.date()
     except (ValueError, OSError, TypeError, OverflowError):
         return None
 
 
-_SLACK_IMPORTS_DISPLAY_TZ = ZoneInfo("America/Los_Angeles")
-
-
-def _slack_ts_to_la_datetime_str(ts_str: str | None) -> str:
-    """Format Slack `message_ts` (UTC unix seconds) for UI in America/Los_Angeles."""
+def _slack_ts_to_display_datetime_str(ts_str: str | None) -> str:
+    """Format Slack `message_ts` (UTC unix seconds) for UI in the app display timezone."""
     if not (ts_str or "").strip():
         return "—"
     try:
         sec = float(str(ts_str).split(".")[0])
         utc_dt = datetime.fromtimestamp(sec, tz=timezone.utc)
-        local_dt = utc_dt.astimezone(_SLACK_IMPORTS_DISPLAY_TZ)
+        local_dt = utc_dt.astimezone(_app_display_zoneinfo())
         return local_dt.strftime("%b %d, %Y %I:%M:%S %p %Z")
     except (ValueError, OSError, TypeError, OverflowError):
         return "—"
@@ -1682,7 +1747,7 @@ def _slack_ts_to_la_datetime_str(ts_str: str | None) -> str:
 
 @app.template_filter("slack_ts_la")
 def slack_ts_la_template_filter(ts_str):
-    return _slack_ts_to_la_datetime_str(ts_str)
+    return _slack_ts_to_display_datetime_str(ts_str)
 
 
 def _apply_slack_mapping_transform(raw_val, transform: dict | None, message_ts: str, source_key: str):
@@ -2420,9 +2485,16 @@ def _ensure_sqlite_schema():
             "derived_json TEXT, "
             "ingested_at DATETIME, "
             "ingested_by VARCHAR(36), "
+            "hidden_from_imports BOOLEAN NOT NULL DEFAULT 0, "
             "UNIQUE(channel_id, message_ts)"
             ")"
         ))
+    if has_table("slack_ingested_messages"):
+        cols = column_names("slack_ingested_messages")
+        if "hidden_from_imports" not in cols:
+            db.session.execute(text(
+                "ALTER TABLE slack_ingested_messages ADD COLUMN hidden_from_imports BOOLEAN NOT NULL DEFAULT 0"
+            ))
     # Per-channel Slack history sync slots (cursor per channel)
     if not has_table("slack_channel_sync_configs"):
         db.session.execute(text(
@@ -2451,6 +2523,35 @@ def _ensure_postgres_run_hte_columns():
     ):
         db.session.execute(text(stmt))
     db.session.commit()
+
+
+def _ensure_postgres_slack_ingested_columns():
+    if db.engine.dialect.name != "postgresql":
+        return
+    db.session.execute(text(
+        "ALTER TABLE slack_ingested_messages ADD COLUMN IF NOT EXISTS hidden_from_imports BOOLEAN NOT NULL DEFAULT FALSE"
+    ))
+    db.session.commit()
+
+
+_SLACK_IMPORTS_QUERY_KEYS = frozenset({
+    "start_date", "end_date", "channel_id", "promotion", "coverage",
+    "kind_filter", "text_filter", "text_op", "include_hidden",
+})
+
+
+def _redirect_settings_slack_imports_preserved():
+    """Rebuild Slack imports URL query from POSTed hidden fields (filter whitelist)."""
+    from urllib.parse import urlencode
+    pairs: list[tuple[str, str]] = []
+    for key in _SLACK_IMPORTS_QUERY_KEYS:
+        for v in request.form.getlist(key):
+            pairs.append((key, str(v)))
+    q = urlencode(pairs)
+    target = url_for("settings_slack_imports")
+    if q:
+        target = f"{target}?{q}"
+    return redirect(target)
 
 
 # ── Auth Routes ──────────────────────────────────────────────────────────────
@@ -3084,7 +3185,7 @@ def _department_stat_sections(slug):
             PurchaseLot.remaining_weight_lbs > 0,
             PurchaseLot.deleted_at.is_(None),
             Purchase.deleted_at.is_(None),
-            Purchase.status.in_(("delivered", "in_testing", "available", "processing", "complete")),
+            Purchase.status.in_(INVENTORY_ON_HAND_PURCHASE_STATUSES),
         ).scalar() or 0
         sections.append({
             "title": "Intake & receiving",
@@ -3225,7 +3326,7 @@ def _department_stat_sections(slug):
             PurchaseLot.remaining_weight_lbs > 0,
             PurchaseLot.deleted_at.is_(None),
             Purchase.deleted_at.is_(None),
-            Purchase.status.in_(("delivered", "in_testing", "available", "processing", "complete")),
+            Purchase.status.in_(INVENTORY_ON_HAND_PURCHASE_STATUSES),
         ).scalar() or 0
         complete30 = Purchase.query.filter(
             Purchase.deleted_at.is_(None),
@@ -3242,6 +3343,95 @@ def _department_stat_sections(slug):
         return sections
 
     return sections
+
+
+# Purchases whose non-deleted lots count toward on-hand inventory (remaining_weight_lbs).
+# complete / cancelled: remaining is cleared on save so inventory drops to zero for that purchase.
+INVENTORY_ON_HAND_PURCHASE_STATUSES = ("delivered", "in_testing", "available", "processing")
+
+
+def _maintain_purchase_inventory_lots(p: Purchase) -> None:
+    """
+    When status is delivered/processing-path: ensure at least one lot exists so inventory
+    reflects actual/stated weight (runs decrement remaining_weight_lbs per input).
+    When status is complete or cancelled: force remaining to 0 on all active lots.
+    """
+    st = (p.status or "").strip()
+    if st in ("complete", "cancelled"):
+        for lot in PurchaseLot.query.filter_by(purchase_id=p.id).filter(PurchaseLot.deleted_at.is_(None)).all():
+            if (lot.remaining_weight_lbs or 0) > 0:
+                lot.remaining_weight_lbs = 0.0
+        return
+
+    if st not in INVENTORY_ON_HAND_PURCHASE_STATUSES:
+        return
+
+    active = PurchaseLot.query.filter_by(purchase_id=p.id).filter(PurchaseLot.deleted_at.is_(None)).all()
+    if active:
+        return
+
+    w = float(p.actual_weight_lbs) if p.actual_weight_lbs is not None else float(p.stated_weight_lbs or 0)
+    if w <= 0:
+        return
+
+    db.session.add(PurchaseLot(
+        purchase_id=p.id,
+        strain_name="Purchase total",
+        weight_lbs=w,
+        remaining_weight_lbs=w,
+        potency_pct=p.tested_potency_pct or p.stated_potency_pct,
+    ))
+
+
+def _reconcile_closed_purchase_inventory_lots() -> None:
+    """Clear remaining weight on lots tied to complete/cancelled purchases (idempotent)."""
+    try:
+        rows = (
+            db.session.query(PurchaseLot)
+            .join(Purchase, PurchaseLot.purchase_id == Purchase.id)
+            .filter(
+                PurchaseLot.deleted_at.is_(None),
+                Purchase.deleted_at.is_(None),
+                Purchase.status.in_(("complete", "cancelled")),
+                PurchaseLot.remaining_weight_lbs > 0,
+            )
+            .all()
+        )
+        for lot in rows:
+            lot.remaining_weight_lbs = 0.0
+        if rows:
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _backfill_default_inventory_lots() -> None:
+    """Create Purchase total lot for on-hand purchases that have no active lots (idempotent)."""
+    try:
+        purchases = Purchase.query.filter(
+            Purchase.deleted_at.is_(None),
+            Purchase.status.in_(INVENTORY_ON_HAND_PURCHASE_STATUSES),
+        ).all()
+        added = False
+        for p in purchases:
+            n = PurchaseLot.query.filter_by(purchase_id=p.id).filter(PurchaseLot.deleted_at.is_(None)).count()
+            if n:
+                continue
+            w = float(p.actual_weight_lbs) if p.actual_weight_lbs is not None else float(p.stated_weight_lbs or 0)
+            if w <= 0:
+                continue
+            db.session.add(PurchaseLot(
+                purchase_id=p.id,
+                strain_name="Purchase total",
+                weight_lbs=w,
+                remaining_weight_lbs=w,
+                potency_pct=p.tested_potency_pct or p.stated_potency_pct,
+            ))
+            added = True
+        if added:
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
 
 
 # Pipeline rows in declared/testing age out to Old Lots / soft-delete (PRD); committed+ do not.
@@ -3365,12 +3555,11 @@ def dashboard():
 
         # Days of supply
         daily_target = SystemSetting.get_float("daily_throughput_target", 500)
-        on_hand_statuses = ("delivered", "in_testing", "available", "processing", "complete")
         on_hand = db.session.query(func.sum(PurchaseLot.remaining_weight_lbs)).join(Purchase).filter(
             PurchaseLot.remaining_weight_lbs > 0,
             PurchaseLot.deleted_at.is_(None),
             Purchase.deleted_at.is_(None),
-            Purchase.status.in_(on_hand_statuses)
+            Purchase.status.in_(INVENTORY_ON_HAND_PURCHASE_STATUSES),
         ).scalar() or 0
         kpi_actuals["days_of_supply"] = on_hand / daily_target if daily_target > 0 else 0
 
@@ -3421,7 +3610,7 @@ def dashboard():
         PurchaseLot.remaining_weight_lbs > 0,
         PurchaseLot.deleted_at.is_(None),
         Purchase.deleted_at.is_(None),
-        Purchase.status.in_(("delivered", "in_testing", "available", "processing", "complete"))
+        Purchase.status.in_(INVENTORY_ON_HAND_PURCHASE_STATUSES),
     ).scalar() or 0
 
     week_start = date.today() - timedelta(days=date.today().weekday())
@@ -3738,6 +3927,7 @@ def run_new():
         PurchaseLot.remaining_weight_lbs > 0,
         PurchaseLot.deleted_at.is_(None),
         Purchase.deleted_at.is_(None),
+        Purchase.status.in_(INVENTORY_ON_HAND_PURCHASE_STATUSES),
     ).all()
     can_save_run = bool(current_user.can_edit)
     return render_template(
@@ -3807,12 +3997,11 @@ def _save_run(existing_run):
         run.load_source_reactors = (request.form.get("load_source_reactors") or "").strip() or None
         run.is_rollover = "is_rollover" in request.form
         run.bio_in_reactor_lbs = float(request.form.get("bio_in_reactor_lbs") or 0)
-        on_hand_statuses = ("delivered", "in_testing", "available", "processing", "complete")
         run.bio_in_house_lbs = db.session.query(func.sum(PurchaseLot.remaining_weight_lbs)).join(Purchase).filter(
             PurchaseLot.remaining_weight_lbs > 0,
             PurchaseLot.deleted_at.is_(None),
             Purchase.deleted_at.is_(None),
-            Purchase.status.in_(on_hand_statuses),
+            Purchase.status.in_(INVENTORY_ON_HAND_PURCHASE_STATUSES),
         ).scalar() or 0
         run.butane_in_house_lbs = float(request.form.get("butane_in_house_lbs") or 0) or None
         run.solvent_ratio = float(request.form.get("solvent_ratio") or 0) or None
@@ -3842,6 +4031,7 @@ def _save_run(existing_run):
                     PurchaseLot.remaining_weight_lbs > 0,
                     PurchaseLot.deleted_at.is_(None),
                     Purchase.deleted_at.is_(None),
+                    Purchase.status.in_(INVENTORY_ON_HAND_PURCHASE_STATUSES),
                 ).all()
                 return render_template(
                     "run_form.html",
@@ -3936,6 +4126,7 @@ def _save_run(existing_run):
             PurchaseLot.remaining_weight_lbs > 0,
             PurchaseLot.deleted_at.is_(None),
             Purchase.deleted_at.is_(None),
+            Purchase.status.in_(INVENTORY_ON_HAND_PURCHASE_STATUSES),
         ).all()
         return render_template(
             "run_form.html",
@@ -4096,12 +4287,11 @@ def inventory():
     supplier_filter = (request.args.get("supplier_id") or "").strip()
     strain_filter = (request.args.get("strain") or "").strip().lower()
     # On-hand lots: only from purchases that have actually arrived
-    on_hand_statuses = ("delivered", "in_testing", "available", "processing", "complete")
     on_hand_q = PurchaseLot.query.join(Purchase).filter(
         PurchaseLot.remaining_weight_lbs > 0,
         PurchaseLot.deleted_at.is_(None),
         Purchase.deleted_at.is_(None),
-        Purchase.status.in_(on_hand_statuses)
+        Purchase.status.in_(INVENTORY_ON_HAND_PURCHASE_STATUSES),
     )
     if supplier_filter:
         on_hand_q = on_hand_q.filter(Purchase.supplier_id == supplier_filter)
@@ -4319,6 +4509,8 @@ def _save_purchase(existing):
                         weight_lbs=float(weight), remaining_weight_lbs=float(weight)
                     )
                     db.session.add(lot)
+
+        _maintain_purchase_inventory_lots(p)
 
         # Supporting documents (photos/scans) on the purchase record
         support_files = request.files.getlist("purchase_supporting_files")
@@ -5101,8 +5293,29 @@ def settings():
                 else:
                     db.session.add(SystemSetting(key=key, value=val, description=desc))
 
+            tz_raw = (request.form.get("app_display_timezone") or "").strip()
+            tz_ok = True
+            if tz_raw:
+                try:
+                    ZoneInfo(tz_raw)
+                    tz_ex = db.session.get(SystemSetting, "app_display_timezone")
+                    if tz_ex:
+                        tz_ex.value = tz_raw
+                    else:
+                        db.session.add(SystemSetting(
+                            key="app_display_timezone",
+                            value=tz_raw,
+                            description="IANA timezone: Slack message times, imports date filters, derived slack_message_date",
+                        ))
+                except ZoneInfoNotFoundError:
+                    flash(f"Unknown timezone {tz_raw!r}; timezone was not changed.", "error")
+                    tz_ok = False
+
             db.session.commit()
-            flash("System settings updated.", "success")
+            if tz_ok:
+                flash("System settings updated.", "success")
+            else:
+                flash("System settings saved; fix the timezone name and save again.", "info")
 
         elif form_type == "kpi":
             kpi_ids = request.form.getlist("kpi_ids[]")
@@ -5309,9 +5522,12 @@ def settings():
         if s.status == "rejected"
     )
 
+    tz_choice_vals = [c[0] for c in APP_DISPLAY_TIMEZONE_CHOICES]
     return render_template(
         "settings.html",
         system_settings=system_settings,
+        app_timezone_choices=APP_DISPLAY_TIMEZONE_CHOICES,
+        app_timezone_choice_values=tz_choice_vals,
         slack_sync_slots=slack_sync_slots,
         slack_sync_days_pref=slack_sync_days_pref,
         kpis=kpis,
@@ -6026,6 +6242,9 @@ def settings_slack_imports():
     text_op = (request.args.get("text_op") or "contains").strip().lower()
     if text_op not in SLACK_IMPORT_TEXT_OPS_ALLOWED:
         text_op = "contains"
+    include_hidden = (request.args.get("include_hidden") or "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
 
     try:
         start_d = datetime.strptime(start_raw, "%Y-%m-%d").date() if start_raw else None
@@ -6033,11 +6252,17 @@ def settings_slack_imports():
     except ValueError:
         start_d, end_d = None, None
 
-    channel_options = [
+    hint_by_resolved = _slack_resolved_channel_hint_map()
+    channel_ids = [
         cid for (cid,) in db.session.query(SlackIngestedMessage.channel_id).distinct().order_by(
             SlackIngestedMessage.channel_id,
         ).all() if cid
     ]
+    channel_options = [
+        {"id": cid, "label": _slack_channel_filter_label(cid, hint_by_resolved)}
+        for cid in channel_ids
+    ]
+    channel_options.sort(key=lambda x: (x["label"].lower(), x["id"]))
 
     rules = _load_slack_run_field_rules()
     link_index = _slack_linked_run_ids_index()
@@ -6051,6 +6276,8 @@ def settings_slack_imports():
         if end_d and (ts_date is None or ts_date > end_d):
             continue
         if channel_pick and r.channel_id not in channel_pick:
+            continue
+        if not include_hidden and bool(getattr(r, "hidden_from_imports", False)):
             continue
         linked = link_index.get((r.channel_id, r.message_ts), [])
         if promotion == "not_linked" and linked:
@@ -6089,7 +6316,49 @@ def settings_slack_imports():
         text_op=text_op,
         slack_import_kind_choices=SLACK_IMPORT_KIND_FILTER_CHOICES,
         slack_import_text_ops=SLACK_IMPORT_TEXT_FILTER_OPS,
+        include_hidden=include_hidden,
     )
+
+
+@app.route("/settings/slack-imports/<msg_id>/triage-hide", methods=["POST"])
+@slack_importer_required
+def settings_slack_import_triage_hide(msg_id):
+    row = db.session.get(SlackIngestedMessage, msg_id)
+    if not row:
+        flash("Slack import row not found.", "error")
+        return redirect(url_for("settings_slack_imports"))
+    row.hidden_from_imports = True
+    log_audit(
+        "slack_import_triage_hide",
+        "slack_ingested_message",
+        row.id,
+        details=json.dumps({"channel_id": row.channel_id, "message_ts": row.message_ts}),
+    )
+    db.session.commit()
+    flash(
+        'Message hidden from this list for everyone. Check "Include hidden messages" in filters to find it and restore.',
+        "success",
+    )
+    return _redirect_settings_slack_imports_preserved()
+
+
+@app.route("/settings/slack-imports/<msg_id>/triage-unhide", methods=["POST"])
+@slack_importer_required
+def settings_slack_import_triage_unhide(msg_id):
+    row = db.session.get(SlackIngestedMessage, msg_id)
+    if not row:
+        flash("Slack import row not found.", "error")
+        return redirect(url_for("settings_slack_imports"))
+    row.hidden_from_imports = False
+    log_audit(
+        "slack_import_triage_unhide",
+        "slack_ingested_message",
+        row.id,
+        details=json.dumps({"channel_id": row.channel_id, "message_ts": row.message_ts}),
+    )
+    db.session.commit()
+    flash("Message is visible in the imports list again.", "success")
+    return _redirect_settings_slack_imports_preserved()
 
 
 @app.route("/settings/slack-imports/<msg_id>/preview")
@@ -6119,9 +6388,11 @@ def settings_slack_import_preview(msg_id):
         intake_manifest_key = (derived.get("manifest_id_normalized") or "").strip()
         if intake_manifest_key:
             intake_candidates = _find_intake_purchase_candidates(intake_manifest_key)
+    slack_channel_label = _slack_channel_filter_label(row.channel_id, _slack_resolved_channel_hint_map())
     return render_template(
         "slack_import_preview.html",
         row=row,
+        slack_channel_label=slack_channel_label,
         derived=derived,
         preview=preview,
         rules=rules,
@@ -6178,9 +6449,11 @@ def settings_slack_import_apply_run(msg_id):
     dup = _first_run_for_slack_message(row.channel_id, row.message_ts)
     if dup and not confirm:
         passthrough = _slack_apply_form_passthrough(request.form) if request.method == "POST" else None
+        slack_channel_label = _slack_channel_filter_label(row.channel_id, _slack_resolved_channel_hint_map())
         return render_template(
             "slack_import_apply_confirm.html",
             row=row,
+            slack_channel_label=slack_channel_label,
             existing_run=dup,
             apply_passthrough=passthrough,
         )
@@ -6409,7 +6682,7 @@ def slack_command():
             PurchaseLot.remaining_weight_lbs > 0,
             PurchaseLot.deleted_at.is_(None),
             Purchase.deleted_at.is_(None),
-            Purchase.status.in_(("delivered", "in_testing", "available", "processing", "complete")),
+            Purchase.status.in_(INVENTORY_ON_HAND_PURCHASE_STATUSES),
         ).scalar() or 0
         return jsonify({"response_type": "ephemeral", "text": f"Current biomass on hand: {on_hand:,.1f} lbs"})
     if cmd_text.startswith("export runs"):
@@ -6535,6 +6808,7 @@ def export_csv(entity):
             PurchaseLot.remaining_weight_lbs > 0,
             PurchaseLot.deleted_at.is_(None),
             Purchase.deleted_at.is_(None),
+            Purchase.status.in_(INVENTORY_ON_HAND_PURCHASE_STATUSES),
         )
         if supplier_id:
             q = q.filter(Purchase.supplier_id == supplier_id)
@@ -7208,6 +7482,7 @@ def api_lots_available():
         PurchaseLot.remaining_weight_lbs > 0,
         PurchaseLot.deleted_at.is_(None),
         Purchase.deleted_at.is_(None),
+        Purchase.status.in_(INVENTORY_ON_HAND_PURCHASE_STATUSES),
     ).all()
     return jsonify([{
         "id": l.id,
@@ -7233,6 +7508,9 @@ def init_db():
             raise
     _ensure_sqlite_schema()
     _ensure_postgres_run_hte_columns()
+    _ensure_postgres_slack_ingested_columns()
+    _reconcile_closed_purchase_inventory_lots()
+    _backfill_default_inventory_lots()
 
     # Create default admin if none exists
     if not User.query.first():

@@ -8,7 +8,7 @@
 
 <div class="card">
   <p class="text-sm">
-    A saved run is already tied to this Slack message (<span class="text-mono">{{ row.channel_id }}</span> ·
+    A saved run is already tied to this Slack message ({{ slack_channel_label }} ·
     <strong>{{ row.message_ts | slack_ts_la }}</strong>
     <span class="text-mono cell-muted" title="Slack API timestamp">({{ row.message_ts }})</span>):
     <a href="{{ url_for('run_edit', run_id=existing_run.id) }}">open run {{ existing_run.run_date.strftime('%Y-%m-%d') if existing_run.run_date else '' }} · reactor {{ existing_run.reactor_number }}</a>.

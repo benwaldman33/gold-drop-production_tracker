@@ -9,7 +9,7 @@
 
 <div class="card" style="margin-bottom:16px;">
   <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;margin-bottom:8px;">Message</h4>
-  <p class="text-sm"><strong>Kind:</strong> {{ derived.get('message_kind') or row.message_kind or '—' }} &nbsp; <strong>Message time (Los Angeles):</strong> {{ row.message_ts | slack_ts_la }} <span class="text-mono cell-muted" title="Slack API timestamp">({{ row.message_ts }})</span> &nbsp; <strong>Channel:</strong> <span class="text-mono">{{ row.channel_id }}</span></p>
+  <p class="text-sm"><strong>Kind:</strong> {{ derived.get('message_kind') or row.message_kind or '—' }} &nbsp; <strong>Message time ({{ app_display_timezone_name }}):</strong> {{ row.message_ts | slack_ts_la }} <span class="text-mono cell-muted" title="Slack API timestamp">({{ row.message_ts }})</span> &nbsp; <strong>Channel:</strong> {{ slack_channel_label }}</p>
   <p class="text-sm" style="color:var(--text-muted);margin-top:8px;">
     <strong>Preview + apply:</strong> mapped Run fields are hints until you open the run form and save.
     Coverage: <span class="badge {% if coverage_label == 'full' %}badge-green{% elif coverage_label == 'partial' %}badge-gold{% else %}badge-gray{% endif %}">{{ coverage_label }}</span>

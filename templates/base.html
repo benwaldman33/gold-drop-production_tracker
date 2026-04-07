@@ -128,9 +128,12 @@
     <main class="main-content">
       {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
-      <div class="flash-messages">
+      <div class="flash-messages" role="region" aria-label="Notifications">
         {% for category, message in messages %}
-        <div class="flash flash-{{ category }}">{{ message }}</div>
+        <div class="flash flash-{{ category }} flash--dismissible">
+          <div class="flash__body">{{ message }}</div>
+          <button type="button" class="flash__dismiss" aria-label="Dismiss notification">×</button>
+        </div>
         {% endfor %}
       </div>
       {% endif %}
@@ -144,10 +147,22 @@
     (function () {
       const scrollKey = "gd-scroll:" + window.location.pathname + window.location.search + window.location.hash;
       const savedY = sessionStorage.getItem(scrollKey);
+      const hasFlash = document.querySelector(".flash-messages .flash");
       if (savedY !== null) {
-        window.scrollTo(0, parseInt(savedY, 10) || 0);
+        // After POST (e.g. Slack sync), do not restore scroll — it hides flashed messages at the top.
+        if (!hasFlash) {
+          window.scrollTo(0, parseInt(savedY, 10) || 0);
+        }
         sessionStorage.removeItem(scrollKey);
       }
+      document.querySelectorAll(".flash__dismiss").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var row = btn.closest(".flash");
+          if (row) row.remove();
+          var wrap = document.querySelector(".flash-messages");
+          if (wrap && !wrap.querySelector(".flash")) wrap.remove();
+        });
+      });
       const saveScroll = function () {
         sessionStorage.setItem(scrollKey, String(window.scrollY || window.pageYOffset || 0));
       };

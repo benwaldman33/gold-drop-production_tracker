@@ -66,6 +66,21 @@
         </div>
       </div>
     </div>
+    <div class="form-group" style="margin-top:12px;">
+      {% set cur_tz = system_settings.get('app_display_timezone', 'America/Los_Angeles') %}
+      <label>App display timezone (Slack times &amp; import date filters)</label>
+      <select name="app_display_timezone" style="max-width:100%;">
+        {% for val, lab in app_timezone_choices %}
+        <option value="{{ val }}" {% if cur_tz == val %}selected{% endif %}>{{ lab }} — {{ val }}</option>
+        {% endfor %}
+        {% if cur_tz not in app_timezone_choice_values %}
+        <option value="{{ cur_tz }}" selected>{{ cur_tz }} (current)</option>
+        {% endif %}
+      </select>
+      <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">
+        Slack message clocks, Slack imports date range, and auto-filled <code>slack_message_date</code> use this zone. Stored run/purchase dates are unchanged.
+      </div>
+    </div>
     <div class="form-group" style="margin-top:8px;">
       <label style="display:flex;align-items:center;gap:8px; text-transform:none; letter-spacing:0; font-size:0.85rem; color:var(--text-secondary);">
         <input type="checkbox" name="exclude_unpriced_batches" {% if system_settings.get('exclude_unpriced_batches', '0') in ('1','true','yes','on') %}checked{% endif %}>
@@ -580,7 +595,7 @@
         <label>Days back</label>
         <input type="number" name="sync_days" value="{{ slack_sync_days_pref }}" min="1" max="365" style="width:90px;">
       </div>
-      <button type="submit" class="btn btn-secondary btn-sm" onclick="return confirm('Fetch Slack history for all configured sync channels? This may take a moment for busy channels.');">Sync Slack channels</button>
+      <button type="submit" class="btn btn-secondary btn-sm">Sync Slack channels</button>
     </form>
     <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
       <a href="{{ url_for('settings_slack_imports') }}" class="btn btn-secondary btn-sm">View Slack imports</a>

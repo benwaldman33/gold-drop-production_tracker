@@ -1,4 +1,11 @@
 {% extends "base.html" %}
+{% macro slack_imports_preserve_query_inputs() -%}
+{% for key in request.args %}
+{% for val in request.args.getlist(key) %}
+<input type="hidden" name="{{ key }}" value="{{ val }}">
+{% endfor %}
+{% endfor %}
+{%- endmacro %}
 {% block title %}Slack imports{% endblock %}
 {% block content %}
 <div class="page-header">
@@ -13,26 +20,28 @@
 
 <div class="card" style="margin-bottom:16px;">
   <p class="text-sm" style="color:var(--text-muted);">
-    Rows come from channel history sync (Super Admin → Settings → Slack). Each message is deduped by channel + Slack <code>ts</code>.
+    Rows come from channel history sync (Super Admin → Settings → Slack). Channel names in the filter use the labels from <strong>Channel history sync</strong> (e.g. <code>#biomass-intake</code>) plus the Slack id. Date filters use the app display timezone (Settings → Operational parameters).
     <strong>Phase 2:</strong> use <strong>Create run from Slack</strong> to open the Run form prefilled from mapping rules; linkage is stored when you save the run.
     <strong>Triage:</strong> <em>Promotion</em> = whether a saved run backlinks this message; <em>Coverage</em> = whether Run-target rules used the full derived payload (heuristic).
+    Use <strong>Hide from list</strong> on a row to remove noise you will never promote (stored for everyone; use <strong>Include hidden messages</strong> below to find and restore).
+    <strong>Hide imported</strong> under the table only hides rows already linked to a run in your browser until you toggle it off.
   </p>
 
   <form method="GET" action="{{ url_for('settings_slack_imports') }}" style="margin-top:14px;display:grid;gap:10px;">
     <div class="form-row-3">
       <div class="form-group" style="margin:0;">
-        <label class="text-sm">Date from (message UTC)</label>
-        <input type="date" name="start_date" value="{{ start_date or '' }}" title="Slack message timestamp converted to UTC date">
+        <label class="text-sm">Date from <span class="cell-muted">({{ app_display_timezone_name }})</span></label>
+        <input type="date" name="start_date" value="{{ start_date or '' }}" title="Slack message local calendar date in {{ app_display_timezone_name }} (same as Message time column)">
       </div>
       <div class="form-group" style="margin:0;">
-        <label class="text-sm">Date to (inclusive)</label>
-        <input type="date" name="end_date" value="{{ end_date or '' }}">
+        <label class="text-sm">Date to <span class="cell-muted">(inclusive, {{ app_display_timezone_name }})</span></label>
+        <input type="date" name="end_date" value="{{ end_date or '' }}" title="Inclusive end date in {{ app_display_timezone_name }}">
       </div>
       <div class="form-group" style="margin:0;">
         <label class="text-sm">Channel</label>
-        <select name="channel_id" multiple size="3" style="min-height:72px;">
-          {% for cid in channel_options %}
-          <option value="{{ cid }}" {% if cid in channel_pick %}selected{% endif %}>{{ cid }}</option>
+        <select name="channel_id" multiple size="4" style="min-height:96px;">
+          {% for ch in channel_options %}
+          <option value="{{ ch.id }}" {% if ch.id in channel_pick %}selected{% endif %}>{{ ch.label }}</option>
           {% endfor %}
         </select>
       </div>
@@ -82,6 +91,12 @@
         <a href="{{ url_for('settings_slack_imports') }}" class="btn btn-secondary">Reset</a>
       </div>
     </div>
+    <div class="form-group" style="margin:0;">
+      <label class="text-sm" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+        <input type="checkbox" name="include_hidden" value="1" {% if include_hidden %}checked{% endif %}>
+        Include hidden messages (triage-dismissed rows)
+      </label>
+    </div>
     <p class="text-sm cell-muted" style="margin:0;">
       <strong>Contains</strong> / <strong>Does not contain</strong> use case-insensitive substring tests on the raw body.
       <strong>Equals</strong> compares the entire message (after trimming). Kind uses live parsing (same as Preview).
@@ -90,11 +105,17 @@
 </div>
 
 <div class="card">
-  <div class="table-wrap" style="margin-top:12px;">
+  <div class="slack-imports-table-toolbar" style="display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;margin-top:4px;margin-bottom:12px;">
+    <button type="button" id="slack-imports-toggle-imported" class="btn btn-secondary btn-sm"
+      title="Imported here means the Slack message is already linked to a saved run (Promotion column)."
+      aria-pressed="false">Hide imported</button>
+    <span id="slack-imports-hide-note" class="text-sm cell-muted" hidden></span>
+  </div>
+  <div id="slack-imports-table-wrap" class="table-wrap slack-imports-table-wrap">
     <table>
       <thead>
         <tr>
-          <th>Message time <span class="cell-muted" style="font-weight:400;">(Los Angeles)</span></th>
+          <th>Message time <span class="cell-muted" style="font-weight:400;">({{ app_display_timezone_name }})</span></th>
           <th>Slack ts</th>
           <th>Kind</th>
           <th>Promotion</th>
@@ -106,11 +127,14 @@
       </thead>
       <tbody>
         {% for r in rows %}
-        <tr>
+        <tr class="{% if r.hidden_from_imports %}slack-import-row--triage-hidden{% endif %}" data-slack-linked="{% if r._linked_run_ids %}1{% else %}0{% endif %}">
           <td class="text-sm">{{ r.message_ts | slack_ts_la }}</td>
           <td class="text-mono text-sm cell-muted" title="Slack API timestamp">{{ r.message_ts }}</td>
           <td><span class="badge badge-gray">{{ r.derived.get('message_kind') or r.message_kind or '—' }}</span></td>
           <td class="text-sm">
+            {% if r.hidden_from_imports %}
+            <span class="badge badge-gray" style="margin-bottom:4px;display:inline-block;">Hidden from list</span><br>
+            {% endif %}
             {% if r._linked_run_ids %}
               {% for rid in r._linked_run_ids %}
               <a href="{{ url_for('run_edit', run_id=rid) }}">Run</a>{% if not loop.last %}, {% endif %}
@@ -131,8 +155,23 @@
           </td>
           <td class="text-sm" style="max-width:320px;white-space:pre-wrap;word-break:break-word;">{{ (r.raw_text or '')[:500] }}{% if r.raw_text and r.raw_text|length > 500 %}…{% endif %}</td>
           <td style="white-space:nowrap;">
-            <a href="{{ url_for('settings_slack_import_preview', msg_id=r.id) }}" class="btn btn-secondary btn-sm">Preview</a>
-            <a href="{{ url_for('settings_slack_import_preview', msg_id=r.id) }}{% if r.derived.get('message_kind') == 'biomass_intake' %}#slack-intake-apply{% else %}#slack-run-apply{% endif %}" class="btn btn-primary btn-sm">{% if r.derived.get('message_kind') == 'biomass_intake' %}Apply{% else %}Apply run{% endif %}</a>
+            <div style="display:flex;flex-direction:column;align-items:stretch;gap:6px;">
+              <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                <a href="{{ url_for('settings_slack_import_preview', msg_id=r.id) }}" class="btn btn-secondary btn-sm">Preview</a>
+                <a href="{{ url_for('settings_slack_import_preview', msg_id=r.id) }}{% if r.derived.get('message_kind') == 'biomass_intake' %}#slack-intake-apply{% else %}#slack-run-apply{% endif %}" class="btn btn-primary btn-sm">{% if r.derived.get('message_kind') == 'biomass_intake' %}Apply{% else %}Apply run{% endif %}</a>
+              </div>
+              {% if r.hidden_from_imports %}
+              <form method="POST" action="{{ url_for('settings_slack_import_triage_unhide', msg_id=r.id) }}" style="margin:0;">
+                {{ slack_imports_preserve_query_inputs() }}
+                <button type="submit" class="btn btn-secondary btn-sm" style="width:100%;">Unhide</button>
+              </form>
+              {% else %}
+              <form method="POST" action="{{ url_for('settings_slack_import_triage_hide', msg_id=r.id) }}" style="margin:0;">
+                {{ slack_imports_preserve_query_inputs() }}
+                <button type="submit" class="btn btn-secondary btn-sm" style="width:100%;" title="Remove from this list for everyone; does not delete Slack data.">Hide from list</button>
+              </form>
+              {% endif %}
+            </div>
           </td>
         </tr>
         {% else %}
@@ -142,4 +181,48 @@
     </table>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var KEY = "slackImportsHideLinked";
+  var wrap = document.getElementById("slack-imports-table-wrap");
+  var btn = document.getElementById("slack-imports-toggle-imported");
+  var note = document.getElementById("slack-imports-hide-note");
+  if (!wrap || !btn) return;
+
+  function linkedCount() {
+    return wrap.querySelectorAll('tbody tr[data-slack-linked="1"]').length;
+  }
+
+  function apply(hide) {
+    wrap.classList.toggle("slack-imports-table-wrap--hide-linked", hide);
+    btn.setAttribute("aria-pressed", hide ? "true" : "false");
+    btn.textContent = hide ? "Show imported" : "Hide imported";
+    try {
+      sessionStorage.setItem(KEY, hide ? "1" : "0");
+    } catch (e) {}
+    var n = linkedCount();
+    if (hide && n > 0) {
+      note.hidden = false;
+      note.textContent =
+        n + " row(s) linked to a saved run " + (n === 1 ? "is" : "are") + " hidden. Click the button again to show them.";
+    } else {
+      note.hidden = true;
+      note.textContent = "";
+    }
+  }
+
+  btn.addEventListener("click", function () {
+    apply(!wrap.classList.contains("slack-imports-table-wrap--hide-linked"));
+  });
+
+  try {
+    if (sessionStorage.getItem(KEY) === "1") {
+      apply(true);
+    }
+  } catch (e) {}
+})();
+</script>
 {% endblock %}

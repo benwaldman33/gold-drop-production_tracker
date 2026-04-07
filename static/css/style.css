@@ -469,15 +469,48 @@ tbody tr:last-child td { border-bottom: none; }
 }
 
 /* Flash Messages */
-.flash-messages { margin-bottom: 16px; }
+.flash-messages {
+  margin-bottom: 16px;
+  position: sticky;
+  top: 0;
+  z-index: 250;
+  padding-bottom: 4px;
+}
 .flash {
   padding: 10px 16px;
   border-radius: var(--radius);
   font-size: 0.85rem;
   margin-bottom: 8px;
+}
+.flash--dismissible {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 12px;
+  padding-right: 8px;
+  box-shadow: var(--shadow);
+}
+.flash__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.flash__dismiss {
+  flex: 0 0 auto;
+  margin: -2px -4px 0 0;
+  padding: 2px 8px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  opacity: 0.75;
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: var(--radius);
+}
+.flash__dismiss:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.08);
 }
 .flash-success { background: var(--green-bg); color: var(--green); border: 1px solid rgba(52, 211, 153, 0.2); }
 .flash-error { background: var(--red-bg); color: var(--red); border: 1px solid rgba(248, 113, 113, 0.2); }
@@ -753,4 +786,14 @@ body.supplier-incomplete-banner-on .main-content {
     padding-left: 12px;
     padding-right: 12px;
   }
+}
+
+/* Slack imports: hide rows already linked to a saved run */
+.slack-imports-table-wrap--hide-linked tbody tr[data-slack-linked="1"] {
+  display: none;
+}
+
+/* Slack imports: triage-hidden rows (shown only when "Include hidden" is on) */
+.slack-import-row--triage-hidden td {
+  background: rgba(107, 105, 117, 0.08);
 }
