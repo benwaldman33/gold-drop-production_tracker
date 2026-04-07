@@ -3,7 +3,7 @@
 **Product requirements** live in `PRD.md` (Summary plus **Operational departments & shared data model**, **Users & Permissions**, **Potential pipeline records — Old Lots and soft deletion**).
 **User guide** lives in `USER_MANUAL.md` (no credentials included).
 **FAQ** lives in `FAQ.md`.
-**Engineering notes** (implementation-oriented) live in `ENGINEERING.md` (see **PRD implementation notes — departments, approvals, aging**).
+**Engineering notes** (implementation-oriented) live in `ENGINEERING.md` (see **PRD implementation notes — departments, approvals, aging** and **HTE post-extraction pipeline (runs)**).
 
 ## Quick Start (Local Development)
 
@@ -32,7 +32,8 @@ Open **http://localhost:5050** in your browser (default dev port; **5000** is of
 ## Features
 
 - **Dashboard** — KPI cards with configurable green/yellow/red traffic lights
-- **Run Logging** — Log extraction runs with source lots, wet/dry HTE & THCA output
+- **Run Logging** — Log extraction runs with source lots, wet/dry HTE & THCA output; optional **HTE post-extraction pipeline** (lab staging, clean vs dirty, COA file attachments, terp-strip queue, terpenes + retail distillate grams after Prescott strip)
+- **Departments** — Focused lenses (`/dept`, `/dept/<slug>`) on the same data: quick links, rollups, and filtered run lists (e.g. HTE pipeline stage) for finance, purchasing, intake, extraction, THCA/HTE/LD, terpenes, testing, bulk sales
 - **Auto-Calculations** — Yield %, cost per gram, true-up amounts calculated automatically
 - **Costs** — Enter solvent/personnel/overhead costs with date ranges; allocated into $/g
 - **Cost Allocation Settings** — Choose THCA vs HTE allocation (uniform, 50/50, custom %)
@@ -77,8 +78,10 @@ gold-drop/
     ├── base.html           # Layout with sidebar navigation
     ├── login.html          # Login page
     ├── dashboard.html      # KPI dashboard
-    ├── runs.html           # Run list view
-    ├── run_form.html       # New/edit run form
+    ├── runs.html           # Run list view (optional HTE pipeline filter)
+    ├── run_form.html       # New/edit run form (HTE lab & terp pipeline section)
+    ├── dept_index.html     # Department hub tiles
+    ├── dept_view.html      # Single department intro + stats + quick links
     ├── inventory.html      # Inventory position view
     ├── purchases.html      # Purchase list view
     ├── purchase_form.html  # New/edit purchase form
@@ -101,6 +104,8 @@ gold-drop/
 ---
 
 ## Deploying to Production
+
+After merging work into **`main`**, deploy by pulling on the server (`git fetch` / `git checkout main` / `git pull`) and **restarting the app process** (e.g. `systemctl restart …`) so Gunicorn reloads code. New database columns are applied on startup: SQLite via **`init_db()`** + **`_ensure_sqlite_schema()`**; PostgreSQL via **`init_db()`** + **`_ensure_postgres_run_hte_columns()`** (and `db.create_all()` for new tables).
 
 ### Option 1: DigitalOcean / Render / Railway
 
@@ -176,3 +181,4 @@ The system will:
 - **Lots** → **Run Inputs** → **Runs** (many-to-many through run_inputs)
 - Lot `remaining_weight_lbs` is automatically decremented when used in a run
 - Yield calculations and cost-per-gram are auto-computed on save
+- **Runs** may store **HTE pipeline stage** (awaiting lab → lab clean / queued for strip → stripped), **lab/COA file paths** (JSON, under `static/uploads/labs/`), and **terpenes / retail distillate grams** after stripping

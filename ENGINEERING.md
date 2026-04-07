@@ -28,8 +28,27 @@ Product requirements live in **`PRD.md`** under **Operational departments & shar
 
 - **Routes:** `GET /dept/` (`dept_index`) lists all department tiles; `GET /dept/<slug>` (`dept_view`) shows intro, **Quick links** (existing `url_for` targets + optional `#anchor`), and **`_department_stat_sections(slug)`** rollups (same DB as core screens).
 - **Slugs:** `finance`, `biomass-purchasing`, `biomass-intake`, `biomass-extraction`, `thca-processing`, `hte-processing`, `liquid-diamonds`, `terpenes-distillation`, `testing`, `bulk-sales` — see `DEPARTMENT_PAGES` in `app.py`.
+- **Quick links with query args:** e.g. `url_kwargs={"hte_stage": "awaiting_lab"}` → `GET /runs?hte_stage=awaiting_lab` (Flask `url_for` passes unknown keys as query parameters).
+- **Testing / Terpenes rollups:** `_department_stat_sections("testing")` counts **Run** rows with `dry_hte_g > 0` by `hte_pipeline_stage` (plus supplier **`LabTest`** totals). `_department_stat_sections("terpenes-distillation")` reports strip-queue count, stripped count, and last-30-day sums of `hte_terpenes_recovered_g` / `hte_distillate_retail_g` on runs in stage **`terp_stripped`**.
 - **Weekly finance snapshot:** `_weekly_finance_snapshot()` shared with Dashboard buyer budget card.
 - **Data access:** reuse existing queries and models; no duplicate business rules.
+
+### HTE post-extraction pipeline (runs)
+
+Product behavior is summarized in **`PRD.md`** (Runs entity + material flow) and **`USER_MANUAL.md`** (operator steps).
+
+- **Model (`models.py` — `Run`):**
+  - `hte_pipeline_stage` — `NULL` / empty = not set; otherwise one of **`awaiting_lab`**, **`lab_clean`**, **`lab_dirty_queued_strip`**, **`terp_stripped`** (see `HTE_PIPELINE_ALLOWED` / `_hte_pipeline_options()` in `app.py`).
+  - `hte_lab_result_paths_json` — JSON array of relative static paths (e.g. `uploads/labs/...`) for COA/lab PDFs or images.
+  - `hte_terpenes_recovered_g`, `hte_distillate_retail_g` — floats; used when material is stripped and accounted.
+
+- **Persistence:**
+  - **SQLite:** `_ensure_sqlite_schema()` adds the four columns to **`runs`** if missing.
+  - **PostgreSQL:** `_ensure_postgres_run_hte_columns()` runs from **`init_db()`** and issues `ALTER TABLE runs ADD COLUMN IF NOT EXISTS ...` (because `db.create_all()` does not migrate existing tables).
+
+- **Write path:** `_save_run()` — after `flush()` so `run.id` exists, merges removals (`remove_hte_lab_paths[]`), appends **`_save_lab_files(..., prefix="hte-run-<id>")`**, stores JSON; parses optional terp/distillate floats from the form.
+
+- **Read paths:** `runs_list` — optional **`hte_stage`** query filter; template gets `hte_label_map` / `hte_pipeline_options`. **`export_csv`** entity **`runs`** — extra CSV columns and the same filter when `hte_stage` is present.
 
 ### Slack remains authoritative for floor capture
 

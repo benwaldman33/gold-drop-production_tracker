@@ -120,6 +120,7 @@ Represents an extraction run with:
 - Wet/dry outputs for THCA and HTE
 - Yield calculations
 - Cost calculations (combined and product-specific)
+- **HTE post-separation workflow (optional per run):** after dry HTE is separated from THCA, operators may record a **pipeline stage** (e.g. awaiting outside lab test; lab result **clean** for menu/sale vs **dirty** queued for terp stripping on Prescott / “Terp Tubes”; **stripped** with terpene and retail distillate mass accounted). **Lab/COA evidence** may be attached as files on the run (images or PDFs). This is distinct from **supplier-level** historical lab tests in the Suppliers module.
 
 ### CostEntry (operational costs)
 Represents operational spend over a date range:
@@ -527,22 +528,23 @@ Each row is a **primary lens**; several departments share the same underlying en
 | **Biomass intake** | Receipt, weigh-in variance vs promised, photos, strain receipt into inventory |
 | **Biomass extraction** | Reactor loads, batch sizing, production variables tied to runs |
 | **THCA processing** | Wet/dry THCA path, yields, disposition toward powder vs further refinement |
-| **HTE processing** | Wet/dry HTE path, yields, disposition toward sale vs distillation |
+| **HTE processing** | Wet/dry HTE path, yields; department page links to runs and analytics (disposition detail is tracked on each **Run** via **HTE pipeline stage** when used) |
 | **Liquid Diamonds processing** | THCA refinement path where product strategy routes material here |
-| **Terpenes distillation** | Terpene/distillate path from HTE refinement |
-| **Testing** | Potency and lab timing (before/after commitment, pre/post pickup), pesticide and repricing hooks |
+| **Terpenes distillation** | After dirty lab results, queue vs stripped runs; **terpenes recovered (g)** and **retail distillate (g)** recorded on **Runs** at strip complete; department rollups |
+| **Testing** | **Shipped v1:** department page rollups for **HTE lab pipeline** (runs with dry HTE) plus supplier-level lab history; **Runs** hold stage + COA attachments for post-extraction HTE testing |
 | **Bulk sales** | **v1:** decrement **finished inventory** so on-hand balances stay correct; extended CRM/order management is out of scope until specified |
 
 Acceptance criteria (department initiative):
 - Navigation and layouts may differ by department; **numbers** for the same entity match across views.
 - New department pages **respect** base role + capability gates (see **Users & Permissions**).
+- **Testing** and **Terpenes distillation** pages surface **HTE lab pipeline** counts and links to **Runs** filtered by pipeline stage where implemented; **Run** is the system of record for stage, attachments, and terp/distillate grams.
 
 ### Canonical material flow (narrative)
 1. Buyer sources **potential** biomass (field intake); weekly **volume** and **quality** goals align with plant throughput targets (e.g. lbs/day targets—configurable).
 2. An approver promotes a line to **commitment** → **financial obligation**, logistics, and intake planning; testing may occur before or after commitment; **commercial terms** (e.g. pesticide repricing) must be representable in data.
 3. Intake weighs and documents receipt; variance vs promised matters; media may flow through **Slack**; strains enter **inventory**.
 4. Extraction consumes lots in **runs** (e.g. batch sizes, multiple reactors); production variables captured per operational policy (**Slack**-authoritative today).
-5. Outputs split into **wet THCA** and **wet HTE**, then dry weights; downstream: THCA → powder or Liquid Diamonds; HTE → sale or **terpenes / distillate** paths.
+5. Outputs split into **wet THCA** and **wet HTE**, then dry weights; downstream: THCA → powder or Liquid Diamonds; HTE → outside lab test (staged/awaiting), then **clean** (menu/sale) or **dirty** (queued for Prescott terp strip) → **stripped** with terpenes and retail distillate grams recorded on the **Run**.
 6. **Bulk sales** reduces finished inventory.
 
 ---
@@ -571,7 +573,7 @@ Some **potential** purchase / pipeline lines will never be approved. The product
 ---
 
 ## Future Improvements (Roadmap)
-- **Department UIs + governance:** implement **capabilities** (e.g. `can_approve_purchase`), **single-step purchase approval** with **commitment propagation** (including budget dashboard), **Old Lots** + **soft delete** aging job, then phased **department** templates per **Operational departments & shared data model**.
+- **Department UIs + governance:** **capabilities**, **purchase approval**, **Old Lots** + **soft delete**, and **`/dept` department hub + per-department pages** are implemented; continue to deepen per-department workflows (e.g. explicit “on stripper” stage, richer testing integrations) per **Operational departments & shared data model**.
 - **Explicit close-out reasons** for potential lines (declined, lost, withdrawn) — optional enhancement beyond aging; supports analytics such as win rate by supplier without relying on soft-delete alone.
 - **Slack → operational mapping:** phased roadmap under **Integrations — Slack** → **Proposed: Field mapping control panel (phased roadmap)** (Phase 1: mapping UI + preview; Phase 2: manual apply; Phase 3: resolution + breadth + optional automation).
 - Consider consolidating Biomass Pipeline into Purchases by expanding purchase statuses to include pre-commitment stages (declared/testing), reducing duplication and sync logic.

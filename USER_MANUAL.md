@@ -17,6 +17,7 @@ This guide explains how to use the Gold Drop web app day-to-day. It intentionall
 ### Navigation overview
 Use the left sidebar:
 - **Dashboard**: KPIs + quick actions
+- **Departments**: hub of department-focused pages (same data as the rest of the app; quick links and rollups per team—finance, purchasing, intake, extraction, THCA/HTE/Liquid Diamonds, terpenes, testing, bulk sales)
 - **Runs**: extraction runs log + cost/yield outputs
 - **Inventory**: on-hand lots + in-transit purchases
 - **Purchases**: batch-level purchase records + batch IDs
@@ -53,6 +54,16 @@ Typical fields include:
 - Notes
 
 The **Bio in House** field is now auto-populated from inventory (not manually entered).
+
+#### HTE — lab and terp pipeline (after THCA/HTE separation)
+For runs that produce dry HTE, you can track what happens **after extraction**:
+- **Pipeline stage:** e.g. **Awaiting lab test** (material staged or out for testing), **Lab clean** (cleared for menu/sale), **Lab dirty — queued for Prescott strip** (waiting for Terp Tubes / stripping), **Stripped** (terp pass complete).
+- **Lab / COA files:** attach photos or PDFs of test results to the run; remove old files with the checkboxes before saving.
+- **After stripping:** enter **Terpenes recovered (g)** and **Retail distillate (g)** when the run is in the **Stripped** stage (or when your process dictates).
+
+This is separate from **supplier-level** lab history on the **Suppliers** screen—both can be used together.
+
+On the **Runs** list, use the **HTE pipeline** filter to see only runs in a given stage; the table includes a short **HTE** column for the current stage.
 
 ### Adding a new run
 1. Go to **Runs** → **+ New Run**
@@ -93,6 +104,20 @@ These badges help identify runs that may skew cost analytics.
 - **Edit**: updates calculations again on save.
 - **Delete**: restores lot remaining weights (so inventory stays correct).
 - **Hard Delete (Super Admin)**: permanently removes run records for sandbox cleanup.
+
+---
+
+## Departments
+**Departments** opens a grid of team-focused pages. Each page includes:
+- A short intro for that lens
+- **Quick links** to existing screens (e.g. Runs, Inventory, Biomass Pipeline) with filters where helpful
+- **Live rollups** (counts, last-30-day totals, pipeline snapshots—varies by department)
+
+Examples:
+- **Testing** — rollups for **HTE lab pipeline** (runs with dry HTE by stage) and supplier lab test activity; links to filtered **Runs** (e.g. awaiting lab, lab clean, dirty/strip queue).
+- **Terpenes distillation** — strip queue vs stripped runs; terpene and retail distillate totals from runs marked stripped (recent window).
+
+Use **Departments** for day-to-day orientation; all underlying data is the same as on **Runs**, **Purchases**, etc.
 
 ---
 
@@ -316,7 +341,7 @@ The importer attempts to:
 
 ## Export (CSV)
 Most list screens include **Export CSV**. Exports available include:
-- Runs
+- Runs (includes **HTE pipeline** label, terp/distillate grams, and lab file paths when present; respects the **HTE pipeline** filter if you applied one)
 - Purchases
 - Inventory
 - Biomass Pipeline
@@ -324,7 +349,7 @@ Most list screens include **Export CSV**. Exports available include:
 - Strains
 - Costs
 
-Exports support criteria filters (depending on tab), including date range, supplier/status, strain text, and potency range.
+Exports support criteria filters (depending on tab), including date range, supplier/status, strain text, potency range, and on **Runs** the **HTE pipeline** stage filter.
 
 Use exports for reporting, reconciliation, or offline analysis.
 
