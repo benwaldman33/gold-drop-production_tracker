@@ -94,6 +94,7 @@
     <table>
       <thead>
         <tr>
+          <th>Message time <span class="cell-muted" style="font-weight:400;">(Los Angeles)</span></th>
           <th>Slack ts</th>
           <th>Kind</th>
           <th>Promotion</th>
@@ -106,7 +107,8 @@
       <tbody>
         {% for r in rows %}
         <tr>
-          <td class="text-mono text-sm">{{ r.message_ts }}</td>
+          <td class="text-sm">{{ r.message_ts | slack_ts_la }}</td>
+          <td class="text-mono text-sm cell-muted" title="Slack API timestamp">{{ r.message_ts }}</td>
           <td><span class="badge badge-gray">{{ r.derived.get('message_kind') or r.message_kind or '—' }}</span></td>
           <td class="text-sm">
             {% if r._linked_run_ids %}
@@ -134,7 +136,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="7" class="text-center cell-muted" style="padding:24px;">No rows match these filters.</td></tr>
+        <tr><td colspan="8" class="text-center cell-muted" style="padding:24px;">No rows match these filters.</td></tr>
         {% endfor %}
       </tbody>
     </table>

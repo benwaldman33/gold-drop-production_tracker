@@ -534,3 +534,88 @@ tbody tr:last-child td { border-bottom: none; }
 .text-green { color: var(--green); }
 .text-sm { font-size: 0.8rem; }
 .w-full { width: 100%; }
+
+/* Suppliers list: expand metrics on hover (desktop); tap header on touch */
+.supplier-hover-card {
+  margin-bottom: 10px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.supplier-hover-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  border-radius: var(--radius);
+  outline: none;
+}
+.supplier-hover-card__header:focus-visible {
+  box-shadow: 0 0 0 2px var(--gold);
+}
+.supplier-hover-card__title {
+  text-transform: none;
+  font-size: 1.1rem;
+  color: var(--text-primary);
+  margin: 0;
+  font-weight: 600;
+}
+.supplier-hover-card__meta {
+  color: var(--text-muted);
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+.supplier-hover-card__body {
+  display: none;
+  margin-top: 12px;
+}
+@media (hover: hover) {
+  .supplier-hover-card:hover,
+  .supplier-hover-card:focus-within {
+    border-color: rgba(200, 150, 62, 0.35);
+    box-shadow: 0 0 0 1px rgba(200, 150, 62, 0.12);
+  }
+  .supplier-hover-card:hover .supplier-hover-card__body,
+  .supplier-hover-card:focus-within .supplier-hover-card__body {
+    display: block;
+  }
+}
+@media (hover: none) {
+  .supplier-hover-card__header {
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .supplier-hover-card.is-touch-open .supplier-hover-card__body,
+  .supplier-hover-card:focus-within .supplier-hover-card__body {
+    display: block;
+  }
+}
+
+.supplier-list-incomplete-banner {
+  position: fixed;
+  top: 0;
+  left: 220px;
+  right: 0;
+  z-index: 150;
+  padding: 7px 20px;
+  background: linear-gradient(180deg, rgba(185, 28, 28, 0.97), rgba(127, 29, 29, 0.95));
+  color: #fecaca;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+body.supplier-incomplete-banner-on .main-content {
+  padding-top: 38px;
+  transition: padding-top 0.12s ease;
+}
+@media (max-width: 1024px) {
+  .supplier-list-incomplete-banner {
+    left: 60px;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}
