@@ -41,7 +41,7 @@ Open **http://localhost:5050** in your browser (default dev port; **5000** is of
 - **Purchases** — Record purchases with potency-based pricing and true-up tracking
 - **Batch IDs** — Unique, readable batch IDs for all purchases (auto-generated if blank)
 - **Biomass Pipeline** — Track farm availability from declared → testing → committed → delivered/cancelled (syncs to Purchases)
-- **Field Photo Uploads** — Field users can attach multiple photos to biomass and purchase submissions (JPG/JPEG/PNG/WEBP/HEIC/HEIF, max 20 MB each)
+- **Field Photo Uploads** — Field users can attach multiple photos to biomass and purchase submissions (JPG/JPEG/PNG/WEBP/HEIC/HEIF, max 50 MB each)
 - **Field Purchase Intake Enhancements** — Harvest date, storage note, license info, queue placement, testing/COA status, and categorized photo uploads
 - **Soft Delete + Admin Hard Delete** — Runs and purchases support safe delete plus super-admin permanent cleanup
 - **Historical Lab Tracking** — Supplier-level lab test history and file attachments (including PDF lab docs)

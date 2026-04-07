@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Field purchase approvals{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Field purchase approvals</h2>
+  <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">← Dashboard</a>
+</div>
+<p class="text-sm" style="color:var(--text-muted);margin:-12px 0 20px;max-width:720px;">
+  Review submissions from field intake. Approve to create a committed purchase (counts toward weekly purchasing totals and limits). Super Admins can also manage intake links under Settings.
+</p>
+
+{% include 'partials/field_purchase_submission_tables.html' %}
+{% endblock %}

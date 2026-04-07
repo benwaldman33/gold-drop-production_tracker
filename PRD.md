@@ -89,7 +89,8 @@ Field users can submit data through secure links for:
 
 Both field forms support optional photo uploads:
 - Allowed formats: `.jpg`, `.jpeg`, `.png`, `.webp`, `.heic`, `.heif`
-- Max file size: 20 MB per photo
+- Max file size: 50 MB per photo (field intake); 50 MB per file for supplier lab/attachment uploads, photo library uploads, and purchase supporting documents
+- Max **count** per photo bucket (default 30 per category on purchase intake; same for the single biomass-availability bucket): overridable via `FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET`. UI uses **one native file input per photo** (required for iOS / many WebViews); **Add photo** adds a row; **Take or choose photo** opens the picker; **Remove** drops the row before submit.
 - Files are stored under `static/uploads/field/` and referenced by relative path in JSON fields
 
 Field purchase intake requires/accepts:
@@ -232,9 +233,15 @@ Acceptance criteria:
 
 ### 3) Inventory workflow
 - Inventory shows:
-  - On-hand lots (from arrived statuses)
-  - In-transit purchases
-  - Days of supply based on configured daily throughput target
+  - On-hand lots (from arrived purchase statuses: delivered, in_testing, available, processing, complete), using each lot’s **remaining** weight
+  - In-transit purchases (statuses committed, ordered, in_transit), using **stated** weight
+  - Summary tiles:
+    - **On Hand**: sum of remaining lbs on on-hand lots
+    - **In Transit**: sum of stated lbs on in-transit purchases
+    - **Total**: on hand + in transit (combined lbs position)
+    - **Days of Supply**: **on-hand lbs only** ÷ **Daily Throughput Target** (`SystemSetting` `daily_throughput_target`, default 500 lbs/day). In-transit weight does **not** extend days of supply until it arrives and appears on hand.
+  - Optional **supplier** filter applies to both on-hand lots and in-transit purchases (all four summaries use the same supplier scope).
+  - Optional **strain-contains** filter applies **only** to on-hand lots (lot `strain_name`). In-transit purchases are not strain-filtered, so **In Transit** and the **Total** tile still include all matching supplier in-transit weight when a strain filter is set; **On Hand** and **Days of Supply** reflect the strain slice only.
 
 Acceptance criteria:
 - When a run uses lot weights, `remaining_weight_lbs` decrements.

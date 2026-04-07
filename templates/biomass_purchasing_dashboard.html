@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}Biomass purchasing{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Biomass purchasing dashboard</h2>
+  <div class="btn-group">
+    {% if current_user.can_edit_purchases %}
+    <a href="{{ url_for('desk_field_purchase_submission') }}" class="btn btn-primary">+ New purchase proposal</a>
+    {% endif %}
+    <a href="{{ url_for('purchases_list') }}" class="btn btn-secondary">Purchases</a>
+  </div>
+</div>
+
+<p class="text-sm" style="color:var(--text-muted);max-width:920px;margin:-8px 0 20px;">
+  Weeks run <strong>Monday–Sunday</strong> (purchase date). Actuals include purchases from <strong>committed</strong> through <strong>complete</strong> only. Spend uses recorded <strong>total cost</strong>, or lbs × price/lb when total cost is missing.
+  Weekly targets below are set in {% if current_user.is_super_admin %}<a href="{{ url_for('settings') }}#settings-biomass-budget">Settings → Biomass purchasing</a>{% else %}Settings (Super Admin){% endif %}.
+  {% if current_user.can_edit_purchases %}Use <strong>New purchase proposal</strong> above to enter lots like mobile field intake (pending until approved).{% endif %}
+</p>
+
+<div class="card" style="margin-bottom:16px;">
+  <div class="card-header"><h3>Weekly targets (reference)</h3></div>
+  <div style="padding:16px;display:flex;gap:32px;flex-wrap:wrap;">
+    <div>
+      <div class="text-sm" style="color:var(--text-muted);">Budget</div>
+      <div class="text-mono" style="font-size:1.1rem;font-weight:600;">
+        {% if weekly_budget_usd and weekly_budget_usd > 0 %}${{ "{:,.0f}".format(weekly_budget_usd) }}{% else %}<span style="color:var(--text-muted);">Not set</span>{% endif %}<span class="text-sm" style="color:var(--text-muted);font-weight:400;"> / week</span>
+      </div>
+    </div>
+    <div>
+      <div class="text-sm" style="color:var(--text-muted);">Volume target</div>
+      <div class="text-mono" style="font-size:1.1rem;font-weight:600;">
+        {% if weekly_target_lbs and weekly_target_lbs > 0 %}{{ "{:,.0f}".format(weekly_target_lbs) }} lbs{% else %}<span style="color:var(--text-muted);">Not set</span>{% endif %}<span class="text-sm" style="color:var(--text-muted);font-weight:400;"> / week</span>
+      </div>
+    </div>
+    <div>
+      <div class="text-sm" style="color:var(--text-muted);">Potency target</div>
+      <div class="text-mono" style="font-size:1.1rem;font-weight:600;">
+        {% if weekly_target_potency_pct %}{{ "{:.1f}".format(weekly_target_potency_pct) }}%{% else %}<span style="color:var(--text-muted);">Not set</span>{% endif %}<span class="text-sm" style="color:var(--text-muted);font-weight:400;"> avg</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <div class="card-header"><h3>Five-week view</h3></div>
+  <div class="table-wrap" style="padding:0;">
+    <table class="biomass-purchasing-week-table">
+      <thead>
+        <tr>
+          <th>Period</th>
+          <th>Week</th>
+          <th class="text-right">Spend</th>
+          <th class="text-right">vs $ budget</th>
+          <th class="text-right">Lbs</th>
+          <th class="text-right">vs lbs target</th>
+          <th class="text-right">Avg %</th>
+          <th class="text-right">vs % target</th>
+          <th class="text-right">Clean lbs</th>
+          <th class="text-right">Dirty lbs</th>
+          <th class="text-right">Unspecified</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for w in weeks %}
+        <tr class="{% if w.is_current %}biomass-purchasing-row-current{% endif %}">
+          <td>
+            <strong>{{ w.bucket_label }}</strong>
+            {% if w.is_current %}<span class="badge badge-yellow" style="margin-left:6px;">Current</span>{% endif %}
+          </td>
+          <td class="text-sm" style="color:var(--text-secondary);white-space:nowrap;">{{ w.range_label }}</td>
+          <td class="text-right text-mono">${{ "{:,.0f}".format(w.spend) }}</td>
+          <td class="text-right">
+            {% if w.spend_variance_usd is not none %}
+              {% if w.spend_variance_usd > 0 %}
+                <span class="cell-red">${{ "{:,.0f}".format(w.spend_variance_usd) }} over</span>
+              {% elif w.spend_variance_usd < 0 %}
+                <span class="cell-green">${{ "{:,.0f}".format(-w.spend_variance_usd) }} under</span>
+              {% else %}
+                <span style="color:var(--text-muted);">On target</span>
+              {% endif %}
+            {% else %}
+              <span style="color:var(--text-muted);">—</span>
+            {% endif %}
+          </td>
+          <td class="text-right text-mono">{{ "{:,.0f}".format(w.lbs) }}</td>
+          <td class="text-right">
+            {% if w.lbs_variance is not none %}
+              {% if w.lbs_variance > 0 %}
+                <span class="cell-red">{{ "{:,.0f}".format(w.lbs_variance) }} lbs over</span>
+              {% elif w.lbs_variance < 0 %}
+                <span class="cell-green">{{ "{:,.0f}".format(-w.lbs_variance) }} lbs under</span>
+              {% else %}
+                <span style="color:var(--text-muted);">On target</span>
+              {% endif %}
+            {% else %}
+              <span style="color:var(--text-muted);">—</span>
+            {% endif %}
+          </td>
+          <td class="text-right text-mono">{% if w.avg_potency_pct is not none %}{{ "{:.1f}".format(w.avg_potency_pct) }}{% else %}—{% endif %}</td>
+          <td class="text-right">
+            {% if w.potency_variance_pct is not none %}
+              {% if w.potency_variance_pct > 0 %}
+                <span class="cell-green">+{{ "{:.1f}".format(w.potency_variance_pct) }} pts</span>
+              {% elif w.potency_variance_pct < 0 %}
+                <span class="cell-red">{{ "{:.1f}".format(w.potency_variance_pct) }} pts</span>
+              {% else %}
+                <span style="color:var(--text-muted);">On target</span>
+              {% endif %}
+            {% else %}
+              <span style="color:var(--text-muted);">—</span>
+            {% endif %}
+          </td>
+          <td class="text-right text-mono">{{ "{:,.0f}".format(w.clean_lbs) }}</td>
+          <td class="text-right text-mono">{{ "{:,.0f}".format(w.dirty_lbs) }}</td>
+          <td class="text-right text-mono">{{ "{:,.0f}".format(w.unknown_lbs) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="text-sm" style="color:var(--text-muted);padding:12px 16px 16px;margin:0;border-top:1px solid var(--dark-border);">
+    <strong>Clean / dirty / unspecified</strong> uses the <strong>Clean or dirty</strong> field on each purchase (pesticide / contaminant testing). Most historical rows will show under <em>Unspecified</em> until that field is filled in.
+    Dirty biomass can still yield THCA similarly while materially affecting <strong>HTE</strong> quality and value — this dashboard is the forward home for tracking that split once data is captured.
+  </p>
+</div>
+
+<h3 style="margin:24px 0 12px;font-size:1rem;color:var(--gold);text-transform:uppercase;letter-spacing:0.06em;">Field &amp; desk submissions</h3>
+<p class="text-sm" style="color:var(--text-muted);margin:-4px 0 14px;">
+  Pending and reviewed proposals from the field link and from desk intake. Totals reflect summed lot weights on each submission.
+</p>
+{% include 'partials/field_purchase_submission_tables.html' %}
+{% endblock %}

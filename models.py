@@ -18,7 +18,7 @@ class User(UserMixin, db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
     display_name = db.Column(db.String(120), nullable=False)
-    role = db.Column(db.String(20), nullable=False, default="viewer")  # super_admin, user, viewer
+    role = db.Column(db.String(20), nullable=False, default="viewer")  # super_admin, user, super_buyer, viewer
     is_active_user = db.Column(db.Boolean, default=True)
     is_slack_importer = db.Column(db.Boolean, default=False)
     is_purchase_approver = db.Column(db.Boolean, default=False)
@@ -44,8 +44,21 @@ class User(UserMixin, db.Model):
         return self.role == "super_admin"
 
     @property
+    def is_super_buyer(self):
+        return self.role == "super_buyer"
+
+    @property
     def can_edit(self):
         return self.role in ("super_admin", "user")
+
+    @property
+    def can_edit_purchases(self):
+        """Create/edit purchases, lots, and field approvals without full app edit access."""
+        return self.can_edit or self.is_super_buyer
+
+    @property
+    def can_approve_field_purchases(self):
+        return self.is_super_admin or self.is_super_buyer
 
     @property
     def can_slack_import(self):

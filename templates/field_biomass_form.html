@@ -115,9 +115,13 @@
 
         <div class="form-group">
           <label>Photos (optional)</label>
-          <input type="file" name="photos" accept="image/*" multiple>
+          <div class="field-photo-bucket" data-field-photo-bucket data-max="{{ field_photo_max|default(30) }}" data-input-name="photos">
+            <input type="file" name="photos" class="field-photo-fallback" accept="image/*" multiple>
+            <button type="button" class="btn btn-secondary btn-sm field-photo-add-btn" hidden>Add photo</button>
+            <div class="field-photo-rows"></div>
+          </div>
           <div class="text-sm" style="color:var(--text-muted); margin-top:6px;">
-            Upload photos from camera, photo library, or files (JPG, PNG, WEBP, HEIC, HEIF; max 20 MB each).
+            Up to {{ field_photo_max|default(30) }} images (JPG, PNG, WEBP, HEIC, HEIF; max 50 MB each). Tap <strong>Add photo</strong> per image; <strong>Remove</strong> to unselect before submitting.
           </div>
         </div>
 
@@ -150,6 +154,7 @@
       });
     }
   </script>
+  <script src="{{ url_for('static', filename='js/field_intake_photos.js') }}?v=2"></script>
 </body>
 </html>
 

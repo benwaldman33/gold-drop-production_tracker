@@ -37,9 +37,15 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:/
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
 app.config["FIELD_UPLOAD_DIR"] = os.path.join(app.root_path, "static", "uploads", "field")
-app.config["FIELD_UPLOAD_MAX_BYTES"] = 20 * 1024 * 1024  # 20 MB per image
+app.config["FIELD_UPLOAD_MAX_BYTES"] = 50 * 1024 * 1024  # 50 MB per image (field intake)
 app.config["LAB_UPLOAD_DIR"] = os.path.join(app.root_path, "static", "uploads", "labs")
 app.config["LAB_UPLOAD_MAX_BYTES"] = 50 * 1024 * 1024  # 50 MB per file
+app.config["PURCHASE_UPLOAD_DIR"] = os.path.join(app.root_path, "static", "uploads", "purchases")
+app.config["PURCHASE_UPLOAD_MAX_BYTES"] = 50 * 1024 * 1024
+app.config["PHOTO_LIBRARY_UPLOAD_DIR"] = os.path.join(app.root_path, "static", "uploads", "library")
+app.config["PHOTO_LIBRARY_MAX_BYTES"] = 50 * 1024 * 1024
+# Max image count per file-picker bucket on field intake (supplier/biomass/coa on purchase; photos on biomass).
+app.config["FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET"] = int(os.environ.get("FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET", 30))
 
 db.init_app(app)
 login_manager = LoginManager(app)
@@ -53,6 +59,31 @@ def load_user(user_id):
     if u and not getattr(u, "is_active_user", True):
         return None
     return u
+
+
+@app.context_processor
+def inject_biomass_budget():
+    if not current_user.is_authenticated:
+        return {}
+    today = date.today()
+    ws = _purchase_week_start(today)
+    we = ws + timedelta(days=6)
+    m = _budget_week_purchase_metrics(ws, we)
+    weekly_budget_usd = SystemSetting.get_float("biomass_purchase_weekly_budget_usd", 0)
+    weekly_target_lbs = SystemSetting.get_float("biomass_purchase_weekly_target_lbs", 0)
+    target_pot = SystemSetting.get_float("biomass_purchase_weekly_target_potency_pct", 0)
+    if target_pot <= 0:
+        target_pot = SystemSetting.get_float("biomass_budget_target_potency_pct", 0)
+    avg = (m["weighted_pot_sum"] / m["lbs"]) if m["lbs"] > 1e-9 else None
+    return {
+        "biomass_sidebar_week_label": f"{ws.strftime('%b %d')} – {we.strftime('%b %d')}",
+        "biomass_purchase_week_spend": m["spend"],
+        "biomass_purchase_week_lbs": m["lbs"],
+        "biomass_purchase_weekly_budget_usd": weekly_budget_usd,
+        "biomass_purchase_weekly_target_lbs": weekly_target_lbs,
+        "biomass_purchase_weekly_target_potency_pct": target_pot if target_pot > 0 else None,
+        "biomass_purchase_week_avg_potency_pct": avg,
+    }
 
 
 def admin_required(f):
@@ -87,6 +118,218 @@ def slack_importer_required(f):
             return redirect(url_for("dashboard"))
         return f(*args, **kwargs)
     return decorated
+
+
+def field_purchase_approval_required(f):
+    @wraps(f)
+    @login_required
+    def decorated(*args, **kwargs):
+        if not current_user.can_approve_field_purchases:
+            flash("Purchase approval access required.", "error")
+            return redirect(url_for("dashboard"))
+        return f(*args, **kwargs)
+    return decorated
+
+
+def purchase_editor_required(f):
+    """Edits purchases and related lots/docs; includes Super Buyer, excludes viewers."""
+    @wraps(f)
+    @login_required
+    def decorated(*args, **kwargs):
+        if not current_user.can_edit_purchases:
+            flash("Edit access required.", "error")
+            return redirect(url_for("dashboard"))
+        return f(*args, **kwargs)
+    return decorated
+
+
+BIOMASS_BUDGET_COUNT_STATUSES = frozenset({
+    "committed", "ordered", "in_transit", "in_testing", "available",
+    "delivered", "processing", "complete",
+})
+
+
+def _purchase_counts_toward_biomass_budget(p: Purchase | None) -> bool:
+    if not p or p.deleted_at is not None:
+        return False
+    return (p.status or "").strip() in BIOMASS_BUDGET_COUNT_STATUSES
+
+
+def _purchase_week_start(d: date) -> date:
+    """Monday-start week (local date) for purchasing calendar."""
+    return d - timedelta(days=d.weekday())
+
+
+def _purchase_biomass_budget_lbs(p: Purchase | None) -> float:
+    if not p:
+        return 0.0
+    if p.actual_weight_lbs is not None:
+        return float(p.actual_weight_lbs)
+    return float(p.stated_weight_lbs or 0) or 0.0
+
+
+def _purchase_biomass_budget_potency(p: Purchase | None) -> float | None:
+    if not p:
+        return None
+    if p.tested_potency_pct is not None:
+        return float(p.tested_potency_pct)
+    if p.stated_potency_pct is not None:
+        return float(p.stated_potency_pct)
+    return None
+
+
+def _purchase_budget_spend(p: Purchase | None) -> float:
+    """Best-effort spend for budget tracking (committed purchases)."""
+    if not p:
+        return 0.0
+    if p.total_cost is not None and float(p.total_cost) > 0:
+        return float(p.total_cost)
+    w = _purchase_biomass_budget_lbs(p)
+    if p.price_per_lb is not None and w > 0:
+        return float(w) * float(p.price_per_lb)
+    return 0.0
+
+
+def _budget_week_purchase_metrics(
+    week_start: date,
+    week_end: date,
+    exclude_purchase_id: str | None = None,
+) -> dict:
+    q = Purchase.query.filter(
+        Purchase.deleted_at.is_(None),
+        Purchase.purchase_date >= week_start,
+        Purchase.purchase_date <= week_end,
+        Purchase.status.in_(BIOMASS_BUDGET_COUNT_STATUSES),
+    )
+    if exclude_purchase_id:
+        q = q.filter(Purchase.id != exclude_purchase_id)
+    spend = 0.0
+    lbs = 0.0
+    weighted_pot_sum = 0.0
+    clean_lbs = 0.0
+    dirty_lbs = 0.0
+    unknown_lbs = 0.0
+    n = 0
+    for p in q.all():
+        n += 1
+        lb = _purchase_biomass_budget_lbs(p)
+        lbs += lb
+        spend += _purchase_budget_spend(p)
+        pot = _purchase_biomass_budget_potency(p)
+        if pot is not None:
+            weighted_pot_sum += lb * pot
+        cod = (p.clean_or_dirty or "").strip().lower()
+        if cod == "clean":
+            clean_lbs += lb
+        elif cod == "dirty":
+            dirty_lbs += lb
+        else:
+            unknown_lbs += lb
+    return {
+        "spend": spend,
+        "lbs": lbs,
+        "weighted_pot_sum": weighted_pot_sum,
+        "clean_lbs": clean_lbs,
+        "dirty_lbs": dirty_lbs,
+        "unknown_lbs": unknown_lbs,
+        "purchase_count": n,
+    }
+
+
+def _biomass_budget_snapshot_for_purchase(p: Purchase | None) -> tuple[bool, float, float | None, float]:
+    if not p:
+        return False, 0.0, None, 0.0
+    counted = _purchase_counts_toward_biomass_budget(p)
+    lbs = _purchase_biomass_budget_lbs(p)
+    pot = _purchase_biomass_budget_potency(p) if counted else None
+    spend = _purchase_budget_spend(p) if counted else 0.0
+    return counted, lbs, pot, spend
+
+
+def _enforce_weekly_biomass_purchase_limits(purchase: Purchase, new_snap: tuple, *, enforce_cap: bool = True) -> None:
+    """Block save if counted purchases for purchase_date week would exceed weekly $ or lbs targets."""
+    if not enforce_cap:
+        return
+    counted, lbs, _pot, spend = new_snap
+    if not purchase.purchase_date:
+        return
+    ws = _purchase_week_start(purchase.purchase_date)
+    we = ws + timedelta(days=6)
+    ex = purchase.id
+    base = _budget_week_purchase_metrics(ws, we, exclude_purchase_id=ex)
+    tot_spend = base["spend"] + (spend if counted else 0.0)
+    tot_lbs = base["lbs"] + (lbs if counted else 0.0)
+    cap_usd = SystemSetting.get_float("biomass_purchase_weekly_budget_usd", 0)
+    cap_lbs = SystemSetting.get_float("biomass_purchase_weekly_target_lbs", 0)
+    if cap_usd > 0 and tot_spend > cap_usd + 0.01:
+        remaining = max(0.0, cap_usd - base["spend"])
+        raise ValueError(
+            f"This would exceed the weekly biomass purchase budget (${cap_usd:,.0f}). "
+            f"Already ~${base['spend']:,.0f} this week; ~${remaining:,.0f} remaining before this purchase."
+        )
+    if cap_lbs > 0 and tot_lbs > cap_lbs + 1e-6:
+        remaining = max(0.0, cap_lbs - base["lbs"])
+        raise ValueError(
+            f"This would exceed the weekly biomass volume target ({cap_lbs:,.0f} lbs). "
+            f"Already ~{base['lbs']:,.0f} lbs this week; ~{remaining:,.0f} lbs room before this purchase."
+        )
+
+
+def _decorate_field_submission_rows(submissions) -> None:
+    for s in submissions:
+        try:
+            lot_rows = json.loads(s.lots_json or "[]")
+            s.lots_count = len(lot_rows)
+            tw = 0.0
+            for row in lot_rows:
+                w = row.get("weight_lbs")
+                if w is not None:
+                    try:
+                        tw += float(w)
+                    except (TypeError, ValueError):
+                        pass
+            s.total_weight_lbs = tw
+        except Exception:
+            s.lots_count = 0
+            s.total_weight_lbs = 0.0
+        try:
+            photo_paths = json.loads(s.photos_json or "[]")
+            s.photo_paths = [p for p in photo_paths if isinstance(p, str) and p.strip()]
+        except Exception:
+            s.photo_paths = []
+        try:
+            supplier_paths = json.loads(s.supplier_photos_json or "[]")
+            s.supplier_photo_paths = [p for p in supplier_paths if isinstance(p, str) and p.strip()]
+        except Exception:
+            s.supplier_photo_paths = []
+        try:
+            biomass_paths = json.loads(s.biomass_photos_json or "[]")
+            s.biomass_photo_paths = [p for p in biomass_paths if isinstance(p, str) and p.strip()]
+        except Exception:
+            s.biomass_photo_paths = []
+        try:
+            coa_paths = json.loads(s.coa_photos_json or "[]")
+            s.coa_photo_paths = [p for p in coa_paths if isinstance(p, str) and p.strip()]
+        except Exception:
+            s.coa_photo_paths = []
+
+
+def _field_submission_error_redirect():
+    rt = (request.form.get("return_to") or "").strip()
+    if rt == "biomass-purchasing":
+        return redirect(url_for("biomass_purchasing_dashboard"))
+    if current_user.is_super_admin:
+        return _settings_redirect()
+    return redirect(url_for("field_approvals"))
+
+
+def _field_approval_return_redirect():
+    rt = (request.form.get("return_to") or "").strip()
+    if rt == "biomass-purchasing":
+        return redirect(url_for("biomass_purchasing_dashboard"))
+    if rt.startswith("#") and current_user.is_super_admin:
+        return redirect(url_for("settings") + rt)
+    return redirect(url_for("field_approvals"))
 
 
 SLACK_RUN_PREFILL_SESSION_KEY = "slack_run_prefill"
@@ -1425,7 +1668,7 @@ _SLACK_IMPORTS_DISPLAY_TZ = ZoneInfo("America/Los_Angeles")
 
 
 def _slack_ts_to_la_datetime_str(ts_str: str | None) -> str:
-    """Format Slack message_ts (UTC unix seconds) for UI in America/Los_Angeles."""
+    """Format Slack `message_ts` (UTC unix seconds) for UI in America/Los_Angeles."""
     if not (ts_str or "").strip():
         return "—"
     try:
@@ -1663,6 +1906,23 @@ def _save_uploads(files, prefix: str, upload_dir: str, max_bytes: int, validator
     return saved
 
 
+def _field_intake_photo_bucket_count(files) -> int:
+    return sum(
+        1
+        for f in files or []
+        if f and getattr(f, "filename", "") and str(f.filename).strip()
+    )
+
+
+def _validate_field_intake_photo_bucket(files, label: str) -> None:
+    mx = int(app.config.get("FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET", 30))
+    n = _field_intake_photo_bucket_count(files)
+    if n > mx:
+        raise ValueError(
+            f"{label}: you can attach at most {mx} photos in this section. Remove extras and try again."
+        )
+
+
 def _save_field_photos(files, prefix: str) -> list[str]:
     """
     Save uploaded field photos under static/uploads/field and return
@@ -1672,7 +1932,7 @@ def _save_field_photos(files, prefix: str) -> list[str]:
         files=files,
         prefix=prefix,
         upload_dir=app.config["FIELD_UPLOAD_DIR"],
-        max_bytes=int(app.config.get("FIELD_UPLOAD_MAX_BYTES", 20 * 1024 * 1024)),
+        max_bytes=int(app.config.get("FIELD_UPLOAD_MAX_BYTES", 50 * 1024 * 1024)),
         validator=_allowed_image_filename,
         error_message="Only image files (.jpg, .jpeg, .png, .webp, .heic, .heif) are allowed.",
     )
@@ -1686,6 +1946,28 @@ def _save_lab_files(files, prefix: str) -> list[str]:
         max_bytes=int(app.config.get("LAB_UPLOAD_MAX_BYTES", 50 * 1024 * 1024)),
         validator=_allowed_lab_filename,
         error_message="Only lab files (.jpg, .jpeg, .png, .webp, .heic, .heif, .pdf) are allowed.",
+    )
+
+
+def _save_purchase_support_docs(files, prefix: str) -> list[str]:
+    return _save_uploads(
+        files=files,
+        prefix=prefix,
+        upload_dir=app.config["PURCHASE_UPLOAD_DIR"],
+        max_bytes=int(app.config.get("PURCHASE_UPLOAD_MAX_BYTES", 50 * 1024 * 1024)),
+        validator=_allowed_lab_filename,
+        error_message="Only image or PDF files (.jpg, .jpeg, .png, .webp, .heic, .heif, .pdf) are allowed.",
+    )
+
+
+def _save_photo_library_files(files, prefix: str) -> list[str]:
+    return _save_uploads(
+        files=files,
+        prefix=prefix,
+        upload_dir=app.config["PHOTO_LIBRARY_UPLOAD_DIR"],
+        max_bytes=int(app.config.get("PHOTO_LIBRARY_MAX_BYTES", 50 * 1024 * 1024)),
+        validator=_allowed_lab_filename,
+        error_message="Only image or PDF files (.jpg, .jpeg, .png, .webp, .heic, .heif, .pdf) are allowed.",
     )
 
 
@@ -1749,6 +2031,68 @@ def _create_photo_asset(
         submission_id=submission_id,
         uploaded_by=uploaded_by,
     ))
+
+
+def _remove_upload_if_unreferenced(file_path: str) -> None:
+    """Delete a stored upload file when no PhotoAsset row references it (library/purchase dirs only)."""
+    if not file_path:
+        return
+    if PhotoAsset.query.filter_by(file_path=file_path).first():
+        return
+    if not (
+        file_path.startswith("uploads/library/")
+        or file_path.startswith("uploads/purchases/")
+    ):
+        return
+    abs_path = os.path.join(app.static_folder, file_path.replace("/", os.sep))
+    try:
+        if os.path.isfile(abs_path):
+            os.remove(abs_path)
+    except OSError:
+        pass
+
+
+def _safe_internal_redirect(form_key: str = "next", default_endpoint: str = "photos_library", **default_kwargs) -> str:
+    url = (request.form.get(form_key) or "").strip()
+    if url.startswith("/") and not url.startswith("//"):
+        return url
+    return url_for(default_endpoint, **default_kwargs)
+
+
+def _photos_library_filters_from_hidden_form() -> dict:
+    """Rebuild GET filter args from upload form hidden fields (omit empties)."""
+    out = {}
+    q = (request.form.get("ret_q") or "").strip()
+    if q:
+        out["q"] = q
+    sid = (request.form.get("ret_supplier_id") or "").strip()
+    if sid:
+        out["supplier_id"] = sid
+    pid = (request.form.get("ret_purchase_id") or "").strip()
+    if pid:
+        out["purchase_id"] = pid
+    cat = (request.form.get("ret_category") or "").strip()
+    if cat:
+        out["category"] = cat
+    return out
+
+
+_ALLOWED_PHOTO_CATEGORIES = frozenset({
+    "other",
+    "supporting_doc",
+    "contract",
+    "invoice",
+    "coa",
+    "lab_result",
+    "supplier_doc",
+    "supplier_license",
+    "biomass",
+})
+
+
+def _normalize_photo_category(raw: str, *, fallback: str = "other") -> str:
+    c = (raw or "").strip().lower().replace(" ", "_")
+    return c if c in _ALLOWED_PHOTO_CATEGORIES else fallback
 
 
 def _photo_asset_exists(*, file_path: str, source_type: str, category: str, submission_id: str | None = None, supplier_id: str | None = None, purchase_id: str | None = None) -> bool:
@@ -2190,6 +2534,131 @@ def _get_or_create_supplier_from_field_form(token):
     return sup, True
 
 
+def _get_or_create_supplier_from_desk_purchase_form():
+    """Desk/office purchase proposal: same rules as field form, logged-in user in audit trail."""
+    supplier_id = (request.form.get("supplier_id") or "").strip()
+    new_name = (request.form.get("new_supplier_name") or "").strip()
+
+    if supplier_id:
+        sup = db.session.get(Supplier, supplier_id)
+        if not sup:
+            raise ValueError("Selected supplier was not found.")
+        return sup, False
+
+    if not new_name:
+        raise ValueError("Supplier is required (pick one or enter a new supplier name).")
+
+    new_location = (request.form.get("new_supplier_location") or "").strip() or None
+    new_phone = (request.form.get("new_supplier_phone") or "").strip() or None
+    new_email = (request.form.get("new_supplier_email") or "").strip() or None
+
+    existing = Supplier.query.filter(func.lower(Supplier.name) == new_name.lower()).first()
+    if existing:
+        return existing, False
+
+    sup = Supplier(
+        name=new_name,
+        location=new_location,
+        contact_phone=new_phone,
+        contact_email=new_email,
+        is_active=True,
+        notes="Created via office purchase intake",
+    )
+    db.session.add(sup)
+    db.session.flush()
+    log_audit(
+        "create",
+        "supplier",
+        sup.id,
+        details=json.dumps({
+            "source": "desk_purchase_intake",
+            "name": new_name,
+            "location": new_location,
+            "contact_phone": new_phone,
+            "contact_email": new_email,
+        }),
+        user_id=current_user.id,
+    )
+    return sup, True
+
+
+def _parse_field_purchase_intake_form_to_submission(supplier: Supplier, *, source_token_id: str | None):
+    """Build a FieldPurchaseSubmission from the shared HTTP form (field + desk). Not added to session."""
+    pd = (request.form.get("purchase_date") or "").strip()
+    if not pd:
+        raise ValueError("Purchase Date is required.")
+    purchase_date = datetime.strptime(pd, "%Y-%m-%d").date()
+
+    dd = (request.form.get("delivery_date") or "").strip()
+    delivery_date = datetime.strptime(dd, "%Y-%m-%d").date() if dd else None
+    hd = (request.form.get("harvest_date") or "").strip()
+    harvest_date = datetime.strptime(hd, "%Y-%m-%d").date() if hd else None
+
+    ep = (request.form.get("estimated_potency_pct") or "").strip()
+    estimated_potency = float(ep) if ep else None
+    if estimated_potency is not None and not (0 <= estimated_potency <= 100):
+        raise ValueError("Estimated Potency must be between 0 and 100.")
+
+    ppl = (request.form.get("price_per_lb") or "").strip()
+    price_per_lb = float(ppl) if ppl else None
+    if price_per_lb is not None and price_per_lb < 0:
+        raise ValueError("Price/lb cannot be negative.")
+    queue_placement = ((request.form.get("queue_placement") or "").strip() or None)
+    if queue_placement and queue_placement not in ("aggregate", "indoor", "outdoor"):
+        raise ValueError("Queue Placement must be Aggregate, Indoor, or Outdoor.")
+
+    lot_strains = request.form.getlist("lot_strains[]")
+    lot_weights = request.form.getlist("lot_weights[]")
+    lots = []
+    for strain, w in zip(lot_strains, lot_weights):
+        strain = (strain or "").strip()
+        w = (w or "").strip()
+        if not strain and not w:
+            continue
+        if w:
+            try:
+                weight = float(w)
+            except ValueError:
+                raise ValueError("Lot weight must be a number.")
+            if weight <= 0:
+                raise ValueError("Lot weight must be greater than 0.")
+        else:
+            weight = None
+        lots.append({"strain": strain or None, "weight_lbs": weight})
+
+    supplier_photos = request.files.getlist("supplier_photos")
+    biomass_photos = request.files.getlist("biomass_photos")
+    coa_photos = request.files.getlist("coa_photos")
+    _validate_field_intake_photo_bucket(supplier_photos, "Supplier / License photos")
+    _validate_field_intake_photo_bucket(biomass_photos, "Biomass photos")
+    _validate_field_intake_photo_bucket(coa_photos, "Testing / COA photos")
+    saved_supplier_paths = _save_field_photos(supplier_photos, prefix="purchase-supplier")
+    saved_biomass_paths = _save_field_photos(biomass_photos, prefix="purchase-biomass")
+    saved_coa_paths = _save_field_photos(coa_photos, prefix="purchase-coa")
+    all_paths = saved_supplier_paths + saved_biomass_paths + saved_coa_paths
+
+    return FieldPurchaseSubmission(
+        source_token_id=source_token_id,
+        supplier_id=supplier.id,
+        purchase_date=purchase_date,
+        delivery_date=delivery_date,
+        harvest_date=harvest_date,
+        estimated_potency_pct=estimated_potency,
+        price_per_lb=price_per_lb,
+        storage_note=((request.form.get("storage_note") or "").strip() or None),
+        license_info=((request.form.get("license_info") or "").strip() or None),
+        queue_placement=queue_placement,
+        coa_status_text=((request.form.get("coa_status_text") or "").strip() or None),
+        notes=((request.form.get("notes") or "").strip() or None),
+        lots_json=json.dumps(lots),
+        photos_json=(json.dumps(all_paths) if all_paths else None),
+        supplier_photos_json=(json.dumps(saved_supplier_paths) if saved_supplier_paths else None),
+        biomass_photos_json=(json.dumps(saved_biomass_paths) if saved_biomass_paths else None),
+        coa_photos_json=(json.dumps(saved_coa_paths) if saved_coa_paths else None),
+        status="pending",
+    ), lots, all_paths
+
+
 @app.route("/field")
 @field_token_required
 def field_home(token):
@@ -2234,6 +2703,7 @@ def field_biomass_new(token):
                 raise ValueError("Estimated Potency must be between 0 and 100.")
 
             photos = request.files.getlist("photos")
+            _validate_field_intake_photo_bucket(photos, "Photos")
             saved_photo_paths = _save_field_photos(photos, prefix="biomass")
 
             b = BiomassAvailability(
@@ -2278,6 +2748,7 @@ def field_biomass_new(token):
         token_value=_get_field_token_value(),
         suppliers=suppliers,
         today=date.today(),
+        field_photo_max=int(app.config.get("FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET", 30)),
     )
 
 
@@ -2289,78 +2760,7 @@ def field_purchase_new(token):
     if request.method == "POST":
         try:
             sup, _created = _get_or_create_supplier_from_field_form(token)
-
-            pd = (request.form.get("purchase_date") or "").strip()
-            if not pd:
-                raise ValueError("Purchase Date is required.")
-            purchase_date = datetime.strptime(pd, "%Y-%m-%d").date()
-
-            dd = (request.form.get("delivery_date") or "").strip()
-            delivery_date = datetime.strptime(dd, "%Y-%m-%d").date() if dd else None
-            hd = (request.form.get("harvest_date") or "").strip()
-            harvest_date = datetime.strptime(hd, "%Y-%m-%d").date() if hd else None
-
-            ep = (request.form.get("estimated_potency_pct") or "").strip()
-            estimated_potency = float(ep) if ep else None
-            if estimated_potency is not None and not (0 <= estimated_potency <= 100):
-                raise ValueError("Estimated Potency must be between 0 and 100.")
-
-            ppl = (request.form.get("price_per_lb") or "").strip()
-            price_per_lb = float(ppl) if ppl else None
-            if price_per_lb is not None and price_per_lb < 0:
-                raise ValueError("Price/lb cannot be negative.")
-            queue_placement = ((request.form.get("queue_placement") or "").strip() or None)
-            if queue_placement and queue_placement not in ("aggregate", "indoor", "outdoor"):
-                raise ValueError("Queue Placement must be Aggregate, Indoor, or Outdoor.")
-
-            # Lots (at least one)
-            lot_strains = request.form.getlist("lot_strains[]")
-            lot_weights = request.form.getlist("lot_weights[]")
-            lots = []
-            for strain, w in zip(lot_strains, lot_weights):
-                strain = (strain or "").strip()
-                w = (w or "").strip()
-                if not strain and not w:
-                    continue
-                if w:
-                    try:
-                        weight = float(w)
-                    except ValueError:
-                        raise ValueError("Lot weight must be a number.")
-                    if weight <= 0:
-                        raise ValueError("Lot weight must be greater than 0.")
-                else:
-                    weight = None
-                lots.append({"strain": strain or None, "weight_lbs": weight})
-
-            supplier_photos = request.files.getlist("supplier_photos")
-            biomass_photos = request.files.getlist("biomass_photos")
-            coa_photos = request.files.getlist("coa_photos")
-            saved_supplier_paths = _save_field_photos(supplier_photos, prefix="purchase-supplier")
-            saved_biomass_paths = _save_field_photos(biomass_photos, prefix="purchase-biomass")
-            saved_coa_paths = _save_field_photos(coa_photos, prefix="purchase-coa")
-            all_paths = saved_supplier_paths + saved_biomass_paths + saved_coa_paths
-
-            sub = FieldPurchaseSubmission(
-                source_token_id=token.id,
-                supplier_id=sup.id,
-                purchase_date=purchase_date,
-                delivery_date=delivery_date,
-                harvest_date=harvest_date,
-                estimated_potency_pct=estimated_potency,
-                price_per_lb=price_per_lb,
-                storage_note=((request.form.get("storage_note") or "").strip() or None),
-                license_info=((request.form.get("license_info") or "").strip() or None),
-                queue_placement=queue_placement,
-                coa_status_text=((request.form.get("coa_status_text") or "").strip() or None),
-                notes=((request.form.get("notes") or "").strip() or None),
-                lots_json=json.dumps(lots),
-                photos_json=(json.dumps(all_paths) if all_paths else None),
-                supplier_photos_json=(json.dumps(saved_supplier_paths) if saved_supplier_paths else None),
-                biomass_photos_json=(json.dumps(saved_biomass_paths) if saved_biomass_paths else None),
-                coa_photos_json=(json.dumps(saved_coa_paths) if saved_coa_paths else None),
-                status="pending",
-            )
+            sub, lots, all_paths = _parse_field_purchase_intake_form_to_submission(sup, source_token_id=token.id)
             db.session.add(sub)
             db.session.flush()
             log_audit(
@@ -2392,6 +2792,56 @@ def field_purchase_new(token):
         token_value=_get_field_token_value(),
         suppliers=suppliers,
         today=date.today(),
+        field_photo_max=int(app.config.get("FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET", 30)),
+    )
+
+
+@app.route("/biomass-purchasing/new-submission", methods=["GET", "POST"])
+@login_required
+def desk_field_purchase_submission():
+    """Logged-in buyers: submit purchase lots for approval (same workflow as mobile field intake)."""
+    if not current_user.can_edit_purchases:
+        flash("You don't have permission to submit purchase proposals.", "error")
+        return redirect(url_for("biomass_purchasing_dashboard"))
+    suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
+    if request.method == "POST":
+        try:
+            sup, _created = _get_or_create_supplier_from_desk_purchase_form()
+            sub, lots, all_paths = _parse_field_purchase_intake_form_to_submission(sup, source_token_id=None)
+            db.session.add(sub)
+            db.session.flush()
+            log_audit(
+                "create",
+                "field_purchase_submission",
+                sub.id,
+                details=json.dumps({
+                    "source": "desk_purchase_intake",
+                    "supplier": sup.name,
+                    "lots_count": len(lots),
+                    "photos_count": len(all_paths),
+                }),
+                user_id=current_user.id,
+            )
+            db.session.commit()
+            notify_slack(
+                f"New office purchase submission from {sup.name} ({current_user.display_name}): "
+                f"{len(lots)} lot row(s), pending review."
+            )
+            flash("Purchase proposal submitted for approval.", "success")
+            return redirect(url_for("biomass_purchasing_dashboard"))
+        except ValueError as e:
+            db.session.rollback()
+            flash(str(e), "error")
+        except Exception:
+            db.session.rollback()
+            app.logger.exception("Desk purchase intake failed")
+            flash("Could not submit. Please check your inputs and try again.", "error")
+
+    return render_template(
+        "desk_purchase_intake_form.html",
+        suppliers=suppliers,
+        today=date.today(),
+        field_photo_max=int(app.config.get("FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET", 30)),
     )
 
 
@@ -3090,6 +3540,89 @@ def dept_view(slug):
     )
 
 
+@app.route("/biomass-purchasing")
+@login_required
+def biomass_purchasing_dashboard():
+    today = date.today()
+    current_monday = _purchase_week_start(today)
+    weekly_budget_usd = SystemSetting.get_float("biomass_purchase_weekly_budget_usd", 0)
+    weekly_target_lbs = SystemSetting.get_float("biomass_purchase_weekly_target_lbs", 0)
+    target_pot = SystemSetting.get_float("biomass_purchase_weekly_target_potency_pct", 0)
+    if target_pot <= 0:
+        target_pot = SystemSetting.get_float("biomass_budget_target_potency_pct", 0)
+
+    weeks = []
+    for offset in (-2, -1, 0, 1, 2):
+        ws = current_monday + timedelta(weeks=offset)
+        we = ws + timedelta(days=6)
+        m = _budget_week_purchase_metrics(ws, we)
+        avg_pot = (m["weighted_pot_sum"] / m["lbs"]) if m["lbs"] > 1e-9 else None
+        spend_var = (m["spend"] - weekly_budget_usd) if weekly_budget_usd > 0 else None
+        lbs_var = (m["lbs"] - weekly_target_lbs) if weekly_target_lbs > 0 else None
+        pot_var = (avg_pot - target_pot) if (target_pot > 0 and avg_pot is not None) else None
+        if offset == -2:
+            bucket_label = "2 wks ago"
+        elif offset == -1:
+            bucket_label = "Last week"
+        elif offset == 0:
+            bucket_label = "This week"
+        elif offset == 1:
+            bucket_label = "Next week"
+        else:
+            bucket_label = "In 2 wks"
+        weeks.append({
+            "offset": offset,
+            "bucket_label": bucket_label,
+            "week_start": ws,
+            "week_end": we,
+            "range_label": f"{ws.strftime('%b %d')} – {we.strftime('%b %d, %Y')}",
+            "is_current": offset == 0,
+            "is_past": ws < current_monday,
+            "is_future": ws > current_monday,
+            **m,
+            "avg_potency_pct": avg_pot,
+            "spend_variance_usd": spend_var,
+            "lbs_variance": lbs_var,
+            "potency_variance_pct": pot_var,
+        })
+
+    pending_field_submissions = FieldPurchaseSubmission.query.filter_by(status="pending").order_by(
+        FieldPurchaseSubmission.submitted_at.desc()
+    ).all()
+    reviewed_field_submissions = FieldPurchaseSubmission.query.filter(
+        FieldPurchaseSubmission.status.in_(("approved", "rejected"))
+    ).order_by(FieldPurchaseSubmission.submitted_at.desc()).all()
+    _decorate_field_submission_rows(pending_field_submissions + reviewed_field_submissions)
+    pending_submissions_total_lbs = sum(
+        float(getattr(s, "total_weight_lbs", 0) or 0) for s in pending_field_submissions
+    )
+    reviewed_approved_total_lbs = sum(
+        float(getattr(s, "total_weight_lbs", 0) or 0)
+        for s in reviewed_field_submissions
+        if s.status == "approved"
+    )
+    reviewed_rejected_total_lbs = sum(
+        float(getattr(s, "total_weight_lbs", 0) or 0)
+        for s in reviewed_field_submissions
+        if s.status == "rejected"
+    )
+
+    return render_template(
+        "biomass_purchasing_dashboard.html",
+        weeks=weeks,
+        weekly_budget_usd=weekly_budget_usd,
+        weekly_target_lbs=weekly_target_lbs,
+        weekly_target_potency_pct=target_pot if target_pot > 0 else None,
+        field_submissions=pending_field_submissions,
+        reviewed_field_submissions=reviewed_field_submissions,
+        submission_return_to="biomass-purchasing",
+        show_submission_approval_buttons=current_user.can_approve_field_purchases,
+        pending_submissions_total_lbs=pending_submissions_total_lbs,
+        reviewed_approved_total_lbs=reviewed_approved_total_lbs,
+        reviewed_rejected_total_lbs=reviewed_rejected_total_lbs,
+    )
+
+
 # ── Runs ─────────────────────────────────────────────────────────────────────
 
 @app.route("/runs")
@@ -3645,18 +4178,24 @@ def purchases_list():
 
 
 @app.route("/purchases/new", methods=["GET", "POST"])
-@editor_required
+@purchase_editor_required
 def purchase_new():
     if request.method == "POST":
         return _save_purchase(None)
     suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
     rate = SystemSetting.get_float("potency_rate", 1.50)
-    return render_template("purchase_form.html", purchase=None, suppliers=suppliers,
-                           rate=rate, today=date.today())
+    return render_template(
+        "purchase_form.html",
+        purchase=None,
+        suppliers=suppliers,
+        rate=rate,
+        today=date.today(),
+        purchase_support_docs=[],
+    )
 
 
 @app.route("/purchases/<purchase_id>/edit", methods=["GET", "POST"])
-@editor_required
+@purchase_editor_required
 def purchase_edit(purchase_id):
     purchase = db.session.get(Purchase, purchase_id)
     if not purchase or purchase.deleted_at is not None:
@@ -3669,9 +4208,20 @@ def purchase_edit(purchase_id):
         PhotoAsset.purchase_id == purchase.id,
         PhotoAsset.source_type == "field_submission",
     ).order_by(PhotoAsset.uploaded_at.desc()).all()
+    purchase_support_docs = PhotoAsset.query.filter(
+        PhotoAsset.purchase_id == purchase.id,
+        PhotoAsset.source_type == "purchase_upload",
+    ).order_by(PhotoAsset.uploaded_at.desc()).all()
     rate = SystemSetting.get_float("potency_rate", 1.50)
-    return render_template("purchase_form.html", purchase=purchase, suppliers=suppliers,
-                           rate=rate, today=date.today(), purchase_audit_photos=purchase_audit_photos)
+    return render_template(
+        "purchase_form.html",
+        purchase=purchase,
+        suppliers=suppliers,
+        rate=rate,
+        today=date.today(),
+        purchase_audit_photos=purchase_audit_photos,
+        purchase_support_docs=purchase_support_docs,
+    )
 
 
 def _save_purchase(existing):
@@ -3770,6 +4320,38 @@ def _save_purchase(existing):
                     )
                     db.session.add(lot)
 
+        # Supporting documents (photos/scans) on the purchase record
+        support_files = request.files.getlist("purchase_supporting_files")
+        if support_files and any(getattr(f, "filename", None) for f in support_files if f):
+            saved_docs = _save_purchase_support_docs(support_files, prefix=f"purchase-{p.id}")
+            sup_cat = _normalize_photo_category(
+                request.form.get("purchase_support_category", ""),
+                fallback="supporting_doc",
+            )
+            sup_title = (request.form.get("purchase_support_title") or "").strip() or None
+            sup_tags_raw = (request.form.get("purchase_support_tags") or "").strip()
+            sup_tags = [t.strip().lower() for t in sup_tags_raw.split(",") if t.strip()]
+            for path in saved_docs:
+                if not _photo_asset_exists(
+                    file_path=path,
+                    source_type="purchase_upload",
+                    category=sup_cat,
+                    purchase_id=p.id,
+                ):
+                    _create_photo_asset(
+                        path,
+                        source_type="purchase_upload",
+                        category=sup_cat,
+                        tags=sup_tags,
+                        title=sup_title,
+                        supplier_id=p.supplier_id,
+                        purchase_id=p.id,
+                        uploaded_by=current_user.id,
+                    )
+
+        new_snap = _biomass_budget_snapshot_for_purchase(p)
+        _enforce_weekly_biomass_purchase_limits(p, new_snap, enforce_cap=True)
+
         log_audit("update" if existing else "create", "purchase", p.id)
         db.session.commit()
         flash("Purchase saved.", "success")
@@ -3780,13 +4362,25 @@ def _save_purchase(existing):
         suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
         rate = SystemSetting.get_float("potency_rate", 1.50)
         purchase_audit_photos = []
+        purchase_support_docs = []
         if existing:
             purchase_audit_photos = PhotoAsset.query.filter(
                 PhotoAsset.purchase_id == existing.id,
                 PhotoAsset.source_type == "field_submission",
             ).order_by(PhotoAsset.uploaded_at.desc()).all()
-        return render_template("purchase_form.html", purchase=existing, suppliers=suppliers,
-                               rate=rate, today=date.today(), purchase_audit_photos=purchase_audit_photos)
+            purchase_support_docs = PhotoAsset.query.filter(
+                PhotoAsset.purchase_id == existing.id,
+                PhotoAsset.source_type == "purchase_upload",
+            ).order_by(PhotoAsset.uploaded_at.desc()).all()
+        return render_template(
+            "purchase_form.html",
+            purchase=existing,
+            suppliers=suppliers,
+            rate=rate,
+            today=date.today(),
+            purchase_audit_photos=purchase_audit_photos,
+            purchase_support_docs=purchase_support_docs,
+        )
     except Exception:
         db.session.rollback()
         app.logger.exception("Error saving purchase")
@@ -3794,17 +4388,29 @@ def _save_purchase(existing):
         suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
         rate = SystemSetting.get_float("potency_rate", 1.50)
         purchase_audit_photos = []
+        purchase_support_docs = []
         if existing:
             purchase_audit_photos = PhotoAsset.query.filter(
                 PhotoAsset.purchase_id == existing.id,
                 PhotoAsset.source_type == "field_submission",
             ).order_by(PhotoAsset.uploaded_at.desc()).all()
-        return render_template("purchase_form.html", purchase=existing, suppliers=suppliers,
-                               rate=rate, today=date.today(), purchase_audit_photos=purchase_audit_photos)
+            purchase_support_docs = PhotoAsset.query.filter(
+                PhotoAsset.purchase_id == existing.id,
+                PhotoAsset.source_type == "purchase_upload",
+            ).order_by(PhotoAsset.uploaded_at.desc()).all()
+        return render_template(
+            "purchase_form.html",
+            purchase=existing,
+            suppliers=suppliers,
+            rate=rate,
+            today=date.today(),
+            purchase_audit_photos=purchase_audit_photos,
+            purchase_support_docs=purchase_support_docs,
+        )
 
 
 @app.route("/purchases/<purchase_id>/delete", methods=["POST"])
-@editor_required
+@purchase_editor_required
 def purchase_delete(purchase_id):
     p = db.session.get(Purchase, purchase_id)
     if not p or p.deleted_at is not None:
@@ -4026,9 +4632,21 @@ def supplier_new():
         db.session.add(s)
         log_audit("create", "supplier", s.id)
         db.session.commit()
+        incomplete = _supplier_incomplete_profile_fields(s)
+        if incomplete:
+            flash(
+                "Supplier saved, but contact / location information is incomplete. "
+                "Complete the highlighted fields when you can.",
+                "warning",
+            )
+            return redirect(url_for("supplier_edit", sid=s.id))
         flash("Supplier added.", "success")
         return redirect(url_for("suppliers_list"))
-    return render_template("supplier_form.html", supplier=None)
+    return render_template(
+        "supplier_form.html",
+        supplier=None,
+        supplier_incomplete_fields=[],
+    )
 
 
 @app.route("/suppliers/<sid>/edit", methods=["GET", "POST"])
@@ -4050,7 +4668,15 @@ def supplier_edit(sid):
             s.is_active = "is_active" in request.form
             log_audit("update", "supplier", s.id)
             db.session.commit()
-            flash("Supplier updated.", "success")
+            incomplete = _supplier_incomplete_profile_fields(s)
+            if incomplete:
+                flash(
+                    "Supplier updated, but some profile fields are still incomplete. "
+                    "See the red dialog and highlighted fields.",
+                    "warning",
+                )
+            else:
+                flash("Supplier updated.", "success")
         elif form_type == "lab_test":
             td = (request.form.get("test_date") or "").strip()
             if not td:
@@ -4138,7 +4764,15 @@ def supplier_edit(sid):
         except Exception:
             t.file_paths = []
     attachments = SupplierAttachment.query.filter_by(supplier_id=s.id).order_by(SupplierAttachment.uploaded_at.desc()).all()
-    return render_template("supplier_form.html", supplier=s, purchases=purchases, lab_tests=lab_tests, attachments=attachments)
+    supplier_incomplete_fields = _supplier_incomplete_profile_fields(s)
+    return render_template(
+        "supplier_form.html",
+        supplier=s,
+        purchases=purchases,
+        lab_tests=lab_tests,
+        attachments=attachments,
+        supplier_incomplete_fields=supplier_incomplete_fields,
+    )
 
 
 @app.route("/suppliers/<sid>/lab_tests/<test_id>/delete", methods=["POST"])
@@ -4218,6 +4852,94 @@ def photos_library():
         category=category,
         categories=categories,
     )
+
+
+@app.route("/photos/upload", methods=["POST"])
+@editor_required
+def photos_upload():
+    files = request.files.getlist("files")
+    ret = _photos_library_filters_from_hidden_form()
+    if not files or not any(getattr(f, "filename", None) for f in files if f):
+        flash("Choose one or more files to upload.", "error")
+        return redirect(url_for("photos_library", **ret))
+    try:
+        saved = _save_photo_library_files(files, prefix="library")
+    except ValueError as e:
+        flash(str(e), "error")
+        return redirect(url_for("photos_library", **ret))
+    cat = _normalize_photo_category(request.form.get("category", ""), fallback="other")
+    title = (request.form.get("title") or "").strip() or None
+    tags_raw = (request.form.get("tags") or "").strip()
+    tags = [t.strip().lower() for t in tags_raw.split(",") if t.strip()]
+    sid = (request.form.get("supplier_id") or "").strip() or None
+    if sid and not db.session.get(Supplier, sid):
+        sid = None
+    pid = (request.form.get("purchase_id") or "").strip() or None
+    if pid:
+        p_link = db.session.get(Purchase, pid)
+        if not p_link or p_link.deleted_at is not None:
+            pid = None
+    for path in saved:
+        _create_photo_asset(
+            path,
+            source_type="manual",
+            category=cat,
+            tags=tags,
+            title=title,
+            supplier_id=sid,
+            purchase_id=pid,
+            uploaded_by=current_user.id,
+        )
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Photo library upload DB error")
+        flash("Could not save photo library records.", "error")
+        return redirect(url_for("photos_library"))
+    flash(f"Uploaded {len(saved)} file(s) to the library.", "success")
+    return redirect(url_for("photos_library", **ret))
+
+
+@app.route("/photos/<asset_id>/delete", methods=["POST"])
+@editor_required
+def photo_asset_delete(asset_id):
+    asset = db.session.get(PhotoAsset, asset_id)
+    if not asset:
+        flash("Asset not found.", "error")
+        return redirect(_safe_internal_redirect())
+    if asset.source_type not in ("manual", "purchase_upload"):
+        flash("This file is tied to field intake, suppliers, or lab records and cannot be deleted here.", "error")
+        return redirect(_safe_internal_redirect())
+    path = asset.file_path
+    db.session.delete(asset)
+    db.session.commit()
+    _remove_upload_if_unreferenced(path)
+    flash("File removed.", "success")
+    return redirect(_safe_internal_redirect())
+
+
+@app.route("/purchases/<purchase_id>/supporting_docs/<asset_id>/delete", methods=["POST"])
+@purchase_editor_required
+def purchase_support_doc_delete(purchase_id, asset_id):
+    p = db.session.get(Purchase, purchase_id)
+    if not p or p.deleted_at is not None:
+        flash("Purchase not found.", "error")
+        return redirect(url_for("purchases_list"))
+    asset = db.session.get(PhotoAsset, asset_id)
+    if (
+        not asset
+        or asset.purchase_id != purchase_id
+        or asset.source_type != "purchase_upload"
+    ):
+        flash("Supporting document not found.", "error")
+        return redirect(url_for("purchase_edit", purchase_id=purchase_id))
+    path = asset.file_path
+    db.session.delete(asset)
+    db.session.commit()
+    _remove_upload_if_unreferenced(path)
+    flash("Supporting document removed.", "success")
+    return redirect(url_for("purchase_edit", purchase_id=purchase_id))
 
 
 # ── Strain Performance ───────────────────────────────────────────────────────
@@ -4394,11 +5116,63 @@ def settings():
             db.session.commit()
             flash("KPI targets updated.", "success")
 
+        elif form_type == "biomass_budget":
+            usd_raw = (request.form.get("biomass_purchase_weekly_budget_usd") or "").strip()
+            lbs_raw = (request.form.get("biomass_purchase_weekly_target_lbs") or "").strip()
+            pot_raw = (request.form.get("biomass_purchase_weekly_target_potency_pct") or "").strip()
+            try:
+                usd = float(usd_raw) if usd_raw else 0.0
+                lbs_t = float(lbs_raw) if lbs_raw else 0.0
+                pot = float(pot_raw) if pot_raw else 0.0
+            except ValueError:
+                flash("Invalid biomass purchasing targets.", "error")
+                return _settings_redirect()
+            usd = max(0.0, usd)
+            lbs_t = max(0.0, lbs_t)
+            pot = max(0.0, pot)
+
+            def _upsert_budget(key, val, desc):
+                row = db.session.get(SystemSetting, key)
+                if row:
+                    row.value = str(val)
+                else:
+                    db.session.add(SystemSetting(key=key, value=str(val), description=desc))
+
+            _upsert_budget(
+                "biomass_purchase_weekly_budget_usd",
+                usd,
+                "Weekly biomass purchasing budget (USD)",
+            )
+            _upsert_budget(
+                "biomass_purchase_weekly_target_lbs",
+                lbs_t,
+                "Weekly biomass purchasing volume target (lbs)",
+            )
+            _upsert_budget(
+                "biomass_purchase_weekly_target_potency_pct",
+                pot,
+                "Weekly target weighted avg potency % (purchasing)",
+            )
+            row_legacy = db.session.get(SystemSetting, "biomass_budget_target_potency_pct")
+            if row_legacy:
+                row_legacy.value = str(pot)
+            elif pot > 0:
+                db.session.add(SystemSetting(
+                    key="biomass_budget_target_potency_pct",
+                    value=str(pot),
+                    description="Legacy mirror: target potency % (purchasing)",
+                ))
+            db.session.commit()
+            flash("Biomass purchasing targets updated.", "success")
+
         elif form_type == "user":
             username = request.form.get("new_username", "").strip().lower()
             password = request.form.get("new_password", "").strip()
             display = request.form.get("new_display", "").strip()
             role = request.form.get("new_role", "viewer")
+            allowed_roles = frozenset({"viewer", "user", "super_admin", "super_buyer"})
+            if role not in allowed_roles:
+                role = "viewer"
             if username and password and display:
                 if User.query.filter_by(username=username).first():
                     flash("Username already exists.", "error")
@@ -4506,32 +5280,7 @@ def settings():
     reviewed_field_submissions = FieldPurchaseSubmission.query.filter(
         FieldPurchaseSubmission.status.in_(("approved", "rejected"))
     ).order_by(FieldPurchaseSubmission.submitted_at.desc()).all()
-    all_field_submissions = pending_field_submissions + reviewed_field_submissions
-    for s in all_field_submissions:
-        try:
-            s.lots_count = len(json.loads(s.lots_json or "[]"))
-        except Exception:
-            s.lots_count = 0
-        try:
-            photo_paths = json.loads(s.photos_json or "[]")
-            s.photo_paths = [p for p in photo_paths if isinstance(p, str) and p.strip()]
-        except Exception:
-            s.photo_paths = []
-        try:
-            supplier_paths = json.loads(s.supplier_photos_json or "[]")
-            s.supplier_photo_paths = [p for p in supplier_paths if isinstance(p, str) and p.strip()]
-        except Exception:
-            s.supplier_photo_paths = []
-        try:
-            biomass_paths = json.loads(s.biomass_photos_json or "[]")
-            s.biomass_photo_paths = [p for p in biomass_paths if isinstance(p, str) and p.strip()]
-        except Exception:
-            s.biomass_photo_paths = []
-        try:
-            coa_paths = json.loads(s.coa_photos_json or "[]")
-            s.coa_photo_paths = [p for p in coa_paths if isinstance(p, str) and p.strip()]
-        except Exception:
-            s.coa_photo_paths = []
+    _decorate_field_submission_rows(pending_field_submissions + reviewed_field_submissions)
 
     # One-time display after creating a field link (POST-redirect-GET)
     last_field_link = session.pop("last_field_link", None)
@@ -4546,6 +5295,20 @@ def settings():
         slack_sync_days_pref = 90
     slack_sync_days_pref = max(1, min(365, slack_sync_days_pref))
 
+    pending_submissions_total_lbs = sum(
+        float(getattr(s, "total_weight_lbs", 0) or 0) for s in pending_field_submissions
+    )
+    reviewed_approved_total_lbs = sum(
+        float(getattr(s, "total_weight_lbs", 0) or 0)
+        for s in reviewed_field_submissions
+        if s.status == "approved"
+    )
+    reviewed_rejected_total_lbs = sum(
+        float(getattr(s, "total_weight_lbs", 0) or 0)
+        for s in reviewed_field_submissions
+        if s.status == "rejected"
+    )
+
     return render_template(
         "settings.html",
         system_settings=system_settings,
@@ -4556,6 +5319,11 @@ def settings():
         field_tokens=field_tokens,
         field_submissions=pending_field_submissions,
         reviewed_field_submissions=reviewed_field_submissions,
+        submission_return_to="#settings-field-intake",
+        show_submission_approval_buttons=True,
+        pending_submissions_total_lbs=pending_submissions_total_lbs,
+        reviewed_approved_total_lbs=reviewed_approved_total_lbs,
+        reviewed_rejected_total_lbs=reviewed_rejected_total_lbs,
         server_now=datetime.utcnow(),
         last_field_link=last_field_link,
         last_field_sms=last_field_sms,
@@ -4759,16 +5527,54 @@ def user_delete(user_id):
     return _settings_redirect()
 
 
+@app.route("/field-approvals")
+@login_required
+def field_approvals():
+    if not current_user.can_approve_field_purchases:
+        flash("You don't have access to field purchase approvals.", "error")
+        return redirect(url_for("dashboard"))
+    pending_field_submissions = FieldPurchaseSubmission.query.filter_by(status="pending").order_by(
+        FieldPurchaseSubmission.submitted_at.desc()
+    ).all()
+    reviewed_field_submissions = FieldPurchaseSubmission.query.filter(
+        FieldPurchaseSubmission.status.in_(("approved", "rejected"))
+    ).order_by(FieldPurchaseSubmission.submitted_at.desc()).all()
+    _decorate_field_submission_rows(pending_field_submissions + reviewed_field_submissions)
+    pending_submissions_total_lbs = sum(
+        float(getattr(s, "total_weight_lbs", 0) or 0) for s in pending_field_submissions
+    )
+    reviewed_approved_total_lbs = sum(
+        float(getattr(s, "total_weight_lbs", 0) or 0)
+        for s in reviewed_field_submissions
+        if s.status == "approved"
+    )
+    reviewed_rejected_total_lbs = sum(
+        float(getattr(s, "total_weight_lbs", 0) or 0)
+        for s in reviewed_field_submissions
+        if s.status == "rejected"
+    )
+    return render_template(
+        "field_approvals.html",
+        field_submissions=pending_field_submissions,
+        reviewed_field_submissions=reviewed_field_submissions,
+        submission_return_to="",
+        show_submission_approval_buttons=True,
+        pending_submissions_total_lbs=pending_submissions_total_lbs,
+        reviewed_approved_total_lbs=reviewed_approved_total_lbs,
+        reviewed_rejected_total_lbs=reviewed_rejected_total_lbs,
+    )
+
+
 @app.route("/settings/field_submissions/<submission_id>/approve", methods=["POST"])
-@admin_required
+@field_purchase_approval_required
 def field_submission_approve(submission_id):
     sub = db.session.get(FieldPurchaseSubmission, submission_id)
     if not sub:
         flash("Submission not found.", "error")
-        return _settings_redirect()
+        return _field_submission_error_redirect()
     if sub.status != "pending":
         flash("Submission has already been reviewed.", "error")
-        return _settings_redirect()
+        return _field_submission_error_redirect()
 
     try:
         lots = json.loads(sub.lots_json or "[]")
@@ -4778,7 +5584,7 @@ def field_submission_approve(submission_id):
     total_weight = sum(float(l.get("weight_lbs") or 0) for l in lots if (l.get("weight_lbs") is not None))
     if total_weight < 0:
         flash("Submission lot weights are invalid.", "error")
-        return _settings_redirect()
+        return _field_submission_error_redirect()
 
     purchase = Purchase(
         supplier_id=sub.supplier_id,
@@ -4912,6 +5718,17 @@ def field_submission_approve(submission_id):
     sub.review_notes = (request.form.get("review_notes") or "").strip() or None
     sub.approved_purchase_id = purchase.id
 
+    try:
+        _enforce_weekly_biomass_purchase_limits(
+            purchase,
+            _biomass_budget_snapshot_for_purchase(purchase),
+            enforce_cap=True,
+        )
+    except ValueError as e:
+        db.session.rollback()
+        flash(str(e), "error")
+        return _field_submission_error_redirect()
+
     log_audit("approve", "field_purchase_submission", sub.id, details=json.dumps({"purchase_id": purchase.id}))
     log_audit("create", "purchase", purchase.id, details=json.dumps({"source": "field_submission", "submission_id": sub.id}))
     db.session.commit()
@@ -4921,15 +5738,15 @@ def field_submission_approve(submission_id):
 
 
 @app.route("/settings/field_submissions/<submission_id>/reject", methods=["POST"])
-@admin_required
+@field_purchase_approval_required
 def field_submission_reject(submission_id):
     sub = db.session.get(FieldPurchaseSubmission, submission_id)
     if not sub:
         flash("Submission not found.", "error")
-        return _settings_redirect()
+        return _field_submission_error_redirect()
     if sub.status != "pending":
         flash("Submission has already been reviewed.", "error")
-        return _settings_redirect()
+        return _field_submission_error_redirect()
     sub.status = "rejected"
     sub.reviewed_at = datetime.utcnow()
     sub.reviewed_by = current_user.id
@@ -4938,7 +5755,7 @@ def field_submission_reject(submission_id):
     db.session.commit()
     notify_slack(f"Field submission rejected for {sub.supplier.name if sub.supplier else 'supplier'}.")
     flash("Submission rejected.", "success")
-    return _settings_redirect()
+    return _field_approval_return_redirect()
 
 
 @app.route("/settings/recalculate_costs", methods=["POST"])
@@ -6028,7 +6845,7 @@ def _parse_float(s):
 # ── Lots management ──────────────────────────────────────────────────────────
 
 @app.route("/purchases/<purchase_id>/lots/new", methods=["POST"])
-@editor_required
+@purchase_editor_required
 def lot_new(purchase_id):
     purchase = db.session.get(Purchase, purchase_id)
     if not purchase or purchase.deleted_at is not None:
@@ -6446,6 +7263,10 @@ def init_db():
         "exclude_unpriced_batches": ("0", "Exclude unpriced/unlinked runs from yield and cost analytics"),
         "cost_allocation_method": ("per_gram_uniform", "Cost allocation method for THCA vs HTE cost/gram"),
         "cost_allocation_thca_pct": ("50", "Custom cost allocation: percent of total run cost allocated to THCA"),
+        "biomass_purchase_weekly_budget_usd": ("0", "Weekly biomass purchasing budget (USD)"),
+        "biomass_purchase_weekly_target_lbs": ("0", "Weekly biomass purchasing volume target (lbs)"),
+        "biomass_purchase_weekly_target_potency_pct": ("0", "Weekly target weighted avg potency % (purchasing)"),
+        "biomass_budget_target_potency_pct": ("0", "Target weighted avg potency % (purchasing)"),
     }
     for key, (val, desc) in defaults.items():
         if not db.session.get(SystemSetting, key):

@@ -83,6 +83,54 @@ a:hover { color: var(--gold-light); }
 .sidebar-nav a:hover { background: var(--dark-hover); color: var(--text-primary); }
 .sidebar-nav a.active { background: rgba(200, 150, 62, 0.12); color: var(--gold); }
 .sidebar-nav a .icon { font-size: 1.1rem; width: 22px; text-align: center; }
+.sidebar-biomass-budget {
+  margin: 0 10px 10px;
+  padding: 12px;
+  background: var(--dark-hover);
+  border: 1px solid var(--dark-border);
+  border-radius: var(--radius);
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.sidebar-biomass-budget-title {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--gold);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.sidebar-biomass-budget-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 4px;
+}
+.sidebar-biomass-budget-bar {
+  height: 6px;
+  background: var(--dark-border);
+  border-radius: 3px;
+  margin-top: 6px;
+  overflow: hidden;
+}
+.sidebar-biomass-budget-bar-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--green), var(--gold-dark));
+  border-radius: 3px;
+  max-width: 100%;
+  min-width: 0;
+  transition: width var(--transition);
+}
+.biomass-purchasing-row-current td {
+  background: rgba(200, 150, 62, 0.08);
+}
+.biomass-purchasing-week-table th,
+.biomass-purchasing-week-table td {
+  font-size: 0.85rem;
+}
 .sidebar-user {
   padding: 14px 16px;
   border-top: 1px solid var(--dark-border);
@@ -434,6 +482,11 @@ tbody tr:last-child td { border-bottom: none; }
 .flash-success { background: var(--green-bg); color: var(--green); border: 1px solid rgba(52, 211, 153, 0.2); }
 .flash-error { background: var(--red-bg); color: var(--red); border: 1px solid rgba(248, 113, 113, 0.2); }
 .flash-info { background: rgba(96, 165, 250, 0.12); color: #60A5FA; border: 1px solid rgba(96, 165, 250, 0.2); }
+.flash-warning {
+  background: rgba(251, 191, 36, 0.12);
+  color: #FBBF24;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+}
 
 /* Pagination */
 .pagination {
@@ -535,6 +588,35 @@ tbody tr:last-child td { border-bottom: none; }
 .text-sm { font-size: 0.8rem; }
 .w-full { width: 100%; }
 
+/* Field intake: one native file input per row (mobile-safe); input visually hidden */
+.field-photo-bucket {
+  position: relative;
+}
+.field-photo-rows {
+  margin-top: 8px;
+}
+.field-photo-native-input,
+.field-photo-row input[type="file"].field-photo-native-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.field-photo-row-preview {
+  flex: 1 1 140px;
+  min-width: 120px;
+}
+
+/* Supplier edit: lab tests + attachments deferred — see supplier_form.html Jinja note */
+.supplier-lab-sections-hidden {
+  display: none !important;
+}
+
 /* Suppliers list: expand metrics on hover (desktop); tap header on touch */
 .supplier-hover-card {
   margin-bottom: 10px;
@@ -591,6 +673,56 @@ tbody tr:last-child td { border-bottom: none; }
   }
 }
 
+/* Supplier form: incomplete profile modal + field highlights */
+.supplier-incomplete-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+}
+.supplier-incomplete-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+}
+.supplier-incomplete-modal__box {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 440px;
+  background: var(--dark-card);
+  border: 2px solid var(--red);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  box-shadow: var(--shadow-lg);
+}
+.supplier-incomplete-modal__title {
+  color: var(--red);
+  margin: 0 0 12px 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+.supplier-incomplete-modal__text {
+  margin: 0 0 20px 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  font-size: 0.95rem;
+}
+.form-group.form-group--incomplete label {
+  color: #fca5a5;
+}
+.form-group.form-group--incomplete input,
+.form-group.form-group--incomplete textarea {
+  border-color: rgba(248, 113, 113, 0.9) !important;
+  box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.35);
+}
+
+/* Suppliers list: one-line warning when hovering an incomplete supplier card */
 .supplier-list-incomplete-banner {
   position: fixed;
   top: 0;
@@ -606,6 +738,9 @@ tbody tr:last-child td { border-bottom: none; }
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  border-bottom: 1px solid rgba(248, 113, 113, 0.45);
+  box-sizing: border-box;
+  line-height: 1.35;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
 body.supplier-incomplete-banner-on .main-content {

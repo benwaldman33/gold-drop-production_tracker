@@ -112,3 +112,16 @@ SQLite adds the sync config table in `_ensure_sqlite_schema()`; other engines re
 ### Gunicorn / multi-worker startup
 
 `init_db()` runs at import time (see bottom of `app.py`). With multiple sync workers, `db.create_all()` can race and one worker may see “table already exists” / duplicate relation. `init_db()` ignores those specific errors and continues; you can also set **`--preload`** on Gunicorn so the app loads once before workers fork (see `golddrop.service` `ExecStart`).
+
+## Inventory (`GET /inventory`)
+
+- **Route:** `inventory()` in `app.py`; template `templates/inventory.html`.
+- **On-hand lots:** `PurchaseLot` joined to `Purchase` where `remaining_weight_lbs > 0`, both not soft-deleted, `Purchase.status` ∈ `("delivered", "in_testing", "available", "processing", "complete")`. Optional `supplier_id` and case-insensitive `strain` substring on `PurchaseLot.strain_name`.
+- **In transit:** `Purchase` not deleted, `status` ∈ `("committed", "ordered", "in_transit")`. Optional `supplier_id` only—**no strain filter**, so summary **Total** can mix strain-filtered on-hand with full in-transit for that supplier.
+- **Summary:**
+  - `total_on_hand` = sum of `remaining_weight_lbs` over filtered on-hand lots.
+  - `total_in_transit` = sum of `stated_weight_lbs` over filtered in-transit purchases.
+  - `days_supply` = `total_on_hand / daily_target` where `daily_target = SystemSetting.get_float("daily_throughput_target", 500)`; if `daily_target <= 0`, `days_supply = 0`. **In-transit weight is not in the numerator.**
+- **UI labels:** summary tile **Total** = `total_on_hand + total_in_transit` (not labeled “available”).
+- **Dashboard KPIs:** a separate `days_of_supply` in the dashboard KPI block uses the same on-hand aggregate (unfiltered) ÷ same setting; see `kpi_actuals["days_of_supply"]` in `app.py` when runs exist in the selected period.
+

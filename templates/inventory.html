@@ -39,7 +39,7 @@
     <div class="value {% if days_supply >= 5 %}text-green{% elif days_supply >= 3 %}text-gold{% else %}cell-red{% endif %}">{{ "{:.1f}".format(days_supply) }}</div>
   </div>
   <div class="summary-stat">
-    <div class="label">Total Available</div>
+    <div class="label">Total</div>
     <div class="value">{{ "{:,.0f}".format(total_on_hand + total_in_transit) }} lbs</div>
   </div>
 </div>

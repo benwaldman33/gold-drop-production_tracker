@@ -1,10 +1,24 @@
 {% extends "base.html" %}
 {% block title %}{% if supplier %}Edit Supplier{% else %}Add Supplier{% endif %}{% endblock %}
 {% block content %}
+{% set inc = supplier_incomplete_fields|default([]) %}
 <div class="page-header">
   <h2>{% if supplier %}Edit Supplier{% else %}Add Supplier{% endif %}</h2>
   <a href="{{ url_for('suppliers_list') }}" class="btn btn-secondary">← Back</a>
 </div>
+{% if supplier and inc %}
+<div class="supplier-incomplete-modal" id="supplierIncompleteModal" role="dialog" aria-modal="true" aria-labelledby="supplierIncompleteTitle">
+  <div class="supplier-incomplete-modal__backdrop" aria-label="Close dialog"></div>
+  <div class="supplier-incomplete-modal__box">
+    <h3 id="supplierIncompleteTitle" class="supplier-incomplete-modal__title">Incomplete supplier information</h3>
+    <p class="supplier-incomplete-modal__text">
+      This profile is missing recommended contact or location details (common for suppliers created from Slack or quick adds).
+      Please fill in the <strong>highlighted</strong> fields below.
+    </p>
+    <button type="button" class="btn btn-primary" id="supplierIncompleteDismiss">OK</button>
+  </div>
+</div>
+{% endif %}
 <div class="card">
   <form method="POST">
     <input type="hidden" name="form_type" value="supplier">
@@ -13,22 +27,22 @@
         <label>Farm / Supplier Name *</label>
         <input type="text" name="name" value="{{ supplier.name if supplier else '' }}" required>
       </div>
-      <div class="form-group">
+      <div class="form-group{% if 'contact_name' in inc %} form-group--incomplete{% endif %}">
         <label>Contact Name</label>
         <input type="text" name="contact_name" value="{{ supplier.contact_name if supplier and supplier.contact_name else '' }}">
       </div>
     </div>
     <div class="form-row">
-      <div class="form-group">
+      <div class="form-group{% if 'contact_phone' in inc %} form-group--incomplete{% endif %}">
         <label>Phone</label>
         <input type="text" name="contact_phone" value="{{ supplier.contact_phone if supplier and supplier.contact_phone else '' }}">
       </div>
-      <div class="form-group">
+      <div class="form-group{% if 'contact_email' in inc %} form-group--incomplete{% endif %}">
         <label>Email</label>
         <input type="email" name="contact_email" value="{{ supplier.contact_email if supplier and supplier.contact_email else '' }}">
       </div>
     </div>
-    <div class="form-group">
+    <div class="form-group{% if 'location' in inc %} form-group--incomplete{% endif %}">
       <label>Location</label>
       <input type="text" name="location" value="{{ supplier.location if supplier and supplier.location else '' }}">
     </div>
@@ -49,6 +63,9 @@
 </div>
 
 {% if supplier %}
+{# Deferred UI (2026-03): Lab testing + supplier attachments hidden per product request;
+   revisit before re-enabling — backend routes/DB unchanged. Remove .supplier-lab-sections-hidden to show. #}
+<div class="supplier-lab-sections-hidden">
 <div class="card">
   <div class="card-header"><h3>Historical Lab Testing</h3></div>
   <form method="POST" enctype="multipart/form-data">
@@ -179,5 +196,23 @@
     </table>
   </div>
 </div>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if supplier and supplier_incomplete_fields|default([]) %}
+<script>
+(function () {
+  var m = document.getElementById("supplierIncompleteModal");
+  if (!m) return;
+  function close() {
+    m.remove();
+  }
+  var d = document.getElementById("supplierIncompleteDismiss");
+  if (d) d.addEventListener("click", close);
+  var b = m.querySelector(".supplier-incomplete-modal__backdrop");
+  if (b) b.addEventListener("click", close);
+})();
+</script>
 {% endif %}
 {% endblock %}

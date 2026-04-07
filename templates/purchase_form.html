@@ -7,7 +7,7 @@
 </div>
 
 <div class="card">
-  <form method="POST">
+  <form method="POST" enctype="multipart/form-data">
     <div class="form-section">
       <h4>Purchase Details</h4>
       <div class="form-row-3">
@@ -126,6 +126,35 @@
       </div>
     </div>
 
+    <div class="form-section">
+      <h4>Supporting documentation</h4>
+      <p class="text-sm" style="color:var(--text-muted);margin-top:0;">
+        Attach scans, contracts, COAs, invoices, or photos (JPG, PNG, WEBP, HEIC, HEIF, PDF). Up to 50 MB per file. Files are saved when you click <strong>Save Purchase</strong> and appear in the Photo Library.
+      </p>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Files</label>
+          <input type="file" name="purchase_supporting_files" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.heif">
+        </div>
+        <div class="form-group">
+          <label>Category for this upload</label>
+          <select name="purchase_support_category">
+            {% for c in ['supporting_doc', 'contract', 'invoice', 'coa', 'lab_result', 'supplier_doc', 'supplier_license', 'biomass', 'other'] %}
+            <option value="{{ c }}">{{ c.replace('_', ' ').title() }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Title (optional)</label>
+          <input type="text" name="purchase_support_title" placeholder="e.g. Signed contract">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Tags (optional, comma-separated)</label>
+        <input type="text" name="purchase_support_tags" placeholder="2026, vendor A">
+      </div>
+    </div>
+
     {% if not purchase %}
     <div class="form-section">
       <h4>Lots / Strains in This Purchase</h4>
@@ -179,6 +208,36 @@
   </form>
 </div>
 
+{% if purchase and purchase_support_docs %}
+<div class="card">
+  <div class="card-header"><h3>Supporting documents on file</h3></div>
+  <p class="text-sm" style="color:var(--text-muted);margin-top:0;">Uploaded from this screen or the Photo Library (linked to this purchase). Editors can remove a file below.</p>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;">
+    {% for a in purchase_support_docs %}
+    <div style="border:1px solid var(--dark-border);border-radius:10px;padding:10px;background:var(--dark);">
+      {% set lower_path = (a.file_path or '')|lower %}
+      <a href="{{ url_for('static', filename=a.file_path) }}" target="_blank" rel="noopener">
+        {% if lower_path.endswith('.pdf') %}
+        <div style="width:100%;height:100px;display:flex;align-items:center;justify-content:center;border-radius:8px;border:1px solid var(--dark-border);background:#111827;color:#fbbf24;font-weight:700;">PDF</div>
+        {% else %}
+        <img src="{{ url_for('static', filename=a.file_path) }}" alt="" style="width:100%;height:100px;object-fit:cover;border-radius:8px;border:1px solid var(--dark-border);">
+        {% endif %}
+      </a>
+      <div class="text-sm" style="margin-top:8px;color:var(--text-secondary);">
+        <strong style="color:var(--text-primary);">{{ a.title or 'Untitled' }}</strong><br>
+        {{ a.category.replace('_', ' ') }} · {{ a.uploaded_at.strftime('%Y-%m-%d') if a.uploaded_at else '' }}
+      </div>
+      {% if current_user.can_edit_purchases %}
+      <form method="POST" action="{{ url_for('purchase_support_doc_delete', purchase_id=purchase.id, asset_id=a.id) }}" style="margin-top:8px;" onsubmit="return confirm('Remove this supporting document?');">
+        <button type="submit" class="btn btn-danger btn-sm" style="width:100%;">Delete</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 {% if purchase %}
 <div class="card">
   <div class="card-header"><h3>Add Lot to This Purchase</h3></div>
@@ -202,7 +261,7 @@
 
 {% if purchase and purchase_audit_photos %}
 <div class="card">
-  <div class="card-header"><h3>Purchase Audit Photos</h3></div>
+  <div class="card-header"><h3>Field intake audit photos</h3></div>
   <div style="display:flex;gap:8px;flex-wrap:wrap;">
     {% for a in purchase_audit_photos %}
     <a href="{{ url_for('static', filename=a.file_path) }}" target="_blank" rel="noopener"
@@ -213,7 +272,7 @@
     {% endfor %}
   </div>
   <p class="text-sm" style="color:var(--text-muted);margin-top:8px;">
-    Field-submitted biomass/COA photos are retained here for audit history.
+    These come from approved field submissions (biomass/COA/supplier shots). They stay attached for traceability; remove or replace them from the field submission workflow, not here.
   </p>
 </div>
 {% endif %}

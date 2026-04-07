@@ -25,7 +25,7 @@ Use the left sidebar:
 - **Biomass Pipeline**: pre-purchase pipeline tracking (declared → testing → committed → delivered/cancelled)
 - **Suppliers**: supplier performance analytics
 - **Strains**: strain performance analytics
-- **Photo Library**: searchable media across supplier/purchase/field contexts
+- **Photo Library**: searchable media across supplier/purchase/field contexts; editors can upload and remove certain attachment types here (see **Photo Library** section)
 - **Slack imports** (Slack Importer capability or Super Admin): triage synced Slack messages, preview mapped Run fields, **create run from Slack** (prefilled form)
 - **Settings** (Super Admin only): system parameters, KPIs, users, maintenance actions
 - **Import**: CSV import review + confirm
@@ -124,6 +124,14 @@ Use **Departments** for day-to-day orientation; all underlying data is the same 
 ## Inventory
 Inventory shows the current biomass position.
 
+### Summary tiles (top of the page)
+- **On Hand**: total **remaining** pounds on lots from purchases that have arrived (operational statuses such as delivered, in testing, available, processing, complete).
+- **In Transit**: total **stated** pounds on purchases that are committed, ordered, or in transit—not yet treated as on-hand inventory.
+- **Total**: **On Hand + In Transit**—your combined pounds in-house and on the way.
+- **Days of Supply**: how many days the **On Hand** amount would last at your configured **Daily Throughput Target** (Settings). **In-transit weight is not included** in this number; it only reflects material already on hand.
+
+If you filter by **supplier**, all four summaries and both tables use that supplier. If you also filter by **strain** (text match on lot strain), only the **on-hand** table and the **On Hand** and **Days of Supply** tiles use that strain slice; **In Transit** (and the portion of **Total** that comes from in-transit) still includes every in-transit purchase for the selected supplier, not strain-filtered.
+
 ### Biomass On Hand
 This table lists lots with remaining weight, including:
 - Strain, supplier
@@ -138,10 +146,8 @@ This table lists purchases that are not yet fully received, including:
 - Order date and expected delivery
 - Price per lb (if known)
 
-### Days of Supply
-Days of supply is based on:
-- Total on-hand biomass
-- Your configured **Daily Throughput Target** (set in Settings)
+### Days of Supply (detail)
+Same as the **Days of Supply** summary tile: **on-hand lbs ÷ Daily Throughput Target**. It does not add in-transit pounds. If the target is zero or unset in a way that makes it zero, the app shows **0** days.
 
 ---
 
@@ -179,6 +185,16 @@ Purchase status affects:
 ### Adding lots to an existing purchase
 Open a purchase and use “Add Lot to This Purchase” to add strain lots. Lots create inventory that can be consumed by runs.
 
+### Supporting documentation (photos and scans)
+On **New Purchase** and **Edit Purchase**, use the **Supporting documentation** section to attach files that should stay with the batch record (contracts, scans, invoices, COAs, photos, etc.).
+
+- **Who can upload:** **User** or **Super Admin** (same as saving purchases). Viewers cannot upload.
+- **Formats:** JPG, JPEG, PNG, WEBP, HEIC, HEIF, and PDF.
+- **Size limit:** up to **50 MB per file**.
+- Choose a **category**, optional **title**, and optional **tags** (comma-separated) for the batch you are uploading; then click **Save Purchase** to store the files.
+- After save, files appear under **Supporting documents on file** on the purchase (with **Delete** for editors) and in the **Photo Library** (filter by purchase if needed).
+- **Field intake audit photos** (from approved biomass/purchase field forms) are listed separately on the purchase; those are not replaced by this upload area and are managed through the field submission workflow.
+
 ---
 
 ## Biomass Pipeline
@@ -206,9 +222,14 @@ The Biomass Pipeline tracks farm availability before it becomes a purchase.
 Both field intake forms (biomass and purchase request) support optional photo uploads.
 
 What users can do:
-- Attach one or more photos from camera or gallery before submitting.
-- Upload formats: JPG, JPEG, PNG, WEBP, HEIC, HEIF.
-- Max size per image: 20 MB.
+- Attach multiple photos from camera or gallery before submitting.
+- On the **Potential Purchase** form there are three separate buckets: **Supplier / License**, **Biomass**, and **Testing / COA**—each can hold many photos, independently.
+- On **Biomass Availability**, there is one photo bucket for the declaration.
+- **Mobile / in-app browser:** each photo uses its own native file control (not a merged list), so submission works reliably on iPhone and embedded webviews. Tap **Add photo**, then on the new row tap **Take or choose photo** (camera or gallery). Repeat **Add photo** for more images.
+- **Remove before submit:** each row has **Remove** to unselect that photo before you send the form (empty rows are discarded on submit).
+- Each section allows up to **30** images by default (configurable by your administrator via `FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET`).
+- Upload formats: JPG, JPEG, PNG, WEBP, HEIC, HEIF (images only on field intake).
+- Max size per image: **50 MB**.
 
 What admins can see:
 - In **Settings**, pending purchase submissions show categorized thumbnails (supplier/license, biomass, testing/COA).
@@ -258,9 +279,11 @@ Suppliers shows performance analytics by farm, including:
 - Best-yielding supplier month-over-month spotlight
 
 Supplier profiles also include:
-- Historical lab test records
-- Supplier lab attachments (COAs/results/licenses)
+- Historical lab test records (attach result files: images or PDF, up to **50 MB per file**)
+- Supplier lab attachments (COAs/results/licenses; images or PDF, up to **50 MB per file**)
 - Field-approved supplier/license photos are automatically added into supplier attachments
+
+**Deleting supplier files:** Remove lab test rows or supplier attachments from the supplier profile; that also drops the linked Photo Library entries for those uploads.
 
 If the “exclude runs missing $/lb” setting is enabled, these analytics ignore runs with incomplete biomass pricing.
 
@@ -270,6 +293,32 @@ If the “exclude runs missing $/lb” setting is enabled, these analytics ignor
 Strains compares yield/cost metrics grouped by strain + supplier.
 
 If the “exclude runs missing $/lb” setting is enabled, these analytics ignore runs with incomplete biomass pricing.
+
+---
+
+## Photo Library
+The Photo Library is a single place to **search and preview** media that is tied to suppliers, purchases, field submissions, lab tests, and manual uploads.
+
+### Who can do what
+- **View / filter:** anyone signed in (**Viewer** and up).
+- **Upload and delete (limited types):** **User** or **Super Admin** only.
+
+### Browsing
+Use search (tags, title, path text) and filters for supplier, purchase, and category. Open any thumbnail or PDF tile to view the file in a new tab.
+
+### Uploading (editors)
+At the top of **Photo Library**, use **Upload to library**:
+- **Formats:** images and PDF (same extensions as supplier lab uploads).
+- **Size limit:** **50 MB per file**.
+- Optionally set **category**, **title**, **tags**, and link a **supplier** and/or **purchase** so the asset appears under the right filters.
+
+### Deleting (editors)
+- **Manual library uploads** and **supporting documents uploaded on a purchase** can be removed from the grid (**Delete** on the card). The app deletes the file on disk when nothing else references that path.
+- Assets created by **field intake**, **supplier lab tests**, or **supplier attachments** **cannot** be deleted from the Photo Library alone—use the field workflow or the supplier record (delete the lab test row or attachment) so data stays consistent.
+
+### Relationship to other screens
+- Purchase **Supporting documentation** uploads are stored as photo-library assets linked to that purchase.
+- Field submission photos appear with source **field_submission**; purchase pages also show them under **Field intake audit photos**.
 
 ---
 
@@ -363,4 +412,6 @@ Use exports for reporting, reconciliation, or offline analysis.
 - **I don’t see Slack imports in the sidebar**: ask a Super Admin to enable **Slack Importer** on your user (Super Admins always have access).
 - **Slack prefilled run won’t save**: you need **User** or **Super Admin** to save Runs; Viewer accounts can only review the prefilled form.
 - **Slack says this message is already linked to a run**: expected after a successful apply; confirm only if you intentionally need a second run from the same Slack message.
+- **Upload rejected (file too large or wrong type)**: field intake photos allow **images only** up to **50 MB** each; Photo Library uploads, purchase supporting docs, and supplier lab/attachment uploads allow **images or PDF** up to **50 MB** each. Compress or split large PDFs if needed.
+- **Field intake says too many photos in one section**: each category has a cap (default **30** images per supplier/biomass/COA bucket on the purchase form, and **30** on the biomass form). Remove extras in the list before submitting, or ask your administrator to raise `FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET` if policy allows.
 

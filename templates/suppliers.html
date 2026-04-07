@@ -146,6 +146,7 @@
   document.querySelectorAll(".supplier-hover-card").forEach(function (card) {
     var header = card.querySelector(".supplier-hover-card__header");
     if (!header) return;
+    // Always listen for mouse — many “touch” laptops still fire mouseenter; gating on (hover:hover) broke those.
     card.addEventListener("mouseenter", function () {
       showBannerForCard(card);
     });

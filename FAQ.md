@@ -36,6 +36,14 @@ The app **warns** and asks for **confirm** before prefilling again if a run is a
 **Why do some runs show “No $/lb”?**  
 The linked purchase is missing a **Price/lb**. Set pricing on the purchase (or enable/disable “exclude unpriced” in Settings depending on how you want analytics to behave).
 
+## Inventory
+
+**What does “Total” mean on Inventory?**  
+**On Hand** (remaining lbs on arrived lots) **plus** **In Transit** (stated lbs on committed/ordered/in-transit purchases). It is a combined position, not “usable today only.”
+
+**Why doesn’t Days of Supply include in-transit?**  
+Days of supply is **on-hand lbs only**, divided by your **Daily Throughput Target** (Settings). Material still on the way is shown in **In Transit** and in **Total**, but it is not counted toward days until it is on hand.
+
 ---
 
 ## Departments
