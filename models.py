@@ -247,6 +247,11 @@ class Run(db.Model):
     decarb_sample_done = db.Column(db.Boolean, default=False)
     fuel_consumption = db.Column(db.Float)
     run_type = db.Column(db.String(20), default="standard")  # standard, kief, ld
+    # After dry HTE is separated from THCA: lab testing → clean (menu) or dirty (Prescott strip) → terp accounting.
+    hte_pipeline_stage = db.Column(db.String(40))  # awaiting_lab, lab_clean, lab_dirty_queued_strip, terp_stripped
+    hte_lab_result_paths_json = db.Column(db.Text)  # JSON array; COA / lab result images or PDFs under static/
+    hte_terpenes_recovered_g = db.Column(db.Float)
+    hte_distillate_retail_g = db.Column(db.Float)
     notes = db.Column(db.Text)
     deleted_at = db.Column(db.DateTime)
     deleted_by = db.Column(db.String(36), db.ForeignKey("users.id"))

@@ -7,7 +7,7 @@
 </div>
 
 <div class="card">
-  <form method="POST">
+  <form method="POST" enctype="multipart/form-data">
     {% if slack_meta and slack_meta.ingested_message_id %}
     <input type="hidden" name="slack_ingested_message_id" value="{{ slack_meta.ingested_message_id }}">
     <input type="hidden" name="slack_channel_id" value="{{ slack_meta.channel_id or '' }}">
@@ -154,6 +154,52 @@
           <label>Dry THCA (g) *</label>
           <input type="number" name="dry_thca_g" value="{{ run.dry_thca_g if run and run.dry_thca_g else '' }}" step="0.1">
         </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h4>HTE — lab &amp; terp pipeline</h4>
+      <p class="text-sm" style="color:var(--text-muted); margin:0 0 12px 0; max-width:720px;">
+        After dry HTE is separated from THCA, track lab testing and downstream terp stripping (Terp Tubes / Prescott).
+        Attach COA or lab result files when results return. Terpene and retail distillate grams apply after stripping.
+      </p>
+      <div class="form-group">
+        <label>Pipeline stage</label>
+        <select name="hte_pipeline_stage">
+          {% for val, label in hte_pipeline_options %}
+          <option value="{{ val }}" {% if (run and (run.hte_pipeline_stage or '') == val) or (not run and val == '') %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Terpenes recovered (g)</label>
+          <input type="number" name="hte_terpenes_recovered_g" value="{% if run and run.hte_terpenes_recovered_g is not none %}{{ run.hte_terpenes_recovered_g }}{% endif %}" step="0.01" placeholder="After strip">
+        </div>
+        <div class="form-group">
+          <label>Retail distillate (g)</label>
+          <input type="number" name="hte_distillate_retail_g" value="{% if run and run.hte_distillate_retail_g is not none %}{{ run.hte_distillate_retail_g }}{% endif %}" step="0.01" placeholder="After strip">
+        </div>
+      </div>
+      {% if hte_lab_paths %}
+      <div class="form-group">
+        <label>Attached lab / COA files</label>
+        <ul style="margin:8px 0 0 0;padding-left:0;list-style:none;">
+          {% for p in hte_lab_paths %}
+          <li style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap;">
+            <label class="text-sm" style="display:flex;align-items:center;gap:6px;">
+              <input type="checkbox" name="remove_hte_lab_paths[]" value="{{ p }}"> Remove
+            </label>
+            <a href="{{ url_for('static', filename=p) }}" target="_blank" rel="noopener" class="text-mono text-sm">{{ p.split('/')[-1] }}</a>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+      <div class="form-group">
+        <label>Add lab result images or PDFs</label>
+        <input type="file" name="hte_lab_files[]" accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.pdf" multiple>
+        <span class="text-sm" style="color:var(--text-muted);display:block;margin-top:4px;">COA photos or PDFs; stored on this run record.</span>
       </div>
     </div>
 

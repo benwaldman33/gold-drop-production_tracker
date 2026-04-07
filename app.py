@@ -1675,6 +1675,35 @@ def _json_paths(value) -> list[str]:
         return []
 
 
+# HTE post-separation workflow (stored on Run when dry HTE exists).
+HTE_PIPELINE_ALLOWED = frozenset({"", "awaiting_lab", "lab_clean", "lab_dirty_queued_strip", "terp_stripped"})
+
+
+def _hte_pipeline_options():
+    return [
+        ("", "Not set"),
+        ("awaiting_lab", "Awaiting lab test (HTE staged / out for testing)"),
+        ("lab_clean", "Lab clean — cleared for menu / sale"),
+        ("lab_dirty_queued_strip", "Lab dirty — queued for Terp Tubes (Prescott), waiting to strip"),
+        ("terp_stripped", "Stripped — terpenes + retail distillate accounted"),
+    ]
+
+
+def _hte_pipeline_label(stage) -> str:
+    s = stage or ""
+    for val, lab in _hte_pipeline_options():
+        if val == s:
+            return lab
+    return "—"
+
+
+def _run_form_extras(run=None):
+    return {
+        "hte_lab_paths": _json_paths(getattr(run, "hte_lab_result_paths_json", None) if run else None),
+        "hte_pipeline_options": _hte_pipeline_options(),
+    }
+
+
 def _create_photo_asset(
     file_path: str,
     *,
@@ -1927,6 +1956,14 @@ def _ensure_sqlite_schema():
             db.session.execute(text("ALTER TABLE runs ADD COLUMN slack_message_ts VARCHAR(32)"))
         if "slack_import_applied_at" not in cols:
             db.session.execute(text("ALTER TABLE runs ADD COLUMN slack_import_applied_at DATETIME"))
+        if "hte_pipeline_stage" not in cols:
+            db.session.execute(text("ALTER TABLE runs ADD COLUMN hte_pipeline_stage VARCHAR(40)"))
+        if "hte_lab_result_paths_json" not in cols:
+            db.session.execute(text("ALTER TABLE runs ADD COLUMN hte_lab_result_paths_json TEXT"))
+        if "hte_terpenes_recovered_g" not in cols:
+            db.session.execute(text("ALTER TABLE runs ADD COLUMN hte_terpenes_recovered_g FLOAT"))
+        if "hte_distillate_retail_g" not in cols:
+            db.session.execute(text("ALTER TABLE runs ADD COLUMN hte_distillate_retail_g FLOAT"))
 
     if has_table("purchase_lots"):
         cols = column_names("purchase_lots")
@@ -2033,6 +2070,20 @@ def _ensure_sqlite_schema():
             ")"
         ))
 
+    db.session.commit()
+
+
+def _ensure_postgres_run_hte_columns():
+    """Add HTE pipeline columns on Postgres (create_all does not alter existing tables)."""
+    if db.engine.dialect.name != "postgresql":
+        return
+    for stmt in (
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS hte_pipeline_stage VARCHAR(40)",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS hte_lab_result_paths_json TEXT",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS hte_terpenes_recovered_g DOUBLE PRECISION",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS hte_distillate_retail_g DOUBLE PRECISION",
+    ):
+        db.session.execute(text(stmt))
     db.session.commit()
 
 
@@ -2456,17 +2507,22 @@ DEPARTMENT_PAGES = {
     },
     "terpenes-distillation": {
         "title": "Terpenes distillation",
-        "intro": "Downstream refinement; track via runs, notes, and strain analytics until a dedicated module exists.",
+        "intro": "After dirty HTE lab results, material goes to Terp Tubes (Prescott). Record terpenes and retail distillate grams on each run when stripping is complete.",
         "links": [
-            {"label": "Runs", "endpoint": "runs_list"},
+            {"label": "Runs — queued for strip", "endpoint": "runs_list", "url_kwargs": {"hte_stage": "lab_dirty_queued_strip"}},
+            {"label": "Runs — stripped (accounted)", "endpoint": "runs_list", "url_kwargs": {"hte_stage": "terp_stripped"}},
+            {"label": "All runs", "endpoint": "runs_list"},
             {"label": "Strains", "endpoint": "strains_list"},
         ],
     },
     "testing": {
         "title": "Testing",
-        "intro": "Lab tests, COAs, and supplier-level test history.",
+        "intro": "HTE separated from THCA is staged for lab testing. Record clean vs dirty, attach COA photos, then move clean HTE toward menu sales or dirty HTE toward Prescott terp stripping.",
         "links": [
-            {"label": "Suppliers (lab history)", "endpoint": "suppliers_list"},
+            {"label": "Runs — HTE awaiting lab", "endpoint": "runs_list", "url_kwargs": {"hte_stage": "awaiting_lab"}},
+            {"label": "Runs — lab clean (menu)", "endpoint": "runs_list", "url_kwargs": {"hte_stage": "lab_clean"}},
+            {"label": "Runs — lab dirty (strip queue)", "endpoint": "runs_list", "url_kwargs": {"hte_stage": "lab_dirty_queued_strip"}},
+            {"label": "Suppliers (supplier lab history)", "endpoint": "suppliers_list"},
             {"label": "Purchases", "endpoint": "purchases_list"},
             {"label": "Photo library", "endpoint": "photos_library"},
         ],
@@ -2628,16 +2684,29 @@ def _department_stat_sections(slug):
         return sections
 
     if slug == "terpenes-distillation":
+        base_hte = Run.query.filter(
+            Run.deleted_at.is_(None),
+            Run.dry_hte_g.isnot(None),
+            Run.dry_hte_g > 0,
+        )
+        q_strip = base_hte.filter(Run.hte_pipeline_stage == "lab_dirty_queued_strip").count()
+        stripped = base_hte.filter(Run.hte_pipeline_stage == "terp_stripped")
+        stripped30 = stripped.filter(Run.run_date >= d30).all()
+        g_terp = sum(r.hte_terpenes_recovered_g or 0 for r in stripped30)
+        g_dist = sum(r.hte_distillate_retail_g or 0 for r in stripped30)
         sections.append({
-            "title": "Overview",
+            "title": "Strip queue & accounting",
             "rows": [
-                ("Note", "No separate terpene/distillate entity yet — use Runs + notes; HTE totals below as a related signal."),
+                ("Runs with HTE — queued for Prescott strip", str(q_strip)),
+                ("Runs marked stripped (all time)", str(stripped.count())),
+                ("Terpenes recovered (last 30 days, stripped runs in window)", f"{g_terp:,.1f} g"),
+                ("Retail distillate (last 30 days, stripped runs in window)", f"{g_dist:,.1f} g"),
             ],
         })
         runs30 = Run.query.filter(Run.deleted_at.is_(None), Run.run_date >= d30).all()
         g_hte = sum(r.dry_hte_g or 0 for r in runs30)
         sections.append({
-            "title": "HTE output (last 30 days, related)",
+            "title": "HTE output (last 30 days, extraction)",
             "rows": [
                 ("Runs in window", str(len(runs30))),
                 ("Total dry HTE (g)", f"{g_hte:,.0f}"),
@@ -2649,10 +2718,32 @@ def _department_stat_sections(slug):
         lt_total = LabTest.query.count()
         lt30 = LabTest.query.filter(LabTest.test_date >= d30).count()
         sections.append({
-            "title": "Lab tests",
+            "title": "Supplier lab tests (legacy module)",
             "rows": [
                 ("Total lab test records", str(lt_total)),
                 ("Tests with date in last 30 days", str(lt30)),
+            ],
+        })
+        hte_base = Run.query.filter(
+            Run.deleted_at.is_(None),
+            Run.dry_hte_g.isnot(None),
+            Run.dry_hte_g > 0,
+        )
+        awaiting = hte_base.filter(Run.hte_pipeline_stage == "awaiting_lab").count()
+        clean = hte_base.filter(Run.hte_pipeline_stage == "lab_clean").count()
+        dirty_q = hte_base.filter(Run.hte_pipeline_stage == "lab_dirty_queued_strip").count()
+        stripped = hte_base.filter(Run.hte_pipeline_stage == "terp_stripped").count()
+        unset = hte_base.filter(
+            or_(Run.hte_pipeline_stage.is_(None), Run.hte_pipeline_stage == ""),
+        ).count()
+        sections.append({
+            "title": "HTE lab pipeline (runs with dry HTE)",
+            "rows": [
+                ("Stage not set", str(unset)),
+                ("Awaiting lab test", str(awaiting)),
+                ("Lab clean (menu / sale)", str(clean)),
+                ("Lab dirty — waiting to strip", str(dirty_q)),
+                ("Stripped — terp + distillate recorded", str(stripped)),
             ],
         })
         return sections
@@ -2991,6 +3082,7 @@ def runs_list():
     supplier_filter = (request.args.get("supplier_id") or "").strip()
     min_pot_raw = (request.args.get("min_potency") or "").strip()
     max_pot_raw = (request.args.get("max_potency") or "").strip()
+    hte_stage = (request.args.get("hte_stage") or "").strip()
     try:
         start_date = datetime.strptime(start_raw, "%Y-%m-%d").date() if start_raw else None
         end_date = datetime.strptime(end_raw, "%Y-%m-%d").date() if end_raw else None
@@ -3025,6 +3117,9 @@ def runs_list():
             Purchase.supplier_id == supplier_filter
         ).distinct()
 
+    if hte_stage and hte_stage in HTE_PIPELINE_ALLOWED and hte_stage != "":
+        query = query.filter(Run.hte_pipeline_stage == hte_stage)
+
     sort_col = getattr(Run, sort, Run.run_date)
     if order == "asc":
         query = query.order_by(sort_col.asc())
@@ -3035,12 +3130,15 @@ def runs_list():
     run_ids = [r.id for r in pagination.items]
     pricing_status = _pricing_status_for_run_ids(run_ids)
     suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
+    hte_label_map = dict(_hte_pipeline_options())
     return render_template("runs.html", runs=pagination.items, pagination=pagination,
                            sort=sort, order=order, search=search,
                            pricing_status=pricing_status, suppliers=suppliers,
                            supplier_filter=supplier_filter,
                            start_date=start_raw, end_date=end_raw,
-                           min_potency=min_pot_raw, max_potency=max_pot_raw)
+                           min_potency=min_pot_raw, max_potency=max_pot_raw,
+                           hte_stage=hte_stage, hte_label_map=hte_label_map,
+                           hte_pipeline_options=_hte_pipeline_options())
 
 
 @app.route("/runs/new", methods=["GET", "POST"])
@@ -3094,6 +3192,7 @@ def run_new():
         today=today,
         slack_meta=slack_meta,
         can_save_run=can_save_run,
+        **_run_form_extras(display_run),
     )
 
 
@@ -3121,6 +3220,7 @@ def run_edit(run_id):
         today=date.today(),
         slack_meta=None,
         can_save_run=True,
+        **_run_form_extras(run),
     )
 
 
@@ -3188,11 +3288,40 @@ def _save_run(existing_run):
                     PurchaseLot.deleted_at.is_(None),
                     Purchase.deleted_at.is_(None),
                 ).all()
-                return render_template("run_form.html", run=run, lots=lots, today=today, slack_meta=slack_meta)
+                return render_template(
+                    "run_form.html",
+                    run=run,
+                    lots=lots,
+                    today=today,
+                    slack_meta=slack_meta,
+                    can_save_run=True,
+                    **_run_form_extras(run),
+                )
 
         if not existing_run:
             db.session.add(run)
         db.session.flush()
+
+        stage_raw = (request.form.get("hte_pipeline_stage") or "").strip()
+        if stage_raw not in HTE_PIPELINE_ALLOWED:
+            raise ValueError("Invalid HTE pipeline stage.")
+        run.hte_pipeline_stage = stage_raw or None
+
+        def _opt_float(name):
+            raw = (request.form.get(name) or "").strip()
+            return float(raw) if raw else None
+
+        run.hte_terpenes_recovered_g = _opt_float("hte_terpenes_recovered_g")
+        run.hte_distillate_retail_g = _opt_float("hte_distillate_retail_g")
+
+        paths = list(_json_paths(run.hte_lab_result_paths_json))
+        for rem in request.form.getlist("remove_hte_lab_paths[]"):
+            if rem in paths:
+                paths.remove(rem)
+        new_files = request.files.getlist("hte_lab_files[]")
+        if new_files:
+            paths.extend(_save_lab_files(new_files, prefix=f"hte-run-{run.id[:8]}"))
+        run.hte_lab_result_paths_json = json.dumps(paths) if paths else None
 
         # Process lot inputs
         lot_ids = request.form.getlist("lot_ids[]")
@@ -3259,6 +3388,8 @@ def _save_run(existing_run):
             lots=lots,
             today=today,
             slack_meta=slack_meta,
+            can_save_run=True,
+            **_run_form_extras(existing_run if existing_run else run),
         )
 
 
@@ -5463,6 +5594,7 @@ def export_csv(entity):
     strain_filter = (request.args.get("strain") or "").strip().lower()
     min_pot_raw = (request.args.get("min_potency") or "").strip()
     max_pot_raw = (request.args.get("max_potency") or "").strip()
+    hte_stage_export = (request.args.get("hte_stage") or "").strip()
     try:
         start_date = datetime.strptime(start_raw, "%Y-%m-%d").date() if start_raw else None
         end_date = datetime.strptime(end_raw, "%Y-%m-%d").date() if end_raw else None
@@ -5480,7 +5612,8 @@ def export_csv(entity):
     if entity == "runs":
         writer.writerow(["Date", "Reactor", "Load source (A/B)", "Rollover", "Source", "Lbs Ran", "Grams Ran",
                          "Wet HTE", "Wet THCA", "Dry HTE", "Dry THCA", "Overall Yield %",
-                         "THCA Yield %", "HTE Yield %", "Cost/Gram", "Notes"])
+                         "THCA Yield %", "HTE Yield %", "Cost/Gram",
+                         "HTE Pipeline", "Terpenes recovered (g)", "Retail distillate (g)", "Lab / COA files", "Notes"])
         q = Run.query.filter(Run.deleted_at.is_(None))
         if start_date:
             q = q.filter(Run.run_date >= start_date)
@@ -5490,6 +5623,8 @@ def export_csv(entity):
             q = q.filter(Run.thca_yield_pct >= min_pot)
         if max_pot is not None:
             q = q.filter(Run.thca_yield_pct <= max_pot)
+        if hte_stage_export and hte_stage_export in HTE_PIPELINE_ALLOWED and hte_stage_export != "":
+            q = q.filter(Run.hte_pipeline_stage == hte_stage_export)
         if supplier_id or strain_filter:
             q = q.join(RunInput, Run.id == RunInput.run_id).join(PurchaseLot, RunInput.lot_id == PurchaseLot.id
             ).join(Purchase, PurchaseLot.purchase_id == Purchase.id)
@@ -5500,6 +5635,7 @@ def export_csv(entity):
                 q = q.filter(func.lower(PurchaseLot.strain_name).like(f"%{strain_filter}%"))
             q = q.distinct()
         for r in q.order_by(Run.run_date.desc()).all():
+            lab_files = " | ".join(_json_paths(r.hte_lab_result_paths_json))
             writer.writerow([r.run_date, r.reactor_number, r.load_source_reactors or "", r.is_rollover, r.source_display,
                              r.bio_in_reactor_lbs, r.grams_ran, r.wet_hte_g, r.wet_thca_g,
                              r.dry_hte_g, r.dry_thca_g,
@@ -5507,6 +5643,10 @@ def export_csv(entity):
                              f"{r.thca_yield_pct:.2f}" if r.thca_yield_pct else "",
                              f"{r.hte_yield_pct:.2f}" if r.hte_yield_pct else "",
                              f"{r.cost_per_gram_combined:.2f}" if r.cost_per_gram_combined else "",
+                             _hte_pipeline_label(r.hte_pipeline_stage),
+                             f"{r.hte_terpenes_recovered_g:.4f}" if r.hte_terpenes_recovered_g is not None else "",
+                             f"{r.hte_distillate_retail_g:.4f}" if r.hte_distillate_retail_g is not None else "",
+                             lab_files,
                              r.notes or ""])
     elif entity == "purchases":
         writer.writerow(["Date", "Batch ID", "Supplier", "Status", "Stated Lbs", "Actual Lbs",
@@ -6235,6 +6375,7 @@ def init_db():
         if "already exists" not in err_txt and "duplicate" not in err_txt:
             raise
     _ensure_sqlite_schema()
+    _ensure_postgres_run_hte_columns()
 
     # Create default admin if none exists
     if not User.query.first():
