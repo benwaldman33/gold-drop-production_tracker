@@ -54,9 +54,9 @@ Product behavior is summarized in **`PRD.md`** (Runs entity + material flow) and
 
 - Ingestion/linking behavior continues to follow **Integrations — Slack** in `PRD.md` and the **Slack channel history sync** section below. Department pages should not assume web forms replace Slack until product changes **Operational input authority** in the PRD.
 
-## Parallel branch: `Timberly-Changes`
+## `Timberly-Changes` (merged into `main`)
 
-Some UX work shipped on **`origin/Timberly-Changes`** (forked from **`67057a9`**) before **Departments** / **main** advanced—e.g. **Slack imports human time** (`8fb7bbb`, ported as the `slack_ts_la` filter) and **Suppliers hover-to-expand** (`e27a4b7` template/CSS; **profile incomplete** banner). If production ever “lost” those behaviors, the cause was **branch skew**, not `git merge` deleting commits. Larger Timberly commits (biomass purchasing dashboard, `super_buyer`, field approvals, etc.) were **not** auto-merged; cherry-pick or merge that branch explicitly if you need them.
+**`origin/Timberly-Changes`** was merged into **`main`** (commit message: merge Timberly-Changes). It adds the biomass purchasing dashboard, **`super_buyer`** role, field approvals, weekly purchasing targets, sidebar budget widget, field intake photo UX (`field_intake_photos.js`), supplier incomplete-profile modal/highlighting, and related docs. **Departments**, **HTE pipeline on runs**, and **`slack_ts_la`** were preserved during the merge.
 
 ## Slack channel history sync
 
