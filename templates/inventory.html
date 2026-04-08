@@ -51,13 +51,21 @@
 
 <!-- On Hand -->
 <div class="card">
-  <div class="card-header">
-    <h3>Biomass On Hand</h3>
+  <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+    <h3 style="margin:0;">Biomass On Hand</h3>
+    {% if current_user.can_edit_purchases %}
+    <div class="btn-group" data-batch-toolbar="1" data-batch-entity="inventory_lots" data-table-selector="#inventory-onhand-table" data-return-to="{{ request.full_path }}">
+      <button type="button" class="btn btn-secondary btn-sm" data-batch-select-all>Select all</button>
+      <button type="button" class="btn btn-secondary btn-sm" data-batch-select-none>Select none</button>
+      <button type="button" class="btn btn-primary btn-sm" data-batch-edit disabled>Batch edit…</button>
+    </div>
+    {% endif %}
   </div>
   <div class="table-wrap">
-    <table>
+    <table id="inventory-onhand-table">
       <thead>
         <tr>
+          {% if current_user.can_edit_purchases %}<th class="text-center" style="width:36px;"></th>{% endif %}
           <th>Strain</th>
           <th>Supplier</th>
           <th class="text-right">Original (lbs)</th>
@@ -70,6 +78,9 @@
       <tbody>
         {% for lot in on_hand %}
         <tr>
+          {% if current_user.can_edit_purchases %}
+          <td class="text-center"><input type="checkbox" class="batch-select-cb" data-batch-entity="inventory_lots" value="{{ lot.id }}" aria-label="Select lot"></td>
+          {% endif %}
           <td><strong>{{ lot.strain_name }}</strong></td>
           <td>{{ lot.supplier_name }}</td>
           <td class="text-right text-mono">{{ "{:,.0f}".format(lot.weight_lbs) }}</td>
@@ -79,7 +90,7 @@
           <td>{{ lot.location or '—' }}</td>
         </tr>
         {% else %}
-        <tr><td colspan="7" class="text-center cell-muted" style="padding:30px;">No biomass currently on hand.</td></tr>
+        <tr><td colspan="{% if current_user.can_edit_purchases %}8{% else %}7{% endif %}" class="text-center cell-muted" style="padding:30px;">No biomass currently on hand.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -88,13 +99,21 @@
 
 <!-- In Transit -->
 <div class="card">
-  <div class="card-header">
-    <h3>In Transit / On Order</h3>
+  <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+    <h3 style="margin:0;">In Transit / On Order</h3>
+    {% if current_user.can_edit_purchases %}
+    <div class="btn-group" data-batch-toolbar="1" data-batch-entity="purchases" data-table-selector="#inventory-transit-table" data-return-to="{{ request.full_path }}">
+      <button type="button" class="btn btn-secondary btn-sm" data-batch-select-all>Select all</button>
+      <button type="button" class="btn btn-secondary btn-sm" data-batch-select-none>Select none</button>
+      <button type="button" class="btn btn-primary btn-sm" data-batch-edit disabled>Batch edit…</button>
+    </div>
+    {% endif %}
   </div>
   <div class="table-wrap">
-    <table>
+    <table id="inventory-transit-table">
       <thead>
         <tr>
+          {% if current_user.can_edit_purchases %}<th class="text-center" style="width:36px;"></th>{% endif %}
           <th>Supplier</th>
           <th>Status</th>
           <th class="text-right">Weight (lbs)</th>
@@ -106,6 +125,9 @@
       <tbody>
         {% for p in in_transit %}
         <tr>
+          {% if current_user.can_edit_purchases %}
+          <td class="text-center"><input type="checkbox" class="batch-select-cb" data-batch-entity="purchases" value="{{ p.id }}" aria-label="Select purchase"></td>
+          {% endif %}
           <td><strong>{{ p.supplier_name }}</strong></td>
           <td><span class="badge status-{{ p.status }}">{{ p.status.replace('_', ' ') }}</span></td>
           <td class="text-right text-mono">{{ "{:,.0f}".format(p.stated_weight_lbs) }}</td>
@@ -114,7 +136,7 @@
           <td class="text-right text-mono">{{ "${:,.2f}".format(p.price_per_lb) if p.price_per_lb else '—' }}</td>
         </tr>
         {% else %}
-        <tr><td colspan="6" class="text-center cell-muted" style="padding:30px;">No orders in transit.</td></tr>
+        <tr><td colspan="{% if current_user.can_edit_purchases %}7{% else %}6{% endif %}" class="text-center cell-muted" style="padding:30px;">No orders in transit.</td></tr>
         {% endfor %}
       </tbody>
     </table>

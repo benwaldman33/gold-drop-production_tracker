@@ -12,6 +12,11 @@
       <button type="submit" class="btn btn-secondary">Search</button>
     </form>
     {% if current_user.can_edit %}
+    <div class="btn-group" data-batch-toolbar="1" data-batch-entity="runs" data-table-selector="#runs-table" data-return-to="{{ request.full_path }}">
+      <button type="button" class="btn btn-secondary btn-sm" data-batch-select-all>Select all</button>
+      <button type="button" class="btn btn-secondary btn-sm" data-batch-select-none>Select none</button>
+      <button type="button" class="btn btn-primary btn-sm" data-batch-edit disabled>Batch edit…</button>
+    </div>
     <a href="{{ url_for('run_new') }}" class="btn btn-primary">+ New Run</a>
     {% endif %}
     <a href="{{ url_for('export_csv', entity='runs', start_date=start_date, end_date=end_date, supplier_id=supplier_filter, min_potency=min_potency, max_potency=max_potency, hte_stage=hte_stage) }}" class="btn btn-secondary">Export CSV</a>
@@ -68,9 +73,10 @@
 </div>
 
 <div class="table-wrap">
-  <table>
+  <table id="runs-table">
     <thead>
       <tr>
+        {% if current_user.can_edit %}<th class="text-center" style="width:36px;"></th>{% endif %}
         <th><a href="?page=1&sort=run_date&order={% if sort=='run_date' and order=='desc' %}asc{% else %}desc{% endif %}&search={{ search|urlencode }}&start_date={{ start_date }}&end_date={{ end_date }}&supplier_id={{ supplier_filter }}&min_potency={{ min_potency }}&max_potency={{ max_potency }}&hte_stage={{ hte_stage|urlencode }}">Date</a></th>
         <th>Rx</th>
         <th>Load</th>
@@ -92,6 +98,9 @@
     <tbody>
       {% for run in runs %}
       <tr>
+        {% if current_user.can_edit %}
+        <td class="text-center"><input type="checkbox" class="batch-select-cb" data-batch-entity="runs" value="{{ run.id }}" aria-label="Select run"></td>
+        {% endif %}
         <td>{{ run.run_date.strftime('%m/%d/%y') if run.run_date else '—' }}</td>
         <td class="text-center">{{ run.reactor_number }}</td>
         <td class="text-center text-mono text-sm">{{ run.load_source_reactors or '—' }}</td>
@@ -131,7 +140,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="16" class="text-center cell-muted" style="padding:40px;">No runs recorded yet. <a href="{{ url_for('run_new') }}">Log your first run.</a></td></tr>
+      <tr><td colspan="{% if current_user.can_edit %}17{% else %}16{% endif %}" class="text-center cell-muted" style="padding:40px;">No runs recorded yet. <a href="{{ url_for('run_new') }}">Log your first run.</a></td></tr>
       {% endfor %}
     </tbody>
   </table>

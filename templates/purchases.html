@@ -6,7 +6,13 @@
   <h2>Purchases</h2>
   <div class="btn-group">
     {% if current_user.can_edit_purchases %}
+    <div class="btn-group" data-batch-toolbar="1" data-batch-entity="purchases" data-table-selector="#purchases-table" data-return-to="{{ request.full_path }}">
+      <button type="button" class="btn btn-secondary btn-sm" data-batch-select-all>Select all</button>
+      <button type="button" class="btn btn-secondary btn-sm" data-batch-select-none>Select none</button>
+      <button type="button" class="btn btn-primary btn-sm" data-batch-edit disabled>Batch edit…</button>
+    </div>
     <a href="{{ url_for('purchase_new') }}" class="btn btn-primary">+ New Purchase</a>
+    <a href="{{ url_for('purchase_import') }}" class="btn btn-secondary">Import spreadsheet</a>
     {% endif %}
     <a href="{{ url_for('export_csv', entity='purchases', status=status_filter, start_date=start_date, end_date=end_date, supplier_id=supplier_filter, min_potency=min_potency, max_potency=max_potency) }}{{ htq }}" class="btn btn-secondary">Export CSV</a>
   </div>
@@ -70,9 +76,10 @@
 </div>
 
 <div class="table-wrap">
-  <table>
+  <table id="purchases-table">
     <thead>
       <tr>
+        {% if current_user.can_edit_purchases %}<th class="text-center" style="width:36px;"></th>{% endif %}
         <th>Date</th>
         <th>Batch</th>
         <th>Supplier</th>
@@ -90,6 +97,9 @@
     <tbody>
       {% for p in purchases %}
       <tr>
+        {% if current_user.can_edit_purchases %}
+        <td class="text-center"><input type="checkbox" class="batch-select-cb" data-batch-entity="purchases" value="{{ p.id }}" aria-label="Select purchase"></td>
+        {% endif %}
         <td>{{ p.purchase_date.strftime('%m/%d/%y') if p.purchase_date else '—' }}</td>
         <td class="text-mono">{{ p.batch_id if p.batch_id else '—' }}</td>
         <td><strong>{{ p.supplier_name }}</strong></td>
@@ -113,7 +123,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="12" class="text-center cell-muted" style="padding:40px;">No purchases recorded yet.</td></tr>
+      <tr><td colspan="{% if current_user.can_edit_purchases %}13{% else %}12{% endif %}" class="text-center cell-muted" style="padding:40px;">No purchases recorded yet.</td></tr>
       {% endfor %}
     </tbody>
   </table>

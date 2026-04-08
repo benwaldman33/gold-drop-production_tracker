@@ -5,6 +5,7 @@ import os
 import csv
 import io
 import json
+import tempfile
 import re
 import hashlib
 import hmac
@@ -29,7 +30,19 @@ from werkzeug.utils import secure_filename
 from models import (db, User, Supplier, Purchase, PurchaseLot, Run, RunInput,
                     KpiTarget, SystemSetting, AuditLog, BiomassAvailability, CostEntry,
                     FieldAccessToken, FieldPurchaseSubmission, LabTest, SupplierAttachment, PhotoAsset,
-                    SlackIngestedMessage, SlackChannelSyncConfig)
+                    SlackIngestedMessage, SlackChannelSyncConfig, gen_uuid)
+from purchase_import import parse_purchase_spreadsheet_upload
+from batch_edit import (
+    STRAIN_PAIR_SEP,
+    apply_batch_runs,
+    apply_batch_purchases,
+    apply_batch_biomass,
+    apply_batch_suppliers,
+    apply_batch_costs,
+    apply_batch_inventory_lots,
+    apply_batch_strain_rename,
+    parse_uuid_ids,
+)
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "gold-drop-dev-key-change-in-prod")
@@ -3438,6 +3451,28 @@ def _maintain_purchase_inventory_lots(p: Purchase) -> None:
     ))
 
 
+def _sync_linked_biomass_for_purchase(p: Purchase) -> None:
+    """Keep BiomassAvailability stage in sync when purchase status/delivery changes."""
+    linked = BiomassAvailability.query.filter(BiomassAvailability.purchase_id == p.id).first()
+    if not linked:
+        return
+    status = (p.status or "").strip()
+    if status in ("ordered", "in_transit", "committed"):
+        linked.stage = "committed"
+    elif status in ("in_testing", "available"):
+        linked.stage = "testing"
+    elif status in ("delivered", "processing", "complete"):
+        linked.stage = "delivered"
+    elif status == "cancelled":
+        linked.stage = "cancelled"
+    else:
+        linked.stage = status if status in ("declared", "testing") else "delivered"
+    linked.committed_on = p.purchase_date
+    linked.committed_delivery_date = p.delivery_date
+    linked.committed_weight_lbs = p.actual_weight_lbs or p.stated_weight_lbs
+    linked.committed_price_per_lb = p.price_per_lb
+
+
 def _reconcile_closed_purchase_inventory_lots() -> None:
     """Clear remaining weight on lots tied to complete/cancelled purchases (idempotent)."""
     try:
@@ -4434,6 +4469,180 @@ def inventory():
     )
 
 
+def _safe_batch_return_url(raw: str) -> str:
+    p = (raw or "").strip()
+    if not p.startswith("/") or "\n" in p or "\r" in p or len(p) > 512:
+        return url_for("dashboard")
+    return p
+
+
+BATCH_EDIT_META = {
+    "runs": {"label": "Extraction runs", "perm": "can_edit"},
+    "purchases": {"label": "Purchases", "perm": "can_edit_purchases"},
+    "biomass": {"label": "Biomass pipeline", "perm": "can_edit"},
+    "suppliers": {"label": "Suppliers", "perm": "can_edit"},
+    "costs": {"label": "Cost entries", "perm": "can_edit"},
+    "inventory_lots": {"label": "Inventory lots (on hand)", "perm": "can_edit_purchases"},
+    "strains": {"label": "Strain names (lots)", "perm": "can_edit"},
+}
+
+
+@app.route("/batch-edit/<entity>", methods=["GET", "POST"])
+@login_required
+def batch_edit(entity):
+    meta = BATCH_EDIT_META.get(entity)
+    if not meta:
+        abort(404)
+    perm = meta["perm"]
+    if perm == "can_edit" and not current_user.can_edit:
+        flash("Edit access required.", "error")
+        return redirect(url_for("dashboard"))
+    if perm == "can_edit_purchases" and not current_user.can_edit_purchases:
+        flash("Purchase edit access required.", "error")
+        return redirect(url_for("dashboard"))
+
+    return_to = _safe_batch_return_url(request.values.get("return_to") or "")
+
+    if entity == "strains":
+        pairs = request.values.getlist("pair") if request.method == "POST" else request.args.getlist("pair")
+        pairs = [p for p in pairs if STRAIN_PAIR_SEP in (p or "")]
+        if len(pairs) < 2:
+            flash("Select at least two strain rows (same supplier bucket) to batch rename.", "warning")
+            return redirect(return_to)
+        if request.method == "GET":
+            return render_template(
+                "batch_edit.html",
+                entity=entity,
+                label=meta["label"],
+                ids=[],
+                strain_pairs=pairs,
+                return_to=return_to,
+                hte_pipeline_options=_hte_pipeline_options(),
+            )
+        new_name = (request.form.get("new_strain_name") or "").strip()
+        n, errs = apply_batch_strain_rename(pairs, new_name)
+        if errs:
+            for e in errs[:12]:
+                flash(e, "error")
+            db.session.rollback()
+            return redirect(return_to)
+        try:
+            log_audit("update", "strain_rename", gen_uuid(), details=f"lots_updated={n}")
+            db.session.commit()
+            flash(f"Updated strain name on {n} lot(s).", "success")
+        except Exception:
+            db.session.rollback()
+            app.logger.exception("batch strain rename")
+            flash("Batch update failed.", "error")
+        return redirect(return_to)
+
+    ids = parse_uuid_ids(request.values.get("ids") or "")
+    if len(ids) < 2:
+        flash("Select at least two records to batch edit.", "warning")
+        return redirect(return_to)
+
+    if request.method == "GET":
+        return render_template(
+            "batch_edit.html",
+            entity=entity,
+            label=meta["label"],
+            ids=ids,
+            strain_pairs=[],
+            return_to=return_to,
+            hte_pipeline_options=_hte_pipeline_options(),
+        )
+
+    try:
+        if entity == "runs":
+            n, errs = apply_batch_runs(ids, request.form)
+            for e in errs[:15]:
+                flash(e, "error")
+            if n:
+                log_audit("update", "run_batch", gen_uuid(), details=f"count={n}")
+                db.session.commit()
+                flash(f"Updated {n} run(s).", "success")
+            else:
+                db.session.rollback()
+                if not errs:
+                    flash("No changes applied (leave fields blank to skip).", "warning")
+        elif entity == "purchases":
+            n, errs, touched = apply_batch_purchases(ids, request.form)
+            for e in errs[:15]:
+                flash(e, "error")
+            if touched:
+                for p in touched:
+                    _maintain_purchase_inventory_lots(p)
+                    _sync_linked_biomass_for_purchase(p)
+                    new_snap = _biomass_budget_snapshot_for_purchase(p)
+                    _enforce_weekly_biomass_purchase_limits(p, new_snap, enforce_cap=True)
+            if n:
+                log_audit("update", "purchase_batch", gen_uuid(), details=f"count={n}")
+                db.session.commit()
+                flash(f"Updated {n} purchase(s).", "success")
+            else:
+                db.session.rollback()
+                if not errs:
+                    flash("No changes applied.", "warning")
+        elif entity == "biomass":
+            n, errs = apply_batch_biomass(ids, request.form)
+            for e in errs[:15]:
+                flash(e, "error")
+            if n:
+                log_audit("update", "biomass_batch", gen_uuid(), details=f"count={n}")
+                db.session.commit()
+                flash(f"Updated {n} biomass row(s).", "success")
+            else:
+                db.session.rollback()
+                if not errs:
+                    flash("No changes applied.", "warning")
+        elif entity == "suppliers":
+            n, errs = apply_batch_suppliers(ids, request.form)
+            for e in errs[:15]:
+                flash(e, "error")
+            if n:
+                log_audit("update", "supplier_batch", gen_uuid(), details=f"count={n}")
+                db.session.commit()
+                flash(f"Updated {n} supplier(s).", "success")
+            else:
+                db.session.rollback()
+                if not errs:
+                    flash("No changes applied.", "warning")
+        elif entity == "costs":
+            n, errs = apply_batch_costs(ids, request.form)
+            for e in errs[:15]:
+                flash(e, "error")
+            if n:
+                log_audit("update", "cost_batch", gen_uuid(), details=f"count={n}")
+                db.session.commit()
+                flash(f"Updated {n} cost entr(y/ies).", "success")
+            else:
+                db.session.rollback()
+                if not errs:
+                    flash("No changes applied.", "warning")
+        elif entity == "inventory_lots":
+            n, errs = apply_batch_inventory_lots(ids, request.form)
+            for e in errs[:15]:
+                flash(e, "error")
+            if n:
+                log_audit("update", "inventory_lot_batch", gen_uuid(), details=f"count={n}")
+                db.session.commit()
+                flash(f"Updated {n} inventory lot(s).", "success")
+            else:
+                db.session.rollback()
+                if not errs:
+                    flash("No changes applied.", "warning")
+    except ValueError as e:
+        db.session.rollback()
+        flash(str(e), "error")
+        return redirect(return_to)
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("batch edit %s", entity)
+        flash("Batch update failed.", "error")
+
+    return redirect(return_to)
+
+
 # ── Purchases ────────────────────────────────────────────────────────────────
 
 @app.route("/purchases")
@@ -4750,6 +4959,512 @@ def _save_purchase(existing):
             purchase_audit_photos=purchase_audit_photos,
             purchase_support_docs=purchase_support_docs,
         )
+
+
+PURCHASE_IMPORT_ALLOWED_STATUSES = frozenset({
+    "declared", "committed", "ordered", "in_transit", "delivered",
+    "in_testing", "available", "processing", "complete", "cancelled",
+})
+
+
+def _purchase_import_staging_path(token: str) -> str:
+    safe = "".join(c for c in (token or "") if c.isalnum() or c in "-_")
+    if len(safe) < 8:
+        raise ValueError("Invalid staging token.")
+    return os.path.join(tempfile.gettempdir(), f"gdp_purchimp_{safe}.json")
+
+
+def _purchase_import_load_staging(token: str) -> dict | None:
+    try:
+        path = _purchase_import_staging_path(token)
+    except ValueError:
+        return None
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _purchase_import_clear_staging(token: str) -> None:
+    try:
+        path = _purchase_import_staging_path(token)
+        if os.path.isfile(path):
+            os.remove(path)
+    except (OSError, ValueError):
+        pass
+
+
+def _purchase_import_parse_date(s: str) -> date | None:
+    s = (s or "").strip()
+    if not s:
+        return None
+    if len(s) >= 10 and s[4] == "-" and s[7] == "-":
+        try:
+            return datetime.strptime(s[:10], "%Y-%m-%d").date()
+        except ValueError:
+            pass
+    d = _parse_date(s)
+    if d and d.year == 1900:
+        d = d.replace(year=date.today().year)
+    return d
+
+
+def _purchase_import_parse_required_positive_float(s: str) -> float | None:
+    if not (s or "").strip():
+        return None
+    t = str(s).replace(",", "").replace("$", "").replace("%", "").strip()
+    try:
+        return float(t)
+    except (ValueError, TypeError):
+        return None
+
+
+def _purchase_import_parse_optional_float(s: str) -> float | None:
+    if not (s or "").strip():
+        return None
+    t = str(s).replace(",", "").replace("$", "").replace("%", "").strip()
+    try:
+        return float(t)
+    except (ValueError, TypeError):
+        return None
+
+
+def _purchase_import_normalize_status(raw: str) -> tuple[str | None, str | None]:
+    s = (raw or "").strip()
+    if not s:
+        return "ordered", None
+    key = s.lower().replace(" ", "_").replace("-", "_")
+    while "__" in key:
+        key = key.replace("__", "_")
+    aliases = {
+        "intransit": "in_transit",
+        "in_test": "in_testing",
+        "testing": "in_testing",
+        "proc": "processing",
+        "done": "complete",
+        "canceled": "cancelled",
+    }
+    key = aliases.get(key, key)
+    if key in PURCHASE_IMPORT_ALLOWED_STATUSES:
+        return key, None
+    return None, f"Unknown status {raw!r} (expected e.g. ordered, delivered)."
+
+
+def _purchase_import_normalize_queue_placement(raw: str) -> tuple[str | None, str | None]:
+    s = (raw or "").strip().lower().replace(" ", "_").replace("-", "_")
+    if not s:
+        return None, None
+    if s in ("aggregate", "indoor", "outdoor"):
+        return s, None
+    return None, f"Invalid queue placement {raw!r}."
+
+
+def _purchase_import_normalize_clean_dirty(raw: str) -> tuple[str | None, str | None]:
+    s = (raw or "").strip().lower()
+    if not s:
+        return None, None
+    if s in ("clean", "dirty"):
+        return s, None
+    return None, f"Invalid clean/dirty {raw!r}."
+
+
+def _purchase_import_normalize_indoor_outdoor(raw: str) -> tuple[str | None, str | None]:
+    if not (raw or "").strip():
+        return None, None
+    s = (raw or "").strip().lower().replace(" ", "_").replace("-", "_")
+    aliases = {"mixedlight": "mixed_light", "green_house": "greenhouse"}
+    s = aliases.get(s, s)
+    if s in ("indoor", "outdoor", "mixed_light", "greenhouse"):
+        return s, None
+    return None, f"Invalid indoor/outdoor {raw!r}."
+
+
+def _purchase_import_validate_row(raw: dict) -> tuple[list[str], dict | None]:
+    errors: list[str] = []
+    supplier_name = (raw.get("supplier") or "").strip()
+    if not supplier_name:
+        errors.append("Supplier is required.")
+
+    purchase_date = None
+    pd_raw = (raw.get("purchase_date") or "").strip()
+    if pd_raw:
+        purchase_date = _purchase_import_parse_date(pd_raw)
+    if not purchase_date:
+        paid_raw_fb = (raw.get("paid_date") or "").strip()
+        if paid_raw_fb:
+            purchase_date = _purchase_import_parse_date(paid_raw_fb)
+    if not purchase_date:
+        errors.append(
+            "Purchase date is missing or could not be parsed (Paid date is used as fallback when purchase date is blank)."
+        )
+
+    actual_weight_lbs = None
+    aw_raw = (raw.get("actual_weight_lbs") or "").strip()
+    if aw_raw:
+        actual_weight_lbs = _purchase_import_parse_optional_float(aw_raw)
+        if actual_weight_lbs is None:
+            errors.append("Actual weight (lbs) is not a valid number.")
+        elif actual_weight_lbs < 0:
+            errors.append("Actual weight (lbs) cannot be negative.")
+
+    sw_raw = (raw.get("stated_weight_lbs") or "").strip()
+    sw = _purchase_import_parse_required_positive_float(sw_raw) if sw_raw else None
+    if (sw is None or sw <= 0) and actual_weight_lbs is not None and actual_weight_lbs > 0:
+        sw = float(actual_weight_lbs)
+    if sw is None or sw <= 0:
+        errors.append(
+            "Invoice/stated weight must be greater than zero, or provide actual weight when invoice weight is blank."
+        )
+
+    st, st_err = _purchase_import_normalize_status((raw.get("status") or "").strip())
+    if st_err:
+        errors.append(st_err)
+
+    batch_in = (raw.get("batch_id") or "").strip().upper()
+    if batch_in:
+        conflict = Purchase.query.filter(
+            Purchase.batch_id == batch_in,
+            Purchase.deleted_at.is_(None),
+        ).first()
+        if conflict:
+            errors.append(f"Batch ID {batch_in} already exists in Purchases.")
+
+    delivery_date = None
+    dd_raw = (raw.get("delivery_date") or "").strip()
+    if dd_raw:
+        delivery_date = _purchase_import_parse_date(dd_raw)
+        if not delivery_date:
+            errors.append("Delivery date could not be parsed.")
+
+    paid_dt = None
+    pddr = (raw.get("paid_date") or "").strip()
+    if pddr:
+        paid_dt = _purchase_import_parse_date(pddr)
+        if not paid_dt:
+            errors.append("Paid date could not be parsed.")
+
+    total_cost_val = None
+    tc_raw = (raw.get("total_cost") or "").strip()
+    if tc_raw:
+        total_cost_val = _purchase_import_parse_optional_float(tc_raw)
+        if total_cost_val is None:
+            errors.append("Amount / total cost is not a valid number.")
+        elif total_cost_val < 0:
+            errors.append("Amount / total cost cannot be negative.")
+
+    week_s = (raw.get("purchase_week") or "").strip()
+    pay_m = (raw.get("payment_method") or "").strip()
+
+    stated_potency_pct = None
+    sp_raw = (raw.get("stated_potency_pct") or "").strip()
+    if sp_raw:
+        stated_potency_pct = _purchase_import_parse_optional_float(sp_raw)
+        if stated_potency_pct is None:
+            errors.append("Stated potency is not a valid number.")
+
+    tested_potency_pct = None
+    tp_raw = (raw.get("tested_potency_pct") or "").strip()
+    if tp_raw:
+        tested_potency_pct = _purchase_import_parse_optional_float(tp_raw)
+        if tested_potency_pct is None:
+            errors.append("Tested potency is not a valid number.")
+
+    price_per_lb = None
+    ppl_raw = (raw.get("price_per_lb") or "").strip()
+    if ppl_raw:
+        price_per_lb = _purchase_import_parse_optional_float(ppl_raw)
+        if price_per_lb is None:
+            errors.append("Price per lb is not a valid number.")
+
+    harvest_date = None
+    hd_raw = (raw.get("harvest_date") or "").strip()
+    if hd_raw:
+        harvest_date = _purchase_import_parse_date(hd_raw)
+        if not harvest_date:
+            errors.append("Harvest date could not be parsed.")
+
+    qp, qp_err = _purchase_import_normalize_queue_placement(raw.get("queue_placement") or "")
+    if qp_err:
+        errors.append(qp_err)
+
+    cd, cd_err = _purchase_import_normalize_clean_dirty(raw.get("clean_or_dirty") or "")
+    if cd_err:
+        errors.append(cd_err)
+
+    io_val, io_err = _purchase_import_normalize_indoor_outdoor(raw.get("indoor_outdoor") or "")
+    if io_err:
+        errors.append(io_err)
+
+    strain = (raw.get("strain") or "").strip() or None
+
+    if errors:
+        return errors, None
+
+    note_lines: list[str] = []
+    base_notes = (raw.get("notes") or "").strip()
+    if base_notes:
+        note_lines.append(base_notes)
+    if week_s:
+        note_lines.append(f"Import — Purchasing week: {week_s}")
+    if paid_dt:
+        note_lines.append(f"Paid date: {paid_dt.isoformat()}")
+    if pay_m:
+        note_lines.append(f"Payment: {pay_m}")
+    composed_notes = "\n".join(note_lines) if note_lines else None
+
+    norm: dict = {
+        "supplier_name": supplier_name,
+        "purchase_date": purchase_date.isoformat(),
+        "stated_weight_lbs": float(sw),
+        "status": st or "ordered",
+        "batch_id": batch_in or None,
+        "delivery_date": delivery_date.isoformat() if delivery_date else None,
+        "actual_weight_lbs": float(actual_weight_lbs) if actual_weight_lbs is not None else None,
+        "stated_potency_pct": float(stated_potency_pct) if stated_potency_pct is not None else None,
+        "tested_potency_pct": float(tested_potency_pct) if tested_potency_pct is not None else None,
+        "price_per_lb": float(price_per_lb) if price_per_lb is not None else None,
+        "total_cost": float(total_cost_val) if total_cost_val is not None else None,
+        "harvest_date": harvest_date.isoformat() if harvest_date else None,
+        "storage_note": (raw.get("storage_note") or "").strip() or None,
+        "license_info": (raw.get("license_info") or "").strip() or None,
+        "coa_status_text": (raw.get("coa_status_text") or "").strip() or None,
+        "notes": composed_notes,
+        "queue_placement": qp,
+        "clean_or_dirty": cd,
+        "indoor_outdoor": io_val,
+        "strain": strain,
+    }
+    return [], norm
+
+
+def _purchase_import_commit_norm(norm: dict, *, create_suppliers: bool) -> None:
+    name = norm["supplier_name"]
+    sup = Supplier.query.filter(func.lower(Supplier.name) == name.lower()).first()
+    if not sup:
+        if not create_suppliers:
+            raise ValueError(f"Unknown supplier: {name}")
+        sup = Supplier(name=name, is_active=True)
+        db.session.add(sup)
+        db.session.flush()
+
+    p = Purchase(
+        supplier_id=sup.id,
+        purchase_date=datetime.strptime(norm["purchase_date"], "%Y-%m-%d").date(),
+        status=norm.get("status") or "ordered",
+        stated_weight_lbs=float(norm["stated_weight_lbs"]),
+    )
+    if norm.get("delivery_date"):
+        p.delivery_date = datetime.strptime(norm["delivery_date"], "%Y-%m-%d").date()
+    p.actual_weight_lbs = norm.get("actual_weight_lbs")
+    p.stated_potency_pct = norm.get("stated_potency_pct")
+    p.tested_potency_pct = norm.get("tested_potency_pct")
+    p.price_per_lb = norm.get("price_per_lb")
+    tc_import = norm.get("total_cost")
+    p.total_cost = float(tc_import) if tc_import is not None else None
+    p.storage_note = norm.get("storage_note")
+    p.license_info = norm.get("license_info")
+    p.queue_placement = norm.get("queue_placement")
+    p.coa_status_text = norm.get("coa_status_text")
+    p.clean_or_dirty = norm.get("clean_or_dirty")
+    p.indoor_outdoor = norm.get("indoor_outdoor")
+    p.notes = norm.get("notes")
+    if norm.get("harvest_date"):
+        p.harvest_date = datetime.strptime(norm["harvest_date"], "%Y-%m-%d").date()
+
+    w_cost = p.actual_weight_lbs if p.actual_weight_lbs is not None else p.stated_weight_lbs
+    if p.price_per_lb is None and tc_import is not None and w_cost and float(w_cost) > 0:
+        p.price_per_lb = float(tc_import) / float(w_cost)
+
+    if p.stated_potency_pct and p.price_per_lb is None and tc_import is None:
+        rate = SystemSetting.get_float("potency_rate", 1.50)
+        p.price_per_lb = rate * p.stated_potency_pct
+
+    if p.total_cost is None:
+        weight = p.actual_weight_lbs if p.actual_weight_lbs is not None else p.stated_weight_lbs
+        if weight and p.price_per_lb:
+            p.total_cost = float(weight) * float(p.price_per_lb)
+
+    if p.tested_potency_pct and p.stated_potency_pct and p.actual_weight_lbs:
+        rate = SystemSetting.get_float("potency_rate", 1.50)
+        p.true_up_amount = (p.tested_potency_pct - p.stated_potency_pct) * rate * p.actual_weight_lbs
+        if not p.true_up_status:
+            p.true_up_status = "pending"
+
+    db.session.add(p)
+    db.session.flush()
+
+    batch_in = norm.get("batch_id") or ""
+    if batch_in:
+        candidate = batch_in.strip().upper()
+        conflict = Purchase.query.filter(Purchase.batch_id == candidate, Purchase.id != p.id).first()
+        if conflict:
+            raise ValueError(f"Batch ID '{candidate}' already exists.")
+        p.batch_id = candidate
+    else:
+        d = p.delivery_date or p.purchase_date
+        w = p.actual_weight_lbs or p.stated_weight_lbs
+        p.batch_id = _ensure_unique_batch_id(
+            _generate_batch_id(sup.name, d, w),
+            exclude_purchase_id=p.id,
+        )
+
+    strain = norm.get("strain")
+    if strain:
+        wlot = float(p.stated_weight_lbs)
+        lot = PurchaseLot(
+            purchase_id=p.id,
+            strain_name=strain,
+            weight_lbs=wlot,
+            remaining_weight_lbs=wlot,
+        )
+        db.session.add(lot)
+
+    _maintain_purchase_inventory_lots(p)
+    new_snap = _biomass_budget_snapshot_for_purchase(p)
+    _enforce_weekly_biomass_purchase_limits(p, new_snap, enforce_cap=True)
+    log_audit("create", "purchase", p.id)
+    db.session.commit()
+
+
+@app.route("/purchases/import", methods=["GET", "POST"])
+@purchase_editor_required
+def purchase_import():
+    if request.method == "GET":
+        return render_template("purchase_import.html")
+    f = request.files.get("spreadsheet")
+    if not f or not getattr(f, "filename", None):
+        flash("Choose a .csv, .xlsx, or .xlsm file to upload.", "error")
+        return redirect(url_for("purchase_import"))
+    raw = f.read()
+    if not raw:
+        flash("The file is empty.", "error")
+        return redirect(url_for("purchase_import"))
+    try:
+        rows, parse_warnings = parse_purchase_spreadsheet_upload(f.filename, raw)
+    except ValueError as e:
+        flash(str(e), "error")
+        return redirect(url_for("purchase_import"))
+
+    staged_rows = []
+    for raw_row in rows:
+        row_copy = dict(raw_row)
+        sheet_row = row_copy.pop("_sheet_row", "")
+        errs, norm = _purchase_import_validate_row(row_copy)
+        staged_rows.append({
+            "sheet_row": sheet_row,
+            "raw": row_copy,
+            "errors": errs,
+            "normalized": norm,
+        })
+
+    token = secrets.token_urlsafe(32)
+    payload = {
+        "filename": secure_filename(f.filename) or "upload",
+        "parse_warnings": parse_warnings,
+        "rows": staged_rows,
+    }
+    try:
+        with open(_purchase_import_staging_path(token), "w", encoding="utf-8") as out:
+            json.dump(payload, out)
+    except OSError:
+        flash("Could not stage import file; try again.", "error")
+        return redirect(url_for("purchase_import"))
+
+    session["purchase_import_token"] = token
+    for w in parse_warnings:
+        flash(w, "warning")
+    return redirect(url_for("purchase_import_preview"))
+
+
+@app.route("/purchases/import/preview", methods=["GET"])
+@purchase_editor_required
+def purchase_import_preview():
+    token = (session.get("purchase_import_token") or "").strip()
+    data = _purchase_import_load_staging(token) if token else None
+    if not data:
+        flash("No staged import found. Upload a file again.", "error")
+        return redirect(url_for("purchase_import"))
+    ok_count = sum(1 for r in data["rows"] if not r.get("errors"))
+    return render_template(
+        "purchase_import_preview.html",
+        staged=data,
+        ok_count=ok_count,
+    )
+
+
+@app.route("/purchases/import/commit", methods=["POST"])
+@purchase_editor_required
+def purchase_import_commit():
+    token = (session.get("purchase_import_token") or "").strip()
+    data = _purchase_import_load_staging(token) if token else None
+    if not data:
+        flash("No staged import found. Upload a file again.", "error")
+        return redirect(url_for("purchase_import"))
+
+    create_suppliers = request.form.get("create_suppliers") == "1"
+    selected = {int(x) for x in request.form.getlist("row_idx") if str(x).isdigit()}
+    if not selected:
+        flash("No rows selected to import.", "warning")
+        return redirect(url_for("purchase_import_preview"))
+    rows = data["rows"]
+    imported = 0
+    failed = 0
+    fail_msgs: list[str] = []
+
+    for i, row in enumerate(rows):
+        if i not in selected:
+            continue
+        if row.get("errors"):
+            failed += 1
+            fail_msgs.append(f"Row {row.get('sheet_row', i)}: skipped (validation errors).")
+            continue
+        norm = row.get("normalized")
+        if not norm:
+            failed += 1
+            continue
+        try:
+            _purchase_import_commit_norm(norm, create_suppliers=create_suppliers)
+            imported += 1
+        except ValueError as e:
+            db.session.rollback()
+            failed += 1
+            fail_msgs.append(f"Row {row.get('sheet_row', i)}: {e}")
+        except Exception:
+            db.session.rollback()
+            app.logger.exception("purchase import row failed")
+            failed += 1
+            fail_msgs.append(f"Row {row.get('sheet_row', i)}: unexpected error.")
+
+    _purchase_import_clear_staging(token)
+    session.pop("purchase_import_token", None)
+
+    if imported:
+        flash(f"Imported {imported} purchase(s).", "success")
+    if failed:
+        flash(f"{failed} row(s) not imported.", "warning")
+    for msg in fail_msgs[:15]:
+        flash(msg, "error")
+    if len(fail_msgs) > 15:
+        flash(f"…and {len(fail_msgs) - 15} more errors (see logs).", "error")
+    return redirect(url_for("purchases_list"))
+
+
+@app.route("/purchases/import/sample.csv")
+@purchase_editor_required
+def purchase_import_sample():
+    lines = [
+        "Week,Purchase Date,Paid Date,Vendor,Amount,Payment Method,Invoice Weight,Actual Weight,Manifest",
+        "2/9-2/15,1/21/2026,2/10/2026,Example Farm,$4911.30,ACH,297.90,297.70,10187853",
+    ]
+    body = "\n".join(lines) + "\n"
+    return Response(
+        body,
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=purchase_import_sample.csv"},
+    )
 
 
 @app.route("/purchases/<purchase_id>/delete", methods=["POST"])
@@ -5338,6 +6053,7 @@ def strains_list():
         thca_kpi=thca_kpi,
         list_filters_active=(view == "90"),
         clear_filters_url=url_for("strains_list", clear_filters=1),
+        strain_pair_sep=STRAIN_PAIR_SEP,
     )
 
 
