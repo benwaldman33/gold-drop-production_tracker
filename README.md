@@ -48,6 +48,10 @@ Open **http://localhost:5050** in your browser (default dev port; **5000** is of
 - **Photo Library** — Central searchable media index with supplier/purchase/category/tag filters
 - **Photo Audit Linkage** — Approved field photos are auto-linked to supplier docs (license) and purchase audit records (biomass/COA)
 - **Advanced Exports** — Date range and criteria filters (supplier/status/potency/strain) across operational tabs
+- **Saved list filters** — Runs, Purchases, Biomass Pipeline, Costs, Inventory, Strains, and **Slack imports** remember your filters, date ranges, sort order, and related query state in your **session** while you work, so you can navigate elsewhere and return without re-applying them; use **Remove filters** for a clean default view. Applying filters or changing status tabs resets **pagination** to page 1 so narrowed results are not hidden on a stale page.
+- **Purchases list** — Optional **Hide complete & cancelled** on the filter row; **Export CSV** can follow the same option when active.
+- **Purchase form** — **Save Purchase** at the top of the screen (same submit as the bottom) for long forms.
+- **Windows / IANA timezones** — `tzdata` is listed in `requirements.txt` so `zoneinfo` (Slack message dates, display timezone) works on Windows; install dependencies with `pip install -r requirements.txt`.
 - **Slack Integration** — Outbound notifications; inbound slash commands, interactivity, and Events API URL (`/api/slack/events`); optional **channel history sync** for up to six channels with per-channel cursors (`conversations.history` → **Slack imports** triage UI); **Phase 2 manual Run apply** (prefilled new run from mappings, Run backlink + audit, **Slack Importer** user flag)
 - **Supplier Performance** — All-time, 90-day, and last-batch analytics per farm
 - **Strain Performance** — Compare yields and cost/gram across strains and suppliers

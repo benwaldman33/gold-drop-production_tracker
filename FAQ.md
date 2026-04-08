@@ -31,6 +31,23 @@ Users with the **Slack Importer** flag in **Settings → Users**, and all **Supe
 **What if I apply the same Slack message twice?**  
 The app **warns** and asks for **confirm** before prefilling again if a run is already linked. You can still save a second run after confirming; clean up mistakes with **Runs → Delete** if needed.
 
+## List views, filters & sorting
+
+**Do I lose my filters when I leave Runs (or Purchases, etc.) and come back?**  
+No—while your **login session** is active, the app **saves list filters, date ranges, sort order, and related settings** for key screens (**Runs**, **Purchases**, **Biomass Pipeline**, **Costs**, **Inventory**, **Strains**, **Slack imports**). You can move freely between sidebar pages and return to the same narrowed view. Use **Remove filters** (when shown) to clear saved list state for that screen and show the full default list.
+
+**Will filters survive closing the browser or signing out?**  
+They may **not**. State is kept in the server session tied to your browser cookie; signing out, clearing cookies, or a new browser session typically resets list filters.
+
+**I applied a date range and the table went empty—was data deleted?**  
+Nothing was deleted. Usually you were still on **page 2+** after the result set shrank; the app now resets to **page 1** when you **Apply filters** or switch **Purchases** status tabs so matches stay visible.
+
+**What does “Hide complete & cancelled” on Purchases do?**  
+It hides rows whose status is **complete** or **cancelled** from the list (and export can follow the same rule when that box is on). Turn it off and click **Apply filters** to show them again.
+
+**Why is there a second Save on Edit Purchase?**  
+The **Save Purchase** button at the **top** submits the same form as the one at the bottom so you do not have to scroll on long purchase records.
+
 ## Data & analytics
 
 **Why do some runs show “No $/lb”?**  

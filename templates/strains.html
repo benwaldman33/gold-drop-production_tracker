@@ -8,6 +8,9 @@
       <a href="?view=all" class="{% if view == 'all' %}active{% endif %}">All Time</a>
       <a href="?view=90" class="{% if view == '90' %}active{% endif %}">Last 90 Days</a>
     </div>
+    {% if list_filters_active %}
+    <a href="{{ clear_filters_url }}" class="btn btn-secondary btn-sm">Remove filters</a>
+    {% endif %}
     <a href="{{ url_for('export_csv', entity='strains') }}" class="btn btn-secondary">Export CSV</a>
   </div>
 </div>

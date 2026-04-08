@@ -32,6 +32,21 @@ Use the left sidebar:
 
 ---
 
+## Saved filters, sorts, and list state
+Many **list screens** remember the filters and sort options you last used **for your current login session**, so you can **move freely between sections** (Dashboard, Runs, Purchases, Slack imports, etc.) and **come back without redoing your work**.
+
+**Where this applies:** **Runs** (including search, date range, supplier, potency, HTE pipeline, and column sort), **Purchases** (filters, status, date range, potency, optional **Hide complete & cancelled**), **Biomass Pipeline**, **Costs**, **Inventory**, **Strains** (e.g. All time vs last 90 days), and **Slack imports** (date range, channels, promotion/coverage, text filters, and related toggles).
+
+**How to clear:** When a list has active saved filters, use **Remove filters** to drop saved state for that page and return to the default “show everything” view (exact defaults vary by screen).
+
+**Pagination:** After you **Apply filters** or change **Purchases** status chips, the list returns to **page 1** so a smaller result set is not hidden on an empty later page.
+
+**Session limits:** Saved list state lives in your **session** (browser cookie). It is meant for **day-to-day navigation**, not permanent storage—**signing out**, **closing the browser** (depending on settings), or **clearing cookies** may reset it.
+
+**Small UX notes:** Date fields use a **high-contrast calendar control** on dark backgrounds. On **New / Edit Purchase**, **Save Purchase** appears at both the **top** and **bottom** of the form.
+
+---
+
 ## Dashboard
 The Dashboard shows:
 - **Summary stats**: total runs, lbs processed, dry output, biomass on hand
@@ -45,6 +60,8 @@ If you see a banner saying analytics are excluding runs missing biomass pricing 
 
 ## Runs (Extraction Runs)
 The Runs page is the core production log.
+
+Use the filter bar (**Start / end date**, supplier, THCA % range, **HTE pipeline**) and **Search** to narrow the list; **sort** by clicking column headers (e.g. **Date**). Your choices are **saved for your session**—see **Saved filters, sorts, and list state** above. **Apply filters** / search returns you to **page 1** of results when pagination is in use.
 
 ### What a run records
 Typical fields include:
@@ -75,7 +92,7 @@ On the **Runs** list, use the **HTE pipeline** filter to see only runs in a give
 If your account has **Slack Importer** access (or you are a Super Admin), you can promote a synced channel message into a **prefilled** new run:
 
 1. Open **Slack imports** in the sidebar (or **Settings → View Slack imports** if you are a Super Admin).
-2. Use **filters** (message date, channel, promotion status, mapping coverage) to find the row you want.
+2. Use **filters** (message date, channel, promotion status, mapping coverage) to find the row you want. Filter choices **persist while your session is active** when you navigate away and return—see **Saved filters, sorts, and list state**. Use **Remove filters** to reset. Rows that cannot be assigned a calendar date from the Slack timestamp are **not removed** solely because you set a date range (they still appear alongside in-range messages).
 3. Click **Preview** to see mapped Run fields, or **Create run** / **Create run from Slack** on the preview page.
 4. The app opens **New Run** with values filled from your active **Slack → Run** mapping rules. Review everything; add input lots if needed.
 5. **Save** the run to store it. Nothing is written to Runs until you save.
@@ -124,6 +141,8 @@ Use **Departments** for day-to-day orientation; all underlying data is the same 
 ## Inventory
 Inventory shows the current biomass position.
 
+**Supplier** and **strain** filters are **saved for your session** while you work elsewhere; use **Remove filters** to clear them (see **Saved filters, sorts, and list state**).
+
 ### Summary tiles (top of the page)
 - **On Hand**: total **remaining** pounds on lots from purchases that have arrived (operational statuses such as delivered, in testing, available, processing, complete).
 - **In Transit**: total **stated** pounds on purchases that are committed, ordered, or in transit—not yet treated as on-hand inventory.
@@ -153,6 +172,8 @@ Same as the **Days of Supply** summary tile: **on-hand lbs ÷ Daily Throughput T
 
 ## Purchases (Batches)
 Purchases are batch-level records used for pricing, receiving, and inventory creation.
+
+On the **Purchases** list, use **Apply filters** for supplier, **purchase date range**, potency range, and optional **Hide complete & cancelled**. Status chips (**All**, **Committed**, **Ordered**, …) keep your other filters where possible. Filter and status choices **persist for your session** when you leave the page and come back—see **Saved filters, sorts, and list state**. **Remove filters** clears saved list state for Purchases.
 
 ### Batch IDs
 Each purchase has a **unique Batch ID** (human-readable). You can:
@@ -191,7 +212,7 @@ On **New Purchase** and **Edit Purchase**, use the **Supporting documentation** 
 - **Who can upload:** **User** or **Super Admin** (same as saving purchases). Viewers cannot upload.
 - **Formats:** JPG, JPEG, PNG, WEBP, HEIC, HEIF, and PDF.
 - **Size limit:** up to **50 MB per file**.
-- Choose a **category**, optional **title**, and optional **tags** (comma-separated) for the batch you are uploading; then click **Save Purchase** to store the files.
+- Choose a **category**, optional **title**, and optional **tags** (comma-separated) for the batch you are uploading; then click **Save Purchase** (at the **top** or **bottom** of the form) to store the files.
 - After save, files appear under **Supporting documents on file** on the purchase (with **Delete** for editors) and in the **Photo Library** (filter by purchase if needed).
 - **Field intake audit photos** (from approved biomass/purchase field forms) are listed separately on the purchase; those are not replaced by this upload area and are managed through the field submission workflow.
 
@@ -199,6 +220,8 @@ On **New Purchase** and **Edit Purchase**, use the **Supporting documentation** 
 
 ## Biomass Pipeline
 The Biomass Pipeline tracks farm availability before it becomes a purchase.
+
+List **filters** (supplier, **availability date range**, strain text) and bucket/stage context are **saved for your session** when you navigate elsewhere—see **Saved filters, sorts, and list state**. Use **Remove filters** to clear.
 
 ### Stages
 - **Declared**: supplier declares availability (date/weight/price/potency)
@@ -253,6 +276,8 @@ If something is missing or invalid (bad date, negative weight, invalid stage), y
 ## Costs (Operational Costs)
 Use Costs to capture operating expenses that should be included in run $/g.
 
+**Cost type** chips and the **start/end date** filters on the list are **saved for your session** while you work in other sections—see **Saved filters, sorts, and list state**. **Remove filters** clears them.
+
 ### What a cost entry represents
 Each entry has:
 - Type: **solvent**, **personnel**, or **overhead**
@@ -291,6 +316,8 @@ If the “exclude runs missing $/lb” setting is enabled, these analytics ignor
 
 ## Strains (Performance)
 Strains compares yield/cost metrics grouped by strain + supplier.
+
+Your **All time / Last 90 days** choice **persists for your session** when you navigate away and return—see **Saved filters, sorts, and list state**. **Remove filters** restores the default (All time).
 
 If the “exclude runs missing $/lb” setting is enabled, these analytics ignore runs with incomplete biomass pricing.
 
@@ -398,7 +425,7 @@ Most list screens include **Export CSV**. Exports available include:
 - Strains
 - Costs
 
-Exports support criteria filters (depending on tab), including date range, supplier/status, strain text, potency range, and on **Runs** the **HTE pipeline** stage filter.
+Exports support criteria filters (depending on tab), including date range, supplier/status, strain text, potency range, on **Runs** the **HTE pipeline** stage filter, and on **Purchases** the **Hide complete & cancelled** option when it is active on the list.
 
 Use exports for reporting, reconciliation, or offline analysis.
 

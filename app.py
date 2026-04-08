@@ -82,12 +82,22 @@ def _app_display_timezone_name() -> str:
     return raw or APP_DISPLAY_TIMEZONE_DEFAULT
 
 
-def _app_display_zoneinfo() -> ZoneInfo:
-    name = _app_display_timezone_name()
-    try:
-        return ZoneInfo(name)
-    except (ZoneInfoNotFoundError, TypeError, ValueError):
-        return ZoneInfo(APP_DISPLAY_TIMEZONE_DEFAULT)
+def _app_display_zoneinfo():
+    """Resolve the configured display timezone.
+
+    On Windows, IANA zones need the ``tzdata`` package (see requirements.txt).
+    If no zone database is available, falls back to UTC so Slack imports and
+    filters still run.
+    """
+    for key in (_app_display_timezone_name(), APP_DISPLAY_TIMEZONE_DEFAULT, "UTC"):
+        k = (key or "").strip()
+        if not k:
+            continue
+        try:
+            return ZoneInfo(k)
+        except (ZoneInfoNotFoundError, TypeError, ValueError):
+            continue
+    return timezone.utc
 
 
 def _slack_resolved_channel_hint_map() -> dict[str, str]:
@@ -115,6 +125,51 @@ def _slack_channel_filter_label(channel_id: str, hint_by_id: dict[str, str]) -> 
     else:
         disp = hint
     return f"{disp} ({channel_id})"
+
+
+LIST_FILTERS_SESSION_KEY = "list_filters_v1"
+
+
+def _list_filters_clear_redirect(endpoint: str):
+    if request.args.get("clear_filters") != "1":
+        return None
+    bucket = session.get(LIST_FILTERS_SESSION_KEY)
+    if isinstance(bucket, dict):
+        bucket.pop(endpoint, None)
+        session.modified = True
+    return redirect(url_for(endpoint))
+
+
+def _list_filters_merge(endpoint: str, keys: tuple[str, ...]) -> dict[str, str]:
+    """Merge GET params with last-saved session filters for this list view."""
+    bucket = session.setdefault(LIST_FILTERS_SESSION_KEY, {})
+    prev = dict(bucket.get(endpoint) or {})
+    if not any(k in request.args for k in keys):
+        merged = {k: (prev.get(k) or "").strip() for k in keys}
+    else:
+        merged = {k: (prev.get(k) or "").strip() for k in keys}
+        for k in keys:
+            if k in request.args:
+                merged[k] = (request.args.get(k) or "").strip()
+    bucket[endpoint] = {k: merged[k] for k in keys}
+    session.modified = True
+    return merged
+
+
+def _runs_list_filters_active(m: dict[str, str]) -> bool:
+    try:
+        if int(m.get("page") or 1) > 1:
+            return True
+    except ValueError:
+        pass
+    if (m.get("sort") or "run_date") != "run_date":
+        return True
+    if (m.get("order") or "desc") != "desc":
+        return True
+    for k in ("search", "start_date", "end_date", "supplier_id", "min_potency", "max_potency", "hte_stage"):
+        if (m.get(k) or "").strip():
+            return True
+    return False
 
 
 @app.context_processor
@@ -3817,16 +3872,26 @@ def biomass_purchasing_dashboard():
 @app.route("/runs")
 @login_required
 def runs_list():
-    page = request.args.get("page", 1, type=int)
-    sort = request.args.get("sort", "run_date")
-    order = request.args.get("order", "desc")
-    search = request.args.get("search", "").strip()
-    start_raw = (request.args.get("start_date") or "").strip()
-    end_raw = (request.args.get("end_date") or "").strip()
-    supplier_filter = (request.args.get("supplier_id") or "").strip()
-    min_pot_raw = (request.args.get("min_potency") or "").strip()
-    max_pot_raw = (request.args.get("max_potency") or "").strip()
-    hte_stage = (request.args.get("hte_stage") or "").strip()
+    redir = _list_filters_clear_redirect("runs_list")
+    if redir:
+        return redir
+    m = _list_filters_merge(
+        "runs_list",
+        ("page", "sort", "order", "search", "start_date", "end_date", "supplier_id", "min_potency", "max_potency", "hte_stage"),
+    )
+    try:
+        page = int(m.get("page") or 1)
+    except ValueError:
+        page = 1
+    sort = (m.get("sort") or "run_date").strip() or "run_date"
+    order = (m.get("order") or "desc").strip() or "desc"
+    search = (m.get("search") or "").strip()
+    start_raw = (m.get("start_date") or "").strip()
+    end_raw = (m.get("end_date") or "").strip()
+    supplier_filter = (m.get("supplier_id") or "").strip()
+    min_pot_raw = (m.get("min_potency") or "").strip()
+    max_pot_raw = (m.get("max_potency") or "").strip()
+    hte_stage = (m.get("hte_stage") or "").strip()
     try:
         start_date = datetime.strptime(start_raw, "%Y-%m-%d").date() if start_raw else None
         end_date = datetime.strptime(end_raw, "%Y-%m-%d").date() if end_raw else None
@@ -3871,18 +3936,37 @@ def runs_list():
         query = query.order_by(sort_col.desc())
 
     pagination = query.paginate(page=page, per_page=25, error_out=False)
+    if pagination.pages and page > pagination.pages:
+        page = pagination.pages
+        pagination = query.paginate(page=page, per_page=25, error_out=False)
+        lf = session.get(LIST_FILTERS_SESSION_KEY)
+        if isinstance(lf, dict) and isinstance(lf.get("runs_list"), dict):
+            lf["runs_list"]["page"] = str(page)
+            session.modified = True
     run_ids = [r.id for r in pagination.items]
     pricing_status = _pricing_status_for_run_ids(run_ids)
     suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
     hte_label_map = dict(_hte_pipeline_options())
-    return render_template("runs.html", runs=pagination.items, pagination=pagination,
-                           sort=sort, order=order, search=search,
-                           pricing_status=pricing_status, suppliers=suppliers,
-                           supplier_filter=supplier_filter,
-                           start_date=start_raw, end_date=end_raw,
-                           min_potency=min_pot_raw, max_potency=max_pot_raw,
-                           hte_stage=hte_stage, hte_label_map=hte_label_map,
-                           hte_pipeline_options=_hte_pipeline_options())
+    return render_template(
+        "runs.html",
+        runs=pagination.items,
+        pagination=pagination,
+        sort=sort,
+        order=order,
+        search=search,
+        pricing_status=pricing_status,
+        suppliers=suppliers,
+        supplier_filter=supplier_filter,
+        start_date=start_raw,
+        end_date=end_raw,
+        min_potency=min_pot_raw,
+        max_potency=max_pot_raw,
+        hte_stage=hte_stage,
+        hte_label_map=hte_label_map,
+        hte_pipeline_options=_hte_pipeline_options(),
+        list_filters_active=_runs_list_filters_active(m),
+        clear_filters_url=url_for("runs_list", clear_filters=1),
+    )
 
 
 @app.route("/runs/new", methods=["GET", "POST"])
@@ -4184,9 +4268,13 @@ def run_hard_delete(run_id):
 @login_required
 def costs_list():
     """View operational cost entries."""
-    cost_type = request.args.get("type", "")
-    start_raw = (request.args.get("start_date") or "").strip()
-    end_raw = (request.args.get("end_date") or "").strip()
+    redir = _list_filters_clear_redirect("costs_list")
+    if redir:
+        return redir
+    m = _list_filters_merge("costs_list", ("type", "start_date", "end_date"))
+    cost_type = (m.get("type") or "").strip()
+    start_raw = (m.get("start_date") or "").strip()
+    end_raw = (m.get("end_date") or "").strip()
     try:
         start_date = datetime.strptime(start_raw, "%Y-%m-%d").date() if start_raw else None
         end_date = datetime.strptime(end_raw, "%Y-%m-%d").date() if end_raw else None
@@ -4206,9 +4294,19 @@ def costs_list():
     personnel_total = sum(e.total_cost for e in CostEntry.query.filter_by(cost_type="personnel").all())
     overhead_total = sum(e.total_cost for e in CostEntry.query.filter_by(cost_type="overhead").all())
 
-    return render_template("costs.html", entries=entries, cost_type=cost_type,
-                           solvent_total=solvent_total, personnel_total=personnel_total,
-                           overhead_total=overhead_total, start_date=start_raw, end_date=end_raw)
+    costs_filters_active = bool(cost_type or start_raw or end_raw)
+    return render_template(
+        "costs.html",
+        entries=entries,
+        cost_type=cost_type,
+        solvent_total=solvent_total,
+        personnel_total=personnel_total,
+        overhead_total=overhead_total,
+        start_date=start_raw,
+        end_date=end_raw,
+        list_filters_active=costs_filters_active,
+        clear_filters_url=url_for("costs_list", clear_filters=1),
+    )
 
 
 @app.route("/costs/new", methods=["GET", "POST"])
@@ -4284,8 +4382,13 @@ def cost_delete(entry_id):
 @app.route("/inventory")
 @login_required
 def inventory():
-    supplier_filter = (request.args.get("supplier_id") or "").strip()
-    strain_filter = (request.args.get("strain") or "").strip().lower()
+    redir = _list_filters_clear_redirect("inventory")
+    if redir:
+        return redir
+    m = _list_filters_merge("inventory", ("supplier_id", "strain"))
+    supplier_filter = (m.get("supplier_id") or "").strip()
+    strain_raw = (m.get("strain") or "").strip()
+    strain_filter = strain_raw.lower()
     # On-hand lots: only from purchases that have actually arrived
     on_hand_q = PurchaseLot.query.join(Purchase).filter(
         PurchaseLot.remaining_weight_lbs > 0,
@@ -4315,10 +4418,20 @@ def inventory():
     days_supply = total_on_hand / daily_target if daily_target > 0 else 0
 
     suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
-    return render_template("inventory.html", on_hand=on_hand, in_transit=in_transit,
-                           total_on_hand=total_on_hand, total_in_transit=total_in_transit,
-                           days_supply=days_supply, suppliers=suppliers,
-                           supplier_filter=supplier_filter, strain_filter=(request.args.get("strain") or "").strip())
+    inv_active = bool(supplier_filter or strain_raw)
+    return render_template(
+        "inventory.html",
+        on_hand=on_hand,
+        in_transit=in_transit,
+        total_on_hand=total_on_hand,
+        total_in_transit=total_in_transit,
+        days_supply=days_supply,
+        suppliers=suppliers,
+        supplier_filter=supplier_filter,
+        strain_filter=strain_raw,
+        list_filters_active=inv_active,
+        clear_filters_url=url_for("inventory", clear_filters=1),
+    )
 
 
 # ── Purchases ────────────────────────────────────────────────────────────────
@@ -4326,13 +4439,26 @@ def inventory():
 @app.route("/purchases")
 @login_required
 def purchases_list():
-    page = request.args.get("page", 1, type=int)
-    status_filter = request.args.get("status", "")
-    start_raw = (request.args.get("start_date") or "").strip()
-    end_raw = (request.args.get("end_date") or "").strip()
-    supplier_filter = (request.args.get("supplier_id") or "").strip()
-    min_pot_raw = (request.args.get("min_potency") or "").strip()
-    max_pot_raw = (request.args.get("max_potency") or "").strip()
+    redir = _list_filters_clear_redirect("purchases_list")
+    if redir:
+        return redir
+    keys = ("page", "status", "start_date", "end_date", "supplier_id", "min_potency", "max_potency", "hide_terminal")
+    m = _list_filters_merge("purchases_list", keys)
+    if request.args.get("filter_form") == "1":
+        m["hide_terminal"] = "1" if request.args.get("hide_terminal") == "1" else ""
+        session[LIST_FILTERS_SESSION_KEY]["purchases_list"]["hide_terminal"] = m["hide_terminal"]
+        session.modified = True
+    try:
+        page = int(m.get("page") or 1)
+    except ValueError:
+        page = 1
+    status_filter = (m.get("status") or "").strip()
+    start_raw = (m.get("start_date") or "").strip()
+    end_raw = (m.get("end_date") or "").strip()
+    supplier_filter = (m.get("supplier_id") or "").strip()
+    min_pot_raw = (m.get("min_potency") or "").strip()
+    max_pot_raw = (m.get("max_potency") or "").strip()
+    hide_terminal = m.get("hide_terminal") == "1"
     try:
         start_date = datetime.strptime(start_raw, "%Y-%m-%d").date() if start_raw else None
         end_date = datetime.strptime(end_raw, "%Y-%m-%d").date() if end_raw else None
@@ -4348,6 +4474,8 @@ def purchases_list():
     query = Purchase.query.filter(Purchase.deleted_at.is_(None))
     if status_filter:
         query = query.filter_by(status=status_filter)
+    if hide_terminal:
+        query = query.filter(Purchase.status.notin_(("complete", "cancelled")))
     if start_date:
         query = query.filter(Purchase.purchase_date >= start_date)
     if end_date:
@@ -4358,13 +4486,36 @@ def purchases_list():
         query = query.filter(Purchase.stated_potency_pct >= min_potency)
     if max_potency is not None:
         query = query.filter(Purchase.stated_potency_pct <= max_potency)
-    pagination = query.order_by(Purchase.purchase_date.desc()).paginate(page=page, per_page=25)
+    pagination = query.order_by(Purchase.purchase_date.desc()).paginate(page=page, per_page=25, error_out=False)
+    if pagination.pages and page > pagination.pages:
+        page = pagination.pages
+        pagination = query.order_by(Purchase.purchase_date.desc()).paginate(page=page, per_page=25, error_out=False)
+        lf = session.get(LIST_FILTERS_SESSION_KEY)
+        if isinstance(lf, dict) and isinstance(lf.get("purchases_list"), dict):
+            lf["purchases_list"]["page"] = str(page)
+            session.modified = True
     suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
-    return render_template("purchases.html", purchases=pagination.items, pagination=pagination,
-                           status_filter=status_filter, suppliers=suppliers,
-                           supplier_filter=supplier_filter,
-                           start_date=start_raw, end_date=end_raw,
-                           min_potency=min_pot_raw, max_potency=max_pot_raw)
+    purchases_filters_active = (
+        page > 1
+        or bool(status_filter)
+        or bool(start_raw or end_raw or supplier_filter or min_pot_raw or max_pot_raw)
+        or hide_terminal
+    )
+    return render_template(
+        "purchases.html",
+        purchases=pagination.items,
+        pagination=pagination,
+        status_filter=status_filter,
+        suppliers=suppliers,
+        supplier_filter=supplier_filter,
+        start_date=start_raw,
+        end_date=end_raw,
+        min_potency=min_pot_raw,
+        max_potency=max_pot_raw,
+        hide_terminal=hide_terminal,
+        list_filters_active=purchases_filters_active,
+        clear_filters_url=url_for("purchases_list", clear_filters=1),
+    )
 
 
 @app.route("/purchases/new", methods=["GET", "POST"])
@@ -5140,7 +5291,11 @@ def purchase_support_doc_delete(purchase_id, asset_id):
 @login_required
 def strains_list():
     """Strain performance view grouped by strain name."""
-    view = request.args.get("view", "all")
+    redir = _list_filters_clear_redirect("strains_list")
+    if redir:
+        return redir
+    m = _list_filters_merge("strains_list", ("view",))
+    view = (m.get("view") or "all").strip() or "all"
 
     query = db.session.query(
         PurchaseLot.strain_name,
@@ -5175,8 +5330,15 @@ def strains_list():
     yield_kpi = KpiTarget.query.filter_by(kpi_name="overall_yield_pct").first()
     thca_kpi = KpiTarget.query.filter_by(kpi_name="thca_yield_pct").first()
 
-    return render_template("strains.html", results=results, view=view,
-                           yield_kpi=yield_kpi, thca_kpi=thca_kpi)
+    return render_template(
+        "strains.html",
+        results=results,
+        view=view,
+        yield_kpi=yield_kpi,
+        thca_kpi=thca_kpi,
+        list_filters_active=(view == "90"),
+        clear_filters_url=url_for("strains_list", clear_filters=1),
+    )
 
 
 # ── Settings (Admin) ─────────────────────────────────────────────────────────
@@ -6224,26 +6386,101 @@ def settings_slack_sync_channel():
 @app.route("/settings/slack-imports")
 @slack_importer_required
 def settings_slack_imports():
-    start_raw = (request.args.get("start_date") or "").strip()
-    end_raw = (request.args.get("end_date") or "").strip()
-    channel_pick = [c for c in request.args.getlist("channel_id") if (c or "").strip()]
-    promotion = (request.args.get("promotion") or "all").strip().lower()
-    if promotion not in ("all", "not_linked", "linked"):
-        promotion = "all"
-    coverage_f = (request.args.get("coverage") or "all").strip().lower()
-    if coverage_f not in ("all", "full", "partial", "none"):
-        coverage_f = "all"
+    ep = "settings_slack_imports"
+    redir = _list_filters_clear_redirect(ep)
+    if redir:
+        return redir
 
-    kind_filter = (request.args.get("kind_filter") or "all").strip().lower()
+    bucket = session.setdefault(LIST_FILTERS_SESSION_KEY, {})
+    prev = dict(bucket.get(ep) or {})
     allowed_kinds = {c[0] for c in SLACK_IMPORT_KIND_FILTER_CHOICES}
-    if kind_filter not in allowed_kinds:
-        kind_filter = "all"
-    text_filter_raw = (request.args.get("text_filter") or "").strip()
-    text_op = (request.args.get("text_op") or "contains").strip().lower()
-    if text_op not in SLACK_IMPORT_TEXT_OPS_ALLOWED:
-        text_op = "contains"
-    include_hidden = (request.args.get("include_hidden") or "").strip().lower() in (
-        "1", "true", "yes", "on",
+
+    def _norm_promo(p):
+        p = (p or "all").strip().lower()
+        return p if p in ("all", "not_linked", "linked") else "all"
+
+    def _norm_cov(c):
+        c = (c or "all").strip().lower()
+        return c if c in ("all", "full", "partial", "none") else "all"
+
+    def _norm_kind(k):
+        k = (k or "all").strip().lower()
+        return k if k in allowed_kinds else "all"
+
+    if len(request.args) == 0:
+        start_raw = (prev.get("start_date") or "").strip()
+        end_raw = (prev.get("end_date") or "").strip()
+        channel_pick = [c for c in (prev.get("channel_ids_csv") or "").split(",") if (c or "").strip()]
+        promotion = _norm_promo(prev.get("promotion"))
+        coverage_f = _norm_cov(prev.get("coverage"))
+        kind_filter = _norm_kind(prev.get("kind_filter"))
+        text_filter_raw = (prev.get("text_filter") or "").strip()
+        text_op = (prev.get("text_op") or "contains").strip().lower()
+        if text_op not in SLACK_IMPORT_TEXT_OPS_ALLOWED:
+            text_op = "contains"
+        include_hidden = (prev.get("include_hidden") or "").strip().lower() in (
+            "1", "true", "yes", "on",
+        )
+    elif request.args.get("filter_form") == "1":
+        start_raw = (request.args.get("start_date") or "").strip()
+        end_raw = (request.args.get("end_date") or "").strip()
+        channel_pick = [c for c in request.args.getlist("channel_id") if (c or "").strip()]
+        promotion = _norm_promo(request.args.get("promotion"))
+        coverage_f = _norm_cov(request.args.get("coverage"))
+        kind_filter = _norm_kind(request.args.get("kind_filter"))
+        text_filter_raw = (request.args.get("text_filter") or "").strip()
+        text_op = (request.args.get("text_op") or "contains").strip().lower()
+        if text_op not in SLACK_IMPORT_TEXT_OPS_ALLOWED:
+            text_op = "contains"
+        include_hidden = (request.args.get("include_hidden") or "").strip().lower() in (
+            "1", "true", "yes", "on",
+        )
+    else:
+        start_raw = ((request.args.get("start_date") if "start_date" in request.args else prev.get("start_date", "")) or "").strip()
+        end_raw = ((request.args.get("end_date") if "end_date" in request.args else prev.get("end_date", "")) or "").strip()
+        if "channel_id" in request.args:
+            channel_pick = [c for c in request.args.getlist("channel_id") if (c or "").strip()]
+        else:
+            channel_pick = [c for c in (prev.get("channel_ids_csv") or "").split(",") if (c or "").strip()]
+        promotion = _norm_promo(request.args.get("promotion", prev.get("promotion")))
+        coverage_f = _norm_cov(request.args.get("coverage", prev.get("coverage")))
+        kind_filter = _norm_kind(request.args.get("kind_filter", prev.get("kind_filter")))
+        text_filter_raw = ((request.args.get("text_filter") if "text_filter" in request.args else prev.get("text_filter", "")) or "").strip()
+        text_op = ((request.args.get("text_op") if "text_op" in request.args else prev.get("text_op", "contains")) or "contains").strip().lower()
+        if text_op not in SLACK_IMPORT_TEXT_OPS_ALLOWED:
+            text_op = "contains"
+        if "include_hidden" in request.args:
+            include_hidden = (request.args.get("include_hidden") or "").strip().lower() in (
+                "1", "true", "yes", "on",
+            )
+        else:
+            include_hidden = (prev.get("include_hidden") or "").strip().lower() in (
+                "1", "true", "yes", "on",
+            )
+
+    bucket[ep] = {
+        "start_date": start_raw,
+        "end_date": end_raw,
+        "channel_ids_csv": ",".join(sorted(channel_pick)),
+        "promotion": promotion,
+        "coverage": coverage_f,
+        "kind_filter": kind_filter,
+        "text_filter": text_filter_raw,
+        "text_op": text_op,
+        "include_hidden": "1" if include_hidden else "",
+    }
+    session.modified = True
+
+    slack_filters_active = bool(
+        start_raw
+        or end_raw
+        or channel_pick
+        or promotion != "all"
+        or coverage_f != "all"
+        or kind_filter != "all"
+        or text_filter_raw
+        or text_op != "contains"
+        or include_hidden
     )
 
     try:
@@ -6271,9 +6508,10 @@ def settings_slack_imports():
     rows: list = []
     for r in pool:
         ts_date = _slack_ts_to_date_value(r.message_ts)
-        if start_d and (ts_date is None or ts_date < start_d):
+        # Only compare when we have a calendar date; undated rows are not excluded by the range
+        if start_d and ts_date is not None and ts_date < start_d:
             continue
-        if end_d and (ts_date is None or ts_date > end_d):
+        if end_d and ts_date is not None and ts_date > end_d:
             continue
         if channel_pick and r.channel_id not in channel_pick:
             continue
@@ -6317,6 +6555,8 @@ def settings_slack_imports():
         slack_import_kind_choices=SLACK_IMPORT_KIND_FILTER_CHOICES,
         slack_import_text_ops=SLACK_IMPORT_TEXT_FILTER_OPS,
         include_hidden=include_hidden,
+        list_filters_active=slack_filters_active,
+        clear_filters_url=url_for("settings_slack_imports", clear_filters=1),
     )
 
 
@@ -6779,6 +7019,7 @@ def export_csv(entity):
                              lab_files,
                              r.notes or ""])
     elif entity == "purchases":
+        hide_terminal_export = (request.args.get("hide_terminal") or "").strip().lower() in ("1", "true", "yes", "on")
         writer.writerow(["Date", "Batch ID", "Supplier", "Status", "Stated Lbs", "Actual Lbs",
                          "Stated Potency", "Tested Potency", "Price/Lb", "Total Cost",
                          "True-Up", "Strains"])
@@ -6789,6 +7030,8 @@ def export_csv(entity):
             q = q.filter(Purchase.purchase_date <= end_date)
         if status_filter:
             q = q.filter(Purchase.status == status_filter)
+        if hide_terminal_export:
+            q = q.filter(Purchase.status.notin_(("complete", "cancelled")))
         if supplier_id:
             q = q.filter(Purchase.supplier_id == supplier_id)
         if min_pot is not None:
@@ -7148,16 +7391,23 @@ def lot_new(purchase_id):
 @login_required
 def biomass_list():
     _apply_biomass_potential_soft_delete()
+    redir = _list_filters_clear_redirect("biomass_list")
+    if redir:
+        return redir
+    m = _list_filters_merge(
+        "biomass_list",
+        ("bucket", "stage", "start_date", "end_date", "supplier_id", "strain"),
+    )
     n1, n2 = _potential_lot_age_days()
-    bucket = (request.args.get("bucket") or "current").strip().lower()
+    bucket = (m.get("bucket") or "current").strip().lower()
     if bucket == "deleted" and not current_user.is_super_admin:
         bucket = "current"
         flash("Only Super Admins can view soft-deleted biomass rows.", "info")
-    stage = request.args.get("stage", "").strip()
-    start_raw = (request.args.get("start_date") or "").strip()
-    end_raw = (request.args.get("end_date") or "").strip()
-    supplier_filter = (request.args.get("supplier_id") or "").strip()
-    strain_filter = (request.args.get("strain") or "").strip()
+    stage = (m.get("stage") or "").strip()
+    start_raw = (m.get("start_date") or "").strip()
+    end_raw = (m.get("end_date") or "").strip()
+    supplier_filter = (m.get("supplier_id") or "").strip()
+    strain_filter = (m.get("strain") or "").strip()
     try:
         start_date = datetime.strptime(start_raw, "%Y-%m-%d").date() if start_raw else None
         end_date = datetime.strptime(end_raw, "%Y-%m-%d").date() if end_raw else None
@@ -7178,6 +7428,10 @@ def biomass_list():
         query = query.filter(func.lower(BiomassAvailability.strain_name).like(f"%{strain_filter.lower()}%"))
     items = query.order_by(BiomassAvailability.availability_date.desc(), Supplier.name.asc()).all()
     suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
+    biomass_filters_active = (
+        bucket != "current"
+        or bool(stage or start_raw or end_raw or supplier_filter or strain_filter)
+    )
     return render_template(
         "biomass.html",
         items=items,
@@ -7190,6 +7444,8 @@ def biomass_list():
         start_date=start_raw,
         end_date=end_raw,
         strain_filter=strain_filter,
+        list_filters_active=biomass_filters_active,
+        clear_filters_url=url_for("biomass_list", clear_filters=1),
     )
 
 
