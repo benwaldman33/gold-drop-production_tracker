@@ -2,6 +2,19 @@
 
 Developer-facing implementation details. Product behavior belongs in `PRD.md`; operator steps in `USER_MANUAL.md`.
 
+## List view filter & sort persistence (`LIST_FILTERS_SESSION_KEY`)
+
+- **Storage:** Flask `session` key `list_filters_v1` maps **endpoint id** → flat `dict` of query-parameter strings (e.g. `runs_list`, `purchases_list`, `biomass_list`, `costs_list`, `inventory`, `strains_list`, `settings_slack_imports`).
+- **Merge:** `_list_filters_merge(endpoint, keys)` — if the request has **no** keys from `keys` in `request.args`, restore entirely from session; otherwise start from session and **overlay** any key present in `request.args` (so pagination links and sort links that pass full query strings keep behavior predictable).
+- **Clear:** `_list_filters_clear_redirect(endpoint)` on `?clear_filters=1` pops that endpoint’s dict and redirects to the bare list URL.
+- **Runs / Purchases pagination:** Filter and search forms submit **`page=1`**; **Purchases** status links use **`page=1`**. After `paginate()`, if `page > pagination.pages`, **clamp** `page`, re-paginate, and patch the session dict so stale high pages are not re-applied.
+- **Purchases `hide_terminal`:** Merged like other keys; when `filter_form=1` on the GET form, `hide_terminal` is set explicitly from the checkbox (unchecked ⇒ cleared) so session does not stick “on” incorrectly.
+- **Slack imports:** Custom branch logic (not `_list_filters_merge`): empty query string restores full saved state; `filter_form=1` snapshots the apply form (including `getlist("channel_id")` stored as sorted CSV); partial URLs merge onto prior state. **Date filtering:** rows with `_slack_ts_to_date_value(...) is None` are **not** excluded by start/end range only (compare when `ts_date is not None`).
+- **UX elsewhere:** `static/css/style.css` — `input[type="date"]` calendar indicator uses a white masked icon for dark theme. `purchase_form.html` — top **Save** uses `form="purchase-main-form"`.
+- **Windows:** `requirements.txt` includes **`tzdata`** so `zoneinfo` resolves IANA names (e.g. `America/Los_Angeles`); `_app_display_zoneinfo()` falls back to `timezone.utc` if no zone DB.
+
+See **`USER_MANUAL.md` → Saved filters, sorts, and list state** for operator-facing wording.
+
 ## PRD implementation notes — departments, approvals, aging
 
 Product requirements live in **`PRD.md`** under **Operational departments & shared data model**, **Users & Permissions** (capabilities), **Potential pipeline records — Old Lots and soft deletion**. This section is the **engineering appendix** for that initiative.

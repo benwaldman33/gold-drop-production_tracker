@@ -28,6 +28,7 @@
   </p>
 
   <form method="GET" action="{{ url_for('settings_slack_imports') }}" style="margin-top:14px;display:grid;gap:10px;">
+    <input type="hidden" name="filter_form" value="1">
     <div class="form-row-3">
       <div class="form-group" style="margin:0;">
         <label class="text-sm">Date from <span class="cell-muted">({{ app_display_timezone_name }})</span></label>
@@ -86,9 +87,11 @@
           <option value="none" {% if coverage == 'none' %}selected{% endif %}>None</option>
         </select>
       </div>
-      <div class="form-group" style="margin:0;align-self:end;">
+      <div class="form-group" style="margin:0;align-self:end;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
         <button type="submit" class="btn btn-primary">Apply filters</button>
-        <a href="{{ url_for('settings_slack_imports') }}" class="btn btn-secondary">Reset</a>
+        {% if list_filters_active %}
+        <a href="{{ clear_filters_url }}" class="btn btn-secondary btn-sm">Remove filters</a>
+        {% endif %}
       </div>
     </div>
     <div class="form-group" style="margin:0;">

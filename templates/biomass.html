@@ -36,7 +36,12 @@
     </div>
     <input type="hidden" name="stage" value="{{ stage_filter }}">
     <input type="hidden" name="bucket" value="{{ bucket_filter }}">
-    <button type="submit" class="btn btn-secondary">Apply Filters</button>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;">
+      <button type="submit" class="btn btn-secondary">Apply Filters</button>
+      {% if list_filters_active %}
+      <a href="{{ clear_filters_url }}" class="btn btn-secondary btn-sm">Remove filters</a>
+      {% endif %}
+    </div>
   </form>
 </div>
 
