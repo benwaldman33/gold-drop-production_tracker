@@ -5,6 +5,11 @@
   <h2>Operational Costs</h2>
   <div class="btn-group">
     {% if current_user.can_edit %}
+    <div class="btn-group" data-batch-toolbar="1" data-batch-entity="costs" data-table-selector="#costs-table" data-return-to="{{ request.full_path }}">
+      <button type="button" class="btn btn-secondary btn-sm" data-batch-select-all>Select all</button>
+      <button type="button" class="btn btn-secondary btn-sm" data-batch-select-none>Select none</button>
+      <button type="button" class="btn btn-primary btn-sm" data-batch-edit disabled>Batch edit…</button>
+    </div>
     <a href="{{ url_for('cost_new') }}" class="btn btn-primary">+ New Cost Entry</a>
     {% endif %}
     <a href="{{ url_for('export_csv', entity='costs', status=cost_type, start_date=start_date, end_date=end_date) }}" class="btn btn-secondary">Export CSV</a>
@@ -62,9 +67,10 @@
 <div class="card">
   <div class="card-header"><h3>Cost Entries</h3></div>
   <div class="table-wrap">
-    <table>
+    <table id="costs-table">
       <thead>
         <tr>
+          {% if current_user.can_edit %}<th class="text-center" style="width:36px;"></th>{% endif %}
           <th>Type</th>
           <th>Name</th>
           <th class="text-right">Unit Cost</th>
@@ -78,6 +84,9 @@
       <tbody>
         {% for e in entries %}
         <tr>
+          {% if current_user.can_edit %}
+          <td class="text-center"><input type="checkbox" class="batch-select-cb" data-batch-entity="costs" value="{{ e.id }}" aria-label="Select cost entry"></td>
+          {% endif %}
           <td><span class="badge {% if e.cost_type == 'solvent' %}badge-gold{% elif e.cost_type == 'personnel' %}badge-green{% else %}badge-gray{% endif %}">{{ e.cost_type }}</span></td>
           <td><strong>{{ e.name }}</strong></td>
           <td class="text-right text-mono">{{ "${:,.2f}".format(e.unit_cost) if e.unit_cost else '—' }}{% if e.unit %}/{{ e.unit }}{% endif %}</td>
@@ -95,7 +104,7 @@
           {% endif %}
         </tr>
         {% else %}
-        <tr><td colspan="{% if current_user.can_edit %}8{% else %}7{% endif %}" class="text-center cell-muted" style="padding:30px;">No cost entries yet. Add solvents, personnel, and overhead costs to track operational expenses.</td></tr>
+        <tr><td colspan="{% if current_user.can_edit %}9{% else %}7{% endif %}" class="text-center cell-muted" style="padding:30px;">No cost entries yet. Add solvents, personnel, and overhead costs to track operational expenses.</td></tr>
         {% endfor %}
       </tbody>
     </table>

@@ -126,6 +126,25 @@ SQLite adds the sync config table in `_ensure_sqlite_schema()`; other engines re
 
 `init_db()` runs at import time (see bottom of `app.py`). With multiple sync workers, `db.create_all()` can race and one worker may see “table already exists” / duplicate relation. `init_db()` ignores those specific errors and continues; you can also set **`--preload`** on Gunicorn so the app loads once before workers fork (see `golddrop.service` `ExecStart`).
 
+## Purchase spreadsheet import
+
+- **Module:** `purchase_import.py` — `PURCHASE_IMPORT_HEADER_ALIASES` / `_aliases_groups` map normalized headers (lowercase, spaces → underscores) to canonical purchase fields; `parse_purchase_spreadsheet_upload(filename, raw_bytes)` returns rows as `dict` plus `_sheet_row` for display. Supports **CSV** (UTF-8-SIG) and **Excel** via **openpyxl** `load_workbook(..., read_only=True, data_only=True)` on the active sheet.
+- **Detection:** Scans the first **50** grid rows for a header line with **≥2** mapped columns; requires a **supplier** column. Max **2000** data rows.
+- **Routes (Flask):** `GET/POST /purchases/import` (`purchase_import`, `@purchase_editor_required`), `GET /purchases/import/preview`, `POST /purchases/import/commit`, `GET /purchases/import/sample.csv`. Upload writes a staging JSON file under `tempfile.gettempdir()` named `gdp_purchimp_<token>.json`; only a random token is stored in `session["purchase_import_token"]`.
+- **Validation / commit:** `app.py` — `_purchase_import_validate_row`, `_purchase_import_commit_norm`; reuses `_maintain_purchase_inventory_lots`, `_biomass_budget_snapshot_for_purchase`, `_enforce_weekly_biomass_purchase_limits`, `log_audit`. Optional **Amount** → `total_cost`; **Paid date** / **Week** / **Payment method** folded into **notes**; **invoice** weight can fall back to **actual** weight; **purchase date** can fall back to **paid date** when purchase date is blank.
+- **Templates:** `purchase_import.html`, `purchase_import_preview.html`. Client uses `DataTransfer` so drag-and-drop assigns `input.files` in modern browsers.
+- **Dependency:** `openpyxl>=3.1.0` in `requirements.txt`.
+
+## Batch list editing
+
+- **Module:** `batch_edit.py` — pure apply helpers: `parse_uuid_ids`, `apply_batch_runs`, `apply_batch_purchases` (returns `touched` purchases for hooks), `apply_batch_biomass`, `apply_batch_suppliers`, `apply_batch_costs`, `apply_batch_inventory_lots`, `apply_batch_strain_rename`. Max **200** UUIDs per batch. Strain rename uses `STRAIN_PAIR_SEP` (`\\x1f`) between strain name and supplier name in checkbox values / query params.
+- **Route:** `GET/POST /batch-edit/<entity>` (`batch_edit` in `app.py`, `@login_required`). Entities: `runs`, `purchases`, `biomass`, `suppliers`, `costs`, `inventory_lots`, `strains`. Permission: `can_edit` for runs/biomass/costs/suppliers/strains; `can_edit_purchases` for purchases and inventory lots. **`return_to`** query/body param must be a safe relative path (`_safe_batch_return_url`).
+- **Purchases batch:** After `apply_batch_purchases`, for each touched purchase: `_maintain_purchase_inventory_lots`, `_sync_linked_biomass_for_purchase` (mirrors single-save biomass sync), budget enforcement. **`ValueError`** from budget rules rolls back the whole batch commit attempt.
+- **Runs batch:** Optional fields only; `run_type`, `hte_pipeline_stage` (form uses `__nochange__` sentinel vs cleared stage), rollover/decarb tri-state, optional load source + checkbox, `notes_append`; `calculate_yields` + `calculate_cost` per changed run.
+- **Audit:** Single `log_audit("update", "<entity>_batch", gen_uuid(), details=count)` (or strain rename) per successful batch, not per row.
+- **Client:** `static/js/batch_select.js` — `[data-batch-toolbar]` wires **Select all** / **Select none** / **Batch edit**; scopes checkboxes via `data-table-selector` or `data-batch-scope` (suppliers cards). Minimum selection **2** (`data-batch-min` default).
+- **Template:** `templates/batch_edit.html` — entity-specific form sections; strains POST repeats `pair` hidden fields from GET query `pair=...` list.
+
 ## Inventory (`GET /inventory`)
 
 - **Route:** `inventory()` in `app.py`; template `templates/inventory.html`.

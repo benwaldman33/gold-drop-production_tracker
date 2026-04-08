@@ -30,7 +30,7 @@
         <a href="{{ url_for('inventory') }}" class="{% if request.endpoint == 'inventory' %}active{% endif %}">
           <span class="icon">📦</span><span>Inventory</span>
         </a>
-        <a href="{{ url_for('purchases_list') }}" class="{% if request.endpoint in ('purchases_list', 'purchase_new', 'purchase_edit') %}active{% endif %}">
+        <a href="{{ url_for('purchases_list') }}" class="{% if request.endpoint in ('purchases_list', 'purchase_new', 'purchase_edit', 'purchase_import', 'purchase_import_preview') %}active{% endif %}">
           <span class="icon">💰</span><span>Purchases</span>
         </a>
         <a href="{{ url_for('costs_list') }}" class="{% if request.endpoint in ('costs_list', 'cost_new', 'cost_edit') %}active{% endif %}">
@@ -174,5 +174,6 @@
       }, true);
     })();
   </script>
+  <script src="{{ url_for('static', filename='js/batch_select.js') }}"></script>
 </body>
 </html>

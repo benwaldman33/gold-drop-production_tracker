@@ -39,6 +39,8 @@ Open **http://localhost:5050** in your browser (default dev port; **5000** is of
 - **Cost Allocation Settings** — Choose THCA vs HTE allocation (uniform, 50/50, custom %)
 - **Inventory** — Track biomass on hand, in transit, and days of supply
 - **Purchases** — Record purchases with potency-based pricing and true-up tracking
+- **Purchase spreadsheet import** — Upload **.csv**, **.xlsx**, or **.xlsm** via **Purchases → Import spreadsheet** (drag-and-drop or browse). Headers are mapped automatically (e.g. Vendor, Purchase Date, Invoice Weight, Actual Weight, Manifest, Amount, Paid Date, Payment Method, Week). Preview validates rows; commit creates purchases (optional auto-create suppliers). See `purchase_import.py` (header alias map) and `ENGINEERING.md` → **Purchase spreadsheet import**.
+- **Batch edit (list screens)** — On Runs, Purchases, Inventory (on-hand lots and in-transit purchases), Biomass Pipeline, Suppliers, Costs, and Strain Performance, use row checkboxes plus **Select all** / **Select none**; with **two or more** rows selected, **Batch edit…** opens a screen to apply the same field changes to all selected records (permissions match single-record edit). Strain performance uses **Batch rename…** to retag matching purchase lots.
 - **Batch IDs** — Unique, readable batch IDs for all purchases (auto-generated if blank)
 - **Biomass Pipeline** — Track farm availability from declared → testing → committed → delivered/cancelled (syncs to Purchases)
 - **Field Photo Uploads** — Field users can attach multiple photos to biomass and purchase submissions (JPG/JPEG/PNG/WEBP/HEIC/HEIF, max 50 MB each)
@@ -56,7 +58,7 @@ Open **http://localhost:5050** in your browser (default dev port; **5000** is of
 - **Supplier Performance** — All-time, 90-day, and last-batch analytics per farm
 - **Strain Performance** — Compare yields and cost/gram across strains and suppliers
 - **Data Quality Controls** — Flag runs missing $/lb; optionally exclude unpriced runs from analytics
-- **CSV Import/Export** — Import from Google Sheets with deduplication; export any view
+- **CSV Import/Export** — **Runs** (and related operational history): Import from Google Sheets via **Import** with deduplication; export filtered views from list screens. **Purchases** use the dedicated **Import spreadsheet** flow (see above), not the legacy Import screen.
 - **Role-Based Access** — Super Admin, User, and Viewer roles
 - **Configurable KPIs** — Set targets and thresholds; change them as operations improve
 
@@ -68,6 +70,8 @@ Open **http://localhost:5050** in your browser (default dev port; **5000** is of
 gold-drop/
 ├── app.py              # Flask application (routes, business logic)
 ├── models.py           # SQLAlchemy database models
+├── purchase_import.py  # Purchase spreadsheet parsing + header alias map (CSV / Excel)
+├── batch_edit.py       # Batch update helpers (runs, purchases, biomass, suppliers, costs, lots, strain rename)
 ├── requirements.txt    # Python dependencies
 ├── PRD.md              # Product requirements document
 ├── USER_MANUAL.md      # End-user / operator guide
@@ -76,8 +80,9 @@ gold-drop/
 ├── static/
 │   ├── css/
 │   │   └── style.css       # Application styles
-│   └── uploads/field/      # Field-submitted photos (created at runtime)
-│   └── uploads/labs/       # Lab tests + supplier attachment files (created at runtime)
+│   ├── js/
+│   │   └── batch_select.js # List checkboxes: select all/none, navigate to batch edit
+│   └── uploads/            # field/, labs/, purchases/, library/ (created at runtime)
 └── templates/
     ├── base.html           # Layout with sidebar navigation
     ├── login.html          # Login page
@@ -87,8 +92,11 @@ gold-drop/
     ├── dept_index.html     # Department hub tiles
     ├── dept_view.html      # Single department intro + stats + quick links
     ├── inventory.html      # Inventory position view
-    ├── purchases.html      # Purchase list view
+    ├── purchases.html      # Purchase list view (batch selection + link to import)
     ├── purchase_form.html  # New/edit purchase form
+    ├── purchase_import.html        # Purchase spreadsheet upload (drag-and-drop)
+    ├── purchase_import_preview.html # Parsed rows + validation before commit
+    ├── batch_edit.html     # Batch apply form (entity-specific fields)
     ├── biomass.html        # Biomass pipeline list view
     ├── biomass_form.html   # New/edit biomass pipeline record
     ├── costs.html          # Operational cost entries list view
@@ -158,18 +166,24 @@ sudo systemctl start golddrop
 
 ## Importing Historical Data from Google Sheets
 
+### Runs and run-style reports (legacy Import screen)
+
 1. Open your Google Sheet
 2. Go to each tab (Run Report, Kief Runs, LD Runs, Intakes)
 3. File → Download → CSV
-4. In the app, go to Import → Upload each CSV
+4. In the app, go to **Import** → Upload each CSV
 5. Review the preview (header rows are auto-filtered)
-6. Click "Confirm Import"
+6. Click **Confirm Import**
 
 The system will:
 - Strip repeated header rows
 - Normalize date formats
 - Auto-create suppliers from the Source column
 - Skip duplicate records (matched on date + strain + source)
+
+### Purchases (accounting / procurement spreadsheets)
+
+Use **Purchases → Import spreadsheet** (not the **Import** menu used for runs). Supports **.csv**, **.xlsx**, and **.xlsm**; drag a file onto the drop zone or browse. After upload you get a **preview** of parsed rows; commit imports selected valid rows. A **sample CSV** is available from the import page. Requires **`openpyxl`** (see `requirements.txt`) for Excel files.
 
 ---
 

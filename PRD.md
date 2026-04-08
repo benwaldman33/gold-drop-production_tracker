@@ -13,6 +13,10 @@ Gold Drop is an operations tracker for biomass intake → inventory → extracti
 
 **Operator workflow — list views:** On primary **list screens** (Runs, Purchases, Biomass Pipeline, Costs, Inventory, Strains, Slack imports), **filters, date constraints, sort order, and related query state** are **persisted in the user’s server session** so operators can **navigate freely between app sections** and return **without re-entering** those choices—reducing repetitive work and supporting multi-step review (e.g. cross-checking Slack imports against Purchases). Persistence is **session-scoped** (not a permanent per-user database preference): sign-out, cookie loss, or timeout ends it. Each list exposes **Remove filters** (or equivalent) to restore the default unfiltered view. **Pagination** resets to **page 1** when filters are applied or certain primary facets change (e.g. Purchases status) so narrowed result sets are not shown as empty due to a stale page index.
 
+**Operator workflow — batch edits:** On list screens where users can already open a single-row **Edit** (Runs, Purchases, Biomass Pipeline, Costs, Suppliers, Strain Performance) and on **Inventory** (on-hand **lots** and in-transit **purchases**), the UI provides **row checkboxes**, **Select all** / **Select none** (current **page** only), and **Batch edit…** enabled when **at least two** rows are selected. The user is taken to a **batch apply** screen with **optional** fields; only populated fields are written to **all** selected records. **Permissions** match single-record edit (`can_edit` vs `can_edit_purchases` as appropriate). **Strain Performance** uses **Batch rename…** to apply a new strain label to all matching **PurchaseLot** rows for the selected strain+supplier pairs. Purchase batch status/delivery/queue/notes changes must honor the same **inventory lot** and **weekly biomass budget** rules as single purchase save.
+
+**Operator workflow — purchase spreadsheet import:** Users with purchase edit access can upload **CSV or Excel** (`.csv`, `.xlsx`, `.xlsm`) via **Purchases → Import spreadsheet**; the system **maps columns by header name** (including common accounting layouts: Vendor, Purchase Date, Invoice Weight, Actual Weight, Manifest, Amount, etc.), shows a **preview** with per-row validation, then commits selected rows into **Purchase** records (and optional **PurchaseLot** when a strain column is present). Staging uses a **server temp file** plus session token (not large cookie payloads). Duplicate **Batch ID** values are rejected; optional **auto-create suppliers** is supported.
+
 This PRD describes the problem, users, workflows, data requirements, calculations, settings, and acceptance criteria.
 
 ---
@@ -231,6 +235,21 @@ Acceptance criteria:
 Acceptance criteria:
 - Editing a Purchase status updates linked biomass stage reliably.
 
+#### Spreadsheet import (purchases)
+- **Access:** Same users who can create/edit purchases (`can_edit_purchases`).
+- **Inputs:** `.csv`, `.xlsx`, `.xlsm`; first recognizable header row within the first ~50 lines; required mapped columns include **supplier** (Vendor/Farm/etc.) and **purchase date** (or acceptable fallbacks per product rules) and **stated/invoice weight** (or actual weight as fallback when invoice weight is blank).
+- **Flow:** Upload → parse → **preview** (errors per row) → user selects rows to import → commit creates purchases with standard side effects (batch ID, lots, inventory maintenance, budget checks, audit).
+- **Acceptance criteria:**
+  - Unreadable files or missing required columns produce a clear error before commit.
+  - Rows with validation errors are not importable until fixed in the source file or excluded from selection.
+  - Commit respects **unique Batch ID** and **weekly biomass purchase limits** like manual save.
+
+#### Batch edit from list (purchases)
+- **Access:** `can_edit_purchases`.
+- **Behavior:** User selects ≥2 purchases on the **current list page**; batch form may set **status**, **delivery date** (optional clear), **queue placement** (or clear), **append notes**; only filled controls apply.
+- **Acceptance criteria:**
+  - Each updated purchase runs **inventory lot maintenance**, **linked biomass sync**, and **weekly budget enforcement**; failure rolls back the **entire** batch operation with a clear message.
+
 ---
 
 ### 3) Inventory workflow
@@ -249,6 +268,11 @@ Acceptance criteria:
 - When a run uses lot weights, `remaining_weight_lbs` decrements.
 - Deleting a run restores decremented lot weights.
 
+#### Batch edit (inventory lots and in-transit purchases)
+- **On-hand table:** Checkboxes identify **PurchaseLot** IDs; batch form may update strain name, location, milled flag, potency, append notes (`can_edit_purchases`).
+- **In-transit table:** Checkboxes identify **Purchase** IDs; batch behavior matches **Purchases** batch edit (same permission and rules).
+- **Acceptance criteria:** Selection is limited to **visible page** of the table; toolbar actions are disabled until ≥2 rows are checked.
+
 ---
 
 ### 4) Runs workflow (yield + cost)
@@ -261,6 +285,11 @@ Definitions:
 
 Acceptance criteria:
 - Yields compute on save and update when outputs change.
+
+#### Batch edit (runs)
+- **Access:** `can_edit` (same as single run edit).
+- **Optional batch fields:** Run type, HTE pipeline stage (including clear), rollover and decarb sample flags, biomass load source (with explicit “apply” checkbox), append notes.
+- **Acceptance criteria:** Changing a run recalculates **yields** and **cost per gram** where applicable; empty / “no change” controls do not overwrite existing values.
 
 #### Cost calculations (biomass + OpEx)
 Total run dollars include:
@@ -296,6 +325,28 @@ Acceptance criteria:
 - New/updated costs affect run $/g calculations.
 - Admin can trigger “Recalculate all run costs” after changing settings or entering costs.
 
+#### Batch edit (costs)
+- **Access:** `can_edit`.
+- **Optional fields:** Cost type (solvent/personnel/overhead), append notes.
+- **Acceptance criteria:** Only non-empty / selected changes are applied to all selected entries.
+
+---
+
+### 6) Biomass pipeline — batch edit
+- **Access:** `can_edit`.
+- **Optional fields:** Stage, testing status, testing timing, append notes.
+- **Acceptance criteria:** Same validation expectations as single-record edit for the fields touched.
+
+### 7) Suppliers — batch edit
+- **Access:** `can_edit`.
+- **Optional fields:** Set all selected suppliers **active** or **inactive**, and/or append to **notes**.
+- **Acceptance criteria:** At least one action (status change or notes append) is required to submit.
+
+### 8) Strain performance — batch rename
+- **Access:** `can_edit`.
+- **Behavior:** User selects ≥2 aggregate rows; supplies a **new strain name**; system updates **all non-deleted purchase lots** matching each **strain + supplier** pair.
+- **Acceptance criteria:** Audit log records the bulk rename; operators understand this is a **data migration** on lot strain labels, not a separate master “strain” entity.
+
 ---
 
 ## Analytics & Data Quality
@@ -325,6 +376,8 @@ AuditLog must capture:
 - **What** (action, entity_type, entity_id)
 - **When** (timestamp)
 - **Details** (JSON string, minimized and non-sensitive)
+
+**Batch operations:** Successful **batch list edits** log **`update`** with synthetic entity types such as `run_batch`, `purchase_batch`, `biomass_batch`, `supplier_batch`, `cost_batch`, `inventory_lot_batch`, or `strain_rename`, using a generated `entity_id` and **details** summarizing the count affected. Individual row IDs may be omitted to avoid log spam; critical per-record compliance needs should rely on single-record edits or future enhanced batch logging if required.
 
 Critical requirements:
 - Biomass create/update/delete actions must be logged.

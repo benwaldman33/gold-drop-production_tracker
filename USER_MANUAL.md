@@ -20,7 +20,7 @@ Use the left sidebar:
 - **Departments**: hub of department-focused pages (same data as the rest of the app; quick links and rollups per team—finance, purchasing, intake, extraction, THCA/HTE/Liquid Diamonds, terpenes, testing, bulk sales)
 - **Runs**: extraction runs log + cost/yield outputs
 - **Inventory**: on-hand lots + in-transit purchases
-- **Purchases**: batch-level purchase records + batch IDs
+- **Purchases**: batch-level purchase records + batch IDs; **Import spreadsheet** for bulk purchase upload; row **batch edit** on the list
 - **Costs**: operational cost entries (solvent/personnel/overhead)
 - **Biomass Pipeline**: pre-purchase pipeline tracking (declared → testing → committed → delivered/cancelled)
 - **Suppliers**: supplier performance analytics
@@ -28,7 +28,7 @@ Use the left sidebar:
 - **Photo Library**: searchable media across supplier/purchase/field contexts; editors can upload and remove certain attachment types here (see **Photo Library** section)
 - **Slack imports** (Slack Importer capability or Super Admin): triage synced Slack messages, preview mapped Run fields, **create run from Slack** (prefilled form)
 - **Settings** (Super Admin only): system parameters, KPIs, users, maintenance actions
-- **Import**: CSV import review + confirm
+- **Import**: CSV import for **historical runs** (run-style exports)—not the same as **Purchases → Import spreadsheet**
 
 ---
 
@@ -44,6 +44,35 @@ Many **list screens** remember the filters and sort options you last used **for 
 **Session limits:** Saved list state lives in your **session** (browser cookie). It is meant for **day-to-day navigation**, not permanent storage—**signing out**, **closing the browser** (depending on settings), or **clearing cookies** may reset it.
 
 **Small UX notes:** Date fields use a **high-contrast calendar control** on dark backgrounds. On **New / Edit Purchase**, **Save Purchase** appears at both the **top** and **bottom** of the form.
+
+---
+
+## Batch editing from list screens
+
+On several lists, if you can **Edit** a single row, you can often update **many rows at once**:
+
+1. Use the checkboxes on the left of each row (where shown).
+2. Use **Select all** or **Select none** to toggle every row on the **current page** of the table (pagination: if you use page 2, only page 2 rows are selected).
+3. When **at least two** rows are checked, **Batch edit…** (or **Batch rename…** on **Strains**) becomes available.
+
+You’ll see a page where only the fields you fill in are applied to **every selected record**; leave something blank or on “no change” to skip it.
+
+**Where it works (and who):**
+
+| Screen | What you’re editing | Typical access |
+|--------|---------------------|----------------|
+| **Runs** | Run type, HTE pipeline stage, rollover/decarb flags, load source (optional), append notes | **User** / **Super Admin** |
+| **Purchases** | Status, delivery date, queue placement, append notes | Anyone with **purchase edit** (includes **Super Buyer** where enabled) |
+| **Inventory** — On Hand | Lot strain, location, milled, potency, append lot notes | Purchase editors |
+| **Inventory** — In Transit | Same kinds of fields as **Purchases** (these rows are purchases) | Purchase editors |
+| **Biomass Pipeline** | Stage, testing status/timing, append notes | **User** / **Super Admin** |
+| **Costs** | Cost type, append notes | **User** / **Super Admin** |
+| **Suppliers** | Set suppliers active/inactive, append supplier notes | **User** / **Super Admin** |
+| **Strains** | **Batch rename…** — one new strain name applied to all **purchase lots** matching each selected strain+supplier pair | **User** / **Super Admin** |
+
+**Purchases batch edit** uses the same rules as saving one purchase: inventory lots and **weekly biomass budget** limits still apply. If the batch would break a limit, you may see an error and **no** row from that batch save is kept—fix the selection or values and try again.
+
+**Strain batch rename** is powerful: it changes **lot** strain names everywhere they match the table row you selected. Use it when you are standardizing spelling or labels, not for routine tweaks to a single lot (use **Edit** on the purchase/lot instead).
 
 ---
 
@@ -122,6 +151,9 @@ These badges help identify runs that may skew cost analytics.
 - **Delete**: restores lot remaining weights (so inventory stays correct).
 - **Hard Delete (Super Admin)**: permanently removes run records for sandbox cleanup.
 
+### Batch editing runs
+From the **Runs** list, select two or more runs and use **Batch edit…** to change shared fields (see **Batch editing from list screens**). Yields and cost per gram are recalculated when relevant fields change.
+
 ---
 
 ## Departments
@@ -158,12 +190,16 @@ This table lists lots with remaining weight, including:
 - Potency (if recorded on the lot)
 - Milled flag and location
 
+Purchase editors see **Select all**, **Select none**, and **Batch edit…** above this table to change strain name, location, milled, potency, or notes on **multiple lots** at once (see **Batch editing from list screens**).
+
 ### In Transit / On Order
 This table lists purchases that are not yet fully received, including:
 - Supplier and status
 - Stated weight
 - Order date and expected delivery
 - Price per lb (if known)
+
+Purchase editors see **Select all**, **Select none**, and **Batch edit…** above this table to update several in-transit purchases at once (same as batch edit on **Purchases**).
 
 ### Days of Supply (detail)
 Same as the **Days of Supply** summary tile: **on-hand lbs ÷ Daily Throughput Target**. It does not add in-transit pounds. If the target is zero or unset in a way that makes it zero, the app shows **0** days.
@@ -187,6 +223,18 @@ Batch IDs are used across the app to make batches easy to identify and to link i
 2. Choose supplier, purchase date, status, and weight/pricing fields.
 3. (Optional) add lots/strains for the purchase at creation time.
 4. Save.
+
+### Importing purchases from a spreadsheet
+Use **Purchases** → **Import spreadsheet** when you have many purchases in Excel or CSV (for example accounting exports with **Vendor**, **Purchase Date**, **Invoice Weight**, **Actual Weight**, **Manifest**, **Amount**, **Paid Date**, **Payment Method**, **Week**).
+
+1. Drag a **.csv**, **.xlsx**, or **.xlsm** file onto the drop zone (or click to browse). Upload starts automatically after you pick a file.
+2. The app finds a header row and maps familiar column names. Fix any problems shown on the **preview** (missing date or weight, duplicate manifest/batch ID, etc.).
+3. Choose which valid rows to import. You can turn on **Create missing suppliers** so new vendor names become supplier records (matched case-insensitively by name).
+4. Confirm import.
+
+**Tips:** A **Download sample CSV** link on the import page shows expected-style headers. If **purchase date** is empty but **paid date** is filled, the app may use paid date as the purchase date. If **invoice weight** is empty but **actual weight** is present, actual weight can stand in for stated weight. **Amount** is stored as **total cost**; **Week** / paid date / payment method are added to **notes** for traceability.
+
+This path is **only for purchases**. The sidebar **Import** screen is for **run** history from Google Sheets—see **Import (CSV)** below.
 
 ### Potency-based pricing and true-up
 Purchases support:
@@ -216,12 +264,17 @@ On **New Purchase** and **Edit Purchase**, use the **Supporting documentation** 
 - After save, files appear under **Supporting documents on file** on the purchase (with **Delete** for editors) and in the **Photo Library** (filter by purchase if needed).
 - **Field intake audit photos** (from approved biomass/purchase field forms) are listed separately on the purchase; those are not replaced by this upload area and are managed through the field submission workflow.
 
+### Batch editing purchases from the list
+Select two or more rows on the **Purchases** list, then **Batch edit…**, to set **status**, **delivery date**, **queue placement**, or **append notes** for all selected purchases at once. See **Batch editing from list screens** for limits (current page only, weekly budget rules).
+
 ---
 
 ## Biomass Pipeline
 The Biomass Pipeline tracks farm availability before it becomes a purchase.
 
 List **filters** (supplier, **availability date range**, strain text) and bucket/stage context are **saved for your session** when you navigate elsewhere—see **Saved filters, sorts, and list state**. Use **Remove filters** to clear.
+
+Editors can use **Select all** / **Select none** and **Batch edit…** on the pipeline list to change **stage**, **testing** fields, or **notes** on multiple rows (see **Batch editing from list screens**).
 
 ### Stages
 - **Declared**: supplier declares availability (date/weight/price/potency)
@@ -295,6 +348,8 @@ Operational costs are allocated as:
 2. Choose type, name, date range, and total cost
 3. Save
 
+Editors can **Batch edit…** from the **Costs** list to change **cost type** or **append notes** on multiple entries (see **Batch editing from list screens**).
+
 ---
 
 ## Suppliers (Performance)
@@ -312,6 +367,8 @@ Supplier profiles also include:
 
 If the “exclude runs missing $/lb” setting is enabled, these analytics ignore runs with incomplete biomass pricing.
 
+Editors can use **Select all** / **Select none** and **Batch edit…** from the supplier cards area to **activate/deactivate** suppliers or **append notes** (see **Batch editing from list screens**). Checkboxes appear next to each supplier card title.
+
 ---
 
 ## Strains (Performance)
@@ -320,6 +377,8 @@ Strains compares yield/cost metrics grouped by strain + supplier.
 Your **All time / Last 90 days** choice **persists for your session** when you navigate away and return—see **Saved filters, sorts, and list state**. **Remove filters** restores the default (All time).
 
 If the “exclude runs missing $/lb” setting is enabled, these analytics ignore runs with incomplete biomass pricing.
+
+Editors can select two or more rows and use **Batch rename…** to set one **new strain name** on all **purchase lots** that match each selected strain+supplier combination. Read the warning on the batch screen—this is a bulk rename, not the same as editing a single lot (see **Batch editing from list screens**).
 
 ---
 
@@ -399,8 +458,8 @@ What it does:
 
 ---
 
-## Import (CSV)
-Import supports loading historical data via CSV with a review step.
+## Import (CSV) — runs and run-style history
+The sidebar **Import** screen is for **extraction run** history exported from Google Sheets (run reports, kief/LD tabs, etc.). It is **not** for loading **purchase** batches—use **Purchases → Import spreadsheet** for those.
 
 ### Import flow
 1. Go to **Import**

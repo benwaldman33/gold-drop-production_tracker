@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+{% block title %}Batch edit{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Batch edit — {{ label }}</h2>
+  <a href="{{ return_to }}" class="btn btn-secondary">Cancel</a>
+</div>
+
+<div class="card">
+  {% if entity == 'strains' %}
+  <p class="text-sm cell-muted" style="margin-bottom:16px;line-height:1.6;">
+    Renames <strong>strain on every non-deleted purchase lot</strong> that matches the selected strain + supplier pairs from the performance table.
+    This does not change run history labels until those lots are edited elsewhere.
+  </p>
+  <form method="POST">
+    {% for pr in strain_pairs %}
+    <input type="hidden" name="pair" value="{{ pr }}">
+    {% endfor %}
+    <input type="hidden" name="return_to" value="{{ return_to }}">
+    <div class="form-group">
+      <label>New strain name *</label>
+      <input type="text" name="new_strain_name" required maxlength="200" placeholder="Applied to all matching lots">
+    </div>
+    <button type="submit" class="btn btn-primary">Apply to matching lots</button>
+  </form>
+  {% else %}
+  <p class="text-sm cell-muted" style="margin-bottom:16px;">
+    Only fields you fill in apply to all <strong>{{ ids|length }}</strong> selected records. Leave a section unchanged to skip it.
+  </p>
+  <form method="POST">
+    {% for id in ids %}
+    <input type="hidden" name="ids" value="{{ id }}">
+    {% endfor %}
+    <input type="hidden" name="return_to" value="{{ return_to }}">
+
+    {% if entity == 'runs' %}
+    <div class="form-section">
+      <h4>Run fields</h4>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Run type</label>
+          <select name="run_type">
+            <option value="">— No change —</option>
+            <option value="standard">Standard</option>
+            <option value="kief">Kief</option>
+            <option value="ld">Liquid Diamond</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>HTE pipeline stage</label>
+          <select name="hte_pipeline_stage">
+            <option value="__nochange__">— No change —</option>
+            {% for val, lab in hte_pipeline_options %}
+            <option value="{{ val }}">{{ lab }}</option>
+            {% endfor %}
+          </select>
+          <span class="text-sm cell-muted">Includes “Not set” to clear the stage.</span>
+        </div>
+        <div class="form-group">
+          <label>Rollover run</label>
+          <select name="set_is_rollover">
+            <option value="">— No change —</option>
+            <option value="1">Set to rollover</option>
+            <option value="0">Set to not rollover</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label><input type="checkbox" name="apply_load_source" value="1"> Set biomass load source (A/B)</label>
+        <input type="text" name="load_source_reactors" placeholder="e.g. A, B, A+B" maxlength="120" style="margin-top:6px;">
+      </div>
+      <div class="form-group">
+        <label>Decarb sample done</label>
+        <select name="set_decarb_sample_done">
+          <option value="">— No change —</option>
+          <option value="1">Set yes</option>
+          <option value="0">Set no</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Append to notes (each run)</label>
+        <textarea name="notes_append" rows="2" placeholder="Optional — added to existing notes"></textarea>
+      </div>
+    </div>
+    {% elif entity == 'purchases' %}
+    <div class="form-section">
+      <h4>Purchase fields</h4>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Status</label>
+          <select name="status">
+            <option value="">— No change —</option>
+            {% for s in ['declared', 'committed', 'ordered', 'in_transit', 'delivered', 'in_testing', 'available', 'processing', 'complete', 'cancelled'] %}
+            <option value="{{ s }}">{{ s.replace('_', ' ') }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label><input type="checkbox" name="apply_delivery_date" value="1"> Set delivery date</label>
+          <input type="date" name="delivery_date" style="margin-top:6px;">
+          <span class="text-sm cell-muted">Leave date empty to clear delivery date.</span>
+        </div>
+        <div class="form-group">
+          <label>Queue placement</label>
+          <select name="queue_placement">
+            <option value="">— No change —</option>
+            <option value="aggregate">Aggregate</option>
+            <option value="indoor">Indoor</option>
+            <option value="outdoor">Outdoor</option>
+            <option value="__clear__">Clear</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Append to notes</label>
+        <textarea name="notes_append" rows="2"></textarea>
+      </div>
+    </div>
+    {% elif entity == 'biomass' %}
+    <div class="form-section">
+      <h4>Biomass pipeline</h4>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Stage</label>
+          <select name="stage">
+            <option value="">— No change —</option>
+            {% for s in ['declared','testing','committed','delivered','cancelled'] %}
+            <option value="{{ s }}">{{ s.replace('_',' ') }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Testing status</label>
+          <select name="testing_status">
+            <option value="">— No change —</option>
+            <option value="pending">Pending</option>
+            <option value="completed">Completed</option>
+            <option value="not_needed">Not needed</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Testing timing</label>
+          <select name="testing_timing">
+            <option value="">— No change —</option>
+            <option value="before_delivery">Before delivery</option>
+            <option value="after_delivery">After delivery</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Append to notes</label>
+        <textarea name="notes_append" rows="2"></textarea>
+      </div>
+    </div>
+    {% elif entity == 'suppliers' %}
+    <div class="form-section">
+      <h4>Suppliers</h4>
+      <div class="form-group">
+        <label>Active / inactive</label>
+        <select name="is_active_action">
+          <option value="">— No change —</option>
+          <option value="activate">Set active</option>
+          <option value="deactivate">Set inactive</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Append to supplier notes</label>
+        <textarea name="notes_append" rows="2"></textarea>
+      </div>
+    </div>
+    {% elif entity == 'costs' %}
+    <div class="form-section">
+      <h4>Cost entries</h4>
+      <div class="form-group">
+        <label>Cost type</label>
+        <select name="cost_type">
+          <option value="">— No change —</option>
+          <option value="solvent">Solvent</option>
+          <option value="personnel">Personnel</option>
+          <option value="overhead">Overhead</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Append to notes</label>
+        <textarea name="notes_append" rows="2"></textarea>
+      </div>
+    </div>
+    {% elif entity == 'inventory_lots' %}
+    <div class="form-section">
+      <h4>On-hand lots</h4>
+      <div class="form-group">
+        <label>Strain name (replace)</label>
+        <input type="text" name="strain_name" maxlength="200" placeholder="Leave blank for no change">
+      </div>
+      <div class="form-group">
+        <label><input type="checkbox" name="apply_location" value="1"> Set location</label>
+        <input type="text" name="location" maxlength="200" style="margin-top:6px;" placeholder="Empty clears location">
+      </div>
+      <div class="form-group">
+        <label>Milled</label>
+        <select name="set_milled">
+          <option value="">— No change —</option>
+          <option value="1">Yes</option>
+          <option value="0">No</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label><input type="checkbox" name="apply_potency" value="1"> Set potency %</label>
+        <input type="number" step="0.1" name="potency_pct" style="margin-top:6px;">
+      </div>
+      <div class="form-group">
+        <label>Append to lot notes</label>
+        <textarea name="notes_append" rows="2"></textarea>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="form-actions" style="margin-top:20px;">
+      <a href="{{ return_to }}" class="btn btn-secondary">Cancel</a>
+      <button type="submit" class="btn btn-primary">Apply to {{ ids|length }} records</button>
+    </div>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

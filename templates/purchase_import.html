@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Import purchases{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Import purchases from spreadsheet</h2>
+  <div class="btn-group">
+    <a href="{{ url_for('purchases_list') }}" class="btn btn-secondary">← Back to Purchases</a>
+    <a href="{{ url_for('purchase_import_sample') }}" class="btn btn-secondary">Download sample CSV</a>
+  </div>
+</div>
+
+<div class="card">
+  <p class="text-sm cell-muted" style="margin-bottom:16px;line-height:1.6;">
+    Upload a <strong>.csv</strong>, <strong>.xlsx</strong>, or <strong>.xlsm</strong> file. The first row with recognizable column headers is used as the header row
+    (Supplier/Farm/Source, Date, Weight, etc.).     Required: <strong>Vendor</strong>/<strong>Supplier</strong>, <strong>Purchase date</strong> (or <strong>Paid date</strong> as fallback),
+    and <strong>invoice/stated weight</strong> (or <strong>actual weight</strong> if invoice is blank).
+    Recognized accounting-style headers include <strong>Week</strong>, <strong>Paid date</strong>, <strong>Amount</strong>, <strong>Payment method</strong>,
+    <strong>Invoice weight</strong>, <strong>Actual weight</strong>, and <strong>Manifest</strong> (batch id). Amount is stored as total cost; implied $/lb is filled when possible.
+  </p>
+  <form id="purchase-import-form" method="POST" enctype="multipart/form-data" style="margin:0;">
+    <input type="file" id="purchase-import-file" name="spreadsheet" accept=".csv,.xlsx,.xlsm" style="display:none;">
+    <div id="purchase-import-drop"
+         style="border:2px dashed var(--dark-border);border-radius:var(--radius);padding:36px 24px;text-align:center;background:var(--dark);cursor:pointer;">
+      <p style="margin:0 0 8px;font-weight:600;color:var(--text-primary);">Drag and drop your file here</p>
+      <p class="text-sm cell-muted" style="margin:0;">or click to browse — then upload starts automatically</p>
+      <p id="purchase-import-filename" class="text-sm" style="margin-top:12px;color:var(--gold);"></p>
+    </div>
+  </form>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var form = document.getElementById('purchase-import-form');
+  var input = document.getElementById('purchase-import-file');
+  var drop = document.getElementById('purchase-import-drop');
+  var nameEl = document.getElementById('purchase-import-filename');
+  if (!form || !input || !drop) return;
+
+  function submitIfFile() {
+    if (input.files && input.files.length) {
+      nameEl.textContent = input.files[0].name;
+      form.submit();
+    }
+  }
+
+  drop.addEventListener('click', function () { input.click(); });
+  input.addEventListener('change', submitIfFile);
+
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      drop.style.borderColor = 'var(--gold)';
+    });
+  });
+  ['dragleave', 'drop'].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      drop.style.borderColor = 'var(--dark-border)';
+    });
+  });
+  drop.addEventListener('drop', function (e) {
+    var dt = e.dataTransfer;
+    if (!dt || !dt.files || !dt.files.length) return;
+    var dtx = new DataTransfer();
+    dtx.items.add(dt.files[0]);
+    input.files = dtx.files;
+    submitIfFile();
+  });
+})();
+</script>
+{% endblock %}

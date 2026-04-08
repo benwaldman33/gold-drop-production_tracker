@@ -48,6 +48,31 @@ It hides rows whose status is **complete** or **cancelled** from the list (and e
 **Why is there a second Save on Edit Purchase?**  
 The **Save Purchase** button at the **top** submits the same form as the one at the bottom so you do not have to scroll on long purchase records.
 
+## Purchases — spreadsheet import
+
+**How do I import many purchases from Excel or a CSV?**  
+Open **Purchases** and use **Import spreadsheet**. You can **drag and drop** a **.csv**, **.xlsx**, or **.xlsm** file (or click to browse). The app detects the header row and maps common column names (e.g. **Vendor**, **Purchase Date**, **Invoice Weight**, **Actual Weight**, **Manifest**, **Amount**, **Paid Date**, **Payment Method**, **Week**). Fix any rows flagged with errors on the preview, choose which valid rows to import, then commit. You can optionally **create missing suppliers** by name (case-insensitive match).
+
+**Is purchase import the same as Import (runs)?**  
+No. The **Import** screen under the sidebar is for **run-style** Google Sheet exports. **Purchases** use **Import spreadsheet** on the Purchases page.
+
+**Why did a row fail validation?**  
+Common causes: missing **purchase date** (or **paid date** as fallback), missing both **invoice** and **actual** weight, **duplicate Batch ID / Manifest** already in the system, or values that cannot be parsed. The preview lists the reason per row.
+
+## Batch edit (list screens)
+
+**What is “Batch edit…” on Runs, Purchases, etc.?**  
+You can select **two or more** rows with the checkboxes, then click **Batch edit…** (or **Batch rename…** on Strain Performance). **Select all** / **Select none** apply to the **current page** of the table. The next screen lists fields you can set for **all** selected records at once; leave a field unchanged to skip it for that batch.
+
+**Who can batch edit?**  
+Same rules as editing a single row: **User / Super Admin** for runs, biomass, costs, suppliers, and strain rename; **purchase editors** (including **Super Buyer** where `can_edit_purchases` applies) for purchases and inventory lot rows.
+
+**Why did my batch purchase update fail?**  
+Batch purchase changes run the same **inventory lot maintenance** and **weekly biomass budget** checks as saving one purchase. If the batch would violate a cap, the transaction is rolled back and you will see an error—adjust the selection or fields and try again.
+
+**What does Strain Performance “Batch rename…” do?**  
+It renames the **strain** on every **purchase lot** that matches the selected **strain + supplier** pairs from the performance table. Use carefully; it is a bulk data change.
+
 ## Data & analytics
 
 **Why do some runs show “No $/lb”?**  

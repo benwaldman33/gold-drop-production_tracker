@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Import preview{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Import preview</h2>
+  <div class="btn-group">
+    <a href="{{ url_for('purchase_import') }}" class="btn btn-secondary">← Upload another file</a>
+    <a href="{{ url_for('purchases_list') }}" class="btn btn-secondary">Purchases</a>
+  </div>
+</div>
+
+<p class="text-sm cell-muted" style="margin-bottom:12px;">
+  File: <strong>{{ staged.filename }}</strong> —
+  {{ staged.rows|length }} row(s), <strong>{{ ok_count }}</strong> ready to import (no validation errors).
+</p>
+
+<form method="POST" action="{{ url_for('purchase_import_commit') }}">
+  <div class="card" style="margin-bottom:12px;">
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+      <input type="checkbox" name="create_suppliers" value="1" checked>
+      <span>Create missing suppliers automatically (match is case-insensitive by name)</span>
+    </label>
+  </div>
+
+  <div class="card" style="overflow-x:auto;">
+    <table style="min-width:720px;width:100%;">
+      <thead>
+        <tr>
+          <th style="width:40px;">Import</th>
+          <th>Row</th>
+          <th>Supplier</th>
+          <th>Date</th>
+          <th>Invoice lbs</th>
+          <th>Actual lbs</th>
+          <th>Amount</th>
+          <th>Manifest</th>
+          <th>Status</th>
+          <th>Strain</th>
+          <th>Issues</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in staged.rows %}
+        {% set r = row.raw %}
+        {% set ok = not row.errors %}
+        <tr {% if not ok %}style="opacity:0.75;"{% endif %}>
+          <td>
+            {% if ok %}
+            <input type="checkbox" name="row_idx" value="{{ loop.index0 }}" checked>
+            {% else %}
+            <span class="text-sm cell-muted">—</span>
+            {% endif %}
+          </td>
+          <td>{{ row.sheet_row }}</td>
+          <td>{{ r.get('supplier', '') }}</td>
+          <td>{{ r.get('purchase_date', '') }}</td>
+          <td>{{ r.get('stated_weight_lbs', '') }}</td>
+          <td>{{ r.get('actual_weight_lbs', '') }}</td>
+          <td>{{ r.get('total_cost', '') }}</td>
+          <td class="text-mono">{{ r.get('batch_id', '') or '—' }}</td>
+          <td>{{ r.get('status', '') or '—' }}</td>
+          <td>{{ r.get('strain', '') or '—' }}</td>
+          <td class="text-sm">
+            {% if row.errors %}
+              {% for e in row.errors %}<div style="color:var(--danger,#c44);">{{ e }}</div>{% endfor %}
+            {% else %}
+              <span class="cell-muted">OK</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="btn-group" style="margin-top:16px;">
+    <button type="submit" class="btn btn-primary">Import selected rows</button>
+  </div>
+</form>
+{% endblock %}
