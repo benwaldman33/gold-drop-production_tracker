@@ -73,6 +73,7 @@
   </div>
 </div>
 
+{% set status_to_stage = {'declared': 'declared', 'in_testing': 'testing', 'committed': 'committed', 'delivered': 'delivered', 'cancelled': 'cancelled'} %}
 <div class="table-wrap">
   <table id="biomass-table">
     <thead>
@@ -93,53 +94,52 @@
       </tr>
     </thead>
     <tbody>
-      {% for b in items %}
+      {% for p in items %}
+      {% set stage_name = status_to_stage.get(p.status, p.status) %}
+      {% set first_lot = p.lots.first() %}
       <tr>
         {% if current_user.can_edit %}
-        <td class="text-center"><input type="checkbox" class="batch-select-cb" data-batch-entity="biomass" value="{{ b.id }}" aria-label="Select row"></td>
+        <td class="text-center"><input type="checkbox" class="batch-select-cb" data-batch-entity="biomass" value="{{ p.id }}" aria-label="Select row"></td>
         {% endif %}
-        <td><strong>{{ b.supplier_name }}</strong></td>
+        <td><strong>{{ p.supplier_name }}</strong></td>
         <td class="text-mono">
-          {% if b.purchase %}
-            <a href="{{ url_for('purchase_edit', purchase_id=b.purchase.id) }}">{{ b.purchase.batch_id or '—' }}</a>
-          {% else %}
-            —
-          {% endif %}
+          <a href="{{ url_for('purchase_edit', purchase_id=p.id) }}">{{ p.batch_id or '—' }}</a>
         </td>
-        <td>{{ b.strain_name or '—' }}</td>
+        <td>{{ first_lot.strain_name if first_lot else '—' }}</td>
         <td>
           {% set stage_class = 'badge-gray' %}
-          {% if b.stage == 'declared' %}{% set stage_class = 'badge-yellow' %}{% endif %}
-          {% if b.stage == 'testing' %}{% set stage_class = 'badge-gold' %}{% endif %}
-          {% if b.stage in ('committed','delivered') %}{% set stage_class = 'badge-green' %}{% endif %}
-          {% if b.stage == 'cancelled' %}{% set stage_class = 'badge-red' %}{% endif %}
-          <span class="badge {{ stage_class }}">{{ b.stage.replace('_',' ') }}</span>
+          {% if stage_name == 'declared' %}{% set stage_class = 'badge-yellow' %}{% endif %}
+          {% if stage_name == 'testing' %}{% set stage_class = 'badge-gold' %}{% endif %}
+          {% if stage_name in ('committed','delivered') %}{% set stage_class = 'badge-green' %}{% endif %}
+          {% if stage_name == 'cancelled' %}{% set stage_class = 'badge-red' %}{% endif %}
+          <span class="badge {{ stage_class }}">{{ stage_name.replace('_',' ') }}</span>
+          {% if not p.is_approved %}<span class="badge" style="background:#d4a843;color:#fff;margin-left:4px" title="Not yet approved">Unapproved</span>{% endif %}
         </td>
-        <td>{{ b.availability_date.strftime('%m/%d/%y') if b.availability_date else '—' }}</td>
-        <td class="text-right text-mono">{{ "{:,.0f}".format(b.declared_weight_lbs) if b.declared_weight_lbs else '—' }}</td>
-        <td class="text-right text-mono">{{ "${:,.2f}".format(b.declared_price_per_lb) if b.declared_price_per_lb else '—' }}</td>
-        <td class="text-right text-mono">{{ "{:.1f}".format(b.estimated_potency_pct) if b.estimated_potency_pct else '—' }}</td>
+        <td>{{ p.availability_date.strftime('%m/%d/%y') if p.availability_date else '—' }}</td>
+        <td class="text-right text-mono">{{ "{:,.0f}".format(p.declared_weight_lbs) if p.declared_weight_lbs else '—' }}</td>
+        <td class="text-right text-mono">{{ "${:,.2f}".format(p.declared_price_per_lb) if p.declared_price_per_lb else '—' }}</td>
+        <td class="text-right text-mono">{{ "{:.1f}".format(p.stated_potency_pct) if p.stated_potency_pct else '—' }}</td>
         <td>
           <div class="text-sm" style="color:var(--text-muted);">
-            {{ b.testing_timing.replace('_',' ') if b.testing_timing else '—' }} • {{ b.testing_status.replace('_',' ') if b.testing_status else '—' }}
+            {{ p.testing_timing.replace('_',' ') if p.testing_timing else '—' }} • {{ p.testing_status.replace('_',' ') if p.testing_status else '—' }}
           </div>
           <div class="text-sm">
-            {% if b.testing_date %}{{ b.testing_date.strftime('%m/%d/%y') }}{% else %}—{% endif %}
-            {% if b.tested_potency_pct %} • {{ "{:.1f}".format(b.tested_potency_pct) }}%{% endif %}
+            {% if p.testing_date %}{{ p.testing_date.strftime('%m/%d/%y') }}{% else %}—{% endif %}
+            {% if p.tested_potency_pct %} • {{ "{:.1f}".format(p.tested_potency_pct) }}%{% endif %}
           </div>
         </td>
         <td>
           <div class="text-sm">
-            {% if b.committed_on %}<span class="text-mono">{{ b.committed_on.strftime('%m/%d/%y') }}</span>{% else %}—{% endif %}
-            {% if b.committed_delivery_date %} → <span class="text-mono">{{ b.committed_delivery_date.strftime('%m/%d/%y') }}</span>{% endif %}
+            {% if p.purchase_date %}<span class="text-mono">{{ p.purchase_date.strftime('%m/%d/%y') }}</span>{% else %}—{% endif %}
+            {% if p.delivery_date %} → <span class="text-mono">{{ p.delivery_date.strftime('%m/%d/%y') }}</span>{% endif %}
           </div>
           <div class="text-sm" style="color:var(--text-muted);">
-            {% if b.committed_weight_lbs %}{{ "{:,.0f}".format(b.committed_weight_lbs) }} lbs{% endif %}
-            {% if b.committed_price_per_lb %}{% if b.committed_weight_lbs %} • {% endif %}{{ "${:,.2f}".format(b.committed_price_per_lb) }}/lb{% endif %}
+            {% if p.stated_weight_lbs %}{{ "{:,.0f}".format(p.stated_weight_lbs) }} lbs{% endif %}
+            {% if p.price_per_lb %}{% if p.stated_weight_lbs %} • {% endif %}{{ "${:,.2f}".format(p.price_per_lb) }}/lb{% endif %}
           </div>
         </td>
         <td>
-          {% if b.deleted_at %}
+          {% if p.deleted_at %}
             <span class="badge badge-red">yes</span>
           {% else %}
             <span class="badge badge-gray">—</span>
@@ -147,7 +147,7 @@
         </td>
         <td>
           {% if current_user.can_edit %}
-          <a href="{{ url_for('biomass_edit', item_id=b.id) }}" class="btn btn-secondary btn-sm">Edit</a>
+          <a href="{{ url_for('biomass_edit', item_id=p.id) }}" class="btn btn-secondary btn-sm">Edit</a>
           {% endif %}
         </td>
       </tr>
@@ -158,4 +158,3 @@
   </table>
 </div>
 {% endblock %}
-

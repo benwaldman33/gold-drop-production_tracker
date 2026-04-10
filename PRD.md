@@ -45,7 +45,6 @@ Operations needs a single system to answer:
 - Full accounting/ERP integration
 - Automated lab COAs ingestion (manual entry only)
 - Multi-facility support
-- Replacing the Biomass Pipeline model by merging it fully into Purchases (see “Future improvements”)
 - **Department UIs (initial scope):** replacing Slack as the authoritative capture layer for weights/production logs (see **Operational input authority** below); full barcode / Wi‑Fi or Bluetooth scale integration (roadmap)
 
 ---
@@ -61,8 +60,9 @@ Operations needs a single system to answer:
 Authorization should use **named capabilities per user** (flags or equivalent), not a separate database “role enum” for every combination of job duties. Examples: **`can_approve_purchase`**, existing **Slack Importer** (`is_slack_importer` / `can_slack_import`), and future narrow grants as needed. **Super-Buyer**, **COO**, and **Super Admin** are **business labels**; provisioning may default certain flags for those accounts, but enforcement is always via capabilities.
 
 ### Purchase approval
-- **Eligible approvers:** any account with **`can_approve_purchase`**. The business requires that **Super-Buyer**, **COO**, and **Super Admin** users be able to approve; it is **any one** of these (or any user with the flag)—**not** a multi-signature workflow.
-- **Effect on approve:** the potential purchase becomes a **commitment everywhere** the product represents commitments: pipeline linkage, purchase/financial obligation views, logistics and intake planning, and the **buyer weekly budget dashboard** (budget vs commitments vs actual purchases). All surfaces must derive from the **same** approval/commitment state.
+- **Eligible approvers:** any account with **`can_approve_purchase`** (`User.is_super_admin` **or** **`is_purchase_approver`**). The business requires that **Super-Buyer**, **COO**, and **Super Admin** users be able to approve; it is **any one** of these (or any user with the flag)—**not** a multi-signature workflow.
+- **Effect on approve:** sets **`purchase_approved_at`** / **`purchase_approved_by_user_id`**. Until then, the product **must not** treat the batch as usable for **on-hand inventory**, **run consumption**, or **dashboard on-hand / days-of-supply** (lot pickers and inventory queries require approval). **Edit Purchase** cannot move into on-hand statuses (**delivered**, **in_testing**, **available**, **processing**) until approved. **Biomass Pipeline:** moving stage to **Committed** (purchase **`status = committed`**) requires the same approver capability and **stamps** approval as part of that transition.
+- **Commitments / finance:** weekly **commitments** dollar rollups use **`committed`/`delivered`** purchases, weighted toward rows with **`purchase_approved_at`** in the calendar week (with a legacy fallback when approval is null—see **`ENGINEERING.md`**).
 - **Audit:** log **who** approved and **when**; approval is **idempotent** (subsequent approve actions are no-ops or blocked with a clear message).
 
 ### Operational input authority
@@ -73,20 +73,19 @@ Authorization should use **named capabilities per user** (flags or equivalent), 
 
 ## Core Concepts & Entities
 ### Suppliers (farms)
-Represents the source farm. Suppliers can have:
-- Many **Purchases**
-- Many **BiomassAvailability** records (pipeline)
+Represents the source farm. Suppliers can have many **Purchases** (including pipeline-stage purchases).
 
-### BiomassAvailability (pipeline record)
-Tracks availability before it becomes a Purchase. Key stages:
-- `declared`
-- `testing`
-- `committed`
-- `delivered`
-- `cancelled`
+### Biomass Pipeline (unified `Purchase` rows)
+**Biomass Pipeline** is not a separate business record type in the UI: it is a **filtered view of `Purchase`** rows whose **`status`** is in the pipeline set (**`declared`**, **`in_testing`**, **`committed`**, **`delivered`**, **`cancelled`**) plus normal purchase lifecycle statuses where relevant. Early pipeline data lives on the same columns as procurement/receiving:
 
-It may link **one-to-one** to a Purchase once committed/delivered/cancelled.
-It can also include optional **field photos** (multiple images) captured at intake.
+- **`availability_date`**, **`declared_weight_lbs`**, **`declared_price_per_lb`**
+- **Testing:** **`testing_timing`**, **`testing_status`**, **`testing_date`**, tested potency on the purchase / lots as entered
+- **Field photos:** **`field_photo_paths_json`**
+- **Strain** for simple pipeline rows is carried on **`PurchaseLot`** (typically one lot per pipeline purchase)
+
+**Stage labels vs storage:** the UI “Testing” stage maps to purchase status **`in_testing`**.
+
+**Legacy `BiomassAvailability`:** the **`biomass_availabilities`** table may remain on disk for backward compatibility; startup migration **`_migrate_biomass_to_purchase()`** copies forward into **`purchases`**. New operator work uses **Purchases** / **Biomass Pipeline** screens only.
 
 ### Field intake submissions
 Field users can submit data through secure links for:
@@ -108,9 +107,10 @@ Field purchase intake requires/accepts:
 - Lot line strain and lot line weight are optional in field intake (at least one lot row can still be submitted for context)
 
 ### Purchases (batch-level financial/receiving record)
-Represents the committed/delivered batch. Contains:
+Represents procurement from first touch through delivery (and optional pipeline-only phases). Contains:
 - Supplier, purchase/delivery dates
-- Status (includes operational statuses; supports early/manual status `declared`)
+- **Status** — full lifecycle including pipeline values **`declared`**, **`in_testing`**, **`committed`**, plus **`ordered`**, **`in_transit`**, **`delivered`**, **`available`**, **`processing`**, **`complete`**, **`cancelled`**, etc.
+- **Approval** — **`purchase_approved_at`**, **`purchase_approved_by_user_id`** (gate for on-hand treatment and runs)
 - Weights, potency (stated/tested), $/lb
 - Total cost + true-up values
 - **Batch ID** (unique, human-readable)
@@ -162,24 +162,22 @@ Fields:
 - Tested potency % (0–100, optional)
 
 Acceptance criteria:
-- User can move a record to stage `testing` and record testing metadata.
-- If stage is set to `testing`, no Purchase is created automatically.
+- User can move a record to stage **Testing** (purchase **`in_testing`**) and record testing metadata **on the same `Purchase` row**—no second record is created.
 
-#### Commitment
-Fields:
-- Committed On (date, optional)
-- Delivery Date (date, optional)
-- Committed Weight (lbs, >= 0, optional)
-- Committed $/lb (>= 0, optional)
+#### Commitment / delivery
+Fields (still the same purchase row):
+- Committed On → **`purchase_date`**
+- Delivery Date → **`delivery_date`**
+- Committed Weight → **`stated_weight_lbs`** (falls back to declared weight when blank)
+- Committed $/lb → **`price_per_lb`** (falls back to declared $/lb)
 
-Purchase synchronization rules:
-- When stage becomes **committed** or **delivered**, if no linked Purchase exists, create one.
-- If a linked Purchase exists, keep key fields in sync (supplier/date/weight/potency/$/lb/status).
-- If stage becomes `cancelled`, keep linked Purchase status in sync (if it exists).
-- If stage is moved backward (e.g., `committed` → `testing`), the system keeps the linked Purchase status aligned (no drift).
+Rules:
+- **Delivered** is rejected unless the batch was **Committed** first (or already delivered).
+- **Committed** and stepping **out of** **Committed** / **Delivered** require **`can_approve_purchase`**; entering **Committed** stamps **`purchase_approved_at`** and emits **`purchase_approval`** audit details (`source: biomass_pipeline`).
+- **Batch ID** is generated when missing (same rules as other purchases).
 
 Audit requirements:
-- If the biomass pipeline creates/updates a Purchase, a **purchase audit log** entry must be recorded indicating it was biomass-driven.
+- Create/update/delete from **Biomass Pipeline** forms log **`purchase`** with **`source: biomass_pipeline`** in details JSON.
 
 ---
 
@@ -224,21 +222,13 @@ Acceptance criteria:
 - Leaving Batch ID blank auto-generates a valid unique value.
 - Entering a conflicting Batch ID returns a clear validation error.
 
-#### Purchase ↔ Biomass Pipeline synchronization
-- If a Purchase is linked to a BiomassAvailability record, changes to Purchase `status` update biomass `stage` with nuanced mapping:
-  - committed/ordered/in_transit → stage `committed`
-  - in_testing/available → stage `testing`
-  - delivered/processing/complete → stage `delivered`
-  - cancelled → stage `cancelled`
-  - declared/testing (manual/early) → stage matches when present
-
-Acceptance criteria:
-- Editing a Purchase status updates linked biomass stage reliably.
+#### Purchase ↔ Biomass Pipeline (single row)
+There is **no** separate biomass row to keep in sync: **Biomass Pipeline** edits **are** purchase edits. Batch list **Biomass Pipeline** applies **`Purchase.status`** and testing fields directly (`apply_batch_biomass`).
 
 #### Spreadsheet import (purchases)
 - **Access:** Same users who can create/edit purchases (`can_edit_purchases`).
 - **Inputs:** `.csv`, `.xlsx`, `.xlsm`; first recognizable header row within the first ~50 lines; required mapped columns include **supplier** (Vendor/Farm/etc.) and **purchase date** (or acceptable fallbacks per product rules) and **stated/invoice weight** (or actual weight as fallback when invoice weight is blank).
-- **Flow:** Upload → parse → **preview** (errors per row) → user selects rows to import → commit creates purchases with standard side effects (batch ID, lots, inventory maintenance, budget checks, audit).
+- **Flow:** Upload → parse → **preview** (errors per row) → user selects rows to import → commit creates purchases with standard side effects (batch ID, lots, inventory maintenance, budget checks, audit). Rows are created **without** **`purchase_approved_at`**; any spreadsheet **status** that would imply on-hand inventory is **coerced to a non-on-hand status** (e.g. **ordered**) so operators must **Approve** and set status explicitly.
 - **Acceptance criteria:**
   - Unreadable files or missing required columns produce a clear error before commit.
   - Rows with validation errors are not importable until fixed in the source file or excluded from selection.
@@ -248,14 +238,14 @@ Acceptance criteria:
 - **Access:** `can_edit_purchases`.
 - **Behavior:** User selects ≥2 purchases on the **current list page**; batch form may set **status**, **delivery date** (optional clear), **queue placement** (or clear), **append notes**; only filled controls apply.
 - **Acceptance criteria:**
-  - Each updated purchase runs **inventory lot maintenance**, **linked biomass sync**, and **weekly budget enforcement**; failure rolls back the **entire** batch operation with a clear message.
+  - Each updated purchase runs **inventory lot maintenance** and **weekly budget enforcement**; failure rolls back the **entire** batch operation with a clear message.
 
 ---
 
 ### 3) Inventory workflow
 - Inventory shows:
-  - On-hand lots (from arrived purchase statuses: delivered, in_testing, available, processing, complete), using each lot’s **remaining** weight
-  - In-transit purchases (statuses committed, ordered, in_transit), using **stated** weight
+  - On-hand lots (from purchase statuses **`delivered`**, **`in_testing`**, **`available`**, **`processing`** **and** **`purchase_approved_at` set**), using each lot’s **remaining** weight
+  - In-transit purchases (statuses **committed**, **ordered**, **in_transit**), using **stated** weight (approval not required to appear here)
   - Summary tiles:
     - **On Hand**: sum of remaining lbs on on-hand lots
     - **In Transit**: sum of stated lbs on in-transit purchases
@@ -380,9 +370,8 @@ AuditLog must capture:
 **Batch operations:** Successful **batch list edits** log **`update`** with synthetic entity types such as `run_batch`, `purchase_batch`, `biomass_batch`, `supplier_batch`, `cost_batch`, `inventory_lot_batch`, or `strain_rename`, using a generated `entity_id` and **details** summarizing the count affected. Individual row IDs may be omitted to avoid log spam; critical per-record compliance needs should rely on single-record edits or future enhanced batch logging if required.
 
 Critical requirements:
-- Biomass create/update/delete actions must be logged.
-- Purchase create/update/delete actions must be logged.
-- Purchases created/updated indirectly via Biomass Pipeline must also generate purchase audit log entries indicating source = biomass_pipeline and biomass_id.
+- Purchase create/update/delete actions must be logged (including saves originating from **Biomass Pipeline** forms with **`source: biomass_pipeline`** in JSON details).
+- Purchase **approve** action (`approve` / `purchase_approval`) must be logged with approver identity where applicable.
 - Purchase and supplier media must remain traceable from source submission/document to final record context.
 
 ## Maintenance & Backfill Requirements

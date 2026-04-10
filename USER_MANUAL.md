@@ -16,13 +16,14 @@ This guide explains how to use the Gold Drop web app day-to-day. It intentionall
 
 ### Navigation overview
 Use the left sidebar:
-- **Dashboard**: KPIs + quick actions
+- **Extraction** (labeled on the home dashboard card): KPIs + quick actions
+- **Biomass purchasing**: buyer weekly snapshot, field submission queues, and reviewed history
 - **Departments**: hub of department-focused pages (same data as the rest of the app; quick links and rollups per team—finance, purchasing, intake, extraction, THCA/HTE/Liquid Diamonds, terpenes, testing, bulk sales)
 - **Runs**: extraction runs log + cost/yield outputs
 - **Inventory**: on-hand lots + in-transit purchases
-- **Purchases**: batch-level purchase records + batch IDs; **Import spreadsheet** for bulk purchase upload; row **batch edit** on the list
+- **Purchases**: batch-level purchase records + batch IDs (same underlying rows as **Biomass Pipeline**); **Approve purchase** when your role allows; **Import spreadsheet** for bulk purchase upload; row **batch edit** on the list
 - **Costs**: operational cost entries (solvent/personnel/overhead)
-- **Biomass Pipeline**: pre-purchase pipeline tracking (declared → testing → committed → delivered/cancelled)
+- **Biomass Pipeline**: pipeline view of **purchases** in early/procurement stages (**Declared** → **Testing** → **Committed** → **Delivered** / **Cancelled**); one **Batch ID** per row end-to-end
 - **Suppliers**: supplier performance analytics
 - **Strains**: strain performance analytics
 - **Photo Library**: searchable media across supplier/purchase/field contexts; editors can upload and remove certain attachment types here (see **Photo Library** section)
@@ -65,7 +66,7 @@ You’ll see a page where only the fields you fill in are applied to **every sel
 | **Purchases** | Status, delivery date, queue placement, append notes | Anyone with **purchase edit** (includes **Super Buyer** where enabled) |
 | **Inventory** — On Hand | Lot strain, location, milled, potency, append lot notes | Purchase editors |
 | **Inventory** — In Transit | Same kinds of fields as **Purchases** (these rows are purchases) | Purchase editors |
-| **Biomass Pipeline** | Stage, testing status/timing, append notes | **User** / **Super Admin** |
+| **Biomass Pipeline** | Stage (maps to purchase **status**), testing status/timing, append notes | **User** / **Super Admin** (moving to/from **Committed** still needs a **purchase approver** on the form—see **Biomass Pipeline** section) |
 | **Costs** | Cost type, append notes | **User** / **Super Admin** |
 | **Suppliers** | Set suppliers active/inactive, append supplier notes | **User** / **Super Admin** |
 | **Strains** | **Batch rename…** — one new strain name applied to all **purchase lots** matching each selected strain+supplier pair | **User** / **Super Admin** |
@@ -133,6 +134,7 @@ If your account has **Slack Importer** access (or you are a Super Admin), you ca
 **Traceability:** When you save a new run started from Slack apply, the run stores a **backlink** to that Slack message (`slack_channel_id`, `slack_message_ts`, and applied timestamp). The Slack imports list shows **Promotion** (not promoted vs linked runs) and **Coverage** (how completely mapping rules used the parsed payload—heuristic, not a guarantee of what you typed on the form).
 
 ### What happens on save
+- **Approved lots only:** you cannot allocate weight from a lot whose purchase is **not approved**; the app shows an error naming the batch. Approve the purchase on **Edit Purchase** (or complete the **Committed** approval path on **Biomass Pipeline**) first.
 - **Yields** are recalculated automatically (overall, THCA, HTE).
 - **Lot remaining weights** are automatically decreased based on the input weights.
 - **Cost per gram** is recalculated based on:
@@ -176,7 +178,7 @@ Inventory shows the current biomass position.
 **Supplier** and **strain** filters are **saved for your session** while you work elsewhere; use **Remove filters** to clear them (see **Saved filters, sorts, and list state**).
 
 ### Summary tiles (top of the page)
-- **On Hand**: total **remaining** pounds on lots from purchases that have arrived (operational statuses such as delivered, in testing, available, processing, complete).
+- **On Hand**: total **remaining** pounds on lots from purchases that are **approved** and in statuses the app treats as on-hand (**delivered**, **in testing**, **available**, **processing**). Purchases still in **ordered** / **committed** / **in transit** (or not yet approved) do not contribute here.
 - **In Transit**: total **stated** pounds on purchases that are committed, ordered, or in transit—not yet treated as on-hand inventory.
 - **Total**: **On Hand + In Transit**—your combined pounds in-house and on the way.
 - **Days of Supply**: how many days the **On Hand** amount would last at your configured **Daily Throughput Target** (Settings). **In-transit weight is not included** in this number; it only reflects material already on hand.
@@ -234,6 +236,8 @@ Use **Purchases** → **Import spreadsheet** when you have many purchases in Exc
 
 **Tips:** A **Download sample CSV** link on the import page shows expected-style headers. If **purchase date** is empty but **paid date** is filled, the app may use paid date as the purchase date. If **invoice weight** is empty but **actual weight** is present, actual weight can stand in for stated weight. **Amount** is stored as **total cost**; **Week** / paid date / payment method are added to **notes** for traceability.
 
+**Approval:** Imported rows are created **without** automatic approval. If a row’s status would normally put material **on hand**, the app stores a non-on-hand status (typically **ordered**) until someone **Approves** the purchase and sets the correct status on **Edit Purchase**.
+
 This path is **only for purchases**. The sidebar **Import** screen is for **run** history from Google Sheets—see **Import (CSV)** below.
 
 ### Potency-based pricing and true-up
@@ -242,10 +246,10 @@ Purchases support:
 - Price per lb (can be entered directly)
 - True-up amount calculation when potency changes and actual weight is known
 
-### Editing purchase status
-Purchase status affects:
-- Whether it is treated as in-transit vs on-hand inventory views
-- If the purchase is linked to a Biomass Pipeline record, the pipeline stage is kept in sync
+### Purchase approval and status
+- **Approve purchase** (top of **Edit Purchase**, for **Super Admin** and users marked as purchase approvers): sets **Approved** with a timestamp. Until then, a yellow banner explains that material **cannot** be used in extraction runs or appear in **On Hand** inventory.
+- You **cannot** set on-hand statuses (**Delivered**, **In testing**, **Available**, **Processing**) until the purchase is approved; try **Approve purchase** first, then change status.
+- **Biomass Pipeline** and **Purchases** are the **same records**: changing status on either screen is changing that purchase.
 
 ### Purchase deletion
 - **Delete Purchase** performs a safe (soft) delete.
@@ -270,18 +274,20 @@ Select two or more rows on the **Purchases** list, then **Batch edit…**, to se
 ---
 
 ## Biomass Pipeline
-The Biomass Pipeline tracks farm availability before it becomes a purchase.
+The Biomass Pipeline is a **view of the same purchase batches** you see under **Purchases**. Early work uses statuses **Declared** and **Testing** (stored as **`declared`** and **`in_testing`**); later stages match normal purchasing (**Committed**, **Delivered**, **Cancelled**). Each row has a **Batch ID** and optional **lots** for strain tracking.
 
 List **filters** (supplier, **availability date range**, strain text) and bucket/stage context are **saved for your session** when you navigate elsewhere—see **Saved filters, sorts, and list state**. Use **Remove filters** to clear.
 
-Editors can use **Select all** / **Select none** and **Batch edit…** on the pipeline list to change **stage**, **testing** fields, or **notes** on multiple rows (see **Batch editing from list screens**).
+**Buckets:** **Current** / **Old Lots** / **All** / (Super Admin) **Archived** control how **Declared** and **Testing** rows age out; **Committed** and later stages normally stay on **Current**. See on-screen help text for the day thresholds (settings: **potential lot** aging).
 
-### Stages
-- **Declared**: supplier declares availability (date/weight/price/potency)
-- **Testing**: testing step (timing + status + results)
-- **Committed**: you commit to purchase (delivery date, $/lb, committed weight)
-- **Delivered**: arrived (or close-out stage if you use it that way)
-- **Cancelled**: batch is cancelled
+Editors can use **Select all** / **Select none** and **Batch edit…** on the pipeline list to change **stage**, **testing** fields, or **notes** on multiple rows (see **Batch editing from list screens**). Batch edit updates **`Purchase`** records directly.
+
+### Stages (UI → system)
+- **Declared** — early declaration (`declared`): availability date, declared weight/price, estimated potency, optional strain/lot
+- **Testing** — in-pipeline testing (`in_testing`): timing, status, optional tested potency and date
+- **Committed** — firm buy (`committed`): committed dates/weight/price; **requires a purchase approver** (or **Super Admin**); approval is recorded when you enter this stage
+- **Delivered** — must follow **Committed**; same rules as purchases for receiving
+- **Cancelled** — batch cancelled
 
 ### Creating a pipeline record
 1. Go to **Biomass Pipeline** → **+ New Availability**
@@ -289,18 +295,18 @@ Editors can use **Select all** / **Select none** and **Batch edit…** on the pi
 3. Optionally fill Step 2 (Testing) and Step 3 (Commitment)
 4. Set the Stage and Save
 
-### Linking to Purchases (sync behavior)
-- When a pipeline record is moved to **Committed** (or Delivered), the app will create a linked Purchase if one does not already exist.
-- If a linked Purchase exists, key fields stay synchronized (supplier/date/weights/potency/$/lb/status).
-- The pipeline list shows the linked Batch ID (when present) and links directly to the Purchase.
+You can open the same batch anytime from **Purchases** (search by **Batch ID** or supplier). There is **no separate “link” step**—one row serves both screens.
+
+### Approvers and Committed
+Only **Super Admin** or users with **purchase approval** permission may move a batch **into** or **out of** **Committed** (and therefore control the approval stamp tied to that transition). If you lack permission, ask an approver to edit the batch or adjust your user flag in **Settings**.
 
 ### Adding field photos
-Both field intake forms (biomass and purchase request) support optional photo uploads.
+Field intake for biomass declarations (and purchase requests) still supports optional photo uploads; stored paths attach to the resulting **purchase** record.
 
 What users can do:
 - Attach multiple photos from camera or gallery before submitting.
 - On the **Potential Purchase** form there are three separate buckets: **Supplier / License**, **Biomass**, and **Testing / COA**—each can hold many photos, independently.
-- On **Biomass Availability**, there is one photo bucket for the declaration.
+- On the **biomass declaration** field form, there is one photo bucket for the declaration.
 - **Mobile / in-app browser:** each photo uses its own native file control (not a merged list), so submission works reliably on iPhone and embedded webviews. Tap **Add photo**, then on the new row tap **Take or choose photo** (camera or gallery). Repeat **Add photo** for more images.
 - **Remove before submit:** each row has **Remove** to unselect that photo before you send the form (empty rows are discarded on submit).
 - Each section allows up to **30** images by default (configurable by your administrator via `FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET`).
