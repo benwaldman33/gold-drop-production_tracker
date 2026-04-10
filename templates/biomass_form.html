@@ -15,6 +15,18 @@
     </form>
   </div>
   {% endif %}
+
+  {% if item and item.is_approved %}
+  <div style="padding:12px 16px; margin:-1px -1px 16px -1px; border-radius:8px; border:1px solid rgba(34,197,94,0.35); background:rgba(34,197,94,0.08);">
+    <div class="text-sm" style="font-weight:600;">Approved
+      {% if item.purchase_approved_by %} by {{ item.purchase_approved_by.display_name }}{% endif %}
+      {% if item.purchase_approved_at %} on {{ item.purchase_approved_at.strftime('%Y-%m-%d %H:%M UTC') }}{% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% set first_lot = item.lots.first() if item else None %}
+  {% set status_to_stage = {'declared': 'declared', 'in_testing': 'testing', 'committed': 'committed', 'delivered': 'delivered', 'cancelled': 'cancelled'} %}
   <form method="POST">
     <div class="form-section">
       <h4>Step 1 — Declaration of Availability</h4>
@@ -34,7 +46,7 @@
         </div>
         <div class="form-group">
           <label>Strain (optional)</label>
-          <input type="text" name="strain_name" value="{{ item.strain_name if item and item.strain_name else '' }}" placeholder="e.g. Rockets x Humbolt">
+          <input type="text" name="strain_name" value="{{ first_lot.strain_name if first_lot else '' }}" placeholder="e.g. Rockets x Humbolt">
         </div>
       </div>
       <div class="form-row-3">
@@ -48,7 +60,7 @@
         </div>
         <div class="form-group">
           <label>Estimated Potency (%)</label>
-          <input type="number" name="estimated_potency_pct" value="{{ item.estimated_potency_pct if item and item.estimated_potency_pct else '' }}" step="0.1">
+          <input type="number" name="estimated_potency_pct" value="{{ item.stated_potency_pct if item and item.stated_potency_pct else '' }}" step="0.1">
         </div>
       </div>
     </div>
@@ -93,21 +105,21 @@
       <div class="form-row-3">
         <div class="form-group">
           <label>Commitment Date</label>
-          <input type="date" name="committed_on" value="{{ item.committed_on.strftime('%Y-%m-%d') if item and item.committed_on else '' }}">
+          <input type="date" name="committed_on" value="{{ item.purchase_date.strftime('%Y-%m-%d') if item and item.purchase_date and item.status in ('committed', 'delivered') else '' }}">
         </div>
         <div class="form-group">
           <label>Delivery Date</label>
-          <input type="date" name="committed_delivery_date" value="{{ item.committed_delivery_date.strftime('%Y-%m-%d') if item and item.committed_delivery_date else '' }}">
+          <input type="date" name="committed_delivery_date" value="{{ item.delivery_date.strftime('%Y-%m-%d') if item and item.delivery_date else '' }}">
         </div>
         <div class="form-group">
           <label>Committed Price ($/lb)</label>
-          <input type="number" name="committed_price_per_lb" value="{{ item.committed_price_per_lb if item and item.committed_price_per_lb else '' }}" step="0.01">
+          <input type="number" name="committed_price_per_lb" value="{{ item.price_per_lb if item and item.price_per_lb else '' }}" step="0.01">
         </div>
       </div>
       <div class="form-row-3">
         <div class="form-group">
           <label>Committed Weight (lbs)</label>
-          <input type="number" name="committed_weight_lbs" value="{{ item.committed_weight_lbs if item and item.committed_weight_lbs else '' }}" step="0.1">
+          <input type="number" name="committed_weight_lbs" value="{{ item.stated_weight_lbs if item and item.stated_weight_lbs else '' }}" step="0.1">
         </div>
         <div class="form-group"></div>
         <div class="form-group"></div>
@@ -119,7 +131,7 @@
       <div class="form-row-3">
         <div class="form-group">
           <label>Stage</label>
-          {% set st = item.stage if item and item.stage else 'declared' %}
+          {% set st = status_to_stage.get(item.status, 'declared') if item else 'declared' %}
           <select name="stage">
             <option value="declared" {% if st == 'declared' %}selected{% endif %}>Declared</option>
             <option value="testing" {% if st == 'testing' %}selected{% endif %}>Testing</option>
@@ -144,18 +156,9 @@
           <textarea name="notes" rows="2">{{ item.notes if item and item.notes else '' }}</textarea>
         </div>
       </div>
-      {% if item and item.purchase %}
+      {% if item %}
       <p class="text-sm" style="color:var(--text-muted);margin-top:6px;">
-        Linked Purchase batch: <a href="{{ url_for('purchase_edit', purchase_id=item.purchase.id) }}" class="text-mono">{{ item.purchase.batch_id or '—' }}</a>
-      </p>
-      {% endif %}
-      {% if item and item.purchase_approved_at %}
-      <p class="text-sm" style="color:var(--text-muted);margin-top:6px;">
-        Commitment approved
-        {% if item.purchase_approved_by %}
-          by {{ item.purchase_approved_by.display_name }}
-        {% endif %}
-        on {{ item.purchase_approved_at.strftime('%Y-%m-%d %H:%M UTC') }}.
+        Purchase batch: <a href="{{ url_for('purchase_edit', purchase_id=item.id) }}" class="text-mono">{{ item.batch_id or '—' }}</a>
       </p>
       {% endif %}
     </div>
@@ -180,4 +183,3 @@
   </form>
 </div>
 {% endblock %}
-

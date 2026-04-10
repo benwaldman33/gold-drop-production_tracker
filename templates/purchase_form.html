@@ -5,9 +5,25 @@
   <h2>{% if purchase %}Edit Purchase{% else %}New Purchase{% endif %}</h2>
   <div class="btn-group">
     <button type="submit" form="purchase-main-form" class="btn btn-primary">Save Purchase</button>
+    {% if purchase and not purchase.is_approved and current_user.can_approve_purchase %}
+    <form method="POST" action="{{ url_for('purchase_approve', purchase_id=purchase.id) }}" style="display:inline">
+      <button type="submit" class="btn btn-success" onclick="return confirm('Approve this purchase? This allows its material to be used in extraction runs.')">Approve Purchase</button>
+    </form>
+    {% endif %}
     <a href="{{ url_for('purchases_list') }}" class="btn btn-secondary">← Back</a>
   </div>
 </div>
+
+{% if purchase %}
+<div style="margin-bottom:16px;padding:10px 16px;border-radius:8px;font-size:14px;{% if purchase.is_approved %}background:#e6f4ea;border:1px solid #5b8a72;color:#2d5a3f{% else %}background:#fef3cd;border:1px solid #d4a843;color:#6b5218{% endif %}">
+  {% if purchase.is_approved %}
+    Approved {{ purchase.purchase_approved_at.strftime('%b %d, %Y %I:%M %p') }}{% if purchase.purchase_approved_by %} by {{ purchase.purchase_approved_by.display_name }}{% endif %}
+  {% else %}
+    Not yet approved — material from this purchase cannot be used in extraction runs until approved.
+    {% if not current_user.can_approve_purchase %}Contact a purchase approver or super admin.{% endif %}
+  {% endif %}
+</div>
+{% endif %}
 
 <div class="card">
   <form id="purchase-main-form" method="POST" enctype="multipart/form-data">

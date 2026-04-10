@@ -783,22 +783,39 @@ def _slack_resolution_create_declared_biomass(res: dict, supplier_id: str, slack
         f"ingested row {slack_meta.get('ingested_message_id') or '—'}. "
         f"Slack source: {res.get('source_raw') or '—'}; parsed strain: {res.get('strain_raw') or '—'}."
     )
-    b = BiomassAvailability(
+    p = Purchase(
         supplier_id=supplier_id,
         availability_date=availability_date,
-        strain_name=strain,
         declared_weight_lbs=weight,
-        stage="declared",
+        stated_weight_lbs=weight,
+        purchase_date=availability_date,
+        status="declared",
         notes=prov,
     )
-    db.session.add(b)
+    db.session.add(p)
     db.session.flush()
+    # Create lot for strain tracking
+    lot = PurchaseLot(
+        purchase_id=p.id,
+        strain_name=strain,
+        weight_lbs=weight,
+        remaining_weight_lbs=weight,
+    )
+    db.session.add(lot)
+    # Generate batch ID
+    sup = db.session.get(Supplier, supplier_id)
+    supplier_name = sup.name if sup else "BATCH"
+    p.batch_id = _ensure_unique_batch_id(
+        _generate_batch_id(supplier_name, availability_date, weight),
+        exclude_purchase_id=p.id,
+    )
     log_audit(
         "create",
-        "biomass_availability",
-        b.id,
+        "purchase",
+        p.id,
         details=json.dumps({
             "source": "slack_import_apply",
+            "pipeline_stage": "declared",
             "slack_ingested_message_id": slack_meta.get("ingested_message_id"),
             "channel_id": slack_meta.get("channel_id"),
             "message_ts": slack_meta.get("message_ts"),
@@ -971,25 +988,8 @@ def _find_intake_purchase_candidates(manifest_key: str) -> list:
 
 
 def _purchase_sync_biomass_pipeline(p: Purchase) -> None:
-    """Mirror _save_purchase biomass link behavior after programmatic purchase edits."""
-    linked = BiomassAvailability.query.filter(BiomassAvailability.purchase_id == p.id).first()
-    if not linked:
-        return
-    status = (p.status or "").strip()
-    if status in ("ordered", "in_transit", "committed"):
-        linked.stage = "committed"
-    elif status in ("in_testing", "available"):
-        linked.stage = "testing"
-    elif status in ("delivered", "processing", "complete"):
-        linked.stage = "delivered"
-    elif status == "cancelled":
-        linked.stage = "cancelled"
-    else:
-        linked.stage = status if status in ("declared", "testing") else "delivered"
-    linked.committed_on = p.purchase_date
-    linked.committed_delivery_date = p.delivery_date
-    linked.committed_weight_lbs = p.actual_weight_lbs or p.stated_weight_lbs
-    linked.committed_price_per_lb = p.price_per_lb
+    """Legacy stub — sync removed after BiomassAvailability merge into Purchase."""
+    pass
 
 
 def _slack_intake_supplier_from_form(form) -> Supplier:
@@ -1088,7 +1088,7 @@ def _create_purchase_from_slack_intake(
         supplier_id=supplier.id,
         purchase_date=pd,
         delivery_date=dd,
-        status="delivered",
+        status="ordered",
         stated_weight_lbs=float(manifest_wt),
         actual_weight_lbs=float(aw),
     )
@@ -1104,7 +1104,7 @@ def _create_purchase_from_slack_intake(
         if conflict:
             raise ValueError(
                 f"Batch / manifest ID {bid} is already used on another purchase. "
-                "Use “Update existing purchase” instead."
+                "Use \u201cUpdate existing purchase\u201d instead."
             )
         p.batch_id = bid
     else:
@@ -1121,7 +1121,8 @@ def _create_purchase_from_slack_intake(
     )
     db.session.add(lot)
     p.notes = (
-        f"Created from Slack biomass intake ({row.channel_id} ts {row.message_ts})."
+        f"Created from Slack biomass intake ({row.channel_id} ts {row.message_ts}). "
+        "Awaiting purchase approval before material can be used."
     )
     if p.stated_potency_pct and not p.price_per_lb:
         p.price_per_lb = SystemSetting.get_float("potency_rate", 1.50) * p.stated_potency_pct
@@ -1753,7 +1754,7 @@ def _validate_slack_run_field_rules(rules: list) -> None:
             if k not in SLACK_MAPPING_MESSAGE_KINDS:
                 raise ValueError(
                     f"Rule {i + 1}: invalid message_kind {k!r} "
-                    f"(use yield_report, production_log, biomass_intake, unknown, or leave scope as “all”).",
+                    f"(use yield_report, production_log, biomass_intake, unknown, or leave scope as 'all').",
                 )
         sk = r.get("source_key")
         if sk not in SLACK_MAPPING_ALLOWED_SOURCE_KEYS:
@@ -2414,6 +2415,25 @@ def _ensure_sqlite_schema():
             db.session.execute(text("ALTER TABLE purchases ADD COLUMN deleted_at DATETIME"))
         if "deleted_by" not in cols:
             db.session.execute(text("ALTER TABLE purchases ADD COLUMN deleted_by VARCHAR(36)"))
+        if "purchase_approved_at" not in cols:
+            db.session.execute(text("ALTER TABLE purchases ADD COLUMN purchase_approved_at DATETIME"))
+        if "purchase_approved_by_user_id" not in cols:
+            db.session.execute(text("ALTER TABLE purchases ADD COLUMN purchase_approved_by_user_id VARCHAR(36)"))
+        # Biomass pipeline fields (merged from BiomassAvailability)
+        if "availability_date" not in cols:
+            db.session.execute(text("ALTER TABLE purchases ADD COLUMN availability_date DATE"))
+        if "declared_weight_lbs" not in cols:
+            db.session.execute(text("ALTER TABLE purchases ADD COLUMN declared_weight_lbs FLOAT"))
+        if "declared_price_per_lb" not in cols:
+            db.session.execute(text("ALTER TABLE purchases ADD COLUMN declared_price_per_lb FLOAT"))
+        if "testing_timing" not in cols:
+            db.session.execute(text("ALTER TABLE purchases ADD COLUMN testing_timing VARCHAR(20)"))
+        if "testing_status" not in cols:
+            db.session.execute(text("ALTER TABLE purchases ADD COLUMN testing_status VARCHAR(20)"))
+        if "testing_date" not in cols:
+            db.session.execute(text("ALTER TABLE purchases ADD COLUMN testing_date DATE"))
+        if "field_photo_paths_json" not in cols:
+            db.session.execute(text("ALTER TABLE purchases ADD COLUMN field_photo_paths_json TEXT"))
 
     # Biomass availabilities: purchase_id (if table already exists)
     if has_table("biomass_availabilities"):
@@ -2839,8 +2859,8 @@ def field_home(token):
 @field_token_required
 def field_biomass_new(token):
     """
-    Create a BiomassAvailability record from the field without requiring login.
-    This is intended for early-stage pipeline entry (declared/testing).
+    Create a Purchase record in pipeline stage from the field without requiring login.
+    This is intended for early-stage pipeline entry (declared/in_testing).
     """
     suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
     if request.method == "POST":
@@ -2853,7 +2873,9 @@ def field_biomass_new(token):
             availability_date = datetime.strptime(ad, "%Y-%m-%d").date()
 
             stage = (request.form.get("stage") or "declared").strip()
-            if stage not in ("declared", "testing"):
+            stage_to_status = {"declared": "declared", "testing": "in_testing"}
+            status = stage_to_status.get(stage)
+            if not status:
                 raise ValueError("Stage must be Declared or Testing for field intake.")
 
             dw = (request.form.get("declared_weight_lbs") or "").strip()
@@ -2875,27 +2897,46 @@ def field_biomass_new(token):
             _validate_field_intake_photo_bucket(photos, "Photos")
             saved_photo_paths = _save_field_photos(photos, prefix="biomass")
 
-            b = BiomassAvailability(
+            strain_name = (request.form.get("strain_name") or "").strip() or None
+
+            p = Purchase(
                 supplier_id=sup.id,
                 availability_date=availability_date,
-                strain_name=(request.form.get("strain_name") or "").strip() or None,
+                purchase_date=availability_date,
                 declared_weight_lbs=declared_weight,
+                stated_weight_lbs=declared_weight,
                 declared_price_per_lb=declared_price,
-                estimated_potency_pct=estimated_potency,
+                stated_potency_pct=estimated_potency,
                 testing_timing=(request.form.get("testing_timing") or "before_delivery").strip() or "before_delivery",
                 testing_status=(request.form.get("testing_status") or "pending").strip() or "pending",
-                stage=stage,
+                status=status,
                 field_photo_paths_json=(json.dumps(saved_photo_paths) if saved_photo_paths else None),
                 notes=((request.form.get("notes") or "").strip() or None),
             )
-            db.session.add(b)
+            db.session.add(p)
             db.session.flush()
+            # Generate batch ID
+            p.batch_id = _ensure_unique_batch_id(
+                _generate_batch_id(sup.name, availability_date, declared_weight),
+                exclude_purchase_id=p.id,
+            )
+            # Create lot for strain
+            if strain_name:
+                lot = PurchaseLot(
+                    purchase_id=p.id,
+                    strain_name=strain_name,
+                    weight_lbs=declared_weight,
+                    remaining_weight_lbs=declared_weight,
+                    potency_pct=estimated_potency,
+                )
+                db.session.add(lot)
             log_audit(
                 "create",
-                "biomass_availability",
-                b.id,
+                "purchase",
+                p.id,
                 details=json.dumps({
                     "source": "field_intake",
+                    "pipeline_stage": status,
                     "token_label": token.label,
                     "supplier": sup.name,
                     "photos_count": len(saved_photo_paths),
@@ -3043,23 +3084,21 @@ def _weekly_finance_snapshot():
     """Calendar-week budget vs commitments vs purchases (shared: Dashboard + Finance dept)."""
     week_start, week_end = _calendar_week_bounds()
     weekly_dollar_budget = SystemSetting.get_float("weekly_dollar_budget", 0.0)
-    commitment_q = Purchase.query.join(
-        BiomassAvailability, BiomassAvailability.purchase_id == Purchase.id
-    ).filter(
+    commitment_q = Purchase.query.filter(
         Purchase.deleted_at.is_(None),
-        BiomassAvailability.stage.in_(("committed", "delivered")),
+        Purchase.status.in_(("committed", "delivered")),
     )
     week_commitment_filter = or_(
         and_(
-            BiomassAvailability.purchase_approved_at.isnot(None),
-            func.date(BiomassAvailability.purchase_approved_at) >= week_start,
-            func.date(BiomassAvailability.purchase_approved_at) <= week_end,
+            Purchase.purchase_approved_at.isnot(None),
+            func.date(Purchase.purchase_approved_at) >= week_start,
+            func.date(Purchase.purchase_approved_at) <= week_end,
         ),
         and_(
-            BiomassAvailability.purchase_approved_at.is_(None),
-            BiomassAvailability.committed_on.isnot(None),
-            BiomassAvailability.committed_on >= week_start,
-            BiomassAvailability.committed_on <= week_end,
+            Purchase.purchase_approved_at.is_(None),
+            Purchase.purchase_date.isnot(None),
+            Purchase.purchase_date >= week_start,
+            Purchase.purchase_date <= week_end,
         ),
     )
     week_commitment_dollars = sum(
@@ -3211,19 +3250,19 @@ def _department_stat_sections(slug):
         now = datetime.utcnow()
         cut_n1 = now - timedelta(days=n1)
         cut_n2 = now - timedelta(days=n2)
-        base = BiomassAvailability.query.filter(BiomassAvailability.deleted_at.is_(None))
-        declared = base.filter(BiomassAvailability.stage == "declared").count()
-        testing = base.filter(BiomassAvailability.stage == "testing").count()
+        base = Purchase.query.filter(Purchase.deleted_at.is_(None))
+        declared = base.filter(Purchase.status == "declared").count()
+        testing = base.filter(Purchase.status == "in_testing").count()
         current_pot = base.filter(
-            BiomassAvailability.stage.in_(POTENTIAL_BIOMASS_STAGES),
-            BiomassAvailability.created_at > cut_n1,
+            Purchase.status.in_(POTENTIAL_PURCHASE_STATUSES),
+            Purchase.created_at > cut_n1,
         ).count()
         old_pot = base.filter(
-            BiomassAvailability.stage.in_(POTENTIAL_BIOMASS_STAGES),
-            BiomassAvailability.created_at <= cut_n1,
-            BiomassAvailability.created_at > cut_n2,
+            Purchase.status.in_(POTENTIAL_PURCHASE_STATUSES),
+            Purchase.created_at <= cut_n1,
+            Purchase.created_at > cut_n2,
         ).count()
-        committed = base.filter(BiomassAvailability.stage.in_(("committed", "delivered"))).count()
+        committed = base.filter(Purchase.status.in_(("committed", "delivered"))).count()
         sections.append({
             "title": "Pipeline snapshot",
             "rows": [
@@ -3451,28 +3490,6 @@ def _maintain_purchase_inventory_lots(p: Purchase) -> None:
     ))
 
 
-def _sync_linked_biomass_for_purchase(p: Purchase) -> None:
-    """Keep BiomassAvailability stage in sync when purchase status/delivery changes."""
-    linked = BiomassAvailability.query.filter(BiomassAvailability.purchase_id == p.id).first()
-    if not linked:
-        return
-    status = (p.status or "").strip()
-    if status in ("ordered", "in_transit", "committed"):
-        linked.stage = "committed"
-    elif status in ("in_testing", "available"):
-        linked.stage = "testing"
-    elif status in ("delivered", "processing", "complete"):
-        linked.stage = "delivered"
-    elif status == "cancelled":
-        linked.stage = "cancelled"
-    else:
-        linked.stage = status if status in ("declared", "testing") else "delivered"
-    linked.committed_on = p.purchase_date
-    linked.committed_delivery_date = p.delivery_date
-    linked.committed_weight_lbs = p.actual_weight_lbs or p.stated_weight_lbs
-    linked.committed_price_per_lb = p.price_per_lb
-
-
 def _reconcile_closed_purchase_inventory_lots() -> None:
     """Clear remaining weight on lots tied to complete/cancelled purchases (idempotent)."""
     try:
@@ -3524,8 +3541,156 @@ def _backfill_default_inventory_lots() -> None:
         db.session.rollback()
 
 
+def _backfill_purchase_approval() -> None:
+    """
+    One-time backfill: stamp purchase_approved_at on every existing on-hand purchase
+    that was created before the approval gate existed. Idempotent.
+    """
+    try:
+        unapproved_on_hand = Purchase.query.filter(
+            Purchase.deleted_at.is_(None),
+            Purchase.status.in_(INVENTORY_ON_HAND_PURCHASE_STATUSES),
+            Purchase.purchase_approved_at.is_(None),
+        ).all()
+        if unapproved_on_hand:
+            now = datetime.utcnow()
+            for p in unapproved_on_hand:
+                p.purchase_approved_at = now
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _migrate_biomass_to_purchase() -> None:
+    """
+    One-time migration: copy BiomassAvailability data into Purchase records.
+    - Linked records (purchase_id set): copy unique fields to the existing Purchase.
+    - Unlinked records (no purchase_id): create a new Purchase from biomass data.
+    Idempotent: skips records whose linked Purchase already has availability_date set.
+    """
+    try:
+        if not hasattr(BiomassAvailability, "__table__"):
+            return
+        # Check if biomass_availabilities table exists
+        try:
+            BiomassAvailability.query.limit(1).all()
+        except Exception:
+            return
+
+        stage_to_status = {
+            "declared": "declared",
+            "testing": "in_testing",
+            "committed": "committed",
+            "delivered": "delivered",
+            "cancelled": "cancelled",
+        }
+        migrated = 0
+
+        all_biomass = BiomassAvailability.query.all()
+        for b in all_biomass:
+            if b.purchase_id:
+                # Linked: copy unique fields to existing Purchase
+                p = db.session.get(Purchase, b.purchase_id)
+                if not p:
+                    continue
+                if p.availability_date is not None:
+                    continue  # already migrated
+                p.availability_date = b.availability_date
+                p.declared_weight_lbs = b.declared_weight_lbs
+                p.declared_price_per_lb = b.declared_price_per_lb
+                p.testing_timing = b.testing_timing
+                p.testing_status = b.testing_status
+                p.testing_date = b.testing_date
+                p.field_photo_paths_json = b.field_photo_paths_json
+                if not p.stated_potency_pct and b.estimated_potency_pct:
+                    p.stated_potency_pct = b.estimated_potency_pct
+                # Carry over approval if Purchase doesn't have it
+                if not p.purchase_approved_at and b.purchase_approved_at:
+                    p.purchase_approved_at = b.purchase_approved_at
+                    p.purchase_approved_by_user_id = b.purchase_approved_by_user_id
+                # Create a lot if biomass had strain and purchase has no lots
+                if b.strain_name:
+                    existing_lot = PurchaseLot.query.filter_by(purchase_id=p.id).filter(
+                        PurchaseLot.deleted_at.is_(None)
+                    ).first()
+                    if not existing_lot:
+                        w = float(p.actual_weight_lbs or p.stated_weight_lbs or b.committed_weight_lbs or b.declared_weight_lbs or 0)
+                        if w > 0:
+                            db.session.add(PurchaseLot(
+                                purchase_id=p.id,
+                                strain_name=b.strain_name,
+                                weight_lbs=w,
+                                remaining_weight_lbs=w,
+                                potency_pct=p.tested_potency_pct or p.stated_potency_pct,
+                            ))
+                migrated += 1
+            else:
+                # Unlinked: create new Purchase from biomass data
+                # Check if we already created one for this biomass record (idempotent)
+                existing = Purchase.query.filter(
+                    Purchase.notes.like(f"%Migrated from BiomassAvailability ({b.id})%")
+                ).first()
+                if existing:
+                    continue
+
+                status = stage_to_status.get(b.stage, "declared")
+                w = float(b.committed_weight_lbs or b.declared_weight_lbs or 0)
+                p = Purchase(
+                    supplier_id=b.supplier_id,
+                    purchase_date=b.committed_on or b.availability_date,
+                    delivery_date=b.committed_delivery_date,
+                    status=status,
+                    stated_weight_lbs=w,
+                    stated_potency_pct=b.estimated_potency_pct,
+                    tested_potency_pct=b.tested_potency_pct,
+                    price_per_lb=b.committed_price_per_lb or b.declared_price_per_lb,
+                    availability_date=b.availability_date,
+                    declared_weight_lbs=b.declared_weight_lbs,
+                    declared_price_per_lb=b.declared_price_per_lb,
+                    testing_timing=b.testing_timing,
+                    testing_status=b.testing_status,
+                    testing_date=b.testing_date,
+                    field_photo_paths_json=b.field_photo_paths_json,
+                    notes=f"Migrated from BiomassAvailability ({b.id})",
+                    deleted_at=b.deleted_at,
+                )
+                if b.purchase_approved_at:
+                    p.purchase_approved_at = b.purchase_approved_at
+                    p.purchase_approved_by_user_id = b.purchase_approved_by_user_id
+                db.session.add(p)
+                db.session.flush()
+
+                # Generate batch ID
+                sup = db.session.get(Supplier, p.supplier_id)
+                supplier_name = sup.name if sup else "BATCH"
+                d = p.delivery_date or p.purchase_date
+                p.batch_id = _ensure_unique_batch_id(
+                    _generate_batch_id(supplier_name, d, w),
+                    exclude_purchase_id=p.id,
+                )
+
+                # Create lot if strain exists
+                if b.strain_name and w > 0:
+                    db.session.add(PurchaseLot(
+                        purchase_id=p.id,
+                        strain_name=b.strain_name,
+                        weight_lbs=w,
+                        remaining_weight_lbs=w,
+                        potency_pct=b.tested_potency_pct or b.estimated_potency_pct,
+                    ))
+                migrated += 1
+
+        if migrated:
+            db.session.commit()
+            app.logger.info(f"Migrated {migrated} BiomassAvailability records to Purchase.")
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Error migrating BiomassAvailability to Purchase")
+
+
 # Pipeline rows in declared/testing age out to Old Lots / soft-delete (PRD); committed+ do not.
-POTENTIAL_BIOMASS_STAGES = frozenset({"declared", "testing"})
+POTENTIAL_BIOMASS_STAGES = frozenset({"declared", "testing"})  # legacy compat
+POTENTIAL_PURCHASE_STATUSES = frozenset({"declared", "in_testing"})
 
 
 def _potential_lot_age_days():
@@ -3541,24 +3706,24 @@ def _potential_lot_age_days():
 
 def _apply_biomass_potential_soft_delete():
     """
-    Soft-delete unapproved potential biomass rows at created_at + N₂ (declared/testing only).
+    Soft-delete unapproved potential pipeline purchases at created_at + N₂ (declared/in_testing only).
     Idempotent; safe to call frequently (e.g. biomass list view).
     """
     _n1, n2 = _potential_lot_age_days()
     now = datetime.utcnow()
     cutoff = now - timedelta(days=n2)
-    rows = BiomassAvailability.query.filter(
-        BiomassAvailability.stage.in_(POTENTIAL_BIOMASS_STAGES),
-        BiomassAvailability.deleted_at.is_(None),
-        BiomassAvailability.created_at <= cutoff,
+    rows = Purchase.query.filter(
+        Purchase.status.in_(POTENTIAL_PURCHASE_STATUSES),
+        Purchase.deleted_at.is_(None),
+        Purchase.created_at <= cutoff,
     ).all()
     if not rows:
         return 0
-    for b in rows:
-        b.deleted_at = now
+    for p in rows:
+        p.deleted_at = now
     log_audit(
         "biomass_potential_soft_delete",
-        "biomass_availability",
+        "purchase",
         "bulk",
         details=json.dumps({"count": len(rows), "n2_days": n2}),
     )
@@ -3567,28 +3732,33 @@ def _apply_biomass_potential_soft_delete():
 
 
 def _biomass_bucket_filter(query, bucket, n1, n2):
-    """Restrict biomass query by list bucket (anchor: created_at)."""
+    """Restrict pipeline Purchase query by list bucket (anchor: created_at)."""
     now = datetime.utcnow()
     cut_n1 = now - timedelta(days=n1)
     cut_n2 = now - timedelta(days=n2)
     b = (bucket or "current").strip().lower()
     if b == "deleted":
-        return query.filter(BiomassAvailability.deleted_at.isnot(None))
-    query = query.filter(BiomassAvailability.deleted_at.is_(None))
+        return query.filter(Purchase.deleted_at.isnot(None))
+    query = query.filter(Purchase.deleted_at.is_(None))
     if b == "old":
         return query.filter(
-            BiomassAvailability.stage.in_(POTENTIAL_BIOMASS_STAGES),
-            BiomassAvailability.created_at <= cut_n1,
-            BiomassAvailability.created_at > cut_n2,
+            Purchase.status.in_(POTENTIAL_PURCHASE_STATUSES),
+            Purchase.created_at <= cut_n1,
+            Purchase.created_at > cut_n2,
         )
     if b == "all":
-        return query
+        # Show all pipeline statuses (not full purchase list)
+        return query.filter(
+            Purchase.status.in_(("declared", "in_testing", "committed", "delivered", "cancelled"))
+        )
     # current — default: non-deleted; potential rows only if younger than N₁ days
     return query.filter(
         or_(
-            BiomassAvailability.stage.notin_(POTENTIAL_BIOMASS_STAGES),
-            BiomassAvailability.created_at > cut_n1,
-        )
+            Purchase.status.notin_(POTENTIAL_PURCHASE_STATUSES),
+            Purchase.created_at > cut_n1,
+        ),
+        # Limit to pipeline statuses so the biomass view doesn't show all purchases
+        Purchase.status.in_(("declared", "in_testing", "committed", "delivered", "cancelled")),
     )
 
 
@@ -3650,6 +3820,7 @@ def dashboard():
             PurchaseLot.deleted_at.is_(None),
             Purchase.deleted_at.is_(None),
             Purchase.status.in_(INVENTORY_ON_HAND_PURCHASE_STATUSES),
+            Purchase.purchase_approved_at.isnot(None),
         ).scalar() or 0
         kpi_actuals["days_of_supply"] = on_hand / daily_target if daily_target > 0 else 0
 
@@ -3701,6 +3872,7 @@ def dashboard():
         PurchaseLot.deleted_at.is_(None),
         Purchase.deleted_at.is_(None),
         Purchase.status.in_(INVENTORY_ON_HAND_PURCHASE_STATUSES),
+        Purchase.purchase_approved_at.isnot(None),
     ).scalar() or 0
 
     week_start = date.today() - timedelta(days=date.today().weekday())
@@ -4047,6 +4219,7 @@ def run_new():
         PurchaseLot.deleted_at.is_(None),
         Purchase.deleted_at.is_(None),
         Purchase.status.in_(INVENTORY_ON_HAND_PURCHASE_STATUSES),
+        Purchase.purchase_approved_at.isnot(None),
     ).all()
     can_save_run = bool(current_user.can_edit)
     return render_template(
@@ -4121,6 +4294,7 @@ def _save_run(existing_run):
             PurchaseLot.deleted_at.is_(None),
             Purchase.deleted_at.is_(None),
             Purchase.status.in_(INVENTORY_ON_HAND_PURCHASE_STATUSES),
+            Purchase.purchase_approved_at.isnot(None),
         ).scalar() or 0
         run.butane_in_house_lbs = float(request.form.get("butane_in_house_lbs") or 0) or None
         run.solvent_ratio = float(request.form.get("solvent_ratio") or 0) or None
@@ -4151,6 +4325,7 @@ def _save_run(existing_run):
                     PurchaseLot.deleted_at.is_(None),
                     Purchase.deleted_at.is_(None),
                     Purchase.status.in_(INVENTORY_ON_HAND_PURCHASE_STATUSES),
+                    Purchase.purchase_approved_at.isnot(None),
                 ).all()
                 return render_template(
                     "run_form.html",
@@ -4194,11 +4369,20 @@ def _save_run(existing_run):
             if lid and lw:
                 weight = float(lw)
                 if weight > 0:
+                    lot = db.session.get(PurchaseLot, lid)
+                    if not lot or lot.deleted_at is not None:
+                        continue
+                    if not lot.purchase or lot.purchase.deleted_at is not None:
+                        continue
+                    if not lot.purchase.is_approved:
+                        raise ValueError(
+                            f"Lot \"{lot.strain_name}\" belongs to an unapproved purchase "
+                            f"(Batch {lot.purchase.batch_id or lot.purchase.id}). "
+                            "The purchase must be approved before its material can be used in a run."
+                        )
                     inp = RunInput(run_id=run.id, lot_id=lid, weight_lbs=weight)
                     db.session.add(inp)
-                    lot = db.session.get(PurchaseLot, lid)
-                    if lot and lot.deleted_at is None and lot.purchase and lot.purchase.deleted_at is None:
-                        lot.remaining_weight_lbs = max(0, lot.remaining_weight_lbs - weight)
+                    lot.remaining_weight_lbs = max(0, lot.remaining_weight_lbs - weight)
 
         run.calculate_cost()
 
@@ -4246,6 +4430,7 @@ def _save_run(existing_run):
             PurchaseLot.deleted_at.is_(None),
             Purchase.deleted_at.is_(None),
             Purchase.status.in_(INVENTORY_ON_HAND_PURCHASE_STATUSES),
+            Purchase.purchase_approved_at.isnot(None),
         ).all()
         return render_template(
             "run_form.html",
@@ -4424,12 +4609,13 @@ def inventory():
     supplier_filter = (m.get("supplier_id") or "").strip()
     strain_raw = (m.get("strain") or "").strip()
     strain_filter = strain_raw.lower()
-    # On-hand lots: only from purchases that have actually arrived
+    # On-hand lots: only from approved purchases that have actually arrived
     on_hand_q = PurchaseLot.query.join(Purchase).filter(
         PurchaseLot.remaining_weight_lbs > 0,
         PurchaseLot.deleted_at.is_(None),
         Purchase.deleted_at.is_(None),
         Purchase.status.in_(INVENTORY_ON_HAND_PURCHASE_STATUSES),
+        Purchase.purchase_approved_at.isnot(None),
     )
     if supplier_filter:
         on_hand_q = on_hand_q.filter(Purchase.supplier_id == supplier_filter)
@@ -4572,7 +4758,6 @@ def batch_edit(entity):
             if touched:
                 for p in touched:
                     _maintain_purchase_inventory_lots(p)
-                    _sync_linked_biomass_for_purchase(p)
                     new_snap = _biomass_budget_snapshot_for_purchase(p)
                     _enforce_weekly_biomass_purchase_limits(p, new_snap, enforce_cap=True)
             if n:
@@ -4588,7 +4773,7 @@ def batch_edit(entity):
             for e in errs[:15]:
                 flash(e, "error")
             if n:
-                log_audit("update", "biomass_batch", gen_uuid(), details=f"count={n}")
+                log_audit("update", "purchase_batch_biomass", gen_uuid(), details=f"count={n}")
                 db.session.commit()
                 flash(f"Updated {n} biomass row(s).", "success")
             else:
@@ -4774,6 +4959,27 @@ def purchase_edit(purchase_id):
     )
 
 
+@app.route("/purchases/<purchase_id>/approve", methods=["POST"])
+@login_required
+def purchase_approve(purchase_id):
+    if not current_user.can_approve_purchase:
+        flash("Only users with purchase approval permission can approve purchases.", "error")
+        return redirect(url_for("purchase_edit", purchase_id=purchase_id))
+    p = db.session.get(Purchase, purchase_id)
+    if not p or p.deleted_at is not None:
+        flash("Purchase not found.", "error")
+        return redirect(url_for("purchases_list"))
+    if p.is_approved:
+        flash("Purchase is already approved.", "info")
+        return redirect(url_for("purchase_edit", purchase_id=purchase_id))
+    p.purchase_approved_at = datetime.utcnow()
+    p.purchase_approved_by_user_id = current_user.id
+    log_audit("approve", "purchase", p.id)
+    db.session.commit()
+    flash(f"Purchase {p.batch_id or p.id} approved.", "success")
+    return redirect(url_for("purchase_edit", purchase_id=purchase_id))
+
+
 def _save_purchase(existing):
     try:
         p = existing or Purchase()
@@ -4781,7 +4987,14 @@ def _save_purchase(existing):
         p.purchase_date = datetime.strptime(request.form["purchase_date"], "%Y-%m-%d").date()
         dd = request.form.get("delivery_date", "").strip()
         p.delivery_date = datetime.strptime(dd, "%Y-%m-%d").date() if dd else None
-        p.status = request.form.get("status", "ordered")
+        new_status = request.form.get("status", "ordered")
+        # Enforce approval gate: on-hand statuses require prior approval
+        if new_status in INVENTORY_ON_HAND_PURCHASE_STATUSES and not p.is_approved:
+            raise ValueError(
+                f"Cannot set status to \"{new_status.replace('_', ' ').title()}\" — "
+                "this purchase has not been approved yet. Approve it first, then change status."
+            )
+        p.status = new_status
         p.stated_weight_lbs = float(request.form.get("stated_weight_lbs") or 0)
         aw = request.form.get("actual_weight_lbs", "").strip()
         p.actual_weight_lbs = float(aw) if aw else None
@@ -4837,26 +5050,6 @@ def _save_purchase(existing):
             d = p.delivery_date or p.purchase_date
             w = p.actual_weight_lbs or p.stated_weight_lbs
             p.batch_id = _ensure_unique_batch_id(_generate_batch_id(supplier_name, d, w), exclude_purchase_id=p.id)
-
-        # If this purchase is linked to a biomass pipeline record, keep stage in sync
-        linked = BiomassAvailability.query.filter(BiomassAvailability.purchase_id == p.id).first()
-        if linked:
-            status = (p.status or "").strip()
-            if status in ("ordered", "in_transit", "committed"):
-                linked.stage = "committed"
-            elif status in ("in_testing", "available"):
-                linked.stage = "testing"
-            elif status in ("delivered", "processing", "complete"):
-                linked.stage = "delivered"
-            elif status == "cancelled":
-                linked.stage = "cancelled"
-            else:
-                # Keep sync for early/manual statuses when present
-                linked.stage = status if status in ("declared", "testing") else "delivered"
-            linked.committed_on = p.purchase_date
-            linked.committed_delivery_date = p.delivery_date
-            linked.committed_weight_lbs = p.actual_weight_lbs or p.stated_weight_lbs
-            linked.committed_price_per_lb = p.price_per_lb
 
         # Process lots
         if not existing:
@@ -5250,10 +5443,14 @@ def _purchase_import_commit_norm(norm: dict, *, create_suppliers: bool) -> None:
         db.session.add(sup)
         db.session.flush()
 
+    import_status = norm.get("status") or "ordered"
+    # Imported purchases are not approved — cap status so on-hand statuses require explicit approval
+    if import_status in INVENTORY_ON_HAND_PURCHASE_STATUSES:
+        import_status = "ordered"
     p = Purchase(
         supplier_id=sup.id,
         purchase_date=datetime.strptime(norm["purchase_date"], "%Y-%m-%d").date(),
-        status=norm.get("status") or "ordered",
+        status=import_status,
         stated_weight_lbs=float(norm["stated_weight_lbs"]),
     )
     if norm.get("delivery_date"):
@@ -5487,10 +5684,6 @@ def purchase_delete(purchase_id):
     for lot in p.lots:
         lot.deleted_at = datetime.utcnow()
         lot.deleted_by = current_user.id
-    linked = BiomassAvailability.query.filter(BiomassAvailability.purchase_id == p.id).first()
-    if linked:
-        linked.purchase_id = None
-        linked.stage = "declared"
     log_audit("delete", "purchase", p.id, details=json.dumps({"mode": "soft"}))
     db.session.commit()
     notify_slack(f"Purchase soft-deleted: {p.batch_id or p.id}.")
@@ -5509,9 +5702,6 @@ def purchase_hard_delete(purchase_id):
     if has_any_run_inputs:
         flash("Cannot hard-delete purchase that has run history.", "error")
         return redirect(url_for("purchase_edit", purchase_id=p.id))
-    linked = BiomassAvailability.query.filter(BiomassAvailability.purchase_id == p.id).first()
-    if linked:
-        linked.purchase_id = None
     log_audit("delete", "purchase", p.id, details=json.dumps({"mode": "hard"}))
     db.session.delete(p)
     db.session.commit()
@@ -6158,7 +6348,7 @@ def settings():
             if n2 < n1:
                 n2 = n1
                 flash(
-                    "Potential lot “days to soft-delete” was raised to match “days to Old Lots” (must be ≥).",
+                    "Potential lot 'days to soft-delete' was raised to match 'days to Old Lots' (must be ≥).",
                     "info",
                 )
             for key, val, desc in (
@@ -6694,6 +6884,9 @@ def field_submission_approve(submission_id):
         queue_placement=sub.queue_placement,
         coa_status_text=sub.coa_status_text,
         notes=(sub.notes or "") + (f"\n\nApproved from field submission {sub.id}" if sub.notes else f"Approved from field submission {sub.id}"),
+        # Field submission approval = purchase approval
+        purchase_approved_at=datetime.utcnow(),
+        purchase_approved_by_user_id=current_user.id,
     )
     db.session.add(purchase)
     db.session.flush()
@@ -7778,52 +7971,60 @@ def export_csv(entity):
                              l.remaining_weight_lbs, l.potency_pct, l.milled, l.location])
     elif entity == "biomass":
         writer.writerow([
-            "Stage", "Supplier", "Strain",
+            "Status", "Supplier", "Strain",
             "Availability Date", "Declared Lbs", "Declared $/lb", "Est Potency %",
             "Testing Timing", "Testing Status", "Testing Date", "Tested Potency %",
-            "Committed On", "Delivery Date", "Committed Lbs", "Committed $/lb",
-            "Batch ID", "Purchase Status",
+            "Purchase Date", "Delivery Date", "Stated Lbs", "$/lb",
+            "Batch ID",
             "Archived (soft-deleted)", "Notes",
         ])
         n1, n2 = _potential_lot_age_days()
         bucket = (request.args.get("bucket") or "all").strip().lower()
-        q = BiomassAvailability.query.join(Supplier)
+        q = Purchase.query.join(Supplier)
         if request.args.get("include_deleted") == "1" and current_user.is_super_admin:
-            q = q.filter(BiomassAvailability.deleted_at.isnot(None))
+            q = q.filter(Purchase.deleted_at.isnot(None))
         else:
-            q = q.filter(BiomassAvailability.deleted_at.is_(None))
+            q = q.filter(Purchase.deleted_at.is_(None))
             q = _biomass_bucket_filter(q, bucket, n1, n2)
         if start_date:
-            q = q.filter(BiomassAvailability.availability_date >= start_date)
+            q = q.filter(Purchase.availability_date >= start_date)
         if end_date:
-            q = q.filter(BiomassAvailability.availability_date <= end_date)
+            q = q.filter(Purchase.availability_date <= end_date)
         if status_filter:
-            q = q.filter(BiomassAvailability.stage == status_filter)
+            mapped = _STAGE_TO_STATUS.get(status_filter, status_filter)
+            q = q.filter(Purchase.status == mapped)
         if supplier_id:
-            q = q.filter(BiomassAvailability.supplier_id == supplier_id)
+            q = q.filter(Purchase.supplier_id == supplier_id)
         if strain_filter:
-            q = q.filter(func.lower(BiomassAvailability.strain_name).like(f"%{strain_filter}%"))
-        for b in q.order_by(BiomassAvailability.availability_date.desc(), Supplier.name.asc()).all():
+            q = q.filter(
+                Purchase.id.in_(
+                    db.session.query(PurchaseLot.purchase_id).filter(
+                        func.lower(PurchaseLot.strain_name).like(f"%{strain_filter}%"),
+                        PurchaseLot.deleted_at.is_(None),
+                    )
+                )
+            )
+        for p in q.order_by(Purchase.availability_date.desc().nullslast(), Supplier.name.asc()).all():
+            first_lot = p.lots.first()
             writer.writerow([
-                b.stage,
-                b.supplier_name,
-                b.strain_name or "",
-                b.availability_date,
-                b.declared_weight_lbs,
-                b.declared_price_per_lb,
-                b.estimated_potency_pct,
-                b.testing_timing,
-                b.testing_status,
-                b.testing_date,
-                b.tested_potency_pct,
-                b.committed_on,
-                b.committed_delivery_date,
-                b.committed_weight_lbs,
-                b.committed_price_per_lb,
-                b.purchase.batch_id if b.purchase else "",
-                b.purchase.status if b.purchase else "",
-                "yes" if b.deleted_at else "no",
-                b.notes or "",
+                p.status,
+                p.supplier_name,
+                first_lot.strain_name if first_lot else "",
+                p.availability_date,
+                p.declared_weight_lbs,
+                p.declared_price_per_lb,
+                p.stated_potency_pct,
+                p.testing_timing,
+                p.testing_status,
+                p.testing_date,
+                p.tested_potency_pct,
+                p.purchase_date,
+                p.delivery_date,
+                p.stated_weight_lbs,
+                p.price_per_lb,
+                p.batch_id or "",
+                "yes" if p.deleted_at else "no",
+                p.notes or "",
             ])
     elif entity == "suppliers":
         writer.writerow(["Supplier", "Contact", "Phone", "Email", "Location", "Active"])
@@ -7972,8 +8173,9 @@ def import_confirm():
                     purchase = Purchase(
                         supplier_id=supplier.id,
                         purchase_date=run_date,
-                        status="complete",
+                        status="ordered",
                         stated_weight_lbs=0,
+                        notes="Auto-created from CSV import. Awaiting purchase approval.",
                     )
                     price = row.get("Price") or row.get("price") or ""
                     price = price.replace("$", "").replace(",", "").strip()
@@ -8103,6 +8305,18 @@ def lot_new(purchase_id):
 
 # ── Biomass Availability Pipeline ─────────────────────────────────────────────
 
+PIPELINE_PURCHASE_STATUSES = ("declared", "in_testing", "committed")
+# Map stage filter values (used in UI) to Purchase status values
+_STAGE_TO_STATUS = {
+    "declared": "declared",
+    "testing": "in_testing",
+    "in_testing": "in_testing",
+    "committed": "committed",
+    "delivered": "delivered",
+    "cancelled": "cancelled",
+}
+
+
 @app.route("/biomass")
 @login_required
 def biomass_list():
@@ -8130,19 +8344,33 @@ def biomass_list():
     except ValueError:
         start_date = None
         end_date = None
-    query = BiomassAvailability.query.join(Supplier)
+    # Query Purchase records in pipeline statuses (+ recently delivered within 7 days)
+    query = Purchase.query.join(Supplier)
     query = _biomass_bucket_filter(query, bucket, n1, n2)
     if stage:
-        query = query.filter(BiomassAvailability.stage == stage)
+        mapped_status = _STAGE_TO_STATUS.get(stage, stage)
+        query = query.filter(Purchase.status == mapped_status)
     if start_date:
-        query = query.filter(BiomassAvailability.availability_date >= start_date)
+        query = query.filter(Purchase.availability_date >= start_date)
     if end_date:
-        query = query.filter(BiomassAvailability.availability_date <= end_date)
+        query = query.filter(Purchase.availability_date <= end_date)
     if supplier_filter:
-        query = query.filter(BiomassAvailability.supplier_id == supplier_filter)
+        query = query.filter(Purchase.supplier_id == supplier_filter)
     if strain_filter:
-        query = query.filter(func.lower(BiomassAvailability.strain_name).like(f"%{strain_filter.lower()}%"))
-    items = query.order_by(BiomassAvailability.availability_date.desc(), Supplier.name.asc()).all()
+        # Search strain in lots
+        query = query.filter(
+            Purchase.id.in_(
+                db.session.query(PurchaseLot.purchase_id).filter(
+                    func.lower(PurchaseLot.strain_name).like(f"%{strain_filter.lower()}%"),
+                    PurchaseLot.deleted_at.is_(None),
+                )
+            )
+        )
+    items = query.order_by(
+        Purchase.availability_date.desc().nullslast(),
+        Purchase.purchase_date.desc().nullslast(),
+        Supplier.name.asc(),
+    ).all()
     suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
     biomass_filters_active = (
         bucket != "current"
@@ -8169,7 +8397,7 @@ def biomass_list():
 @editor_required
 def biomass_new():
     if request.method == "POST":
-        return _save_biomass(None)
+        return _save_biomass_purchase(None)
     suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
     return render_template("biomass_form.html", item=None, suppliers=suppliers, today=date.today())
 
@@ -8177,7 +8405,7 @@ def biomass_new():
 @app.route("/biomass/<item_id>/edit", methods=["GET", "POST"])
 @editor_required
 def biomass_edit(item_id):
-    item = db.session.get(BiomassAvailability, item_id)
+    item = db.session.get(Purchase, item_id)
     if not item:
         flash("Biomass availability record not found.", "error")
         return redirect(url_for("biomass_list"))
@@ -8185,7 +8413,7 @@ def biomass_edit(item_id):
         flash("This biomass row was archived (soft-deleted). Super Admins can view it from the Archived list.", "error")
         return redirect(url_for("biomass_list"))
     if request.method == "POST":
-        return _save_biomass(item)
+        return _save_biomass_purchase(item)
     suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
     return render_template("biomass_form.html", item=item, suppliers=suppliers, today=date.today())
 
@@ -8193,150 +8421,138 @@ def biomass_edit(item_id):
 @app.route("/biomass/<item_id>/restore", methods=["POST"])
 @admin_required
 def biomass_restore(item_id):
-    item = db.session.get(BiomassAvailability, item_id)
+    item = db.session.get(Purchase, item_id)
     if not item or not item.deleted_at:
         flash("Nothing to restore.", "error")
         return redirect(url_for("biomass_list"))
     item.deleted_at = None
-    log_audit("restore", "biomass_availability", item.id, details=json.dumps({"source": "soft_delete_archive"}))
+    for lot in item.lots:
+        lot.deleted_at = None
+    log_audit("restore", "purchase", item.id, details=json.dumps({"source": "biomass_pipeline_archive"}))
     db.session.commit()
     flash("Biomass row restored from archive.", "success")
     return redirect(url_for("biomass_edit", item_id=item_id))
 
 
-def _save_biomass(existing):
+def _save_biomass_purchase(existing):
+    """Save a Purchase record from the biomass pipeline form (declaration → testing → commitment flow)."""
     try:
         if existing and existing.deleted_at:
             raise ValueError("This row is archived. Restore it from the biomass list before editing.")
-        prev_stage = existing.stage if existing else None
-        b = existing or BiomassAvailability()
+        prev_status = existing.status if existing else None
+        p = existing or Purchase()
+
         supplier_id = (request.form.get("supplier_id") or "").strip()
         if not supplier_id:
             raise ValueError("Supplier is required.")
         supplier = db.session.get(Supplier, supplier_id)
         if not supplier:
             raise ValueError("Selected supplier was not found.")
-        b.supplier_id = supplier_id
+        p.supplier_id = supplier_id
 
+        # --- Declaration fields ---
         ad = request.form.get("availability_date", "").strip()
         if not ad:
             raise ValueError("Availability Date is required.")
         try:
-            b.availability_date = datetime.strptime(ad, "%Y-%m-%d").date()
+            p.availability_date = datetime.strptime(ad, "%Y-%m-%d").date()
         except ValueError:
             raise ValueError("Availability Date must be a valid date.")
 
-        b.strain_name = request.form.get("strain_name", "").strip() or None
+        strain_name = request.form.get("strain_name", "").strip() or None
 
         dw = request.form.get("declared_weight_lbs", "").strip()
         try:
-            b.declared_weight_lbs = float(dw) if dw else 0.0
+            p.declared_weight_lbs = float(dw) if dw else 0.0
         except ValueError:
             raise ValueError("Declared Weight must be a number.")
-        if b.declared_weight_lbs < 0:
+        if p.declared_weight_lbs < 0:
             raise ValueError("Declared Weight cannot be negative.")
 
         dpl = request.form.get("declared_price_per_lb", "").strip()
         try:
-            b.declared_price_per_lb = float(dpl) if dpl else None
+            p.declared_price_per_lb = float(dpl) if dpl else None
         except ValueError:
             raise ValueError("Declared $/lb must be a number.")
-        if b.declared_price_per_lb is not None and b.declared_price_per_lb < 0:
+        if p.declared_price_per_lb is not None and p.declared_price_per_lb < 0:
             raise ValueError("Declared $/lb cannot be negative.")
 
         ep = request.form.get("estimated_potency_pct", "").strip()
         try:
-            b.estimated_potency_pct = float(ep) if ep else None
+            estimated_potency = float(ep) if ep else None
         except ValueError:
             raise ValueError("Estimated Potency must be a number.")
-        if b.estimated_potency_pct is not None and not (0 <= b.estimated_potency_pct <= 100):
+        if estimated_potency is not None and not (0 <= estimated_potency <= 100):
             raise ValueError("Estimated Potency must be between 0 and 100.")
+        p.stated_potency_pct = estimated_potency
 
+        # --- Testing fields ---
         testing_timing = (request.form.get("testing_timing") or "before_delivery").strip()
         if testing_timing not in ("before_delivery", "after_delivery"):
             raise ValueError("Testing Timing is invalid.")
-        b.testing_timing = testing_timing
+        p.testing_timing = testing_timing
 
         testing_status = (request.form.get("testing_status") or "pending").strip()
         if testing_status not in ("pending", "completed", "not_needed"):
             raise ValueError("Testing Status is invalid.")
-        b.testing_status = testing_status
+        p.testing_status = testing_status
 
         td = request.form.get("testing_date", "").strip()
         if td:
             try:
-                b.testing_date = datetime.strptime(td, "%Y-%m-%d").date()
+                p.testing_date = datetime.strptime(td, "%Y-%m-%d").date()
             except ValueError:
                 raise ValueError("Testing Date must be a valid date.")
         else:
-            b.testing_date = None
+            p.testing_date = None
 
         tpp = request.form.get("tested_potency_pct", "").strip()
         try:
-            b.tested_potency_pct = float(tpp) if tpp else None
+            p.tested_potency_pct = float(tpp) if tpp else None
         except ValueError:
             raise ValueError("Tested Potency must be a number.")
-        if b.tested_potency_pct is not None and not (0 <= b.tested_potency_pct <= 100):
+        if p.tested_potency_pct is not None and not (0 <= p.tested_potency_pct <= 100):
             raise ValueError("Tested Potency must be between 0 and 100.")
 
+        # --- Commitment fields (map to core Purchase fields) ---
         co = request.form.get("committed_on", "").strip()
         if co:
             try:
-                b.committed_on = datetime.strptime(co, "%Y-%m-%d").date()
+                p.purchase_date = datetime.strptime(co, "%Y-%m-%d").date()
             except ValueError:
                 raise ValueError("Committed On must be a valid date.")
         else:
-            b.committed_on = None
+            p.purchase_date = p.purchase_date or p.availability_date
 
         cdd = request.form.get("committed_delivery_date", "").strip()
         if cdd:
             try:
-                b.committed_delivery_date = datetime.strptime(cdd, "%Y-%m-%d").date()
+                p.delivery_date = datetime.strptime(cdd, "%Y-%m-%d").date()
             except ValueError:
                 raise ValueError("Delivery Date must be a valid date.")
         else:
-            b.committed_delivery_date = None
+            p.delivery_date = None
 
         cw = request.form.get("committed_weight_lbs", "").strip()
         try:
-            b.committed_weight_lbs = float(cw) if cw else None
+            committed_weight = float(cw) if cw else None
         except ValueError:
             raise ValueError("Committed Weight must be a number.")
-        if b.committed_weight_lbs is not None and b.committed_weight_lbs < 0:
+        if committed_weight is not None and committed_weight < 0:
             raise ValueError("Committed Weight cannot be negative.")
+        p.stated_weight_lbs = committed_weight or p.declared_weight_lbs or 0
 
         cpl = request.form.get("committed_price_per_lb", "").strip()
         try:
-            b.committed_price_per_lb = float(cpl) if cpl else None
+            committed_price = float(cpl) if cpl else None
         except ValueError:
             raise ValueError("Committed $/lb must be a number.")
-        if b.committed_price_per_lb is not None and b.committed_price_per_lb < 0:
+        if committed_price is not None and committed_price < 0:
             raise ValueError("Committed $/lb cannot be negative.")
+        p.price_per_lb = committed_price or p.declared_price_per_lb
 
+        # --- Status (mapped from pipeline stage names) ---
         stage = (request.form.get("stage") or "declared").strip()
-        allowed_stages = ("declared", "testing", "committed", "delivered", "cancelled")
-        if stage not in allowed_stages:
-            raise ValueError("Stage is invalid.")
-        b.stage = stage
-        b.notes = request.form.get("notes", "").strip() or None
-
-        enters_commitment = stage in ("committed", "delivered") and prev_stage not in ("committed", "delivered")
-        leaves_commitment = prev_stage in ("committed", "delivered") and stage not in ("committed", "delivered")
-        if enters_commitment or leaves_commitment:
-            if not current_user.can_approve_purchase:
-                raise ValueError(
-                    "Only Super Admin or users with purchase approval permission can move a batch "
-                    "to or from Committed / Delivered."
-                )
-        if enters_commitment:
-            b.purchase_approved_at = datetime.utcnow()
-            b.purchase_approved_by_user_id = current_user.id
-
-        if not existing:
-            db.session.add(b)
-        db.session.flush()
-
-        # Keep linked Purchase in sync (create on commitment, but always sync if already linked)
         stage_to_status = {
             "declared": "declared",
             "testing": "in_testing",
@@ -8344,79 +8560,91 @@ def _save_biomass(existing):
             "delivered": "delivered",
             "cancelled": "cancelled",
         }
-        if b.stage in stage_to_status:
-            purchase = db.session.get(Purchase, b.purchase_id) if b.purchase_id else None
-            purchase_was_new = False
+        new_status = stage_to_status.get(stage)
+        if not new_status:
+            raise ValueError("Stage is invalid.")
 
-            # Create a purchase record only once the batch becomes committed/delivered
-            if not purchase and b.stage in ("committed", "delivered"):
-                purchase = Purchase(
-                    supplier_id=b.supplier_id,
-                    purchase_date=b.committed_on or b.availability_date,
-                    delivery_date=b.committed_delivery_date,
-                    status=stage_to_status[b.stage],
-                    stated_weight_lbs=float(b.committed_weight_lbs or b.declared_weight_lbs or 0),
-                    stated_potency_pct=b.estimated_potency_pct,
-                    tested_potency_pct=b.tested_potency_pct,
-                    price_per_lb=b.committed_price_per_lb or b.declared_price_per_lb,
-                    notes=f"Created from Biomass Pipeline ({b.id})",
+        # Enforce: delivered requires prior commitment
+        if new_status == "delivered" and prev_status not in ("committed", "delivered", None):
+            raise ValueError(
+                "Material cannot be marked as Delivered without first being Committed. "
+                "Move the batch to Committed, then to Delivered."
+            )
+
+        # Approval gate for commitment transitions
+        enters_commitment = new_status == "committed" and prev_status not in ("committed", "delivered")
+        leaves_commitment = prev_status in ("committed", "delivered") and new_status not in ("committed", "delivered")
+        if enters_commitment or leaves_commitment:
+            if not current_user.can_approve_purchase:
+                raise ValueError(
+                    "Only Super Admin or users with purchase approval permission can move a batch "
+                    "to or from Committed / Delivered."
                 )
-                db.session.add(purchase)
-                db.session.flush()
-                b.purchase_id = purchase.id
-                purchase_was_new = True
+        if enters_commitment:
+            p.purchase_approved_at = datetime.utcnow()
+            p.purchase_approved_by_user_id = current_user.id
 
-            if purchase:
-                purchase.supplier_id = b.supplier_id
-                purchase.purchase_date = b.committed_on or b.availability_date
-                purchase.delivery_date = b.committed_delivery_date
-                purchase.status = stage_to_status[b.stage]
-                purchase.stated_weight_lbs = float(b.committed_weight_lbs or b.declared_weight_lbs or 0)
-                purchase.stated_potency_pct = b.estimated_potency_pct
-                purchase.tested_potency_pct = b.tested_potency_pct
-                purchase.price_per_lb = b.committed_price_per_lb or b.declared_price_per_lb
+        p.status = new_status
+        p.notes = request.form.get("notes", "").strip() or None
 
-                # Total cost
-                w = purchase.actual_weight_lbs or purchase.stated_weight_lbs
-                if w and purchase.price_per_lb:
-                    purchase.total_cost = w * purchase.price_per_lb
+        # Total cost calculation
+        weight = p.actual_weight_lbs or p.stated_weight_lbs
+        if weight and p.price_per_lb:
+            p.total_cost = weight * p.price_per_lb
 
-                # Batch ID
-                if not purchase.batch_id:
-                    sup = db.session.get(Supplier, purchase.supplier_id)
-                    supplier_name = sup.name if sup else "BATCH"
-                    d = purchase.delivery_date or purchase.purchase_date
-                    purchase.batch_id = _ensure_unique_batch_id(
-                        _generate_batch_id(supplier_name, d, w),
-                        exclude_purchase_id=purchase.id,
-                    )
+        # Auto-calculate price from potency if no price set
+        if p.stated_potency_pct and not p.price_per_lb:
+            rate = SystemSetting.get_float("potency_rate", 1.50)
+            p.price_per_lb = rate * p.stated_potency_pct
 
-                # Purchase audit log (so biomass-driven changes are reconstructable)
-                log_audit(
-                    "create" if purchase_was_new else "update",
-                    "purchase",
-                    purchase.id,
-                    details=json.dumps({
-                        "source": "biomass_pipeline",
-                        "biomass_id": b.id,
-                        "stage": b.stage,
-                        "status": purchase.status,
-                    }),
+        if not existing:
+            db.session.add(p)
+        db.session.flush()
+
+        # Batch ID
+        if not p.batch_id:
+            sup = db.session.get(Supplier, p.supplier_id)
+            supplier_name = sup.name if sup else "BATCH"
+            d = p.delivery_date or p.purchase_date or p.availability_date
+            w = p.actual_weight_lbs or p.stated_weight_lbs
+            p.batch_id = _ensure_unique_batch_id(
+                _generate_batch_id(supplier_name, d, w),
+                exclude_purchase_id=p.id,
+            )
+
+        # Maintain the pipeline lot (single lot per pipeline purchase for strain tracking)
+        first_lot = p.lots.first()
+        if strain_name:
+            if first_lot:
+                first_lot.strain_name = strain_name
+                first_lot.weight_lbs = p.stated_weight_lbs or p.declared_weight_lbs or 0
+                first_lot.remaining_weight_lbs = first_lot.weight_lbs
+                if estimated_potency:
+                    first_lot.potency_pct = p.tested_potency_pct or estimated_potency
+            else:
+                lot = PurchaseLot(
+                    purchase_id=p.id,
+                    strain_name=strain_name,
+                    weight_lbs=p.stated_weight_lbs or p.declared_weight_lbs or 0,
+                    remaining_weight_lbs=p.stated_weight_lbs or p.declared_weight_lbs or 0,
+                    potency_pct=p.tested_potency_pct or estimated_potency,
                 )
+                db.session.add(lot)
 
         if enters_commitment:
             log_audit(
                 "purchase_approval",
-                "biomass_availability",
-                b.id,
+                "purchase",
+                p.id,
                 details=json.dumps({
                     "approver_user_id": current_user.id,
-                    "stage": b.stage,
-                    "purchase_id": b.purchase_id,
+                    "status": p.status,
+                    "source": "biomass_pipeline",
                 }),
             )
 
-        log_audit("update" if existing else "create", "biomass_availability", b.id)
+        log_audit("update" if existing else "create", "purchase", p.id,
+                  details=json.dumps({"source": "biomass_pipeline", "status": p.status}))
         db.session.commit()
         flash("Biomass availability saved.", "success")
         return redirect(url_for("biomass_list"))
@@ -8436,12 +8664,16 @@ def _save_biomass(existing):
 @app.route("/biomass/<item_id>/delete", methods=["POST"])
 @editor_required
 def biomass_delete(item_id):
-    item = db.session.get(BiomassAvailability, item_id)
+    item = db.session.get(Purchase, item_id)
     if item:
-        log_audit("delete", "biomass_availability", item.id)
-        db.session.delete(item)
+        item.deleted_at = datetime.utcnow()
+        item.deleted_by = current_user.id
+        for lot in item.lots:
+            lot.deleted_at = datetime.utcnow()
+            lot.deleted_by = current_user.id
+        log_audit("delete", "purchase", item.id, details=json.dumps({"mode": "soft", "source": "biomass_pipeline"}))
         db.session.commit()
-        flash("Biomass availability deleted.", "success")
+        flash("Biomass record deleted.", "success")
     return redirect(url_for("biomass_list"))
 
 
@@ -8455,6 +8687,7 @@ def api_lots_available():
         PurchaseLot.deleted_at.is_(None),
         Purchase.deleted_at.is_(None),
         Purchase.status.in_(INVENTORY_ON_HAND_PURCHASE_STATUSES),
+        Purchase.purchase_approved_at.isnot(None),
     ).all()
     return jsonify([{
         "id": l.id,
@@ -8483,6 +8716,8 @@ def init_db():
     _ensure_postgres_slack_ingested_columns()
     _reconcile_closed_purchase_inventory_lots()
     _backfill_default_inventory_lots()
+    _backfill_purchase_approval()
+    _migrate_biomass_to_purchase()
 
     # Create default admin if none exists
     if not User.query.first():

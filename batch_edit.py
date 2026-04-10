@@ -152,7 +152,18 @@ def apply_batch_purchases(ids: list[str], form: Any) -> tuple[int, list[str], li
     return updated, errors, touched
 
 
+PIPELINE_STATUS_MAP = {
+    "declared": "declared",
+    "testing": "in_testing",
+    "in_testing": "in_testing",
+    "committed": "committed",
+    "delivered": "delivered",
+    "cancelled": "cancelled",
+}
+
+
 def apply_batch_biomass(ids: list[str], form: Any) -> tuple[int, list[str]]:
+    """Batch-edit Purchase records that are in the biomass pipeline view."""
     updated = 0
     errors: list[str] = []
     stage = (form.get("stage") or "").strip()
@@ -160,24 +171,26 @@ def apply_batch_biomass(ids: list[str], form: Any) -> tuple[int, list[str]]:
     tt = (form.get("testing_timing") or "").strip()
     notes_add = (form.get("notes_append") or "").strip()
 
-    for bid in ids:
-        b = db.session.get(BiomassAvailability, bid)
-        if not b:
-            errors.append(f"Biomass row {bid[:8]}… not found.")
+    for pid in ids:
+        p = db.session.get(Purchase, pid)
+        if not p or p.deleted_at is not None:
+            errors.append(f"Biomass row {pid[:8]}… not found.")
             continue
         changed = False
-        if stage and stage in BIOMASS_STAGES:
-            b.stage = stage
-            changed = True
+        if stage:
+            mapped = PIPELINE_STATUS_MAP.get(stage)
+            if mapped:
+                p.status = mapped
+                changed = True
         if ts and ts in BIOMASS_TESTING_STATUS:
-            b.testing_status = ts
+            p.testing_status = ts
             changed = True
         if tt and tt in BIOMASS_TESTING_TIMING:
-            b.testing_timing = tt
+            p.testing_timing = tt
             changed = True
         if notes_add:
-            prev = (b.notes or "").strip()
-            b.notes = (prev + "\n" + notes_add).strip() if prev else notes_add
+            prev = (p.notes or "").strip()
+            p.notes = (prev + "\n" + notes_add).strip() if prev else notes_add
             changed = True
         if changed:
             updated += 1

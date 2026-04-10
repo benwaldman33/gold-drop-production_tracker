@@ -140,7 +140,25 @@ class Purchase(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # Purchase approval gate: material must not be consumed until approved
+    purchase_approved_at = db.Column(db.DateTime)
+    purchase_approved_by_user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
+    purchase_approved_by = db.relationship("User", foreign_keys=[purchase_approved_by_user_id])
+
+    # Biomass pipeline fields (merged from BiomassAvailability)
+    availability_date = db.Column(db.Date)  # when biomass first became available from supplier
+    declared_weight_lbs = db.Column(db.Float)  # initial supplier declaration of weight
+    declared_price_per_lb = db.Column(db.Float)  # initial price quote
+    testing_timing = db.Column(db.String(20))  # before_delivery, after_delivery
+    testing_status = db.Column(db.String(20))  # pending, completed, not_needed
+    testing_date = db.Column(db.Date)
+    field_photo_paths_json = db.Column(db.Text)  # JSON array of field intake photos
+
     lots = db.relationship("PurchaseLot", backref="purchase", lazy="dynamic", cascade="all, delete-orphan")
+
+    @property
+    def is_approved(self):
+        return self.purchase_approved_at is not None
 
     @property
     def supplier_name(self):
