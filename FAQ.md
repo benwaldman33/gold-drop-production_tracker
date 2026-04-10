@@ -59,6 +59,9 @@ No. The **Import** screen under the sidebar is for **run-style** Google Sheet ex
 **Why did a row fail validation?**  
 Common causes: missing **purchase date** (or **paid date** as fallback), missing both **invoice** and **actual** weight, **duplicate Batch ID / Manifest** already in the system, or values that cannot be parsed. The preview lists the reason per row.
 
+**Are imported purchases approved automatically?**  
+**No.** They are created **unapproved**. If the spreadsheet asked for an on-hand status, the app **downgrades** to a safe status (e.g. **ordered**) until someone uses **Edit Purchase** → **Approve purchase** and sets the real status.
+
 ## Batch edit (list screens)
 
 **What is “Batch edit…” on Runs, Purchases, etc.?**  
@@ -85,6 +88,25 @@ The linked purchase is missing a **Price/lb**. Set pricing on the purchase (or e
 
 **Why doesn’t Days of Supply include in-transit?**  
 Days of supply is **on-hand lbs only**, divided by your **Daily Throughput Target** (Settings). Material still on the way is shown in **In Transit** and in **Total**, but it is not counted toward days until it is on hand.
+
+**Why don’t I see a purchase on the On Hand inventory table?**  
+**On Hand** only lists lots from purchases that are both in an **arrived** status (**delivered**, **in_testing**, **available**, **processing**, **complete**) **and** **approved** (`purchase_approved_at` set). Use **Edit Purchase** → **Approve purchase** (if you have approver access), or complete the pipeline approval path for **Committed** on **Biomass Pipeline**, then set the right status.
+
+---
+
+## Biomass Pipeline & Purchases
+
+**Is Biomass Pipeline still a separate table from Purchases?**  
+**No.** Pipeline rows are **`Purchase`** records with pipeline statuses (**`declared`**, **`in_testing`**, **`committed`**, …) and extra fields (availability date, declared weight, testing metadata, field photos). The legacy **`biomass_availabilities`** table may still exist for migration/backfill, but the UI reads and writes **purchases**.
+
+**What does “Testing” on the pipeline list mean internally?**  
+The UI stage **Testing** maps to purchase status **`in_testing`** (not a separate entity).
+
+**Who can move a batch to Committed?**  
+**Super Admin** or any user with the **purchase approver** flag (`is_purchase_approver`). That transition stamps **approval** and is audited. Moving **away** from **Committed** / **Delivered** back toward early stages also requires the same permission.
+
+**Why can’t I set my purchase to Delivered?**  
+If the banner says **Not yet approved**, use **Approve purchase** first. The app blocks **on-hand** statuses until approval so unapproved material does not appear in inventory or runs.
 
 ---
 

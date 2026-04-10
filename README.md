@@ -31,7 +31,8 @@ Open **http://localhost:5050** in your browser (default dev port; **5000** is of
 
 ## Features
 
-- **Dashboard** — KPI cards with configurable green/yellow/red traffic lights
+- **Dashboard** — KPI cards with configurable green/yellow/red traffic lights (on-hand biomass and days-of-supply use **approved** purchases only; see **Purchases** below)
+- **Biomass purchasing** — Landing page (`/biomass-purchasing`) for weekly buyer targets vs actuals, field submission queues, and reviewed history (first sidebar item after **Extraction**)
 - **Run Logging** — Log extraction runs with source lots, wet/dry HTE & THCA output; optional **HTE post-extraction pipeline** (lab staging, clean vs dirty, COA file attachments, terp-strip queue, terpenes + retail distillate grams after Prescott strip)
 - **Departments** — Focused lenses (`/dept`, `/dept/<slug>`) on the same data: quick links, rollups, and filtered run lists (e.g. HTE pipeline stage) for finance, purchasing, intake, extraction, THCA/HTE/LD, terpenes, testing, bulk sales
 - **Auto-Calculations** — Yield %, cost per gram, true-up amounts calculated automatically
@@ -39,10 +40,11 @@ Open **http://localhost:5050** in your browser (default dev port; **5000** is of
 - **Cost Allocation Settings** — Choose THCA vs HTE allocation (uniform, 50/50, custom %)
 - **Inventory** — Track biomass on hand, in transit, and days of supply
 - **Purchases** — Record purchases with potency-based pricing and true-up tracking
-- **Purchase spreadsheet import** — Upload **.csv**, **.xlsx**, or **.xlsm** via **Purchases → Import spreadsheet** (drag-and-drop or browse). Headers are mapped automatically (e.g. Vendor, Purchase Date, Invoice Weight, Actual Weight, Manifest, Amount, Paid Date, Payment Method, Week). Preview validates rows; commit creates purchases (optional auto-create suppliers). See `purchase_import.py` (header alias map) and `ENGINEERING.md` → **Purchase spreadsheet import**.
+- **Purchase spreadsheet import** — Upload **.csv**, **.xlsx**, or **.xlsm** via **Purchases → Import spreadsheet** (drag-and-drop or browse). Headers are mapped automatically (e.g. Vendor, Purchase Date, Invoice Weight, Actual Weight, Manifest, Amount, Paid Date, Payment Method, Week). Preview validates rows; commit creates **unapproved** purchases (on-hand statuses from the file are capped to **ordered** until **Approve purchase**). Optional auto-create suppliers. See `purchase_import.py` (header alias map) and `ENGINEERING.md` → **Purchase spreadsheet import**.
 - **Batch edit (list screens)** — On Runs, Purchases, Inventory (on-hand lots and in-transit purchases), Biomass Pipeline, Suppliers, Costs, and Strain Performance, use row checkboxes plus **Select all** / **Select none**; with **two or more** rows selected, **Batch edit…** opens a screen to apply the same field changes to all selected records (permissions match single-record edit). Strain performance uses **Batch rename…** to retag matching purchase lots.
 - **Batch IDs** — Unique, readable batch IDs for all purchases (auto-generated if blank)
-- **Biomass Pipeline** — Track farm availability from declared → testing → committed → delivered/cancelled (syncs to Purchases)
+- **Biomass Pipeline** — Same **`Purchase`** rows as **Purchases**: early statuses **`declared`** / **`in_testing`** (UI label *Testing*), then **`committed`**, **`delivered`**, **`cancelled`**, with pipeline fields on the purchase (`availability_date`, declared weight/price, testing metadata, field photos). No separate `BiomassAvailability` sync—one record end-to-end. **Super Admin** or **`is_purchase_approver`** must approve when moving **to or from Committed** on the pipeline form (stamps `purchase_approved_at`). **Edit Purchase** also has **Approve purchase** for the standard purchase workflow.
+- **Purchase approval gate** — On-hand inventory, dashboard on-hand, run lot pickers, and saving runs that consume lots require **`purchase_approved_at`**. You cannot set on-hand statuses (**delivered**, **in_testing**, **available**, **processing**) on **Edit Purchase** until approved. Existing on-hand purchases are **backfilled** as approved on startup. Slack **biomass intake** creates purchases as **`ordered`** until reviewed/approved per your process.
 - **Field Photo Uploads** — Field users can attach multiple photos to biomass and purchase submissions (JPG/JPEG/PNG/WEBP/HEIC/HEIF, max 50 MB each)
 - **Field Purchase Intake Enhancements** — Harvest date, storage note, license info, queue placement, testing/COA status, and categorized photo uploads
 - **Soft Delete + Admin Hard Delete** — Runs and purchases support safe delete plus super-admin permanent cleanup
@@ -111,6 +113,7 @@ gold-drop/
     ├── slack_run_mappings.html
     ├── import.html         # CSV import upload
     └── import_review.html  # Import preview and confirmation
+├── flowchart.html          # Standalone Mermaid flow reference (open in browser; not a Flask route)
 ```
 
 ---
