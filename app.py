@@ -14,13 +14,21 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import gold_drop.biomass_module as biomass_module
+import gold_drop.bootstrap_module as bootstrap_module
+import gold_drop.list_state as list_state_mod
+import gold_drop.purchases as purchases_mod
+import gold_drop.purchases_module as purchases_module
+import gold_drop.settings_module as settings_module
+import gold_drop.slack as slack_mod
+import gold_drop.uploads as uploads_mod
 from datetime import datetime, date, timedelta, timezone
 from functools import wraps
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from flask import (Flask, render_template, request, redirect, url_for, flash,
                    jsonify, Response, session, abort)
-from flask_login import (LoginManager, login_user, logout_user, login_required,
+from flask_login import (login_user, logout_user, login_required,
                          current_user)
 from sqlalchemy import func, desc, and_, or_, text, select, exists
 from sqlalchemy.exc import OperationalError, ProgrammingError
@@ -50,50 +58,69 @@ from batch_edit import (
     apply_batch_strain_rename,
     parse_uuid_ids,
 )
+from gold_drop.audit import log_audit
+from gold_drop.auth import (
+    admin_required,
+    editor_required,
+    field_purchase_approval_required,
+    init_app as init_auth,
+    purchase_editor_required,
+    slack_importer_required,
+)
+from gold_drop.list_state import (
+    APP_DISPLAY_TIMEZONE_CHOICES,
+    APP_DISPLAY_TIMEZONE_DEFAULT,
+    app_display_timezone_name as _app_display_timezone_name,
+    app_display_zoneinfo as _app_display_zoneinfo,
+    list_filters_clear_redirect as _list_filters_clear_redirect,
+    list_filters_merge as _list_filters_merge,
+    runs_list_filters_active as _runs_list_filters_active,
+    slack_channel_filter_label as _slack_channel_filter_label,
+    slack_resolved_channel_hint_map as _slack_resolved_channel_hint_map,
+)
+from gold_drop.purchases import INVENTORY_ON_HAND_PURCHASE_STATUSES
+from gold_drop.slack import (
+    SLACK_IMPORT_KIND_FILTER_CHOICES,
+    SLACK_IMPORT_TEXT_FILTER_OPS,
+    SLACK_IMPORT_TEXT_OPS_ALLOWED,
+    SLACK_RUN_MAPPINGS_KEY,
+    _apply_slack_mapping_transform,
+    _default_slack_run_field_rules,
+    _default_slack_run_field_rules as _default_slack_run_field_rules_imported,
+    _derive_slack_production_message,
+    _preview_slack_to_run_fields,
+    _slack_coverage_label,
+    _slack_default_availability_date_iso,
+    _slack_default_bio_weight_lbs,
+    _slack_imports_row_matches_kind_text,
+    _slack_message_needs_resolution_ui,
+    _slack_run_mappings_template_kwargs,
+    _validate_slack_run_field_rules,
+)
 
-def create_app(test_config: dict | None = None) -> Flask:
-    """Create/configure the Flask app.
-
-    Keeping this lightweight factory allows tests and scripts to create a
-    deterministic app/context without changing route/module structure yet.
-    """
+def create_app():
     flask_app = Flask(__name__)
     flask_app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "gold-drop-dev-key-change-in-prod")
     flask_app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///golddrop.db")
     flask_app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     flask_app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
     flask_app.config["FIELD_UPLOAD_DIR"] = os.path.join(flask_app.root_path, "static", "uploads", "field")
-    flask_app.config["FIELD_UPLOAD_MAX_BYTES"] = 50 * 1024 * 1024  # 50 MB per image (field intake)
+    flask_app.config["FIELD_UPLOAD_MAX_BYTES"] = 50 * 1024 * 1024
     flask_app.config["LAB_UPLOAD_DIR"] = os.path.join(flask_app.root_path, "static", "uploads", "labs")
-    flask_app.config["LAB_UPLOAD_MAX_BYTES"] = 50 * 1024 * 1024  # 50 MB per file
+    flask_app.config["LAB_UPLOAD_MAX_BYTES"] = 50 * 1024 * 1024
     flask_app.config["PURCHASE_UPLOAD_DIR"] = os.path.join(flask_app.root_path, "static", "uploads", "purchases")
     flask_app.config["PURCHASE_UPLOAD_MAX_BYTES"] = 50 * 1024 * 1024
     flask_app.config["PHOTO_LIBRARY_UPLOAD_DIR"] = os.path.join(flask_app.root_path, "static", "uploads", "library")
     flask_app.config["PHOTO_LIBRARY_MAX_BYTES"] = 50 * 1024 * 1024
-    # Max image count per file-picker bucket on field intake (supplier/biomass/coa on purchase; photos on biomass).
     flask_app.config["FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET"] = int(
         os.environ.get("FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET", 30)
     )
-    if test_config:
-        flask_app.config.update(test_config)
+    db.init_app(flask_app)
+    init_auth(flask_app)
     return flask_app
 
 
 app = create_app()
-app.register_blueprint(purchases_bp)
-
-db.init_app(app)
-login_manager = LoginManager(app)
-login_manager.login_view = "login"
-
-
-@login_manager.user_loader
-def load_user(user_id):
-    u = db.session.get(User, user_id)
-    # If a user is deactivated, treat them as logged out
-    if u and not getattr(u, "is_active_user", True):
-        return None
-    return u
 
 
 # IANA tz for Slack timestamps, date filters, and derived slack_message_date (Settings → Operational).
@@ -4855,154 +4882,35 @@ def batch_edit(entity):
 @app.route("/purchases")
 @login_required
 def purchases_list():
-    redir = _list_filters_clear_redirect("purchases_list")
-    if redir:
-        return redir
-    keys = ("page", "status", "start_date", "end_date", "supplier_id", "min_potency", "max_potency", "hide_terminal")
-    m = _list_filters_merge("purchases_list", keys)
-    if request.args.get("filter_form") == "1":
-        m["hide_terminal"] = "1" if request.args.get("hide_terminal") == "1" else ""
-        session[LIST_FILTERS_SESSION_KEY]["purchases_list"]["hide_terminal"] = m["hide_terminal"]
-        session.modified = True
-    try:
-        page = int(m.get("page") or 1)
-    except ValueError:
-        page = 1
-    status_filter = (m.get("status") or "").strip()
-    start_raw = (m.get("start_date") or "").strip()
-    end_raw = (m.get("end_date") or "").strip()
-    supplier_filter = (m.get("supplier_id") or "").strip()
-    min_pot_raw = (m.get("min_potency") or "").strip()
-    max_pot_raw = (m.get("max_potency") or "").strip()
-    hide_terminal = m.get("hide_terminal") == "1"
-    try:
-        start_date = datetime.strptime(start_raw, "%Y-%m-%d").date() if start_raw else None
-        end_date = datetime.strptime(end_raw, "%Y-%m-%d").date() if end_raw else None
-    except ValueError:
-        start_date = None
-        end_date = None
-    try:
-        min_potency = float(min_pot_raw) if min_pot_raw else None
-        max_potency = float(max_pot_raw) if max_pot_raw else None
-    except ValueError:
-        min_potency = None
-        max_potency = None
-    query = Purchase.query.filter(Purchase.deleted_at.is_(None))
-    if status_filter:
-        query = query.filter_by(status=status_filter)
-    if hide_terminal:
-        query = query.filter(Purchase.status.notin_(("complete", "cancelled")))
-    if start_date:
-        query = query.filter(Purchase.purchase_date >= start_date)
-    if end_date:
-        query = query.filter(Purchase.purchase_date <= end_date)
-    if supplier_filter:
-        query = query.filter(Purchase.supplier_id == supplier_filter)
-    if min_potency is not None:
-        query = query.filter(Purchase.stated_potency_pct >= min_potency)
-    if max_potency is not None:
-        query = query.filter(Purchase.stated_potency_pct <= max_potency)
-    pagination = query.order_by(Purchase.purchase_date.desc()).paginate(page=page, per_page=25, error_out=False)
-    if pagination.pages and page > pagination.pages:
-        page = pagination.pages
-        pagination = query.order_by(Purchase.purchase_date.desc()).paginate(page=page, per_page=25, error_out=False)
-        lf = session.get(LIST_FILTERS_SESSION_KEY)
-        if isinstance(lf, dict) and isinstance(lf.get("purchases_list"), dict):
-            lf["purchases_list"]["page"] = str(page)
-            session.modified = True
-    suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
-    purchases_filters_active = (
-        page > 1
-        or bool(status_filter)
-        or bool(start_raw or end_raw or supplier_filter or min_pot_raw or max_pot_raw)
-        or hide_terminal
-    )
-    return render_template(
-        "purchases.html",
-        purchases=pagination.items,
-        pagination=pagination,
-        status_filter=status_filter,
-        suppliers=suppliers,
-        supplier_filter=supplier_filter,
-        start_date=start_raw,
-        end_date=end_raw,
-        min_potency=min_pot_raw,
-        max_potency=max_pot_raw,
-        hide_terminal=hide_terminal,
-        list_filters_active=purchases_filters_active,
-        clear_filters_url=url_for("purchases_list", clear_filters=1),
-    )
+    import app as root
+    return purchases_module.purchases_list_view(root)
 
 
 @app.route("/purchases/new", methods=["GET", "POST"])
 @purchase_editor_required
 def purchase_new():
-    if request.method == "POST":
-        return _save_purchase(None)
-    suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
-    rate = SystemSetting.get_float("potency_rate", 1.50)
-    return render_template(
-        "purchase_form.html",
-        purchase=None,
-        suppliers=suppliers,
-        rate=rate,
-        today=date.today(),
-        purchase_support_docs=[],
-    )
+    import app as root
+    return purchases_module.purchase_new_view(root)
 
 
 @app.route("/purchases/<purchase_id>/edit", methods=["GET", "POST"])
 @purchase_editor_required
 def purchase_edit(purchase_id):
-    purchase = db.session.get(Purchase, purchase_id)
-    if not purchase or purchase.deleted_at is not None:
-        flash("Purchase not found.", "error")
-        return redirect(url_for("purchases_list"))
-    if request.method == "POST":
-        return _save_purchase(purchase)
-    suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
-    purchase_audit_photos = PhotoAsset.query.filter(
-        PhotoAsset.purchase_id == purchase.id,
-        PhotoAsset.source_type == "field_submission",
-    ).order_by(PhotoAsset.uploaded_at.desc()).all()
-    purchase_support_docs = PhotoAsset.query.filter(
-        PhotoAsset.purchase_id == purchase.id,
-        PhotoAsset.source_type == "purchase_upload",
-    ).order_by(PhotoAsset.uploaded_at.desc()).all()
-    rate = SystemSetting.get_float("potency_rate", 1.50)
-    return render_template(
-        "purchase_form.html",
-        purchase=purchase,
-        suppliers=suppliers,
-        rate=rate,
-        today=date.today(),
-        purchase_audit_photos=purchase_audit_photos,
-        purchase_support_docs=purchase_support_docs,
-    )
+    import app as root
+    return purchases_module.purchase_edit_view(root, purchase_id)
 
 
 @app.route("/purchases/<purchase_id>/approve", methods=["POST"])
 @login_required
 def purchase_approve(purchase_id):
-    if not current_user.can_approve_purchase:
-        flash("Only users with purchase approval permission can approve purchases.", "error")
-        return redirect(url_for("purchase_edit", purchase_id=purchase_id))
-    p = db.session.get(Purchase, purchase_id)
-    if not p or p.deleted_at is not None:
-        flash("Purchase not found.", "error")
-        return redirect(url_for("purchases_list"))
-    if p.is_approved:
-        flash("Purchase is already approved.", "info")
-        return redirect(url_for("purchase_edit", purchase_id=purchase_id))
-    p.purchase_approved_at = datetime.utcnow()
-    p.purchase_approved_by_user_id = current_user.id
-    log_audit("approve", "purchase", p.id)
-    db.session.commit()
-    flash(f"Purchase {p.batch_id or p.id} approved.", "success")
-    return redirect(url_for("purchase_edit", purchase_id=purchase_id))
+    import app as root
+    return purchases_module.purchase_approve_view(root, purchase_id)
 
 
 def _save_purchase(existing):
+    import app as root
+    return purchases_module.save_purchase(root, existing)
+
     try:
         p = existing or Purchase()
         p.supplier_id = request.form["supplier_id"]
@@ -6274,6 +6182,10 @@ def strains_list():
 @app.route("/settings", methods=["GET", "POST"])
 @admin_required
 def settings():
+    import app as root
+    return settings_module.settings_view(root)
+
+    # Legacy body retained temporarily below as compatibility/reference during route breakup.
     if request.method == "POST":
         form_type = request.form.get("form_type")
 
@@ -6639,13 +6551,8 @@ def settings():
 
 
 def _settings_redirect():
-    anchor = (request.form.get("return_to") or request.args.get("return_to") or "").strip()
-    target = url_for("settings")
-    if anchor:
-        if not anchor.startswith("#"):
-            anchor = f"#{anchor.lstrip('#')}"
-        target = f"{target}{anchor}"
-    return redirect(target)
+    import app as root
+    return settings_module.settings_redirect(root)
 
 
 @app.route("/settings/users/<user_id>/toggle_active", methods=["POST"])
@@ -8304,6 +8211,9 @@ def _parse_float(s):
 @app.route("/purchases/<purchase_id>/lots/new", methods=["POST"])
 @purchase_editor_required
 def lot_new(purchase_id):
+    import app as root
+    return purchases_module.lot_new_view(root, purchase_id)
+
     purchase = db.session.get(Purchase, purchase_id)
     if not purchase or purchase.deleted_at is not None:
         flash("Purchase not found.", "error")
@@ -8342,6 +8252,9 @@ _STAGE_TO_STATUS = {
 @app.route("/biomass")
 @login_required
 def biomass_list():
+    import app as root
+    return biomass_module.biomass_list_view(root)
+
     _apply_biomass_potential_soft_delete()
     redir = _list_filters_clear_redirect("biomass_list")
     if redir:
@@ -8418,6 +8331,9 @@ def biomass_list():
 @app.route("/biomass/new", methods=["GET", "POST"])
 @editor_required
 def biomass_new():
+    import app as root
+    return biomass_module.biomass_new_view(root)
+
     if request.method == "POST":
         return _save_biomass_purchase(None)
     suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
@@ -8427,6 +8343,9 @@ def biomass_new():
 @app.route("/biomass/<item_id>/edit", methods=["GET", "POST"])
 @editor_required
 def biomass_edit(item_id):
+    import app as root
+    return biomass_module.biomass_edit_view(root, item_id)
+
     item = db.session.get(Purchase, item_id)
     if not item:
         flash("Biomass availability record not found.", "error")
@@ -8443,6 +8362,9 @@ def biomass_edit(item_id):
 @app.route("/biomass/<item_id>/restore", methods=["POST"])
 @admin_required
 def biomass_restore(item_id):
+    import app as root
+    return biomass_module.biomass_restore_view(root, item_id)
+
     item = db.session.get(Purchase, item_id)
     if not item or not item.deleted_at:
         flash("Nothing to restore.", "error")
@@ -8457,6 +8379,9 @@ def biomass_restore(item_id):
 
 
 def _save_biomass_purchase(existing):
+    import app as root
+    return biomass_module.save_biomass_purchase(root, existing)
+
     """Save a Purchase record from the biomass pipeline form (declaration → testing → commitment flow)."""
     try:
         if existing and existing.deleted_at:
@@ -8677,6 +8602,9 @@ def _save_biomass_purchase(existing):
 @app.route("/biomass/<item_id>/delete", methods=["POST"])
 @editor_required
 def biomass_delete(item_id):
+    import app as root
+    return biomass_module.biomass_delete_view(root, item_id)
+
     item = db.session.get(Purchase, item_id)
     if item:
         item.deleted_at = datetime.utcnow()
@@ -8714,7 +8642,46 @@ def api_lots_available():
 
 # ── Initialize ───────────────────────────────────────────────────────────────
 
+# Compatibility re-exports while logic is extracted out of app.py.
+_app_display_timezone_name = list_state_mod.app_display_timezone_name
+_app_display_zoneinfo = list_state_mod.app_display_zoneinfo
+_slack_imports_row_matches_kind_text = slack_mod._slack_imports_row_matches_kind_text
+_slack_coverage_label = slack_mod._slack_coverage_label
+_derive_slack_production_message = slack_mod._derive_slack_production_message
+_apply_slack_mapping_transform = slack_mod._apply_slack_mapping_transform
+_validate_slack_run_field_rules = slack_mod._validate_slack_run_field_rules
+_preview_slack_to_run_fields = slack_mod._preview_slack_to_run_fields
+_slack_message_needs_resolution_ui = slack_mod._slack_message_needs_resolution_ui
+_slack_default_bio_weight_lbs = slack_mod._slack_default_bio_weight_lbs
+_slack_default_availability_date_iso = slack_mod._slack_default_availability_date_iso
+_default_slack_run_field_rules = slack_mod._default_slack_run_field_rules
+_slack_run_mappings_template_kwargs = slack_mod._slack_run_mappings_template_kwargs
+BIOMASS_BUDGET_COUNT_STATUSES = purchases_mod.BIOMASS_BUDGET_COUNT_STATUSES
+_purchase_counts_toward_biomass_budget = purchases_mod.purchase_counts_toward_biomass_budget
+_purchase_week_start = purchases_mod.purchase_week_start
+_purchase_biomass_budget_lbs = purchases_mod.purchase_biomass_budget_lbs
+_purchase_biomass_budget_potency = purchases_mod.purchase_biomass_budget_potency
+_purchase_budget_spend = purchases_mod.purchase_budget_spend
+_budget_week_purchase_metrics = purchases_mod.budget_week_purchase_metrics
+_biomass_budget_snapshot_for_purchase = purchases_mod.biomass_budget_snapshot_for_purchase
+_enforce_weekly_biomass_purchase_limits = purchases_mod.enforce_weekly_biomass_purchase_limits
+_allowed_image_filename = uploads_mod.allowed_image_filename
+_allowed_lab_filename = uploads_mod.allowed_lab_filename
+_file_size_bytes = uploads_mod.file_size_bytes
+_save_uploads = uploads_mod.save_uploads
+_field_intake_photo_bucket_count = uploads_mod.field_intake_photo_bucket_count
+_validate_field_intake_photo_bucket = uploads_mod.validate_field_intake_photo_bucket
+_save_field_photos = uploads_mod.save_field_photos
+_save_lab_files = uploads_mod.save_lab_files
+_save_purchase_support_docs = uploads_mod.save_purchase_support_docs
+_save_photo_library_files = uploads_mod.save_photo_library_files
+_json_paths = uploads_mod.json_paths
+
+
 def init_db():
+    import app as root
+    return bootstrap_module.init_db(root)
+
     """Create tables and seed initial data."""
     # Each Gunicorn worker imports this module and runs init_db(); concurrent create_all()
     # races on new tables (e.g. slack_ingested_messages). Treat harmless DDL conflicts as OK.

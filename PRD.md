@@ -19,6 +19,8 @@ Gold Drop is an operations tracker for biomass intake → inventory → extracti
 
 This PRD describes the problem, users, workflows, data requirements, calculations, settings, and acceptance criteria.
 
+**Release note â€” April 2026:** the current upgrade train includes a substantial internal modularization of `app.py` into package-backed route and bootstrap modules. This is an **engineering delivery change only**; product behavior, URLs, approvals, list workflows, Slack ingest behavior, and operator-facing page structure are intended to remain unchanged.
+
 ---
 
 ## Problem Statement

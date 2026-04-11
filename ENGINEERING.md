@@ -2,17 +2,22 @@
 
 Developer-facing implementation details. Product behavior belongs in `PRD.md`; operator steps in `USER_MANUAL.md`.
 
-## Journey hardening updates (Apr 2026)
+## App package layout
 
-- `blueprints/purchases.py` now uses shared helpers for journey route concerns:
-  - `_include_archived_requested()` for super-admin gated archived mode
-  - `_load_purchase_for_journey_or_error(...)` for consistent purchase lookup + archived checks
-  - `_journey_error_response(...)` for consistent web/API error shapes
-- Journey export (`/purchases/<id>/journey/export`) now validates `format` explicitly.
-  - Supported: `json`, `csv`
-  - Unsupported format returns `400` JSON:
-    `{"error":"Unsupported export format","supported_formats":["csv","json"]}`
-- Regression coverage is in `tests/test_purchase_journey_api.py::test_purchase_journey_export_rejects_unknown_format`.
+- Runtime entrypoint is still **`app.py`**, but it now exposes **`create_app()`** and acts as a compatibility shim.
+- Shared logic that used to live only in `app.py` is now split into **`gold_drop/`** modules:
+  - **`gold_drop/auth.py`** - login manager wiring + access decorators
+  - **`gold_drop/audit.py`** - `log_audit`
+  - **`gold_drop/list_state.py`** - session filter persistence, timezone helpers, Slack channel labels
+  - **`gold_drop/slack.py`** - Slack parsing, mapping, preview, and coverage helpers
+  - **`gold_drop/purchases.py`** - weekly biomass budget / on-hand purchase helpers
+  - **`gold_drop/purchases_module.py`** - purchases list/form/approval route logic delegated from `app.py`
+  - **`gold_drop/biomass_module.py`** - biomass pipeline list/form/archive route logic delegated from `app.py`
+  - **`gold_drop/bootstrap_module.py`** - startup database initialization and seed logic delegated from `init_db()`
+  - **`gold_drop/settings_module.py`** - extracted settings/admin view logic called by the `/settings` route
+  - **`gold_drop/uploads.py`** - upload validation, save helpers, and JSON path normalization
+- `app.py` still re-exports some extracted helpers and keeps the Flask route decorators, but purchases, biomass, settings, and startup init now delegate immediately into package modules.
+- `tests/test_app_factory.py` provides a minimal factory + route-registration smoke check so future extractions are verified against a real app object, not just imports.
 
 ## List view filter & sort persistence (`LIST_FILTERS_SESSION_KEY`)
 
@@ -23,7 +28,7 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
 - **Purchases `hide_terminal`:** Merged like other keys; when `filter_form=1` on the GET form, `hide_terminal` is set explicitly from the checkbox (unchecked ⇒ cleared) so session does not stick “on” incorrectly.
 - **Slack imports:** Custom branch logic (not `_list_filters_merge`): empty query string restores full saved state; `filter_form=1` snapshots the apply form (including `getlist("channel_id")` stored as sorted CSV); partial URLs merge onto prior state. **Date filtering:** rows with `_slack_ts_to_date_value(...) is None` are **not** excluded by start/end range only (compare when `ts_date is not None`).
 - **UX elsewhere:** `static/css/style.css` — `input[type="date"]` calendar indicator uses a white masked icon for dark theme. `purchase_form.html` — top **Save** uses `form="purchase-main-form"`.
-- **Windows:** `requirements.txt` includes **`tzdata`** so `zoneinfo` resolves IANA names (e.g. `America/Los_Angeles`); `_app_display_zoneinfo()` falls back to `timezone.utc` if no zone DB.
+- **Windows:** `requirements.txt` includes **`tzdata`** so `zoneinfo` resolves IANA names (e.g. `America/Los_Angeles`); timezone resolution now lives in **`gold_drop/list_state.py`** and falls back to `timezone.utc` if no zone DB.
 
 See **`USER_MANUAL.md` → Saved filters, sorts, and list state** for operator-facing wording.
 
@@ -175,7 +180,7 @@ SQLite adds the sync config table in `_ensure_sqlite_schema()`; other engines re
 
 ### Related code (indicative)
 
-- `app.py`: `SLACK_SYNC_CHANNEL_SLOTS`, `_ensure_slack_sync_configs`, `_slack_ingest_channel_history`, `settings_slack_sync_channel`, settings `form_type=slack` handler (includes sync channel rows).
+- `app.py`: Slack sync routes and bootstrap glue still live here (`SLACK_SYNC_CHANNEL_SLOTS`, `_ensure_slack_sync_configs`, `_slack_ingest_channel_history`, `settings_slack_sync_channel`, settings `form_type=slack` handler).
 - `models.py`: `SlackChannelSyncConfig`, `SlackIngestedMessage`.
 - `templates/settings.html`: Slack card (sync channel form), Maintenance (sync button).
 
@@ -196,18 +201,18 @@ SQLite adds the sync config table in `_ensure_sqlite_schema()`; other engines re
 - **Rule shape:** `source_key`, `target_field`, `message_kinds`, `transform`; optional **`destination`** (`run` default). Allowed destinations: `run`, `biomass`, `purchase`, `inventory`, `photo_library`, `supplier`, `strain`, `cost`. For `run`, `target_field` must be in `SLACK_MAPPING_ALLOWED_TARGET_FIELDS`; for others, a **snake_case** placeholder string (`SLACK_NON_RUN_TARGET_FIELD_RE`) until that module ships an allowlist.
 - **Editor:** `GET/POST /settings/slack-run-mappings` — grid: destination, Slack source, target (Run = select; other = text), message-kind scope, transform + arg. Initial row count is `_slack_mapping_grid_row_count(rules)`; client script grows/shrinks trailing blank rows. Hints update live. POST scans `rule_destination_i`, `rule_target_select_i` / `rule_target_text_i`, etc. **Save mappings** / **Reset** / **Save JSON** as before.
 - **Preview:** `GET /settings/slack-imports/<msg_id>/preview` — `_preview_slack_to_run_fields` applies only rules with `destination` **`run`** (or omitted); keys consumed by other destinations are still marked consumed for **unmapped** derivation. Preview is also used for **apply** prefill; persistence to `runs` happens only via the Run form save path.
-- **Helpers:** `_apply_slack_mapping_transform`, `_validate_slack_run_field_rules`, `_load_slack_run_field_rules`, `_slack_non_run_mapping_rule_count`, `_preview_slack_to_run_fields` in `app.py`.
+- **Helpers:** `_apply_slack_mapping_transform`, `_validate_slack_run_field_rules`, `_preview_slack_to_run_fields`, coverage helpers, and parser helpers now live in **`gold_drop/slack.py`**. Rule loading / persistence still happens from the settings flow in `app.py`.
 
 ### Gunicorn / multi-worker startup
 
-`init_db()` runs at import time (see bottom of `app.py`). With multiple sync workers, `db.create_all()` can race and one worker may see “table already exists” / duplicate relation. `init_db()` ignores those specific errors and continues; you can also set **`--preload`** on Gunicorn so the app loads once before workers fork (see `golddrop.service` `ExecStart`).
+`init_db()` still runs during startup from `app.py`. With multiple sync workers, `db.create_all()` can race and one worker may see “table already exists” / duplicate relation. `init_db()` ignores those specific errors and continues; you can also set **`--preload`** on Gunicorn so the app loads once before workers fork (see `golddrop.service` `ExecStart`).
 
 ## Purchase spreadsheet import
 
 - **Module:** `purchase_import.py` — `PURCHASE_IMPORT_HEADER_ALIASES` / `_aliases_groups` map normalized headers (lowercase, spaces → underscores) to canonical purchase fields; `parse_purchase_spreadsheet_upload(filename, raw_bytes)` returns rows as `dict` plus `_sheet_row` for display. Supports **CSV** (UTF-8-SIG) and **Excel** via **openpyxl** `load_workbook(..., read_only=True, data_only=True)` on the active sheet.
 - **Detection:** Scans the first **50** grid rows for a header line with **≥2** mapped columns; requires a **supplier** column. Max **2000** data rows.
 - **Routes (Flask):** `GET/POST /purchases/import` (`purchase_import`, `@purchase_editor_required`), `GET /purchases/import/preview`, `POST /purchases/import/commit`, `GET /purchases/import/sample.csv`. Upload writes a staging JSON file under `tempfile.gettempdir()` named `gdp_purchimp_<token>.json`; only a random token is stored in `session["purchase_import_token"]`.
-- **Validation / commit:** `app.py` — `_purchase_import_validate_row`, `_purchase_import_commit_norm`; reuses `_maintain_purchase_inventory_lots`, `_biomass_budget_snapshot_for_purchase`, `_enforce_weekly_biomass_purchase_limits`, `log_audit`. Imported rows do **not** set **`purchase_approved_at`**; if parsed **`status`** ∈ **`INVENTORY_ON_HAND_PURCHASE_STATUSES`**, commit forces **`ordered`** instead. Optional **Amount** → `total_cost`; **Paid date** / **Week** / **Payment method** folded into **notes**; **invoice** weight can fall back to **actual** weight; **purchase date** can fall back to **paid date** when purchase date is blank.
+- **Validation / commit:** `app.py` — `_purchase_import_validate_row`, `_purchase_import_commit_norm`; reuses `_maintain_purchase_inventory_lots`, purchase budget helpers from **`gold_drop/purchases.py`**, and `log_audit`. Imported rows do **not** set **`purchase_approved_at`**; if parsed **`status`** ∈ **`INVENTORY_ON_HAND_PURCHASE_STATUSES`**, commit forces **`ordered`** instead. Optional **Amount** → `total_cost`; **Paid date** / **Week** / **Payment method** folded into **notes**; **invoice** weight can fall back to **actual** weight; **purchase date** can fall back to **paid date** when purchase date is blank.
 - **Templates:** `purchase_import.html`, `purchase_import_preview.html`. Client uses `DataTransfer` so drag-and-drop assigns `input.files` in modern browsers.
 - **Dependency:** `openpyxl>=3.1.0` in `requirements.txt`.
 
