@@ -558,6 +558,8 @@ SLACK_APPLY_PASSTHROUGH_FORM_KEYS = frozenset({
     "slack_new_supplier_name",
     "slack_confirm_create_supplier",
     "slack_confirm_fuzzy_supplier",
+    "slack_canonical_strain",
+    "slack_confirm_fuzzy_strain",
     "slack_biomass_declared",
     "slack_biomass_strain",
     "slack_biomass_weight_lbs",
@@ -618,36 +620,274 @@ def _slack_normalize_match_name(value: str) -> str:
     return s
 
 
+SLACK_SUPPLIER_ALIAS_STOPWORDS = frozenset({
+    "and",
+    "co",
+    "company",
+    "corp",
+    "corporation",
+    "cultivation",
+    "cultivator",
+    "cultivators",
+    "farm",
+    "farms",
+    "garden",
+    "gardens",
+    "grow",
+    "group",
+    "inc",
+    "llc",
+    "ltd",
+    "organics",
+    "the",
+})
+
+
+def _slack_name_tokens(value: str, *, alias: bool = False) -> list[str]:
+    tokens = [
+        t for t in re.split(r"[^a-z0-9]+", (value or "").strip().lower())
+        if t and len(t) > 1
+    ]
+    if alias:
+        tokens = [t for t in tokens if t not in SLACK_SUPPLIER_ALIAS_STOPWORDS]
+    return tokens
+
+
+def _slack_normalize_supplier_alias(value: str) -> str:
+    return " ".join(_slack_name_tokens(value, alias=True))
+
+
+def _slack_normalize_strain_name(value: str) -> str:
+    return " ".join(_slack_name_tokens(value))
+
+
+def _slack_token_overlap_score(left_tokens: list[str], right_tokens: list[str]) -> int:
+    if not left_tokens or not right_tokens:
+        return 0
+    left = set(left_tokens)
+    right = set(right_tokens)
+    overlap = left & right
+    if not overlap:
+        return 0
+    coverage = len(overlap) / max(len(left), len(right))
+    return int(round(coverage * 100))
+
+
+def _slack_build_supplier_candidate(source_raw: str, supplier: Supplier | None) -> dict | None:
+    if not supplier:
+        return None
+    source_norm = _slack_normalize_match_name(source_raw)
+    supplier_norm = _slack_normalize_match_name(supplier.name)
+    source_alias = _slack_normalize_supplier_alias(source_raw)
+    supplier_alias = _slack_normalize_supplier_alias(supplier.name)
+    source_tokens = _slack_name_tokens(source_raw, alias=True)
+    supplier_tokens = _slack_name_tokens(supplier.name, alias=True)
+    score = 0
+    reason = ""
+    exact = False
+    if source_norm and source_norm == supplier_norm:
+        score = 100
+        reason = "exact name"
+        exact = True
+    elif source_alias and source_alias == supplier_alias:
+        score = 96
+        reason = "normalized alias"
+    else:
+        overlap = _slack_token_overlap_score(source_tokens, supplier_tokens)
+        if overlap <= 0:
+            return None
+        score = 55 + min(35, overlap // 2)
+        if supplier_alias and source_alias and (
+            supplier_alias.startswith(source_alias) or source_alias.startswith(supplier_alias)
+        ):
+            score += 8
+            reason = "prefix alias match"
+        else:
+            reason = "token overlap"
+    score = min(score, 100)
+    return {
+        "id": supplier.id,
+        "name": supplier.name,
+        "score": score,
+        "match_reason": reason,
+        "exact": exact,
+        "requires_confirmation": score < 96,
+    }
+
+
 def _slack_supplier_exact_name_match(source_raw: str, supplier: Supplier | None) -> bool:
     if not supplier:
         return False
-    return _slack_normalize_match_name(source_raw) == _slack_normalize_match_name(supplier.name)
+    return (
+        _slack_normalize_match_name(source_raw) == _slack_normalize_match_name(supplier.name)
+        or _slack_normalize_supplier_alias(source_raw) == _slack_normalize_supplier_alias(supplier.name)
+    )
 
 
 def _slack_supplier_mapping_needs_fuzzy_confirm(source_raw: str, supplier_id: str | None) -> bool:
     if not (source_raw or "").strip() or not (supplier_id or "").strip():
         return False
     sup = db.session.get(Supplier, supplier_id)
-    return not _slack_supplier_exact_name_match(source_raw, sup)
+    cand = _slack_build_supplier_candidate(source_raw, sup)
+    if cand is None:
+        return not _slack_supplier_exact_name_match(source_raw, sup)
+    return cand.get("requires_confirmation", True)
 
 
-def _slack_supplier_candidates_for_source(source_raw: str, limit: int = 12) -> list:
-    """Active suppliers: case-insensitive exact name first, else token substring search."""
+def _slack_supplier_candidates_for_source(source_raw: str, limit: int = 12) -> list[dict]:
+    """Return scored active supplier suggestions for a Slack source line."""
     norm = _slack_normalize_match_name(source_raw)
-    if not norm:
+    tokens = list(dict.fromkeys(_slack_name_tokens(source_raw, alias=True)))[:6]
+    if not (norm or tokens):
         return []
-    exact = Supplier.query.filter(
-        func.lower(Supplier.name) == norm,
-        Supplier.is_active.is_(True),
-    ).order_by(Supplier.name).limit(limit).all()
-    if exact:
-        return exact
-    tokens = [t for t in re.split(r"[^\w]+", norm) if len(t) > 1][:5]
     q = Supplier.query.filter(Supplier.is_active.is_(True))
-    if not tokens:
-        return q.order_by(Supplier.name).limit(limit).all()
-    conds = [func.lower(Supplier.name).like(f"%{t}%") for t in tokens]
-    return q.filter(db.or_(*conds)).order_by(Supplier.name).limit(limit).all()
+    conds = []
+    if norm:
+        conds.append(func.lower(Supplier.name) == norm)
+    for token in tokens:
+        conds.append(func.lower(Supplier.name).like(f"%{token}%"))
+    suppliers = (
+        q.filter(or_(*conds)).order_by(Supplier.name).limit(max(limit * 4, 20)).all()
+        if conds else
+        q.order_by(Supplier.name).limit(max(limit * 2, 12)).all()
+    )
+    scored: list[dict] = []
+    seen_ids: set[str] = set()
+    for supplier in suppliers:
+        if supplier.id in seen_ids:
+            continue
+        cand = _slack_build_supplier_candidate(source_raw, supplier)
+        if not cand:
+            continue
+        seen_ids.add(supplier.id)
+        scored.append(cand)
+    scored.sort(key=lambda item: (-int(item["score"]), item["name"].lower()))
+    return scored[:limit]
+
+
+def _slack_build_strain_candidate(
+    raw_strain: str,
+    candidate_name: str,
+    *,
+    supplier_ids: set[str] | None = None,
+    candidate_supplier_ids: set[str] | None = None,
+    candidate_supplier_names: list[str] | None = None,
+    uses: int = 0,
+) -> dict | None:
+    raw_norm = _slack_normalize_strain_name(raw_strain)
+    cand_norm = _slack_normalize_strain_name(candidate_name)
+    if not (raw_norm and cand_norm):
+        return None
+    raw_tokens = _slack_name_tokens(raw_strain)
+    cand_tokens = _slack_name_tokens(candidate_name)
+    score = 0
+    reason = ""
+    if raw_norm == cand_norm:
+        score = 100
+        reason = "exact strain"
+    else:
+        overlap = _slack_token_overlap_score(raw_tokens, cand_tokens)
+        if overlap <= 0:
+            return None
+        score = 55 + min(30, overlap // 2)
+        if cand_norm.startswith(raw_norm) or raw_norm.startswith(cand_norm):
+            score += 10
+            reason = "prefix strain"
+        else:
+            reason = "token overlap"
+    supplier_ids = supplier_ids or set()
+    candidate_supplier_ids = candidate_supplier_ids or set()
+    supplier_match = bool(supplier_ids and candidate_supplier_ids and (supplier_ids & candidate_supplier_ids))
+    if supplier_match:
+        score += 8
+        if reason == "token overlap":
+            reason = "supplier-weighted overlap"
+    score += min(int(uses), 6)
+    score = min(score, 100)
+    return {
+        "name": candidate_name,
+        "score": score,
+        "match_reason": reason,
+        "supplier_match": supplier_match,
+        "supplier_names": candidate_supplier_names or [],
+        "requires_confirmation": score < 96,
+    }
+
+
+def _slack_strain_mapping_needs_fuzzy_confirm(raw_strain: str, selected_strain: str | None) -> bool:
+    if not (raw_strain or "").strip() or not (selected_strain or "").strip():
+        return False
+    return _slack_normalize_strain_name(raw_strain) != _slack_normalize_strain_name(selected_strain)
+
+
+def _slack_strain_candidates_for_name(
+    raw_strain: str,
+    *,
+    supplier_ids: list[str] | None = None,
+    limit: int = 12,
+) -> list[dict]:
+    raw_norm = _slack_normalize_strain_name(raw_strain)
+    if not raw_norm:
+        return []
+    rows = (
+        db.session.query(PurchaseLot.strain_name, Purchase.supplier_id, Supplier.name)
+        .join(Purchase, Purchase.id == PurchaseLot.purchase_id)
+        .join(Supplier, Supplier.id == Purchase.supplier_id)
+        .filter(
+            PurchaseLot.deleted_at.is_(None),
+            Purchase.deleted_at.is_(None),
+            PurchaseLot.strain_name.isnot(None),
+            PurchaseLot.strain_name != "",
+        )
+        .all()
+    )
+    preferred_supplier_ids = {sid for sid in (supplier_ids or []) if sid}
+    by_name: dict[str, dict] = {}
+    for strain_name, supplier_id, supplier_name in rows:
+        key = (strain_name or "").strip()
+        if not key:
+            continue
+        bucket = by_name.setdefault(key, {"supplier_ids": set(), "supplier_names": set(), "uses": 0})
+        if supplier_id:
+            bucket["supplier_ids"].add(str(supplier_id))
+        if supplier_name:
+            bucket["supplier_names"].add(str(supplier_name))
+        bucket["uses"] += 1
+    scored: list[dict] = []
+    for name, meta in by_name.items():
+        cand = _slack_build_strain_candidate(
+            raw_strain,
+            name,
+            supplier_ids=preferred_supplier_ids,
+            candidate_supplier_ids=meta["supplier_ids"],
+            candidate_supplier_names=sorted(meta["supplier_names"]),
+            uses=meta["uses"],
+        )
+        if cand:
+            scored.append(cand)
+    scored.sort(key=lambda item: (-int(item["score"]), item["name"].lower()))
+    return scored[:limit]
+
+
+def _slack_selected_canonical_strain(
+    form,
+    *,
+    raw_strain: str,
+    text_field: str,
+    canonical_field: str,
+    confirm_field: str,
+    required_for_label: str,
+) -> tuple[str, str | None]:
+    free_text = (form.get(text_field) or "").strip()
+    canonical = (form.get(canonical_field) or "").strip()
+    selected = (canonical or free_text or raw_strain or "").strip()
+    if canonical and _slack_strain_mapping_needs_fuzzy_confirm(raw_strain, canonical):
+        if form.get(confirm_field) != "1":
+            return "", (
+                f"The selected {required_for_label} does not exactly match the Slack strain line "
+                '— check "Confirm canonical strain mapping" or choose a closer match.'
+            )
+    return selected, None
 
 
 def _slack_default_bio_weight_lbs(derived: dict) -> float:
@@ -692,7 +932,16 @@ def _slack_resolution_from_apply_form(
     confirm_fuzzy = form.get("slack_confirm_fuzzy_supplier") == "1"
 
     biomass_declared = form.get("slack_biomass_declared") == "1"
-    biomass_strain = (form.get("slack_biomass_strain") or "").strip()
+    biomass_strain, strain_err = _slack_selected_canonical_strain(
+        form,
+        raw_strain=strain_raw,
+        text_field="slack_biomass_strain",
+        canonical_field="slack_canonical_strain",
+        confirm_field="slack_confirm_fuzzy_strain",
+        required_for_label="canonical strain",
+    )
+    if strain_err:
+        return None, strain_err
     bw_raw = (form.get("slack_biomass_weight_lbs") or "").strip()
     if bw_raw:
         try:
@@ -754,6 +1003,8 @@ def _slack_resolution_from_apply_form(
         "new_supplier_name": new_name if supplier_mode == "create" else "",
         "confirm_create_supplier": bool(confirm_create),
         "confirm_fuzzy_supplier": bool(confirm_fuzzy),
+        "canonical_strain": (form.get("slack_canonical_strain") or "").strip(),
+        "confirm_fuzzy_strain": form.get("slack_confirm_fuzzy_strain") == "1",
         "biomass_declared": bool(biomass_declared),
         "biomass_strain": (biomass_strain or strain_raw or "").strip(),
         "biomass_weight_lbs": float(biomass_weight),
@@ -1042,11 +1293,15 @@ def _purchase_sync_biomass_pipeline(p: Purchase) -> None:
 
 
 def _slack_intake_supplier_from_form(form) -> Supplier:
+    source_raw = (form.get("intake_source_raw") or "").strip()
     mode = (form.get("intake_supplier_mode") or "").strip()
     if mode == "existing":
         sid = (form.get("intake_supplier_id") or "").strip()
         if not sid:
             raise ValueError("Select a supplier for this intake purchase.")
+        if _slack_supplier_mapping_needs_fuzzy_confirm(source_raw, sid):
+            if form.get("intake_confirm_fuzzy_supplier") != "1":
+                raise ValueError("Confirm the supplier mapping or choose a closer supplier match.")
         sup = db.session.get(Supplier, sid)
         if not sup:
             raise ValueError("Selected supplier was not found.")
@@ -1079,6 +1334,7 @@ def _apply_slack_intake_update_purchase(
     derived: dict,
     row: SlackIngestedMessage,
     *,
+    resolved_strain: str | None = None,
     manifest_wt: float | None,
     actual_wt: float | None,
     received: date | None,
@@ -1102,7 +1358,7 @@ def _apply_slack_intake_update_purchase(
         if not purchase.true_up_status:
             purchase.true_up_status = "pending"
 
-    strain = (derived.get("strain") or "").strip()
+    strain = (resolved_strain or derived.get("strain") or "").strip()
     active_lots = [lt for lt in purchase.lots if lt.deleted_at is None]
     if len(active_lots) == 1 and actual_wt is not None:
         lot = active_lots[0]
@@ -1124,6 +1380,7 @@ def _create_purchase_from_slack_intake(
     derived: dict,
     row: SlackIngestedMessage,
     *,
+    resolved_strain: str | None = None,
     manifest_key: str,
     manifest_wt: float,
     actual_wt: float | None,
@@ -1161,7 +1418,7 @@ def _create_purchase_from_slack_intake(
             _generate_batch_id(supplier.name, dd or pd, aw),
             exclude_purchase_id=p.id,
         )
-    strain = ((derived.get("strain") or "").strip() or "Unknown")[:200]
+    strain = ((resolved_strain or derived.get("strain") or "").strip() or "Unknown")[:200]
     lot = PurchaseLot(
         purchase_id=p.id,
         strain_name=strain,
@@ -6886,6 +7143,16 @@ def settings_slack_import_preview(msg_id):
     strain_raw = (derived.get("strain") or "").strip()
     suppliers_all = Supplier.query.filter(Supplier.is_active.is_(True)).order_by(Supplier.name).all()
     supplier_candidates = _slack_supplier_candidates_for_source(source_raw) if source_raw else []
+    default_supplier_id = ""
+    if supplier_candidates and not supplier_candidates[0].get("requires_confirmation"):
+        default_supplier_id = str(supplier_candidates[0]["id"])
+    strain_candidates = _slack_strain_candidates_for_name(
+        strain_raw,
+        supplier_ids=[str(c["id"]) for c in supplier_candidates[:3]],
+    ) if strain_raw else []
+    default_canonical_strain = ""
+    if strain_candidates and not strain_candidates[0].get("requires_confirmation"):
+        default_canonical_strain = str(strain_candidates[0]["name"])
     default_availability = _slack_default_availability_date_iso(derived, str(row.message_ts or "")) or ""
     default_bio_weight = _slack_default_bio_weight_lbs(derived)
     intake_candidates: list = []
@@ -6909,8 +7176,11 @@ def settings_slack_import_preview(msg_id):
         needs_resolution_ui=needs_res,
         supplier_all=suppliers_all,
         supplier_candidates=supplier_candidates,
+        default_supplier_id=default_supplier_id,
         source_raw=source_raw,
         strain_raw=strain_raw,
+        strain_candidates=strain_candidates,
+        default_canonical_strain=default_canonical_strain,
         default_availability_date=default_availability,
         default_bio_weight=default_bio_weight,
         intake_candidates=intake_candidates,
@@ -7035,6 +7305,17 @@ def settings_slack_import_apply_intake(msg_id):
             intake_order = datetime.strptime(str(derived["intake_order_date"])[:10], "%Y-%m-%d").date()
         except ValueError:
             intake_order = None
+    intake_strain, intake_strain_err = _slack_selected_canonical_strain(
+        request.form,
+        raw_strain=(derived.get("strain") or "").strip(),
+        text_field="intake_strain_name",
+        canonical_field="intake_canonical_strain",
+        confirm_field="intake_confirm_fuzzy_strain",
+        required_for_label="intake strain",
+    )
+    if intake_strain_err:
+        flash(intake_strain_err, "error")
+        return redirect(url_for("settings_slack_import_preview", msg_id=msg_id))
 
     action = (request.form.get("intake_action") or "").strip()
     try:
@@ -7047,6 +7328,7 @@ def settings_slack_import_apply_intake(msg_id):
                 raise ValueError("Purchase not found.")
             _apply_slack_intake_update_purchase(
                 p, derived, row,
+                resolved_strain=intake_strain,
                 manifest_wt=float(manifest_wt) if manifest_wt is not None else None,
                 actual_wt=float(actual_wt) if actual_wt is not None else None,
                 received=received,
@@ -7069,6 +7351,7 @@ def settings_slack_import_apply_intake(msg_id):
             sup = _slack_intake_supplier_from_form(request.form)
             p = _create_purchase_from_slack_intake(
                 sup, derived, row,
+                resolved_strain=intake_strain,
                 manifest_key=mkey,
                 manifest_wt=float(manifest_wt),
                 actual_wt=float(actual_wt),
