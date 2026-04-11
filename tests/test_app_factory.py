@@ -3,6 +3,10 @@ from __future__ import annotations
 import unittest
 
 import app as app_module
+import gold_drop.biomass_module as biomass_module
+import gold_drop.bootstrap_module as bootstrap_module
+import gold_drop.purchases_module as purchases_module
+import gold_drop.settings_module as settings_module
 
 
 class AppFactorySmokeTest(unittest.TestCase):
@@ -19,6 +23,12 @@ class AppFactorySmokeTest(unittest.TestCase):
         self.assertIn("/purchases", rules)
         self.assertIn("/biomass", rules)
         self.assertIn("/api/slack/events", rules)
+
+    def test_extracted_route_modules_import(self) -> None:
+        self.assertTrue(hasattr(settings_module, "settings_view"))
+        self.assertTrue(hasattr(purchases_module, "purchases_list_view"))
+        self.assertTrue(hasattr(biomass_module, "biomass_list_view"))
+        self.assertTrue(hasattr(bootstrap_module, "init_db"))
 
 
 if __name__ == "__main__":

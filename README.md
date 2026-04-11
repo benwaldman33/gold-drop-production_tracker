@@ -68,6 +68,11 @@ Open **http://localhost:5050** in your browser (default dev port; **5000** is of
 
 ## Project Structure
 
+Recent breakup work moved the main route and startup flows behind package modules in `gold_drop/`:
+- `gold_drop/purchases_module.py`
+- `gold_drop/biomass_module.py`
+- `gold_drop/bootstrap_module.py`
+
 ```
 gold-drop/
 ├── app.py              # Entrypoint shim + Flask app factory (`create_app`)

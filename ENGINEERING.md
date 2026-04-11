@@ -11,9 +11,12 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
   - **`gold_drop/list_state.py`** - session filter persistence, timezone helpers, Slack channel labels
   - **`gold_drop/slack.py`** - Slack parsing, mapping, preview, and coverage helpers
   - **`gold_drop/purchases.py`** - weekly biomass budget / on-hand purchase helpers
+  - **`gold_drop/purchases_module.py`** - purchases list/form/approval route logic delegated from `app.py`
+  - **`gold_drop/biomass_module.py`** - biomass pipeline list/form/archive route logic delegated from `app.py`
+  - **`gold_drop/bootstrap_module.py`** - startup database initialization and seed logic delegated from `init_db()`
   - **`gold_drop/settings_module.py`** - extracted settings/admin view logic called by the `/settings` route
   - **`gold_drop/uploads.py`** - upload validation, save helpers, and JSON path normalization
-- `app.py` still re-exports some extracted helpers so existing tests and route code keep working while route-level breakup continues.
+- `app.py` still re-exports some extracted helpers and keeps the Flask route decorators, but purchases, biomass, settings, and startup init now delegate immediately into package modules.
 - `tests/test_app_factory.py` provides a minimal factory + route-registration smoke check so future extractions are verified against a real app object, not just imports.
 
 ## List view filter & sort persistence (`LIST_FILTERS_SESSION_KEY`)

@@ -14,8 +14,11 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import gold_drop.biomass_module as biomass_module
+import gold_drop.bootstrap_module as bootstrap_module
 import gold_drop.list_state as list_state_mod
 import gold_drop.purchases as purchases_mod
+import gold_drop.purchases_module as purchases_module
 import gold_drop.settings_module as settings_module
 import gold_drop.slack as slack_mod
 import gold_drop.uploads as uploads_mod
@@ -4872,154 +4875,35 @@ def batch_edit(entity):
 @app.route("/purchases")
 @login_required
 def purchases_list():
-    redir = _list_filters_clear_redirect("purchases_list")
-    if redir:
-        return redir
-    keys = ("page", "status", "start_date", "end_date", "supplier_id", "min_potency", "max_potency", "hide_terminal")
-    m = _list_filters_merge("purchases_list", keys)
-    if request.args.get("filter_form") == "1":
-        m["hide_terminal"] = "1" if request.args.get("hide_terminal") == "1" else ""
-        session[LIST_FILTERS_SESSION_KEY]["purchases_list"]["hide_terminal"] = m["hide_terminal"]
-        session.modified = True
-    try:
-        page = int(m.get("page") or 1)
-    except ValueError:
-        page = 1
-    status_filter = (m.get("status") or "").strip()
-    start_raw = (m.get("start_date") or "").strip()
-    end_raw = (m.get("end_date") or "").strip()
-    supplier_filter = (m.get("supplier_id") or "").strip()
-    min_pot_raw = (m.get("min_potency") or "").strip()
-    max_pot_raw = (m.get("max_potency") or "").strip()
-    hide_terminal = m.get("hide_terminal") == "1"
-    try:
-        start_date = datetime.strptime(start_raw, "%Y-%m-%d").date() if start_raw else None
-        end_date = datetime.strptime(end_raw, "%Y-%m-%d").date() if end_raw else None
-    except ValueError:
-        start_date = None
-        end_date = None
-    try:
-        min_potency = float(min_pot_raw) if min_pot_raw else None
-        max_potency = float(max_pot_raw) if max_pot_raw else None
-    except ValueError:
-        min_potency = None
-        max_potency = None
-    query = Purchase.query.filter(Purchase.deleted_at.is_(None))
-    if status_filter:
-        query = query.filter_by(status=status_filter)
-    if hide_terminal:
-        query = query.filter(Purchase.status.notin_(("complete", "cancelled")))
-    if start_date:
-        query = query.filter(Purchase.purchase_date >= start_date)
-    if end_date:
-        query = query.filter(Purchase.purchase_date <= end_date)
-    if supplier_filter:
-        query = query.filter(Purchase.supplier_id == supplier_filter)
-    if min_potency is not None:
-        query = query.filter(Purchase.stated_potency_pct >= min_potency)
-    if max_potency is not None:
-        query = query.filter(Purchase.stated_potency_pct <= max_potency)
-    pagination = query.order_by(Purchase.purchase_date.desc()).paginate(page=page, per_page=25, error_out=False)
-    if pagination.pages and page > pagination.pages:
-        page = pagination.pages
-        pagination = query.order_by(Purchase.purchase_date.desc()).paginate(page=page, per_page=25, error_out=False)
-        lf = session.get(LIST_FILTERS_SESSION_KEY)
-        if isinstance(lf, dict) and isinstance(lf.get("purchases_list"), dict):
-            lf["purchases_list"]["page"] = str(page)
-            session.modified = True
-    suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
-    purchases_filters_active = (
-        page > 1
-        or bool(status_filter)
-        or bool(start_raw or end_raw or supplier_filter or min_pot_raw or max_pot_raw)
-        or hide_terminal
-    )
-    return render_template(
-        "purchases.html",
-        purchases=pagination.items,
-        pagination=pagination,
-        status_filter=status_filter,
-        suppliers=suppliers,
-        supplier_filter=supplier_filter,
-        start_date=start_raw,
-        end_date=end_raw,
-        min_potency=min_pot_raw,
-        max_potency=max_pot_raw,
-        hide_terminal=hide_terminal,
-        list_filters_active=purchases_filters_active,
-        clear_filters_url=url_for("purchases_list", clear_filters=1),
-    )
+    import app as root
+    return purchases_module.purchases_list_view(root)
 
 
 @app.route("/purchases/new", methods=["GET", "POST"])
 @purchase_editor_required
 def purchase_new():
-    if request.method == "POST":
-        return _save_purchase(None)
-    suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
-    rate = SystemSetting.get_float("potency_rate", 1.50)
-    return render_template(
-        "purchase_form.html",
-        purchase=None,
-        suppliers=suppliers,
-        rate=rate,
-        today=date.today(),
-        purchase_support_docs=[],
-    )
+    import app as root
+    return purchases_module.purchase_new_view(root)
 
 
 @app.route("/purchases/<purchase_id>/edit", methods=["GET", "POST"])
 @purchase_editor_required
 def purchase_edit(purchase_id):
-    purchase = db.session.get(Purchase, purchase_id)
-    if not purchase or purchase.deleted_at is not None:
-        flash("Purchase not found.", "error")
-        return redirect(url_for("purchases_list"))
-    if request.method == "POST":
-        return _save_purchase(purchase)
-    suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
-    purchase_audit_photos = PhotoAsset.query.filter(
-        PhotoAsset.purchase_id == purchase.id,
-        PhotoAsset.source_type == "field_submission",
-    ).order_by(PhotoAsset.uploaded_at.desc()).all()
-    purchase_support_docs = PhotoAsset.query.filter(
-        PhotoAsset.purchase_id == purchase.id,
-        PhotoAsset.source_type == "purchase_upload",
-    ).order_by(PhotoAsset.uploaded_at.desc()).all()
-    rate = SystemSetting.get_float("potency_rate", 1.50)
-    return render_template(
-        "purchase_form.html",
-        purchase=purchase,
-        suppliers=suppliers,
-        rate=rate,
-        today=date.today(),
-        purchase_audit_photos=purchase_audit_photos,
-        purchase_support_docs=purchase_support_docs,
-    )
+    import app as root
+    return purchases_module.purchase_edit_view(root, purchase_id)
 
 
 @app.route("/purchases/<purchase_id>/approve", methods=["POST"])
 @login_required
 def purchase_approve(purchase_id):
-    if not current_user.can_approve_purchase:
-        flash("Only users with purchase approval permission can approve purchases.", "error")
-        return redirect(url_for("purchase_edit", purchase_id=purchase_id))
-    p = db.session.get(Purchase, purchase_id)
-    if not p or p.deleted_at is not None:
-        flash("Purchase not found.", "error")
-        return redirect(url_for("purchases_list"))
-    if p.is_approved:
-        flash("Purchase is already approved.", "info")
-        return redirect(url_for("purchase_edit", purchase_id=purchase_id))
-    p.purchase_approved_at = datetime.utcnow()
-    p.purchase_approved_by_user_id = current_user.id
-    log_audit("approve", "purchase", p.id)
-    db.session.commit()
-    flash(f"Purchase {p.batch_id or p.id} approved.", "success")
-    return redirect(url_for("purchase_edit", purchase_id=purchase_id))
+    import app as root
+    return purchases_module.purchase_approve_view(root, purchase_id)
 
 
 def _save_purchase(existing):
+    import app as root
+    return purchases_module.save_purchase(root, existing)
+
     try:
         p = existing or Purchase()
         p.supplier_id = request.form["supplier_id"]
@@ -8320,6 +8204,9 @@ def _parse_float(s):
 @app.route("/purchases/<purchase_id>/lots/new", methods=["POST"])
 @purchase_editor_required
 def lot_new(purchase_id):
+    import app as root
+    return purchases_module.lot_new_view(root, purchase_id)
+
     purchase = db.session.get(Purchase, purchase_id)
     if not purchase or purchase.deleted_at is not None:
         flash("Purchase not found.", "error")
@@ -8358,6 +8245,9 @@ _STAGE_TO_STATUS = {
 @app.route("/biomass")
 @login_required
 def biomass_list():
+    import app as root
+    return biomass_module.biomass_list_view(root)
+
     _apply_biomass_potential_soft_delete()
     redir = _list_filters_clear_redirect("biomass_list")
     if redir:
@@ -8434,6 +8324,9 @@ def biomass_list():
 @app.route("/biomass/new", methods=["GET", "POST"])
 @editor_required
 def biomass_new():
+    import app as root
+    return biomass_module.biomass_new_view(root)
+
     if request.method == "POST":
         return _save_biomass_purchase(None)
     suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
@@ -8443,6 +8336,9 @@ def biomass_new():
 @app.route("/biomass/<item_id>/edit", methods=["GET", "POST"])
 @editor_required
 def biomass_edit(item_id):
+    import app as root
+    return biomass_module.biomass_edit_view(root, item_id)
+
     item = db.session.get(Purchase, item_id)
     if not item:
         flash("Biomass availability record not found.", "error")
@@ -8459,6 +8355,9 @@ def biomass_edit(item_id):
 @app.route("/biomass/<item_id>/restore", methods=["POST"])
 @admin_required
 def biomass_restore(item_id):
+    import app as root
+    return biomass_module.biomass_restore_view(root, item_id)
+
     item = db.session.get(Purchase, item_id)
     if not item or not item.deleted_at:
         flash("Nothing to restore.", "error")
@@ -8473,6 +8372,9 @@ def biomass_restore(item_id):
 
 
 def _save_biomass_purchase(existing):
+    import app as root
+    return biomass_module.save_biomass_purchase(root, existing)
+
     """Save a Purchase record from the biomass pipeline form (declaration → testing → commitment flow)."""
     try:
         if existing and existing.deleted_at:
@@ -8702,6 +8604,9 @@ def _save_biomass_purchase(existing):
 @app.route("/biomass/<item_id>/delete", methods=["POST"])
 @editor_required
 def biomass_delete(item_id):
+    import app as root
+    return biomass_module.biomass_delete_view(root, item_id)
+
     item = db.session.get(Purchase, item_id)
     if item:
         item.deleted_at = datetime.utcnow()
@@ -8775,6 +8680,9 @@ _json_paths = uploads_mod.json_paths
 
 
 def init_db():
+    import app as root
+    return bootstrap_module.init_db(root)
+
     """Create tables and seed initial data."""
     # Each Gunicorn worker imports this module and runs init_db(); concurrent create_all()
     # races on new tables (e.g. slack_ingested_messages). Treat harmless DDL conflicts as OK.
