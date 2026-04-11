@@ -16,6 +16,7 @@ import urllib.parse
 import urllib.request
 import gold_drop.list_state as list_state_mod
 import gold_drop.purchases as purchases_mod
+import gold_drop.settings_module as settings_module
 import gold_drop.slack as slack_mod
 import gold_drop.uploads as uploads_mod
 from datetime import datetime, date, timedelta, timezone
@@ -6290,6 +6291,10 @@ def strains_list():
 @app.route("/settings", methods=["GET", "POST"])
 @admin_required
 def settings():
+    import app as root
+    return settings_module.settings_view(root)
+
+    # Legacy body retained temporarily below as compatibility/reference during route breakup.
     if request.method == "POST":
         form_type = request.form.get("form_type")
 
@@ -6655,13 +6660,8 @@ def settings():
 
 
 def _settings_redirect():
-    anchor = (request.form.get("return_to") or request.args.get("return_to") or "").strip()
-    target = url_for("settings")
-    if anchor:
-        if not anchor.startswith("#"):
-            anchor = f"#{anchor.lstrip('#')}"
-        target = f"{target}{anchor}"
-    return redirect(target)
+    import app as root
+    return settings_module.settings_redirect(root)
 
 
 @app.route("/settings/users/<user_id>/toggle_active", methods=["POST"])

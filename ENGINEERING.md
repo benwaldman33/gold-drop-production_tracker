@@ -11,8 +11,10 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
   - **`gold_drop/list_state.py`** - session filter persistence, timezone helpers, Slack channel labels
   - **`gold_drop/slack.py`** - Slack parsing, mapping, preview, and coverage helpers
   - **`gold_drop/purchases.py`** - weekly biomass budget / on-hand purchase helpers
+  - **`gold_drop/settings_module.py`** - extracted settings/admin view logic called by the `/settings` route
   - **`gold_drop/uploads.py`** - upload validation, save helpers, and JSON path normalization
 - `app.py` still re-exports some extracted helpers so existing tests and route code keep working while route-level breakup continues.
+- `tests/test_app_factory.py` provides a minimal factory + route-registration smoke check so future extractions are verified against a real app object, not just imports.
 
 ## List view filter & sort persistence (`LIST_FILTERS_SESSION_KEY`)
 

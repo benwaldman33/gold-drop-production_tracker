@@ -80,6 +80,7 @@ gold-drop/
 │   ├── audit.py        # Audit log helper
 │   ├── list_state.py   # Session-backed list filters + timezone/channel helpers
 │   ├── purchases.py    # Purchase budget / on-hand helper logic
+│   ├── settings_module.py # Settings/admin flow extracted behind app route delegates
 │   ├── slack.py        # Slack parsing, mapping, preview, and triage helpers
 │   └── uploads.py      # Upload validation + file persistence helpers
 ├── requirements.txt    # Python dependencies
@@ -121,6 +122,10 @@ gold-drop/
     ├── slack_run_mappings.html
     ├── import.html         # CSV import upload
     └── import_review.html  # Import preview and confirmation
+├── tests/
+│   ├── test_app_factory.py # App factory + route registration smoke test
+│   ├── test_slack_mapping_logic.py
+│   └── test_slack_run_mappings_render.py
 ├── flowchart.html          # Standalone Mermaid flow reference (open in browser; not a Flask route)
 ```
 
