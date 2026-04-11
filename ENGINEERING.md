@@ -2,6 +2,18 @@
 
 Developer-facing implementation details. Product behavior belongs in `PRD.md`; operator steps in `USER_MANUAL.md`.
 
+## Journey hardening updates (Apr 2026)
+
+- `blueprints/purchases.py` now uses shared helpers for journey route concerns:
+  - `_include_archived_requested()` for super-admin gated archived mode
+  - `_load_purchase_for_journey_or_error(...)` for consistent purchase lookup + archived checks
+  - `_journey_error_response(...)` for consistent web/API error shapes
+- Journey export (`/purchases/<id>/journey/export`) now validates `format` explicitly.
+  - Supported: `json`, `csv`
+  - Unsupported format returns `400` JSON:
+    `{"error":"Unsupported export format","supported_formats":["csv","json"]}`
+- Regression coverage is in `tests/test_purchase_journey_api.py::test_purchase_journey_export_rejects_unknown_format`.
+
 ## List view filter & sort persistence (`LIST_FILTERS_SESSION_KEY`)
 
 - **Storage:** Flask `session` key `list_filters_v1` maps **endpoint id** → flat `dict` of query-parameter strings (e.g. `runs_list`, `purchases_list`, `biomass_list`, `costs_list`, `inventory`, `strains_list`, `settings_slack_imports`).
@@ -14,6 +26,69 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
 - **Windows:** `requirements.txt` includes **`tzdata`** so `zoneinfo` resolves IANA names (e.g. `America/Los_Angeles`); `_app_display_zoneinfo()` falls back to `timezone.utc` if no zone DB.
 
 See **`USER_MANUAL.md` → Saved filters, sorts, and list state** for operator-facing wording.
+
+## Refactor roadmap — clear domain modules (modular monolith)
+
+Current behavior should stay in one deployable app with shared DB/rules, but code can be split into maintainable modules.
+
+### Target structure
+
+```
+app/
+  __init__.py                # app factory, extension init
+  extensions.py              # db, login manager, shared ext instances
+  config.py                  # env/config loading + validation
+  auth/                      # login/logout/user session concerns
+  dashboard/                 # home KPIs + shared cards
+  purchases/                 # purchase + biomass pipeline + approval + import
+  inventory/                 # lot availability + days-of-supply
+  runs/                      # runs CRUD + inputs + yields/costs + HTE pipeline
+  costs/                     # operational cost entries
+  slack/                     # sync, mappings, imports, apply
+  departments/               # dept lenses + rollups
+  settings/                  # system settings + user admin
+  services/                  # pure domain workflows and orchestration
+  policies/                  # permissions + status transitions
+  queries/                   # reusable read models / reporting queries
+  schemas/                   # form parsing + validation helpers
+```
+
+### Migration sequence (safe, incremental)
+1. Move route handlers into Flask Blueprints by domain with no behavior changes.
+2. Extract shared business rules from routes into `services/`:
+   - purchase approval + status gating
+   - inventory eligibility
+   - budget enforcement
+   - run-cost recomputation triggers
+3. Extract permission and transition checks into `policies/` (single source for allowed status moves).
+4. Introduce app factory (`create_app`) and thin `wsgi.py` entrypoint for easier tests/CLI.
+5. Keep SQLAlchemy models stable during first pass; defer schema redesign until tests are green.
+6. Add integration tests per domain boundary before/while moving logic.
+
+### Refactor guardrails
+- No duplicate business rules across department pages.
+- Utility transforms should not require Flask request/app context unless explicitly route-bound.
+- Keep old endpoints and templates functioning while moving internals; deprecate in phases.
+
+### First steps (recommended order)
+If starting now, do these first:
+
+1. **Stabilize test/app bootstrapping**
+   - Add a minimal `pytest.ini` (or equivalent) so tests run without ad-hoc `PYTHONPATH` tweaks.
+   - Introduce `create_app(test_config=...)` so tests can create app/context deterministically.
+2. **Extract one vertical slice to prove the pattern**
+   - Start with **Purchases + Biomass Pipeline** (highest cross-module coupling).
+   - Move routes into a `purchases` Blueprint while keeping URLs and templates unchanged.
+   - Move approval/status-transition logic into a single `services/purchases.py`.
+3. **Create one shared policy module**
+   - Centralize purchase status transition checks and approval gates in `policies/purchase_status.py`.
+   - Replace route-level one-off checks with policy calls.
+4. **Ship a thin Batch Journey API first (before full UI)**
+   - Implement `GET /api/purchases/<id>/journey` returning derived stage events.
+   - Validate with real batches and edge cases (partial consumption, archived rows, unapproved deliveries).
+5. **Then build the visual stepper**
+   - Add “View Journey” entry point from Purchases list/detail.
+   - Render timeline from the API model; avoid duplicating business logic in templates/JS.
 
 ## PRD implementation notes — departments, approvals, aging
 
@@ -159,3 +234,29 @@ SQLite adds the sync config table in `_ensure_sqlite_schema()`; other engines re
 - **UI labels:** summary tile **Total** = `total_on_hand + total_in_transit` (not labeled “available”).
 - **Dashboard KPIs:** a separate `days_of_supply` in the dashboard KPI block uses the same on-hand aggregate (unfiltered) ÷ same setting; see `kpi_actuals["days_of_supply"]` in `app.py` when runs exist in the selected period.
 
+## Batch Journey Progress Tracker (engineering status + outline)
+
+Implemented baseline: clickable journey page + JSON API + JSON/CSV export for a purchase batch.
+
+### Data strategy (v1)
+- **Derived timeline** from existing tables (`Purchase`, `PurchaseLot`, `RunInput`, `Run`, plus future sales records) keyed by `purchase_id`.
+- No new canonical “stage history” table required for v1; compute milestones from timestamps/status fields already present.
+
+### Endpoint shape (implemented)
+- `GET /purchases/<id>/journey` (HTML timeline page)
+- `GET /api/purchases/<id>/journey` (JSON event model for UI/export)
+- `GET /purchases/<id>/journey/export?format=json|csv` (download)
+- Routes are now served from `blueprints/purchases.py`; payload generation lives in `services/purchases_journey.py` (no lazy runtime import of `app`).
+
+### Event model (example)
+- `stage_key`: declared | testing | committed | delivered | inventory | extraction | post_processing | sales
+- `state`: done | in_progress | blocked | not_started | not_applicable
+- `started_at`, `completed_at`
+- `metrics`: lbs/g/$ summary at that stage
+- `links`: list of source record URLs/ids
+
+### UI notes
+- Render as stepper/timeline with status colors and tooltips.
+- Show partial completion (e.g., some lots consumed in runs, others still on-hand).
+- Include “last updated” and “include archived” toggles for audit contexts.
+- Include direct **Export JSON** / **Export CSV** actions on the journey page.
