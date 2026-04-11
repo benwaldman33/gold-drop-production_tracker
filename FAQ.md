@@ -62,6 +62,20 @@ Common causes: missing **purchase date** (or **paid date** as fallback), missing
 **Are imported purchases approved automatically?**  
 **No.** They are created **unapproved**. If the spreadsheet asked for an on-hand status, the app **downgrades** to a safe status (e.g. **ordered**) until someone uses **Edit Purchase** → **Approve purchase** and sets the real status.
 
+## Batch Journey
+
+**Where do I open the Batch Journey timeline?**  
+From **Purchases** click **Journey** on a row, or open **Edit Purchase** and click **View Journey**.
+
+**Can I export a batch timeline?**  
+Yes. On the Journey page use **Export JSON** or **Export CSV**.
+
+**What happens if I pass an unknown Journey export format in the URL?**  
+The app returns an explicit **400** error with supported formats (`csv`, `json`) instead of guessing.
+
+**Why can’t I open Journey for an archived purchase?**  
+Archived purchases require **Super Admin** and `include_archived=1` (via the Journey page toggle or URL) to view/export.
+
 ## Batch edit (list screens)
 
 **What is “Batch edit…” on Runs, Purchases, etc.?**  

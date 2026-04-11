@@ -40,6 +40,13 @@ from models import (db, User, Supplier, Purchase, PurchaseLot, Run, RunInput,
                     FieldAccessToken, FieldPurchaseSubmission, LabTest, SupplierAttachment, PhotoAsset,
                     SlackIngestedMessage, SlackChannelSyncConfig, gen_uuid)
 from purchase_import import parse_purchase_spreadsheet_upload
+from blueprints.purchases import bp as purchases_bp
+from policies.purchase_status import (
+    require_approval_for_on_hand_status,
+    validate_delivered_requires_prior_commitment,
+    validate_pipeline_commitment_transition,
+)
+from services.purchases import stamp_purchase_approval
 from batch_edit import (
     STRAIN_PAIR_SEP,
     apply_batch_runs,
@@ -4912,11 +4919,11 @@ def _save_purchase(existing):
         p.delivery_date = datetime.strptime(dd, "%Y-%m-%d").date() if dd else None
         new_status = request.form.get("status", "ordered")
         # Enforce approval gate: on-hand statuses require prior approval
-        if new_status in INVENTORY_ON_HAND_PURCHASE_STATUSES and not p.is_approved:
-            raise ValueError(
-                f"Cannot set status to \"{new_status.replace('_', ' ').title()}\" — "
-                "this purchase has not been approved yet. Approve it first, then change status."
-            )
+        require_approval_for_on_hand_status(
+            new_status=new_status,
+            is_approved=p.is_approved,
+            on_hand_statuses=INVENTORY_ON_HAND_PURCHASE_STATUSES,
+        )
         p.status = new_status
         p.stated_weight_lbs = float(request.form.get("stated_weight_lbs") or 0)
         aw = request.form.get("actual_weight_lbs", "").strip()
@@ -8504,25 +8511,16 @@ def _save_biomass_purchase(existing):
         if not new_status:
             raise ValueError("Stage is invalid.")
 
-        # Enforce: delivered requires prior commitment
-        if new_status == "delivered" and prev_status not in ("committed", "delivered", None):
-            raise ValueError(
-                "Material cannot be marked as Delivered without first being Committed. "
-                "Move the batch to Committed, then to Delivered."
-            )
+        validate_delivered_requires_prior_commitment(prev_status=prev_status, new_status=new_status)
 
         # Approval gate for commitment transitions
-        enters_commitment = new_status == "committed" and prev_status not in ("committed", "delivered")
-        leaves_commitment = prev_status in ("committed", "delivered") and new_status not in ("committed", "delivered")
-        if enters_commitment or leaves_commitment:
-            if not current_user.can_approve_purchase:
-                raise ValueError(
-                    "Only Super Admin or users with purchase approval permission can move a batch "
-                    "to or from Committed / Delivered."
-                )
+        enters_commitment, _leaves_commitment = validate_pipeline_commitment_transition(
+            prev_status=prev_status,
+            new_status=new_status,
+            can_approve_purchase=current_user.can_approve_purchase,
+        )
         if enters_commitment:
-            p.purchase_approved_at = datetime.utcnow()
-            p.purchase_approved_by_user_id = current_user.id
+            stamp_purchase_approval(purchase=p, approver_user_id=current_user.id)
 
         p.status = new_status
         p.notes = request.form.get("notes", "").strip() or None
@@ -8621,6 +8619,7 @@ def biomass_delete(item_id):
 
 
 # ── API endpoints for AJAX ───────────────────────────────────────────────────
+
 
 @app.route("/api/lots/available")
 @login_required

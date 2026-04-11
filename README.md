@@ -17,6 +17,28 @@ python app.py
 
 Open **http://localhost:5050** in your browser (default dev port; **5000** is often busy on macOS because of AirPlay). To use another port: `PORT=5000 python app.py` or `PORT=8080 python app.py`.
 
+## Where to test the implementation so far
+
+After logging in as **admin**:
+
+1. **Purchases list + Journey entrypoint**
+   - Open: `http://localhost:5050/purchases`
+   - Click **Journey** on any purchase row.
+2. **Purchase form + Journey entrypoint**
+   - Open a purchase edit page: `http://localhost:5050/purchases/<purchase_id>/edit`
+   - Click **View Journey** in the header.
+3. **Journey page (UI)**
+   - Open: `http://localhost:5050/purchases/<purchase_id>/journey`
+   - Validate stage cards, status badges, and drill links.
+4. **Journey API (JSON)**
+   - Open: `http://localhost:5050/api/purchases/<purchase_id>/journey`
+   - Optional admin-only archived mode: `?include_archived=1`
+5. **Journey exports**
+   - JSON export: `http://localhost:5050/purchases/<purchase_id>/journey/export?format=json`
+   - CSV export: `http://localhost:5050/purchases/<purchase_id>/journey/export?format=csv`
+
+Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and copy it from the Journey/Edit link URL.
+
 ### Default Login Credentials
 
 | Username | Password       | Role        |
@@ -31,6 +53,7 @@ Open **http://localhost:5050** in your browser (default dev port; **5000** is of
 
 ## Features
 
+- **Docs update (Apr 2026)** — Journey endpoints now share one validation path for missing/archived purchases, and Journey export rejects unsupported formats with an explicit `400` JSON error (`{"error":"Unsupported export format","supported_formats":["csv","json"]}`) instead of silently defaulting.
 - **Dashboard** — KPI cards with configurable green/yellow/red traffic lights (on-hand biomass and days-of-supply use **approved** purchases only; see **Purchases** below)
 - **Biomass purchasing** — Landing page (`/biomass-purchasing`) for weekly buyer targets vs actuals, field submission queues, and reviewed history (first sidebar item after **Extraction**)
 - **Run Logging** — Log extraction runs with source lots, wet/dry HTE & THCA output; optional **HTE post-extraction pipeline** (lab staging, clean vs dirty, COA file attachments, terp-strip queue, terpenes + retail distillate grams after Prescott strip)
@@ -40,6 +63,7 @@ Open **http://localhost:5050** in your browser (default dev port; **5000** is of
 - **Cost Allocation Settings** — Choose THCA vs HTE allocation (uniform, 50/50, custom %)
 - **Inventory** — Track biomass on hand, in transit, and days of supply
 - **Purchases** — Record purchases with potency-based pricing and true-up tracking
+- **Batch Journey** — Per-purchase lifecycle timeline (UI + API + export): open from Purchases list (**Journey**) or Purchase edit (**View Journey**) to see derived stages (`declared`, `testing`, `committed`, `delivered`, `inventory`, `extraction`, `post_processing`, `sales`) with status, timestamps, metrics, and drill links.
 - **Purchase spreadsheet import** — Upload **.csv**, **.xlsx**, or **.xlsm** via **Purchases → Import spreadsheet** (drag-and-drop or browse). Headers are mapped automatically (e.g. Vendor, Purchase Date, Invoice Weight, Actual Weight, Manifest, Amount, Paid Date, Payment Method, Week). Preview validates rows; commit creates **unapproved** purchases (on-hand statuses from the file are capped to **ordered** until **Approve purchase**). Optional auto-create suppliers. See `purchase_import.py` (header alias map) and `ENGINEERING.md` → **Purchase spreadsheet import**.
 - **Batch edit (list screens)** — On Runs, Purchases, Inventory (on-hand lots and in-transit purchases), Biomass Pipeline, Suppliers, Costs, and Strain Performance, use row checkboxes plus **Select all** / **Select none**; with **two or more** rows selected, **Batch edit…** opens a screen to apply the same field changes to all selected records (permissions match single-record edit). Strain performance uses **Batch rename…** to retag matching purchase lots.
 - **Batch IDs** — Unique, readable batch IDs for all purchases (auto-generated if blank)
@@ -139,6 +163,50 @@ gold-drop/
 ## Deploying to Production
 
 After merging work into **`main`**, deploy by pulling on the server (`git fetch` / `git checkout main` / `git pull`) and **restarting the app process** (e.g. `systemctl restart …`) so Gunicorn reloads code. The Flask app is created through `create_app()` in `app.py`, and database bootstrap still runs during startup. New database columns are applied on startup: SQLite via **`init_db()`** + **`_ensure_sqlite_schema()`**; PostgreSQL via **`init_db()`** + **`_ensure_postgres_run_hte_columns()`** (and `db.create_all()` for new tables).
+
+**Important:** restart from the project root (the directory that contains `app.py`, `models.py`, `templates/`, and `requirements.txt`).
+- In this repo/environment that directory is: `/workspace/gold-drop-production_tracker`
+- In the VPS example below it is: `/opt/gold-drop`
+
+### Update + restart commands (current directory)
+
+If you are already in `/workspace/gold-drop-production_tracker`, run:
+
+```bash
+git fetch origin
+git checkout codex_review   # or main, depending on your deploy branch
+git pull --ff-only
+
+# If using systemd + gunicorn service
+sudo systemctl restart golddrop
+sudo systemctl status golddrop --no-pager -l
+```
+
+If you are running directly (no systemd), restart the dev server in this same directory:
+
+```bash
+pkill -f "python app.py" || true
+python app.py
+```
+
+### If `git checkout codex_review` fails with `pathspec ... did not match`
+
+That means the branch does not exist in **your** repository clone yet.
+
+Try:
+
+```bash
+git fetch --all --prune
+git branch -a
+git checkout -b codex_review   # create local branch from current HEAD
+```
+
+If you expected a remote branch named `codex_review`, use:
+
+```bash
+git fetch origin codex_review
+git checkout -t origin/codex_review
+```
 
 ### Option 1: DigitalOcean / Render / Railway
 

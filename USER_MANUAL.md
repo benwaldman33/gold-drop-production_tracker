@@ -222,6 +222,28 @@ Each purchase has a **unique Batch ID** (human-readable). You can:
 
 Batch IDs are used across the app to make batches easy to identify and to link into the Biomass Pipeline.
 
+### Batch Journey (purchase timeline)
+You can open a per-batch timeline from:
+- **Purchases** list → **Journey** button on the row
+- **Edit Purchase** → **View Journey** button
+
+The Journey page shows derived lifecycle stages:
+- declared, testing, committed, delivered, inventory, extraction, post-processing, sales
+
+Each stage includes:
+- status badge
+- timestamps (when known)
+- key metrics
+- links back to source records
+
+Exports:
+- **Export JSON**
+- **Export CSV**
+- If a bad export format is requested (for example, from a copied/custom URL), the app returns a clear error instead of silently changing formats.
+
+Archived rows:
+- Super Admin can include archived data using the **Include archived** toggle.
+
 ### Creating a new purchase
 1. Go to **Purchases** → **+ New Purchase**
 2. Choose supplier, purchase date, status, and weight/pricing fields.
@@ -508,4 +530,3 @@ Use exports for reporting, reconciliation, or offline analysis.
 - **Slack says this message is already linked to a run**: expected after a successful apply; confirm only if you intentionally need a second run from the same Slack message.
 - **Upload rejected (file too large or wrong type)**: field intake photos allow **images only** up to **50 MB** each; Photo Library uploads, purchase supporting docs, and supplier lab/attachment uploads allow **images or PDF** up to **50 MB** each. Compress or split large PDFs if needed.
 - **Field intake says too many photos in one section**: each category has a cap (default **30** images per supplier/biomass/COA bucket on the purchase form, and **30** on the biomass form). Remove extras in the list before submitting, or ask your administrator to raise `FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET` if policy allows.
-
