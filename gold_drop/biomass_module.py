@@ -4,6 +4,34 @@ import json
 from datetime import date, datetime
 
 
+def register_routes(app, root):
+    @root.login_required
+    def biomass_list():
+        return biomass_list_view(root)
+
+    @root.editor_required
+    def biomass_new():
+        return biomass_new_view(root)
+
+    @root.editor_required
+    def biomass_edit(item_id):
+        return biomass_edit_view(root, item_id)
+
+    @root.admin_required
+    def biomass_restore(item_id):
+        return biomass_restore_view(root, item_id)
+
+    @root.editor_required
+    def biomass_delete(item_id):
+        return biomass_delete_view(root, item_id)
+
+    app.add_url_rule("/biomass", endpoint="biomass_list", view_func=biomass_list)
+    app.add_url_rule("/biomass/new", endpoint="biomass_new", view_func=biomass_new, methods=["GET", "POST"])
+    app.add_url_rule("/biomass/<item_id>/edit", endpoint="biomass_edit", view_func=biomass_edit, methods=["GET", "POST"])
+    app.add_url_rule("/biomass/<item_id>/restore", endpoint="biomass_restore", view_func=biomass_restore, methods=["POST"])
+    app.add_url_rule("/biomass/<item_id>/delete", endpoint="biomass_delete", view_func=biomass_delete, methods=["POST"])
+
+
 def _biomass_form_context(root, item):
     suppliers = root.Supplier.query.filter_by(is_active=True).order_by(root.Supplier.name).all()
     return {

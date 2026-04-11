@@ -5,6 +5,14 @@ from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
+def register_routes(app, root):
+    @root.admin_required
+    def settings():
+        return settings_view(root)
+
+    app.add_url_rule("/settings", endpoint="settings", view_func=settings, methods=["GET", "POST"])
+
+
 def settings_redirect(root):
     anchor = (root.request.form.get("return_to") or root.request.args.get("return_to") or "").strip()
     target = root.url_for("settings")

@@ -3,6 +3,34 @@ from __future__ import annotations
 from datetime import date, datetime
 
 
+def register_routes(app, root):
+    @root.login_required
+    def purchases_list():
+        return purchases_list_view(root)
+
+    @root.purchase_editor_required
+    def purchase_new():
+        return purchase_new_view(root)
+
+    @root.purchase_editor_required
+    def purchase_edit(purchase_id):
+        return purchase_edit_view(root, purchase_id)
+
+    @root.login_required
+    def purchase_approve(purchase_id):
+        return purchase_approve_view(root, purchase_id)
+
+    @root.purchase_editor_required
+    def lot_new(purchase_id):
+        return lot_new_view(root, purchase_id)
+
+    app.add_url_rule("/purchases", endpoint="purchases_list", view_func=purchases_list)
+    app.add_url_rule("/purchases/new", endpoint="purchase_new", view_func=purchase_new, methods=["GET", "POST"])
+    app.add_url_rule("/purchases/<purchase_id>/edit", endpoint="purchase_edit", view_func=purchase_edit, methods=["GET", "POST"])
+    app.add_url_rule("/purchases/<purchase_id>/approve", endpoint="purchase_approve", view_func=purchase_approve, methods=["POST"])
+    app.add_url_rule("/purchases/<purchase_id>/lots/new", endpoint="lot_new", view_func=lot_new, methods=["POST"])
+
+
 def _purchase_form_context(root, purchase):
     suppliers = root.Supplier.query.filter_by(is_active=True).order_by(root.Supplier.name).all()
     rate = root.SystemSetting.get_float("potency_rate", 1.50)

@@ -16,7 +16,7 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
   - **`gold_drop/bootstrap_module.py`** - startup database initialization and seed logic delegated from `init_db()`
   - **`gold_drop/settings_module.py`** - extracted settings/admin view logic called by the `/settings` route
   - **`gold_drop/uploads.py`** - upload validation, save helpers, and JSON path normalization
-- `app.py` still re-exports some extracted helpers and keeps the Flask route decorators, but purchases, biomass, settings, and startup init now delegate immediately into package modules.
+- `app.py` still re-exports some extracted helpers, but purchases, biomass, and settings are now registered from package modules with `add_url_rule`, and startup init delegates through `gold_drop/bootstrap_module.py`.
 - `tests/test_app_factory.py` provides a minimal factory + route-registration smoke check so future extractions are verified against a real app object, not just imports.
 
 ## List view filter & sort persistence (`LIST_FILTERS_SESSION_KEY`)

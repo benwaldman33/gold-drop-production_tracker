@@ -5,6 +5,7 @@ import os
 import csv
 import io
 import json
+import sys
 import tempfile
 import re
 import hashlib
@@ -118,7 +119,6 @@ def create_app():
     db.init_app(flask_app)
     init_auth(flask_app)
     return flask_app
-
 
 app = create_app()
 
@@ -4879,210 +4879,9 @@ def batch_edit(entity):
 
 # ── Purchases ────────────────────────────────────────────────────────────────
 
-@app.route("/purchases")
-@login_required
-def purchases_list():
-    import app as root
-    return purchases_module.purchases_list_view(root)
-
-
-@app.route("/purchases/new", methods=["GET", "POST"])
-@purchase_editor_required
-def purchase_new():
-    import app as root
-    return purchases_module.purchase_new_view(root)
-
-
-@app.route("/purchases/<purchase_id>/edit", methods=["GET", "POST"])
-@purchase_editor_required
-def purchase_edit(purchase_id):
-    import app as root
-    return purchases_module.purchase_edit_view(root, purchase_id)
-
-
-@app.route("/purchases/<purchase_id>/approve", methods=["POST"])
-@login_required
-def purchase_approve(purchase_id):
-    import app as root
-    return purchases_module.purchase_approve_view(root, purchase_id)
-
-
 def _save_purchase(existing):
     import app as root
     return purchases_module.save_purchase(root, existing)
-
-    try:
-        p = existing or Purchase()
-        p.supplier_id = request.form["supplier_id"]
-        p.purchase_date = datetime.strptime(request.form["purchase_date"], "%Y-%m-%d").date()
-        dd = request.form.get("delivery_date", "").strip()
-        p.delivery_date = datetime.strptime(dd, "%Y-%m-%d").date() if dd else None
-        new_status = request.form.get("status", "ordered")
-        # Enforce approval gate: on-hand statuses require prior approval
-        require_approval_for_on_hand_status(
-            new_status=new_status,
-            is_approved=p.is_approved,
-            on_hand_statuses=INVENTORY_ON_HAND_PURCHASE_STATUSES,
-        )
-        p.status = new_status
-        p.stated_weight_lbs = float(request.form.get("stated_weight_lbs") or 0)
-        aw = request.form.get("actual_weight_lbs", "").strip()
-        p.actual_weight_lbs = float(aw) if aw else None
-        sp = request.form.get("stated_potency_pct", "").strip()
-        p.stated_potency_pct = float(sp) if sp else None
-        tp = request.form.get("tested_potency_pct", "").strip()
-        p.tested_potency_pct = float(tp) if tp else None
-        ppl = request.form.get("price_per_lb", "").strip()
-        p.price_per_lb = float(ppl) if ppl else None
-        p.storage_note = request.form.get("storage_note", "").strip() or None
-        p.license_info = request.form.get("license_info", "").strip() or None
-        qp = (request.form.get("queue_placement") or "").strip().lower()
-        p.queue_placement = qp if qp in ("aggregate", "indoor", "outdoor") else None
-        p.coa_status_text = request.form.get("coa_status_text", "").strip() or None
-        p.clean_or_dirty = request.form.get("clean_or_dirty") or None
-        p.indoor_outdoor = request.form.get("indoor_outdoor") or None
-        hd = request.form.get("harvest_date", "").strip()
-        p.harvest_date = datetime.strptime(hd, "%Y-%m-%d").date() if hd else None
-        p.notes = request.form.get("notes", "").strip() or None
-
-        # Auto-calculate price if potency provided and price empty
-        if p.stated_potency_pct and not p.price_per_lb:
-            rate = SystemSetting.get_float("potency_rate", 1.50)
-            p.price_per_lb = rate * p.stated_potency_pct
-
-        # Calculate total cost
-        weight = p.actual_weight_lbs or p.stated_weight_lbs
-        if weight and p.price_per_lb:
-            p.total_cost = weight * p.price_per_lb
-
-        # True-up
-        if p.tested_potency_pct and p.stated_potency_pct and p.actual_weight_lbs:
-            rate = SystemSetting.get_float("potency_rate", 1.50)
-            p.true_up_amount = (p.tested_potency_pct - p.stated_potency_pct) * rate * p.actual_weight_lbs
-            if not p.true_up_status:
-                p.true_up_status = "pending"
-
-        if not existing:
-            db.session.add(p)
-        db.session.flush()
-
-        # Batch identifier (unique per purchase batch)
-        batch_in = (request.form.get("batch_id") or "").strip()
-        if batch_in:
-            candidate = batch_in.upper()
-            conflict = Purchase.query.filter(Purchase.batch_id == candidate, Purchase.id != p.id).first()
-            if conflict:
-                raise ValueError(f"Batch ID '{candidate}' already exists. Please choose a unique Batch ID.")
-            p.batch_id = candidate
-        else:
-            sup = db.session.get(Supplier, p.supplier_id)
-            supplier_name = sup.name if sup else "BATCH"
-            d = p.delivery_date or p.purchase_date
-            w = p.actual_weight_lbs or p.stated_weight_lbs
-            p.batch_id = _ensure_unique_batch_id(_generate_batch_id(supplier_name, d, w), exclude_purchase_id=p.id)
-
-        # Process lots
-        if not existing:
-            lot_strains = request.form.getlist("lot_strains[]")
-            lot_weights = request.form.getlist("lot_weights[]")
-            for strain, weight in zip(lot_strains, lot_weights):
-                if strain and weight:
-                    lot = PurchaseLot(
-                        purchase_id=p.id, strain_name=strain.strip(),
-                        weight_lbs=float(weight), remaining_weight_lbs=float(weight)
-                    )
-                    db.session.add(lot)
-
-        _maintain_purchase_inventory_lots(p)
-
-        # Supporting documents (photos/scans) on the purchase record
-        support_files = request.files.getlist("purchase_supporting_files")
-        if support_files and any(getattr(f, "filename", None) for f in support_files if f):
-            saved_docs = _save_purchase_support_docs(support_files, prefix=f"purchase-{p.id}")
-            sup_cat = _normalize_photo_category(
-                request.form.get("purchase_support_category", ""),
-                fallback="supporting_doc",
-            )
-            sup_title = (request.form.get("purchase_support_title") or "").strip() or None
-            sup_tags_raw = (request.form.get("purchase_support_tags") or "").strip()
-            sup_tags = [t.strip().lower() for t in sup_tags_raw.split(",") if t.strip()]
-            for path in saved_docs:
-                if not _photo_asset_exists(
-                    file_path=path,
-                    source_type="purchase_upload",
-                    category=sup_cat,
-                    purchase_id=p.id,
-                ):
-                    _create_photo_asset(
-                        path,
-                        source_type="purchase_upload",
-                        category=sup_cat,
-                        tags=sup_tags,
-                        title=sup_title,
-                        supplier_id=p.supplier_id,
-                        purchase_id=p.id,
-                        uploaded_by=current_user.id,
-                    )
-
-        new_snap = _biomass_budget_snapshot_for_purchase(p)
-        _enforce_weekly_biomass_purchase_limits(p, new_snap, enforce_cap=True)
-
-        log_audit("update" if existing else "create", "purchase", p.id)
-        db.session.commit()
-        flash("Purchase saved.", "success")
-        return redirect(url_for("purchases_list"))
-    except ValueError as e:
-        db.session.rollback()
-        flash(str(e), "error")
-        suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
-        rate = SystemSetting.get_float("potency_rate", 1.50)
-        purchase_audit_photos = []
-        purchase_support_docs = []
-        if existing:
-            purchase_audit_photos = PhotoAsset.query.filter(
-                PhotoAsset.purchase_id == existing.id,
-                PhotoAsset.source_type == "field_submission",
-            ).order_by(PhotoAsset.uploaded_at.desc()).all()
-            purchase_support_docs = PhotoAsset.query.filter(
-                PhotoAsset.purchase_id == existing.id,
-                PhotoAsset.source_type == "purchase_upload",
-            ).order_by(PhotoAsset.uploaded_at.desc()).all()
-        return render_template(
-            "purchase_form.html",
-            purchase=existing,
-            suppliers=suppliers,
-            rate=rate,
-            today=date.today(),
-            purchase_audit_photos=purchase_audit_photos,
-            purchase_support_docs=purchase_support_docs,
-        )
-    except Exception:
-        db.session.rollback()
-        app.logger.exception("Error saving purchase")
-        flash("Error saving purchase. Please check your inputs and try again.", "error")
-        suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
-        rate = SystemSetting.get_float("potency_rate", 1.50)
-        purchase_audit_photos = []
-        purchase_support_docs = []
-        if existing:
-            purchase_audit_photos = PhotoAsset.query.filter(
-                PhotoAsset.purchase_id == existing.id,
-                PhotoAsset.source_type == "field_submission",
-            ).order_by(PhotoAsset.uploaded_at.desc()).all()
-            purchase_support_docs = PhotoAsset.query.filter(
-                PhotoAsset.purchase_id == existing.id,
-                PhotoAsset.source_type == "purchase_upload",
-            ).order_by(PhotoAsset.uploaded_at.desc()).all()
-        return render_template(
-            "purchase_form.html",
-            purchase=existing,
-            suppliers=suppliers,
-            rate=rate,
-            today=date.today(),
-            purchase_audit_photos=purchase_audit_photos,
-            purchase_support_docs=purchase_support_docs,
-        )
-
 
 PURCHASE_IMPORT_ALLOWED_STATUSES = frozenset({
     "declared", "committed", "ordered", "in_transit", "delivered",
@@ -6178,377 +5977,6 @@ def strains_list():
 
 
 # ── Settings (Admin) ─────────────────────────────────────────────────────────
-
-@app.route("/settings", methods=["GET", "POST"])
-@admin_required
-def settings():
-    import app as root
-    return settings_module.settings_view(root)
-
-    # Legacy body retained temporarily below as compatibility/reference during route breakup.
-    if request.method == "POST":
-        form_type = request.form.get("form_type")
-
-        if form_type == "system":
-            settings_map = {
-                "potency_rate": "Potency Rate ($/lb/%pt)",
-                "num_reactors": "Number of Reactors",
-                "reactor_capacity": "Reactor Capacity (lbs)",
-                "runs_per_day": "Runs Per Day Target",
-                "operating_days": "Operating Days Per Week",
-                "daily_throughput_target": "Daily Throughput Target (lbs)",
-                "weekly_throughput_target": "Weekly Throughput Target (lbs)",
-            }
-            for key, desc in settings_map.items():
-                val = request.form.get(key, "").strip()
-                if val:
-                    existing = db.session.get(SystemSetting, key)
-                    if existing:
-                        existing.value = val
-                    else:
-                        db.session.add(SystemSetting(key=key, value=val, description=desc))
-
-            # Cost allocation method (impacts THCA vs HTE $/g calculations)
-            method = (request.form.get("cost_allocation_method") or "per_gram_uniform").strip()
-            if method not in ("per_gram_uniform", "split_50_50", "custom_split"):
-                method = "per_gram_uniform"
-            existing = db.session.get(SystemSetting, "cost_allocation_method")
-            if existing:
-                existing.value = method
-            else:
-                db.session.add(SystemSetting(
-                    key="cost_allocation_method",
-                    value=method,
-                    description="Cost allocation method for THCA vs HTE cost/gram",
-                ))
-
-            # Custom split: % of total run dollars allocated to THCA (0-100)
-            pct_raw = (request.form.get("cost_allocation_thca_pct") or "").strip()
-            try:
-                pct = float(pct_raw) if pct_raw else 50.0
-            except ValueError:
-                pct = 50.0
-            pct = max(0.0, min(100.0, pct))
-            existing = db.session.get(SystemSetting, "cost_allocation_thca_pct")
-            if existing:
-                existing.value = str(pct)
-            else:
-                db.session.add(SystemSetting(
-                    key="cost_allocation_thca_pct",
-                    value=str(pct),
-                    description="Custom cost allocation: percent of total run cost allocated to THCA",
-                ))
-
-            # Analytics toggle: exclude unpriced/unlinked runs from yield + cost calculations
-            exclude_val = "1" if request.form.get("exclude_unpriced_batches") else "0"
-            existing = db.session.get(SystemSetting, "exclude_unpriced_batches")
-            if existing:
-                existing.value = exclude_val
-            else:
-                db.session.add(SystemSetting(
-                    key="exclude_unpriced_batches",
-                    value=exclude_val,
-                    description="Exclude unpriced/unlinked runs from yield and cost analytics",
-                ))
-            wb_raw = (request.form.get("weekly_dollar_budget") or "").strip()
-            try:
-                wb_val = float(wb_raw) if wb_raw else 0.0
-            except ValueError:
-                wb_val = 0.0
-            if wb_val < 0:
-                wb_val = 0.0
-            wb_existing = db.session.get(SystemSetting, "weekly_dollar_budget")
-            if wb_existing:
-                wb_existing.value = str(wb_val)
-            else:
-                db.session.add(SystemSetting(
-                    key="weekly_dollar_budget",
-                    value=str(wb_val),
-                    description="Weekly dollar budget for buyer/finance snapshot (Dashboard)",
-                ))
-
-            n1_raw = (request.form.get("potential_lot_days_to_old") or "").strip()
-            n2_raw = (request.form.get("potential_lot_days_to_soft_delete") or "").strip()
-            try:
-                n1 = int(float(n1_raw)) if n1_raw else 10
-            except ValueError:
-                n1 = 10
-            try:
-                n2 = int(float(n2_raw)) if n2_raw else 30
-            except ValueError:
-                n2 = 30
-            if n1 < 1:
-                n1 = 1
-            if n2 < n1:
-                n2 = n1
-                flash(
-                    "Potential lot 'days to soft-delete' was raised to match 'days to Old Lots' (must be ≥).",
-                    "info",
-                )
-            for key, val, desc in (
-                ("potential_lot_days_to_old", str(n1), "Days before potential biomass moves to Old Lots"),
-                ("potential_lot_days_to_soft_delete", str(n2), "Total days from created_at before soft-delete (potential rows)"),
-            ):
-                ex = db.session.get(SystemSetting, key)
-                if ex:
-                    ex.value = val
-                else:
-                    db.session.add(SystemSetting(key=key, value=val, description=desc))
-
-            tz_raw = (request.form.get("app_display_timezone") or "").strip()
-            tz_ok = True
-            if tz_raw:
-                try:
-                    ZoneInfo(tz_raw)
-                    tz_ex = db.session.get(SystemSetting, "app_display_timezone")
-                    if tz_ex:
-                        tz_ex.value = tz_raw
-                    else:
-                        db.session.add(SystemSetting(
-                            key="app_display_timezone",
-                            value=tz_raw,
-                            description="IANA timezone: Slack message times, imports date filters, derived slack_message_date",
-                        ))
-                except ZoneInfoNotFoundError:
-                    flash(f"Unknown timezone {tz_raw!r}; timezone was not changed.", "error")
-                    tz_ok = False
-
-            db.session.commit()
-            if tz_ok:
-                flash("System settings updated.", "success")
-            else:
-                flash("System settings saved; fix the timezone name and save again.", "info")
-
-        elif form_type == "kpi":
-            kpi_ids = request.form.getlist("kpi_ids[]")
-            for kid in kpi_ids:
-                kpi = db.session.get(KpiTarget, kid)
-                if kpi:
-                    kpi.target_value = float(request.form.get(f"target_{kid}", kpi.target_value))
-                    kpi.green_threshold = float(request.form.get(f"green_{kid}", kpi.green_threshold))
-                    kpi.yellow_threshold = float(request.form.get(f"yellow_{kid}", kpi.yellow_threshold))
-                    kpi.updated_by = current_user.id
-            db.session.commit()
-            flash("KPI targets updated.", "success")
-
-        elif form_type == "biomass_budget":
-            usd_raw = (request.form.get("biomass_purchase_weekly_budget_usd") or "").strip()
-            lbs_raw = (request.form.get("biomass_purchase_weekly_target_lbs") or "").strip()
-            pot_raw = (request.form.get("biomass_purchase_weekly_target_potency_pct") or "").strip()
-            try:
-                usd = float(usd_raw) if usd_raw else 0.0
-                lbs_t = float(lbs_raw) if lbs_raw else 0.0
-                pot = float(pot_raw) if pot_raw else 0.0
-            except ValueError:
-                flash("Invalid biomass purchasing targets.", "error")
-                return _settings_redirect()
-            usd = max(0.0, usd)
-            lbs_t = max(0.0, lbs_t)
-            pot = max(0.0, pot)
-
-            def _upsert_budget(key, val, desc):
-                row = db.session.get(SystemSetting, key)
-                if row:
-                    row.value = str(val)
-                else:
-                    db.session.add(SystemSetting(key=key, value=str(val), description=desc))
-
-            _upsert_budget(
-                "biomass_purchase_weekly_budget_usd",
-                usd,
-                "Weekly biomass purchasing budget (USD)",
-            )
-            _upsert_budget(
-                "biomass_purchase_weekly_target_lbs",
-                lbs_t,
-                "Weekly biomass purchasing volume target (lbs)",
-            )
-            _upsert_budget(
-                "biomass_purchase_weekly_target_potency_pct",
-                pot,
-                "Weekly target weighted avg potency % (purchasing)",
-            )
-            row_legacy = db.session.get(SystemSetting, "biomass_budget_target_potency_pct")
-            if row_legacy:
-                row_legacy.value = str(pot)
-            elif pot > 0:
-                db.session.add(SystemSetting(
-                    key="biomass_budget_target_potency_pct",
-                    value=str(pot),
-                    description="Legacy mirror: target potency % (purchasing)",
-                ))
-            db.session.commit()
-            flash("Biomass purchasing targets updated.", "success")
-
-        elif form_type == "user":
-            username = request.form.get("new_username", "").strip().lower()
-            password = request.form.get("new_password", "").strip()
-            display = request.form.get("new_display", "").strip()
-            role = request.form.get("new_role", "viewer")
-            allowed_roles = frozenset({"viewer", "user", "super_admin", "super_buyer"})
-            if role not in allowed_roles:
-                role = "viewer"
-            if username and password and display:
-                if User.query.filter_by(username=username).first():
-                    flash("Username already exists.", "error")
-                else:
-                    if len(password) < 8:
-                        flash("Password must be at least 8 characters.", "error")
-                        return _settings_redirect()
-                    u = User(username=username, display_name=display, role=role)
-                    u.set_password(password)
-                    if role != "super_admin":
-                        u.is_slack_importer = bool(request.form.get("new_slack_importer"))
-                        u.is_purchase_approver = bool(request.form.get("new_purchase_approver"))
-                    db.session.add(u)
-                    db.session.commit()
-                    flash(f"User '{display}' created.", "success")
-
-        elif form_type == "password_self":
-            current_pw = request.form.get("current_password", "")
-            new_pw = request.form.get("new_password", "").strip()
-            confirm_pw = request.form.get("confirm_password", "").strip()
-
-            if not current_user.check_password(current_pw):
-                flash("Current password is incorrect.", "error")
-                return _settings_redirect()
-            if len(new_pw) < 8:
-                flash("New password must be at least 8 characters.", "error")
-                return _settings_redirect()
-            if new_pw != confirm_pw:
-                flash("New password and confirmation do not match.", "error")
-                return _settings_redirect()
-
-            current_user.set_password(new_pw)
-            log_audit("password_change", "user", current_user.id, details=json.dumps({"username": current_user.username}))
-            db.session.commit()
-            flash("Password updated.", "success")
-
-        elif form_type == "password_user":
-            user_id = (request.form.get("user_id") or "").strip()
-            new_pw = request.form.get("new_password", "").strip()
-            confirm_pw = request.form.get("confirm_password", "").strip()
-            u = db.session.get(User, user_id) if user_id else None
-            if not u:
-                flash("User not found.", "error")
-                return _settings_redirect()
-            if len(new_pw) < 8:
-                flash("New password must be at least 8 characters.", "error")
-                return _settings_redirect()
-            if new_pw != confirm_pw:
-                flash("New password and confirmation do not match.", "error")
-                return _settings_redirect()
-
-            u.set_password(new_pw)
-            log_audit("password_reset", "user", u.id, details=json.dumps({"username": u.username}))
-            db.session.commit()
-            flash(f"Password updated for '{u.display_name}'.", "success")
-
-        elif form_type == "slack":
-            slack_map = {
-                "slack_enabled": "Enable Slack integration",
-                "slack_webhook_url": "Slack incoming webhook URL",
-                "slack_signing_secret": "Slack signing secret",
-                "slack_bot_token": "Slack bot token",
-                "slack_default_channel": "Default Slack channel",
-            }
-            for key, desc in slack_map.items():
-                if key == "slack_enabled":
-                    val = "1" if request.form.get("slack_enabled") else "0"
-                else:
-                    val = (request.form.get(key) or "").strip()
-                existing = db.session.get(SystemSetting, key)
-                if existing:
-                    existing.value = val
-                else:
-                    db.session.add(SystemSetting(key=key, value=val, description=desc))
-            _ensure_slack_sync_configs()
-            for i in range(SLACK_SYNC_CHANNEL_SLOTS):
-                hint = (request.form.get(f"sync_ch_{i}") or "").strip()
-                row = SlackChannelSyncConfig.query.filter_by(slot_index=i).first()
-                if not row:
-                    row = SlackChannelSyncConfig(slot_index=i, channel_hint=hint)
-                    db.session.add(row)
-                else:
-                    old = (row.channel_hint or "").strip()
-                    row.channel_hint = hint
-                    if old != hint:
-                        row.resolved_channel_id = None
-                        row.last_watermark_ts = None
-            db.session.commit()
-            flash(
-                "Slack integration saved (webhook, tokens, default channel, and up to six history-sync channels).",
-                "success",
-            )
-
-        return _settings_redirect()
-
-    _ensure_slack_sync_configs()
-    slack_sync_slots = SlackChannelSyncConfig.query.order_by(SlackChannelSyncConfig.slot_index).all()
-    system_settings = {s.key: s.value for s in SystemSetting.query.all()}
-    kpis = KpiTarget.query.all()
-    users = User.query.order_by(User.created_at.asc()).all()
-    field_tokens = FieldAccessToken.query.order_by(FieldAccessToken.created_at.desc()).all()
-    pending_field_submissions = FieldPurchaseSubmission.query.filter_by(status="pending").order_by(
-        FieldPurchaseSubmission.submitted_at.desc()
-    ).all()
-    reviewed_field_submissions = FieldPurchaseSubmission.query.filter(
-        FieldPurchaseSubmission.status.in_(("approved", "rejected"))
-    ).order_by(FieldPurchaseSubmission.submitted_at.desc()).all()
-    _decorate_field_submission_rows(pending_field_submissions + reviewed_field_submissions)
-
-    # One-time display after creating a field link (POST-redirect-GET)
-    last_field_link = session.pop("last_field_link", None)
-    last_field_sms = session.pop("last_field_sms", None)
-    last_field_email_subject = session.pop("last_field_email_subject", None)
-    last_field_email_body = session.pop("last_field_email_body", None)
-
-    slack_sync_days_pref = session.get("slack_sync_days", 90)
-    try:
-        slack_sync_days_pref = int(slack_sync_days_pref)
-    except (TypeError, ValueError):
-        slack_sync_days_pref = 90
-    slack_sync_days_pref = max(1, min(365, slack_sync_days_pref))
-
-    pending_submissions_total_lbs = sum(
-        float(getattr(s, "total_weight_lbs", 0) or 0) for s in pending_field_submissions
-    )
-    reviewed_approved_total_lbs = sum(
-        float(getattr(s, "total_weight_lbs", 0) or 0)
-        for s in reviewed_field_submissions
-        if s.status == "approved"
-    )
-    reviewed_rejected_total_lbs = sum(
-        float(getattr(s, "total_weight_lbs", 0) or 0)
-        for s in reviewed_field_submissions
-        if s.status == "rejected"
-    )
-
-    tz_choice_vals = [c[0] for c in APP_DISPLAY_TIMEZONE_CHOICES]
-    return render_template(
-        "settings.html",
-        system_settings=system_settings,
-        app_timezone_choices=APP_DISPLAY_TIMEZONE_CHOICES,
-        app_timezone_choice_values=tz_choice_vals,
-        slack_sync_slots=slack_sync_slots,
-        slack_sync_days_pref=slack_sync_days_pref,
-        kpis=kpis,
-        users=users,
-        field_tokens=field_tokens,
-        field_submissions=pending_field_submissions,
-        reviewed_field_submissions=reviewed_field_submissions,
-        submission_return_to="#settings-field-intake",
-        show_submission_approval_buttons=True,
-        pending_submissions_total_lbs=pending_submissions_total_lbs,
-        reviewed_approved_total_lbs=reviewed_approved_total_lbs,
-        reviewed_rejected_total_lbs=reviewed_rejected_total_lbs,
-        server_now=datetime.utcnow(),
-        last_field_link=last_field_link,
-        last_field_sms=last_field_sms,
-        last_field_email_subject=last_field_email_subject,
-        last_field_email_body=last_field_email_body,
-    )
-
 
 def _settings_redirect():
     import app as root
@@ -8208,34 +7636,7 @@ def _parse_float(s):
 
 # ── Lots management ──────────────────────────────────────────────────────────
 
-@app.route("/purchases/<purchase_id>/lots/new", methods=["POST"])
-@purchase_editor_required
-def lot_new(purchase_id):
-    import app as root
-    return purchases_module.lot_new_view(root, purchase_id)
-
-    purchase = db.session.get(Purchase, purchase_id)
-    if not purchase or purchase.deleted_at is not None:
-        flash("Purchase not found.", "error")
-        return redirect(url_for("purchases_list"))
-
-    lot = PurchaseLot(
-        purchase_id=purchase_id,
-        strain_name=request.form["strain_name"].strip(),
-        weight_lbs=float(request.form["weight_lbs"]),
-        remaining_weight_lbs=float(request.form["weight_lbs"]),
-        potency_pct=float(request.form.get("potency_pct") or 0) or None,
-        milled="milled" in request.form,
-        location=request.form.get("location", "").strip() or None,
-    )
-    db.session.add(lot)
-    log_audit("create", "lot", lot.id)
-    db.session.commit()
-    flash("Lot added.", "success")
-    return redirect(url_for("purchase_edit", purchase_id=purchase_id))
-
-
-# ── Biomass Availability Pipeline ─────────────────────────────────────────────
+# ?????? Biomass Availability Pipeline ???????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
 
 PIPELINE_PURCHASE_STATUSES = ("declared", "in_testing", "committed")
 # Map stage filter values (used in UI) to Purchase status values
@@ -8247,135 +7648,6 @@ _STAGE_TO_STATUS = {
     "delivered": "delivered",
     "cancelled": "cancelled",
 }
-
-
-@app.route("/biomass")
-@login_required
-def biomass_list():
-    import app as root
-    return biomass_module.biomass_list_view(root)
-
-    _apply_biomass_potential_soft_delete()
-    redir = _list_filters_clear_redirect("biomass_list")
-    if redir:
-        return redir
-    m = _list_filters_merge(
-        "biomass_list",
-        ("bucket", "stage", "start_date", "end_date", "supplier_id", "strain"),
-    )
-    n1, n2 = _potential_lot_age_days()
-    bucket = (m.get("bucket") or "current").strip().lower()
-    if bucket == "deleted" and not current_user.is_super_admin:
-        bucket = "current"
-        flash("Only Super Admins can view soft-deleted biomass rows.", "info")
-    stage = (m.get("stage") or "").strip()
-    start_raw = (m.get("start_date") or "").strip()
-    end_raw = (m.get("end_date") or "").strip()
-    supplier_filter = (m.get("supplier_id") or "").strip()
-    strain_filter = (m.get("strain") or "").strip()
-    try:
-        start_date = datetime.strptime(start_raw, "%Y-%m-%d").date() if start_raw else None
-        end_date = datetime.strptime(end_raw, "%Y-%m-%d").date() if end_raw else None
-    except ValueError:
-        start_date = None
-        end_date = None
-    # Query Purchase records in pipeline statuses (+ recently delivered within 7 days)
-    query = Purchase.query.join(Supplier)
-    query = _biomass_bucket_filter(query, bucket, n1, n2)
-    if stage:
-        mapped_status = _STAGE_TO_STATUS.get(stage, stage)
-        query = query.filter(Purchase.status == mapped_status)
-    if start_date:
-        query = query.filter(Purchase.availability_date >= start_date)
-    if end_date:
-        query = query.filter(Purchase.availability_date <= end_date)
-    if supplier_filter:
-        query = query.filter(Purchase.supplier_id == supplier_filter)
-    if strain_filter:
-        # Search strain in lots
-        query = query.filter(
-            Purchase.id.in_(
-                db.session.query(PurchaseLot.purchase_id).filter(
-                    func.lower(PurchaseLot.strain_name).like(f"%{strain_filter.lower()}%"),
-                    PurchaseLot.deleted_at.is_(None),
-                )
-            )
-        )
-    items = query.order_by(
-        Purchase.availability_date.desc().nullslast(),
-        Purchase.purchase_date.desc().nullslast(),
-        Supplier.name.asc(),
-    ).all()
-    suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
-    biomass_filters_active = (
-        bucket != "current"
-        or bool(stage or start_raw or end_raw or supplier_filter or strain_filter)
-    )
-    return render_template(
-        "biomass.html",
-        items=items,
-        stage_filter=stage,
-        bucket_filter=bucket,
-        potential_days_to_old=n1,
-        potential_days_to_soft_delete=n2,
-        suppliers=suppliers,
-        supplier_filter=supplier_filter,
-        start_date=start_raw,
-        end_date=end_raw,
-        strain_filter=strain_filter,
-        list_filters_active=biomass_filters_active,
-        clear_filters_url=url_for("biomass_list", clear_filters=1),
-    )
-
-
-@app.route("/biomass/new", methods=["GET", "POST"])
-@editor_required
-def biomass_new():
-    import app as root
-    return biomass_module.biomass_new_view(root)
-
-    if request.method == "POST":
-        return _save_biomass_purchase(None)
-    suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
-    return render_template("biomass_form.html", item=None, suppliers=suppliers, today=date.today())
-
-
-@app.route("/biomass/<item_id>/edit", methods=["GET", "POST"])
-@editor_required
-def biomass_edit(item_id):
-    import app as root
-    return biomass_module.biomass_edit_view(root, item_id)
-
-    item = db.session.get(Purchase, item_id)
-    if not item:
-        flash("Biomass availability record not found.", "error")
-        return redirect(url_for("biomass_list"))
-    if item.deleted_at and not current_user.is_super_admin:
-        flash("This biomass row was archived (soft-deleted). Super Admins can view it from the Archived list.", "error")
-        return redirect(url_for("biomass_list"))
-    if request.method == "POST":
-        return _save_biomass_purchase(item)
-    suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
-    return render_template("biomass_form.html", item=item, suppliers=suppliers, today=date.today())
-
-
-@app.route("/biomass/<item_id>/restore", methods=["POST"])
-@admin_required
-def biomass_restore(item_id):
-    import app as root
-    return biomass_module.biomass_restore_view(root, item_id)
-
-    item = db.session.get(Purchase, item_id)
-    if not item or not item.deleted_at:
-        flash("Nothing to restore.", "error")
-        return redirect(url_for("biomass_list"))
-    item.deleted_at = None
-    for lot in item.lots:
-        lot.deleted_at = None
-    log_audit("restore", "purchase", item.id, details=json.dumps({"source": "biomass_pipeline_archive"}))
-    db.session.commit()
-    flash("Biomass row restored from archive.", "success")
-    return redirect(url_for("biomass_edit", item_id=item_id))
 
 
 def _save_biomass_purchase(existing):
@@ -8599,26 +7871,7 @@ def _save_biomass_purchase(existing):
         return render_template("biomass_form.html", item=existing, suppliers=suppliers, today=date.today())
 
 
-@app.route("/biomass/<item_id>/delete", methods=["POST"])
-@editor_required
-def biomass_delete(item_id):
-    import app as root
-    return biomass_module.biomass_delete_view(root, item_id)
-
-    item = db.session.get(Purchase, item_id)
-    if item:
-        item.deleted_at = datetime.utcnow()
-        item.deleted_by = current_user.id
-        for lot in item.lots:
-            lot.deleted_at = datetime.utcnow()
-            lot.deleted_by = current_user.id
-        log_audit("delete", "purchase", item.id, details=json.dumps({"mode": "soft", "source": "biomass_pipeline"}))
-        db.session.commit()
-        flash("Biomass record deleted.", "success")
-    return redirect(url_for("biomass_list"))
-
-
-# ── API endpoints for AJAX ───────────────────────────────────────────────────
+# ?????? API endpoints for AJAX ?????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????
 
 
 @app.route("/api/lots/available")
@@ -8676,7 +7929,6 @@ _save_lab_files = uploads_mod.save_lab_files
 _save_purchase_support_docs = uploads_mod.save_purchase_support_docs
 _save_photo_library_files = uploads_mod.save_photo_library_files
 _json_paths = uploads_mod.json_paths
-
 
 def init_db():
     import app as root
@@ -8937,6 +8189,25 @@ def _seed_historical_data():
     print(f"  Seeded {count} historical runs across {len(sup_objs)} suppliers.")
 
 
+def _register_extracted_routes(flask_app):
+    root = sys.modules[__name__]
+    settings_module.register_routes(flask_app, root)
+    purchases_module.register_routes(flask_app, root)
+    biomass_module.register_routes(flask_app, root)
+
+
+_base_create_app = create_app
+
+
+def create_app():
+    flask_app = _base_create_app()
+    _register_extracted_routes(flask_app)
+    return flask_app
+
+
+_register_extracted_routes(app)
+
+
 with app.app_context():
     init_db()
 
@@ -8946,3 +8217,5 @@ if __name__ == "__main__":
     _port = int(os.environ.get("PORT", "5050"))
     print(f" * Open http://127.0.0.1:{_port}/  (set PORT=5000 if you prefer and nothing else is using it)")
     app.run(debug=True, host="0.0.0.0", port=_port)
+
+

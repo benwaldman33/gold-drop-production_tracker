@@ -97,6 +97,8 @@ Recent breakup work moved the main route and startup flows behind package module
 - `gold_drop/biomass_module.py`
 - `gold_drop/bootstrap_module.py`
 
+Those modules now own the purchase, biomass, and settings route registration for the running app, while `app.py` remains the entrypoint and shared compatibility layer.
+
 ```
 gold-drop/
 ├── app.py              # Entrypoint shim + Flask app factory (`create_app`)
