@@ -14,13 +14,17 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import gold_drop.list_state as list_state_mod
+import gold_drop.purchases as purchases_mod
+import gold_drop.slack as slack_mod
+import gold_drop.uploads as uploads_mod
 from datetime import datetime, date, timedelta, timezone
 from functools import wraps
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from flask import (Flask, render_template, request, redirect, url_for, flash,
                    jsonify, Response, session, abort)
-from flask_login import (LoginManager, login_user, logout_user, login_required,
+from flask_login import (login_user, logout_user, login_required,
                          current_user)
 from sqlalchemy import func, desc, and_, or_, text, select, exists
 from sqlalchemy.exc import OperationalError, ProgrammingError
@@ -43,35 +47,69 @@ from batch_edit import (
     apply_batch_strain_rename,
     parse_uuid_ids,
 )
+from gold_drop.audit import log_audit
+from gold_drop.auth import (
+    admin_required,
+    editor_required,
+    field_purchase_approval_required,
+    init_app as init_auth,
+    purchase_editor_required,
+    slack_importer_required,
+)
+from gold_drop.list_state import (
+    APP_DISPLAY_TIMEZONE_CHOICES,
+    APP_DISPLAY_TIMEZONE_DEFAULT,
+    app_display_timezone_name as _app_display_timezone_name,
+    app_display_zoneinfo as _app_display_zoneinfo,
+    list_filters_clear_redirect as _list_filters_clear_redirect,
+    list_filters_merge as _list_filters_merge,
+    runs_list_filters_active as _runs_list_filters_active,
+    slack_channel_filter_label as _slack_channel_filter_label,
+    slack_resolved_channel_hint_map as _slack_resolved_channel_hint_map,
+)
+from gold_drop.purchases import INVENTORY_ON_HAND_PURCHASE_STATUSES
+from gold_drop.slack import (
+    SLACK_IMPORT_KIND_FILTER_CHOICES,
+    SLACK_IMPORT_TEXT_FILTER_OPS,
+    SLACK_IMPORT_TEXT_OPS_ALLOWED,
+    SLACK_RUN_MAPPINGS_KEY,
+    _apply_slack_mapping_transform,
+    _default_slack_run_field_rules,
+    _default_slack_run_field_rules as _default_slack_run_field_rules_imported,
+    _derive_slack_production_message,
+    _preview_slack_to_run_fields,
+    _slack_coverage_label,
+    _slack_default_availability_date_iso,
+    _slack_default_bio_weight_lbs,
+    _slack_imports_row_matches_kind_text,
+    _slack_message_needs_resolution_ui,
+    _slack_run_mappings_template_kwargs,
+    _validate_slack_run_field_rules,
+)
 
-app = Flask(__name__)
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "gold-drop-dev-key-change-in-prod")
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///golddrop.db")
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
-app.config["FIELD_UPLOAD_DIR"] = os.path.join(app.root_path, "static", "uploads", "field")
-app.config["FIELD_UPLOAD_MAX_BYTES"] = 50 * 1024 * 1024  # 50 MB per image (field intake)
-app.config["LAB_UPLOAD_DIR"] = os.path.join(app.root_path, "static", "uploads", "labs")
-app.config["LAB_UPLOAD_MAX_BYTES"] = 50 * 1024 * 1024  # 50 MB per file
-app.config["PURCHASE_UPLOAD_DIR"] = os.path.join(app.root_path, "static", "uploads", "purchases")
-app.config["PURCHASE_UPLOAD_MAX_BYTES"] = 50 * 1024 * 1024
-app.config["PHOTO_LIBRARY_UPLOAD_DIR"] = os.path.join(app.root_path, "static", "uploads", "library")
-app.config["PHOTO_LIBRARY_MAX_BYTES"] = 50 * 1024 * 1024
-# Max image count per file-picker bucket on field intake (supplier/biomass/coa on purchase; photos on biomass).
-app.config["FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET"] = int(os.environ.get("FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET", 30))
+def create_app():
+    flask_app = Flask(__name__)
+    flask_app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "gold-drop-dev-key-change-in-prod")
+    flask_app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///golddrop.db")
+    flask_app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    flask_app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
+    flask_app.config["FIELD_UPLOAD_DIR"] = os.path.join(flask_app.root_path, "static", "uploads", "field")
+    flask_app.config["FIELD_UPLOAD_MAX_BYTES"] = 50 * 1024 * 1024
+    flask_app.config["LAB_UPLOAD_DIR"] = os.path.join(flask_app.root_path, "static", "uploads", "labs")
+    flask_app.config["LAB_UPLOAD_MAX_BYTES"] = 50 * 1024 * 1024
+    flask_app.config["PURCHASE_UPLOAD_DIR"] = os.path.join(flask_app.root_path, "static", "uploads", "purchases")
+    flask_app.config["PURCHASE_UPLOAD_MAX_BYTES"] = 50 * 1024 * 1024
+    flask_app.config["PHOTO_LIBRARY_UPLOAD_DIR"] = os.path.join(flask_app.root_path, "static", "uploads", "library")
+    flask_app.config["PHOTO_LIBRARY_MAX_BYTES"] = 50 * 1024 * 1024
+    flask_app.config["FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET"] = int(
+        os.environ.get("FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET", 30)
+    )
+    db.init_app(flask_app)
+    init_auth(flask_app)
+    return flask_app
 
-db.init_app(app)
-login_manager = LoginManager(app)
-login_manager.login_view = "login"
 
-
-@login_manager.user_loader
-def load_user(user_id):
-    u = db.session.get(User, user_id)
-    # If a user is deactivated, treat them as logged out
-    if u and not getattr(u, "is_active_user", True):
-        return None
-    return u
+app = create_app()
 
 
 # IANA tz for Slack timestamps, date filters, and derived slack_message_date (Settings → Operational).
@@ -8699,6 +8737,42 @@ def api_lots_available():
 
 
 # ── Initialize ───────────────────────────────────────────────────────────────
+
+# Compatibility re-exports while logic is extracted out of app.py.
+_app_display_timezone_name = list_state_mod.app_display_timezone_name
+_app_display_zoneinfo = list_state_mod.app_display_zoneinfo
+_slack_imports_row_matches_kind_text = slack_mod._slack_imports_row_matches_kind_text
+_slack_coverage_label = slack_mod._slack_coverage_label
+_derive_slack_production_message = slack_mod._derive_slack_production_message
+_apply_slack_mapping_transform = slack_mod._apply_slack_mapping_transform
+_validate_slack_run_field_rules = slack_mod._validate_slack_run_field_rules
+_preview_slack_to_run_fields = slack_mod._preview_slack_to_run_fields
+_slack_message_needs_resolution_ui = slack_mod._slack_message_needs_resolution_ui
+_slack_default_bio_weight_lbs = slack_mod._slack_default_bio_weight_lbs
+_slack_default_availability_date_iso = slack_mod._slack_default_availability_date_iso
+_default_slack_run_field_rules = slack_mod._default_slack_run_field_rules
+_slack_run_mappings_template_kwargs = slack_mod._slack_run_mappings_template_kwargs
+BIOMASS_BUDGET_COUNT_STATUSES = purchases_mod.BIOMASS_BUDGET_COUNT_STATUSES
+_purchase_counts_toward_biomass_budget = purchases_mod.purchase_counts_toward_biomass_budget
+_purchase_week_start = purchases_mod.purchase_week_start
+_purchase_biomass_budget_lbs = purchases_mod.purchase_biomass_budget_lbs
+_purchase_biomass_budget_potency = purchases_mod.purchase_biomass_budget_potency
+_purchase_budget_spend = purchases_mod.purchase_budget_spend
+_budget_week_purchase_metrics = purchases_mod.budget_week_purchase_metrics
+_biomass_budget_snapshot_for_purchase = purchases_mod.biomass_budget_snapshot_for_purchase
+_enforce_weekly_biomass_purchase_limits = purchases_mod.enforce_weekly_biomass_purchase_limits
+_allowed_image_filename = uploads_mod.allowed_image_filename
+_allowed_lab_filename = uploads_mod.allowed_lab_filename
+_file_size_bytes = uploads_mod.file_size_bytes
+_save_uploads = uploads_mod.save_uploads
+_field_intake_photo_bucket_count = uploads_mod.field_intake_photo_bucket_count
+_validate_field_intake_photo_bucket = uploads_mod.validate_field_intake_photo_bucket
+_save_field_photos = uploads_mod.save_field_photos
+_save_lab_files = uploads_mod.save_lab_files
+_save_purchase_support_docs = uploads_mod.save_purchase_support_docs
+_save_photo_library_files = uploads_mod.save_photo_library_files
+_json_paths = uploads_mod.json_paths
+
 
 def init_db():
     """Create tables and seed initial data."""

@@ -70,10 +70,18 @@ Open **http://localhost:5050** in your browser (default dev port; **5000** is of
 
 ```
 gold-drop/
-├── app.py              # Flask application (routes, business logic)
+├── app.py              # Entrypoint shim + Flask app factory (`create_app`)
 ├── models.py           # SQLAlchemy database models
 ├── purchase_import.py  # Purchase spreadsheet parsing + header alias map (CSV / Excel)
 ├── batch_edit.py       # Batch update helpers (runs, purchases, biomass, suppliers, costs, lots, strain rename)
+├── gold_drop/
+│   ├── __init__.py     # Package entrypoint exposing `create_app`
+│   ├── auth.py         # Login manager + access decorators
+│   ├── audit.py        # Audit log helper
+│   ├── list_state.py   # Session-backed list filters + timezone/channel helpers
+│   ├── purchases.py    # Purchase budget / on-hand helper logic
+│   ├── slack.py        # Slack parsing, mapping, preview, and triage helpers
+│   └── uploads.py      # Upload validation + file persistence helpers
 ├── requirements.txt    # Python dependencies
 ├── PRD.md              # Product requirements document
 ├── USER_MANUAL.md      # End-user / operator guide
@@ -120,7 +128,7 @@ gold-drop/
 
 ## Deploying to Production
 
-After merging work into **`main`**, deploy by pulling on the server (`git fetch` / `git checkout main` / `git pull`) and **restarting the app process** (e.g. `systemctl restart …`) so Gunicorn reloads code. New database columns are applied on startup: SQLite via **`init_db()`** + **`_ensure_sqlite_schema()`**; PostgreSQL via **`init_db()`** + **`_ensure_postgres_run_hte_columns()`** (and `db.create_all()` for new tables).
+After merging work into **`main`**, deploy by pulling on the server (`git fetch` / `git checkout main` / `git pull`) and **restarting the app process** (e.g. `systemctl restart …`) so Gunicorn reloads code. The Flask app is created through `create_app()` in `app.py`, and database bootstrap still runs during startup. New database columns are applied on startup: SQLite via **`init_db()`** + **`_ensure_sqlite_schema()`**; PostgreSQL via **`init_db()`** + **`_ensure_postgres_run_hte_columns()`** (and `db.create_all()` for new tables).
 
 ### Option 1: DigitalOcean / Render / Railway
 
