@@ -49,6 +49,59 @@ Operations needs a single system to answer:
 
 ---
 
+## Batch Journey Progress Tracker
+
+### Problem to solve
+Operators and managers can see each stage in separate screens today (Pipeline, Purchases, Inventory, Runs, Departments), but there is no **single visual timeline** for one batch from first declaration through downstream outcomes.
+
+### Product intent
+When a user opens a batch (purchase), they should be able to view a **graphic progress tracker** that answers:
+- Where is this batch now?
+- Which stages are complete vs pending vs skipped?
+- What dates/owners/evidence are attached to each stage?
+- What quantity is still active at each step?
+
+### Scope (v1)
+The tracker is a **single-batch journey view** anchored to `Purchase.id` / Batch ID and rendered as a horizontal or vertical stepper:
+1. **Declared** (availability captured)
+2. **Testing** (pre/post-delivery test status)
+3. **Committed / Approved**
+4. **Delivered / Received**
+5. **On-hand inventory** (lots and remaining lbs)
+6. **Extraction** (runs that consumed this batch’s lots)
+7. **Post-processing** (HTE/THCA downstream states where applicable)
+8. **Sales/Disposition** (placeholder step until sales module is expanded)
+
+Each step shows:
+- Status badge (`done`, `in_progress`, `blocked`, `not_started`, `not_applicable`)
+- Timestamp(s)
+- Responsible user (when available)
+- Key metrics (lbs, g, potency, cost)
+- Drill link to source record (purchase, lot, run, etc.)
+
+### Rules / behavior
+- Journey is **derived** from existing source-of-truth records; no duplicate stage table required for v1.
+- A step can be **partially complete** (e.g., only some lots consumed in runs).
+- Soft-deleted records are excluded from default display but can be shown in an “include archived” mode for audit/admin.
+- Approval gates remain authoritative: unapproved batches can show delivered/ordered milestones, but on-hand consumption and run usage remain blocked by existing rules.
+
+### Acceptance criteria (v1)
+- From Purchases list and Purchase detail/edit, user can open **View Journey** for that batch.
+- Journey reflects current state within the same request cycle as underlying records (no stale cache requirement in v1).
+- Every visible step has at least one traceable source link.
+- If a phase has no data yet, UI explicitly shows “Not started” rather than empty space.
+- Export (JSON/CSV) of journey events is available for audit/debug.
+
+### Implementation status (current)
+- Delivered endpoints:
+  - `GET /purchases/<purchase_id>/journey` (timeline page)
+  - `GET /api/purchases/<purchase_id>/journey` (JSON payload)
+  - `GET /purchases/<purchase_id>/journey/export?format=json|csv` (download export)
+- `include_archived=1` is super-admin only for archived purchase visibility/export.
+- Export format validation is explicit: unsupported `format` returns `400` with a machine-readable payload listing supported formats (`csv`, `json`), rather than silently falling back.
+
+---
+
 ## Users & Permissions
 
 ### Base roles (existing)
@@ -631,4 +684,3 @@ Some **potential** purchase / pipeline lines will never be approved. The product
 - Add richer analytics screens (time series, variance by reactor/operator).
 - Add COA upload + parsing, and stronger validation rules around potency/pricing.
 - Add automated alerts for “missing $/lb” purchases linked to recent runs.
-

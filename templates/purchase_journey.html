@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Batch Journey{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Batch Journey — {{ purchase.batch_id or purchase.id }}</h2>
+  <div class="btn-group">
+    <a href="{{ url_for('purchases_bp.purchase_journey_export', purchase_id=purchase.id, format='json', include_archived=1 if include_archived else 0) }}" class="btn btn-secondary btn-sm">Export JSON</a>
+    <a href="{{ url_for('purchases_bp.purchase_journey_export', purchase_id=purchase.id, format='csv', include_archived=1 if include_archived else 0) }}" class="btn btn-secondary btn-sm">Export CSV</a>
+    {% if current_user.is_super_admin %}
+    <a href="{{ url_for('purchases_bp.purchase_journey', purchase_id=purchase.id, include_archived=1 if not include_archived else 0) }}" class="btn btn-secondary btn-sm">
+      {% if include_archived %}Hide archived{% else %}Include archived{% endif %}
+    </a>
+    {% endif %}
+    <a href="{{ url_for('purchase_edit', purchase_id=purchase.id) }}" class="btn btn-secondary btn-sm">Edit Purchase</a>
+    <a href="{{ url_for('purchases_list') }}" class="btn btn-secondary btn-sm">← Back</a>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:14px;">
+  <div class="kpi-grid" style="grid-template-columns:repeat(4,minmax(140px,1fr));">
+    <div class="kpi-card">
+      <div class="kpi-label">Supplier</div>
+      <div class="kpi-value" style="font-size:1rem;">{{ purchase.supplier_name }}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Current status</div>
+      <div class="kpi-value" style="font-size:1rem;">{{ journey.status.replace('_', ' ') }}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Approved</div>
+      <div class="kpi-value" style="font-size:1rem;">{% if purchase.is_approved %}Yes{% else %}No{% endif %}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Events</div>
+      <div class="kpi-value" style="font-size:1rem;">{{ journey.events|length }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h4 style="margin-top:0;">Progress timeline</h4>
+  <div style="display:grid;gap:10px;">
+    {% for event in journey.events %}
+    <div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;background:rgba(255,255,255,0.01);">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+        <strong>{{ event.stage_key.replace('_', ' ').title() }}</strong>
+        <span class="badge status-{{ event.state }}">{{ event.state.replace('_', ' ') }}</span>
+      </div>
+      <div class="text-sm" style="margin-top:6px;color:var(--text-muted);">
+        Start: {{ event.started_at or '—' }} · Complete: {{ event.completed_at or '—' }}
+      </div>
+      {% if event.metrics %}
+      <div class="text-sm" style="margin-top:8px;">
+        {% for key, value in event.metrics.items() %}
+          <span style="display:inline-block;margin-right:12px;"><strong>{{ key.replace('_',' ') }}:</strong> {{ value }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% if event.links %}
+      <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+        {% for link in event.links %}
+        <a class="btn btn-secondary btn-sm" href="{{ link.url }}">{{ link.label }}</a>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
