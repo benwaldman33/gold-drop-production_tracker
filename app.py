@@ -20,8 +20,18 @@ import gold_drop.bootstrap_module as bootstrap_module
 import gold_drop.list_state as list_state_mod
 import gold_drop.purchases as purchases_mod
 import gold_drop.purchases_module as purchases_module
+import gold_drop.dashboard_module as dashboard_module
+import gold_drop.field_intake_module as field_intake_module
+import gold_drop.costs_module as costs_module
+import gold_drop.inventory_module as inventory_module
+import gold_drop.batch_edit_module as batch_edit_module
+import gold_drop.purchase_import_module as purchase_import_module
+import gold_drop.suppliers_module as suppliers_module
+import gold_drop.runs_module as runs_module
 import gold_drop.settings_module as settings_module
 import gold_drop.slack as slack_mod
+import gold_drop.slack_integration_module as slack_integration_module
+import gold_drop.strains_module as strains_module
 import gold_drop.uploads as uploads_mod
 from datetime import datetime, date, timedelta, timezone
 from functools import wraps
@@ -1459,93 +1469,43 @@ def log_audit(action, entity_type, entity_id, details=None, user_id=None):
 
 
 def _slack_enabled() -> bool:
-    return (SystemSetting.get("slack_enabled", "0") or "0").strip() in ("1", "true", "yes", "on")
+    return slack_integration_module.slack_enabled(sys.modules[__name__])
 
 
 def _slack_webhook_url() -> str | None:
-    return (SystemSetting.get("slack_webhook_url", "") or "").strip() or None
+    return slack_integration_module.slack_webhook_url(sys.modules[__name__])
 
 
 def _slack_signing_secret() -> str | None:
-    return (SystemSetting.get("slack_signing_secret", "") or "").strip() or None
+    return slack_integration_module.slack_signing_secret(sys.modules[__name__])
 
 
 def _slack_bot_token() -> str | None:
-    return (SystemSetting.get("slack_bot_token", "") or "").strip() or None
+    return slack_integration_module.slack_bot_token(sys.modules[__name__])
 
 
 def _slack_channel() -> str | None:
-    return (SystemSetting.get("slack_default_channel", "") or "").strip() or None
+    return slack_integration_module.slack_channel(sys.modules[__name__])
 
 
 def _post_slack_webhook(text_value: str) -> None:
-    webhook = _slack_webhook_url()
-    if not webhook or not _slack_enabled():
-        return
-    payload = json.dumps({"text": text_value}).encode("utf-8")
-    req = urllib.request.Request(webhook, data=payload, headers={"Content-Type": "application/json"}, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=6):
-            pass
-    except Exception:
-        app.logger.exception("Slack webhook send failed")
+    slack_integration_module._post_slack_webhook(sys.modules[__name__], text_value)
 
 
 def _post_slack_api_message(text_value: str) -> None:
-    token = _slack_bot_token()
-    channel = _slack_channel()
-    if not token or not channel or not _slack_enabled():
-        return
-    payload = json.dumps({"channel": channel, "text": text_value}).encode("utf-8")
-    req = urllib.request.Request(
-        "https://slack.com/api/chat.postMessage",
-        data=payload,
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=utf-8"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=6):
-            pass
-    except Exception:
-        app.logger.exception("Slack API send failed")
+    slack_integration_module._post_slack_api_message(sys.modules[__name__], text_value)
 
 
 def notify_slack(text_value: str) -> None:
-    _post_slack_webhook(text_value)
-    _post_slack_api_message(text_value)
+    slack_integration_module.notify_slack(sys.modules[__name__], text_value)
 
 
 def _verify_slack_signature(req) -> bool:
-    secret = _slack_signing_secret()
-    if not secret:
-        return False
-    timestamp = req.headers.get("X-Slack-Request-Timestamp", "")
-    signature = req.headers.get("X-Slack-Signature", "")
-    if not timestamp or not signature:
-        return False
-    try:
-        ts = int(timestamp)
-    except ValueError:
-        return False
-    if abs(int(time.time()) - ts) > 60 * 5:
-        return False
-    raw_body = req.get_data(cache=True, as_text=False) or b""
-    basestring = f"v0:{timestamp}:{raw_body.decode('utf-8')}".encode("utf-8")
-    digest = "v0=" + hmac.new(secret.encode("utf-8"), basestring, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(digest, signature)
+    return slack_integration_module.verify_slack_signature(sys.modules[__name__], req)
 
 
 def _slack_web_api(token: str, method: str, params: dict) -> dict:
-    """POST application/x-www-form-urlencoded to Slack Web API."""
-    body = urllib.parse.urlencode({k: v for k, v in params.items() if v is not None}).encode("utf-8")
-    req = urllib.request.Request(
-        f"https://slack.com/api/{method}",
-        data=body,
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/x-www-form-urlencoded"},
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=45) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    return slack_integration_module.slack_web_api(sys.modules[__name__], token, method, params)
 
 
 def _slack_looks_like_conversation_id(hint: str) -> bool:
@@ -1559,52 +1519,14 @@ def _slack_looks_like_conversation_id(hint: str) -> bool:
 
 
 def _slack_resolve_channel_id(token: str, channel_setting: str) -> str | None:
-    """Resolve #name or channel ID from Settings default channel."""
-    hint = (channel_setting or "").strip()
-    if not hint:
-        return None
-    if _slack_looks_like_conversation_id(hint):
-        return hint
-    name = hint.lstrip("#").strip().lower()
-    cursor = None
-    for _ in range(40):
-        params: dict[str, str] = {"types": "public_channel,private_channel", "limit": "200"}
-        if cursor:
-            params["cursor"] = cursor
-        data = _slack_web_api(token, "conversations.list", params)
-        if not data.get("ok"):
-            app.logger.warning("Slack conversations.list failed: %s", data.get("error"))
-            return None
-        for ch in data.get("channels") or []:
-            if (ch.get("name") or "").lower() == name:
-                return ch.get("id")
-        cursor = (data.get("response_metadata") or {}).get("next_cursor") or None
-        if not cursor:
-            break
-    return None
+    return slack_integration_module.slack_resolve_channel_id(sys.modules[__name__], token, channel_setting)
 
 
-SLACK_SYNC_CHANNEL_SLOTS = 6
+SLACK_SYNC_CHANNEL_SLOTS = slack_integration_module.SLACK_SYNC_CHANNEL_SLOTS
 
 
 def _ensure_slack_sync_configs() -> None:
-    """Ensure six sync slots exist; first install seeds slot 0 from slack_default_channel."""
-    count = SlackChannelSyncConfig.query.count()
-    if count == 0:
-        default_ch = (SystemSetting.get("slack_default_channel") or "").strip()
-        for i in range(SLACK_SYNC_CHANNEL_SLOTS):
-            hint = default_ch if i == 0 else ""
-            db.session.add(SlackChannelSyncConfig(slot_index=i, channel_hint=hint))
-        db.session.commit()
-        return
-    have = {r.slot_index for r in SlackChannelSyncConfig.query.all()}
-    added = False
-    for i in range(SLACK_SYNC_CHANNEL_SLOTS):
-        if i not in have:
-            db.session.add(SlackChannelSyncConfig(slot_index=i, channel_hint=""))
-            added = True
-    if added:
-        db.session.commit()
+    slack_integration_module.ensure_sync_configs(sys.modules[__name__])
 
 
 def _slack_ingest_channel_history(
@@ -2977,6 +2899,7 @@ def logout():
 # ── Field (mobile) intake ────────────────────────────────────────────────────
 
 def _get_or_create_supplier_from_field_form(token):
+    return field_intake_module.get_or_create_supplier_from_field_form(sys.modules[__name__], token)
     """
     Field intake can select an existing supplier or create one by name.
     Returns (supplier, created_bool).
@@ -3030,6 +2953,7 @@ def _get_or_create_supplier_from_field_form(token):
 
 
 def _get_or_create_supplier_from_desk_purchase_form():
+    return field_intake_module.get_or_create_supplier_from_desk_purchase_form(sys.modules[__name__])
     """Desk/office purchase proposal: same rules as field form, logged-in user in audit trail."""
     supplier_id = (request.form.get("supplier_id") or "").strip()
     new_name = (request.form.get("new_supplier_name") or "").strip()
@@ -3078,6 +3002,11 @@ def _get_or_create_supplier_from_desk_purchase_form():
 
 
 def _parse_field_purchase_intake_form_to_submission(supplier: Supplier, *, source_token_id: str | None):
+    return field_intake_module.parse_field_purchase_intake_form_to_submission(
+        sys.modules[__name__],
+        supplier,
+        source_token_id=source_token_id,
+    )
     """Build a FieldPurchaseSubmission from the shared HTTP form (field + desk). Not added to session."""
     pd = (request.form.get("purchase_date") or "").strip()
     if not pd:
@@ -3157,6 +3086,7 @@ def _parse_field_purchase_intake_form_to_submission(supplier: Supplier, *, sourc
 @app.route("/field")
 @field_token_required
 def field_home(token):
+    return field_intake_module.field_home_view(sys.modules[__name__], token)
     """Landing page for field/mobile data entry (no login, token required)."""
     return render_template("field_home.html", token_value=_get_field_token_value(), token=token)
 
@@ -3164,6 +3094,7 @@ def field_home(token):
 @app.route("/field/biomass/new", methods=["GET", "POST"])
 @field_token_required
 def field_biomass_new(token):
+    return field_intake_module.field_biomass_new_view(sys.modules[__name__], token)
     """
     Create a Purchase record in pipeline stage from the field without requiring login.
     This is intended for early-stage pipeline entry (declared/in_testing).
@@ -3271,6 +3202,7 @@ def field_biomass_new(token):
 @app.route("/field/purchase/new", methods=["GET", "POST"])
 @field_token_required
 def field_purchase_new(token):
+    return field_intake_module.field_purchase_new_view(sys.modules[__name__], token)
     """Submit a potential purchase from the field (requires admin approval)."""
     suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
     if request.method == "POST":
@@ -3315,6 +3247,7 @@ def field_purchase_new(token):
 @app.route("/biomass-purchasing/new-submission", methods=["GET", "POST"])
 @login_required
 def desk_field_purchase_submission():
+    return field_intake_module.desk_field_purchase_submission_view(sys.modules[__name__])
     """Logged-in buyers: submit purchase lots for approval (same workflow as mobile field intake)."""
     if not current_user.can_edit_purchases:
         flash("You don't have permission to submit purchase proposals.", "error")
@@ -3364,6 +3297,7 @@ def desk_field_purchase_submission():
 @app.route("/field/thanks")
 @field_token_required
 def field_thanks(token):
+    return field_intake_module.field_thanks_view(sys.modules[__name__], token)
     kind = (request.args.get("kind") or "").strip()
     return render_template("field_thanks.html", kind=kind, token_value=_get_field_token_value())
 
@@ -4073,6 +4007,7 @@ def _biomass_bucket_filter(query, bucket, n1, n2):
 @app.route("/")
 @login_required
 def dashboard():
+    return dashboard_module.dashboard_view(sys.modules[__name__])
     # Time period
     period = request.args.get("period", "30")
     if period == "today":
@@ -4279,12 +4214,14 @@ def dashboard():
 @app.route("/dept/")
 @login_required
 def dept_index():
+    return dashboard_module.dept_index_view(sys.modules[__name__])
     return render_template("dept_index.html", departments=DEPARTMENT_PAGES)
 
 
 @app.route("/dept/<slug>")
 @login_required
 def dept_view(slug):
+    return dashboard_module.dept_view_view(sys.modules[__name__], slug)
     cfg = DEPARTMENT_PAGES.get(slug)
     if not cfg:
         abort(404)
@@ -4300,6 +4237,7 @@ def dept_view(slug):
 @app.route("/biomass-purchasing")
 @login_required
 def biomass_purchasing_dashboard():
+    return dashboard_module.biomass_purchasing_dashboard_view(sys.modules[__name__])
     today = date.today()
     current_monday = _purchase_week_start(today)
     weekly_budget_usd = SystemSetting.get_float("biomass_purchase_weekly_budget_usd", 0)
@@ -4385,6 +4323,7 @@ def biomass_purchasing_dashboard():
 @app.route("/runs")
 @login_required
 def runs_list():
+    return runs_module.runs_list_view(sys.modules[__name__])
     redir = _list_filters_clear_redirect("runs_list")
     if redir:
         return redir
@@ -4485,6 +4424,7 @@ def runs_list():
 @app.route("/runs/new", methods=["GET", "POST"])
 @login_required
 def run_new():
+    return runs_module.run_new_view(sys.modules[__name__])
     if request.method == "POST":
         if not current_user.can_edit:
             flash("Saving runs requires User or Super Admin access.", "error")
@@ -4542,6 +4482,7 @@ def run_new():
 @app.route("/runs/<run_id>/edit", methods=["GET", "POST"])
 @editor_required
 def run_edit(run_id):
+    return runs_module.run_edit_view(sys.modules[__name__], run_id)
     run = db.session.get(Run, run_id)
     if not run or run.deleted_at is not None:
         flash("Run not found.", "error")
@@ -4752,6 +4693,7 @@ def _save_run(existing_run):
 @app.route("/runs/<run_id>/delete", methods=["POST"])
 @editor_required
 def run_delete(run_id):
+    return runs_module.run_delete_view(sys.modules[__name__], run_id)
     run = db.session.get(Run, run_id)
     if run and run.deleted_at is None:
         # Restore lot weights
@@ -4771,6 +4713,7 @@ def run_delete(run_id):
 @app.route("/runs/<run_id>/hard_delete", methods=["POST"])
 @admin_required
 def run_hard_delete(run_id):
+    return runs_module.run_hard_delete_view(sys.modules[__name__], run_id)
     run = db.session.get(Run, run_id)
     if not run:
         flash("Run not found.", "error")
@@ -4794,6 +4737,7 @@ def run_hard_delete(run_id):
 @login_required
 def costs_list():
     """View operational cost entries."""
+    return costs_module.costs_list_view(sys.modules[__name__])
     redir = _list_filters_clear_redirect("costs_list")
     if redir:
         return redir
@@ -4838,6 +4782,7 @@ def costs_list():
 @app.route("/costs/new", methods=["GET", "POST"])
 @editor_required
 def cost_new():
+    return costs_module.cost_new_view(sys.modules[__name__])
     if request.method == "POST":
         try:
             entry = CostEntry(
@@ -4866,6 +4811,7 @@ def cost_new():
 @app.route("/costs/<entry_id>/edit", methods=["GET", "POST"])
 @editor_required
 def cost_edit(entry_id):
+    return costs_module.cost_edit_view(sys.modules[__name__], entry_id)
     entry = db.session.get(CostEntry, entry_id)
     if not entry:
         flash("Cost entry not found.", "error")
@@ -4894,6 +4840,7 @@ def cost_edit(entry_id):
 @app.route("/costs/<entry_id>/delete", methods=["POST"])
 @editor_required
 def cost_delete(entry_id):
+    return costs_module.cost_delete_view(sys.modules[__name__], entry_id)
     entry = db.session.get(CostEntry, entry_id)
     if entry:
         log_audit("delete", "cost_entry", entry.id)
@@ -4908,6 +4855,7 @@ def cost_delete(entry_id):
 @app.route("/inventory")
 @login_required
 def inventory():
+    return inventory_module.inventory_view(sys.modules[__name__])
     redir = _list_filters_clear_redirect("inventory")
     if redir:
         return redir
@@ -4962,6 +4910,7 @@ def inventory():
 
 
 def _safe_batch_return_url(raw: str) -> str:
+    return batch_edit_module.safe_batch_return_url(sys.modules[__name__], raw)
     p = (raw or "").strip()
     if not p.startswith("/") or "\n" in p or "\r" in p or len(p) > 512:
         return url_for("dashboard")
@@ -4982,6 +4931,7 @@ BATCH_EDIT_META = {
 @app.route("/batch-edit/<entity>", methods=["GET", "POST"])
 @login_required
 def batch_edit(entity):
+    return batch_edit_module.batch_edit_view(sys.modules[__name__], entity)
     meta = BATCH_EDIT_META.get(entity)
     if not meta:
         abort(404)
@@ -5147,6 +5097,7 @@ PURCHASE_IMPORT_ALLOWED_STATUSES = frozenset({
 
 
 def _purchase_import_staging_path(token: str) -> str:
+    return purchase_import_module.purchase_import_staging_path(sys.modules[__name__], token)
     safe = "".join(c for c in (token or "") if c.isalnum() or c in "-_")
     if len(safe) < 8:
         raise ValueError("Invalid staging token.")
@@ -5154,6 +5105,7 @@ def _purchase_import_staging_path(token: str) -> str:
 
 
 def _purchase_import_load_staging(token: str) -> dict | None:
+    return purchase_import_module.purchase_import_load_staging(sys.modules[__name__], token)
     try:
         path = _purchase_import_staging_path(token)
     except ValueError:
@@ -5168,6 +5120,7 @@ def _purchase_import_load_staging(token: str) -> dict | None:
 
 
 def _purchase_import_clear_staging(token: str) -> None:
+    return purchase_import_module.purchase_import_clear_staging(sys.modules[__name__], token)
     try:
         path = _purchase_import_staging_path(token)
         if os.path.isfile(path):
@@ -5177,6 +5130,7 @@ def _purchase_import_clear_staging(token: str) -> None:
 
 
 def _purchase_import_parse_date(s: str) -> date | None:
+    return purchase_import_module.purchase_import_parse_date(sys.modules[__name__], s)
     s = (s or "").strip()
     if not s:
         return None
@@ -5192,6 +5146,7 @@ def _purchase_import_parse_date(s: str) -> date | None:
 
 
 def _purchase_import_parse_required_positive_float(s: str) -> float | None:
+    return purchase_import_module.purchase_import_parse_required_positive_float(s)
     if not (s or "").strip():
         return None
     t = str(s).replace(",", "").replace("$", "").replace("%", "").strip()
@@ -5202,6 +5157,7 @@ def _purchase_import_parse_required_positive_float(s: str) -> float | None:
 
 
 def _purchase_import_parse_optional_float(s: str) -> float | None:
+    return purchase_import_module.purchase_import_parse_optional_float(s)
     if not (s or "").strip():
         return None
     t = str(s).replace(",", "").replace("$", "").replace("%", "").strip()
@@ -5212,6 +5168,7 @@ def _purchase_import_parse_optional_float(s: str) -> float | None:
 
 
 def _purchase_import_normalize_status(raw: str) -> tuple[str | None, str | None]:
+    return purchase_import_module.purchase_import_normalize_status(raw)
     s = (raw or "").strip()
     if not s:
         return "ordered", None
@@ -5233,6 +5190,7 @@ def _purchase_import_normalize_status(raw: str) -> tuple[str | None, str | None]
 
 
 def _purchase_import_normalize_queue_placement(raw: str) -> tuple[str | None, str | None]:
+    return purchase_import_module.purchase_import_normalize_queue_placement(raw)
     s = (raw or "").strip().lower().replace(" ", "_").replace("-", "_")
     if not s:
         return None, None
@@ -5242,6 +5200,7 @@ def _purchase_import_normalize_queue_placement(raw: str) -> tuple[str | None, st
 
 
 def _purchase_import_normalize_clean_dirty(raw: str) -> tuple[str | None, str | None]:
+    return purchase_import_module.purchase_import_normalize_clean_dirty(raw)
     s = (raw or "").strip().lower()
     if not s:
         return None, None
@@ -5251,6 +5210,7 @@ def _purchase_import_normalize_clean_dirty(raw: str) -> tuple[str | None, str | 
 
 
 def _purchase_import_normalize_indoor_outdoor(raw: str) -> tuple[str | None, str | None]:
+    return purchase_import_module.purchase_import_normalize_indoor_outdoor(raw)
     if not (raw or "").strip():
         return None, None
     s = (raw or "").strip().lower().replace(" ", "_").replace("-", "_")
@@ -5262,6 +5222,7 @@ def _purchase_import_normalize_indoor_outdoor(raw: str) -> tuple[str | None, str
 
 
 def _purchase_import_validate_row(raw: dict) -> tuple[list[str], dict | None]:
+    return purchase_import_module.purchase_import_validate_row(sys.modules[__name__], raw)
     errors: list[str] = []
     supplier_name = (raw.get("supplier") or "").strip()
     if not supplier_name:
@@ -5420,6 +5381,7 @@ def _purchase_import_validate_row(raw: dict) -> tuple[list[str], dict | None]:
 
 
 def _purchase_import_commit_norm(norm: dict, *, create_suppliers: bool) -> None:
+    return purchase_import_module.purchase_import_commit_norm(sys.modules[__name__], norm, create_suppliers=create_suppliers)
     name = norm["supplier_name"]
     sup = Supplier.query.filter(func.lower(Supplier.name) == name.lower()).first()
     if not sup:
@@ -5515,6 +5477,7 @@ def _purchase_import_commit_norm(norm: dict, *, create_suppliers: bool) -> None:
 @app.route("/purchases/import", methods=["GET", "POST"])
 @purchase_editor_required
 def purchase_import():
+    return purchase_import_module.purchase_import_view(sys.modules[__name__])
     if request.method == "GET":
         return render_template("purchase_import.html")
     f = request.files.get("spreadsheet")
@@ -5565,6 +5528,7 @@ def purchase_import():
 @app.route("/purchases/import/preview", methods=["GET"])
 @purchase_editor_required
 def purchase_import_preview():
+    return purchase_import_module.purchase_import_preview_view(sys.modules[__name__])
     token = (session.get("purchase_import_token") or "").strip()
     data = _purchase_import_load_staging(token) if token else None
     if not data:
@@ -5581,6 +5545,7 @@ def purchase_import_preview():
 @app.route("/purchases/import/commit", methods=["POST"])
 @purchase_editor_required
 def purchase_import_commit():
+    return purchase_import_module.purchase_import_commit_view(sys.modules[__name__])
     token = (session.get("purchase_import_token") or "").strip()
     data = _purchase_import_load_staging(token) if token else None
     if not data:
@@ -5638,6 +5603,7 @@ def purchase_import_commit():
 @app.route("/purchases/import/sample.csv")
 @purchase_editor_required
 def purchase_import_sample():
+    return purchase_import_module.purchase_import_sample_view(sys.modules[__name__])
     lines = [
         "Week,Purchase Date,Paid Date,Vendor,Amount,Payment Method,Invoice Weight,Actual Weight,Manifest",
         "2/9-2/15,1/21/2026,2/10/2026,Example Farm,$4911.30,ACH,297.90,297.70,10187853",
@@ -5700,6 +5666,7 @@ def purchase_hard_delete(purchase_id):
 
 
 def _supplier_incomplete_profile_fields(s: Supplier | None) -> list[str]:
+    return suppliers_module.supplier_incomplete_profile_fields(sys.modules[__name__], s)
     """Contact/location fields expected for a complete profile (name is always required)."""
     if not s:
         return []
@@ -5718,6 +5685,7 @@ def _supplier_incomplete_profile_fields(s: Supplier | None) -> list[str]:
 @app.route("/suppliers")
 @login_required
 def suppliers_list():
+    return suppliers_module.suppliers_list_view(sys.modules[__name__])
     suppliers = Supplier.query.order_by(Supplier.name).all()
     exclude_unpriced = _exclude_unpriced_batches_enabled()
 
@@ -5854,6 +5822,7 @@ def suppliers_list():
 @app.route("/suppliers/new", methods=["GET", "POST"])
 @editor_required
 def supplier_new():
+    return suppliers_module.supplier_new_view(sys.modules[__name__])
     if request.method == "POST":
         s = Supplier(
             name=request.form["name"].strip(),
@@ -5886,6 +5855,7 @@ def supplier_new():
 @app.route("/suppliers/<sid>/edit", methods=["GET", "POST"])
 @editor_required
 def supplier_edit(sid):
+    return suppliers_module.supplier_edit_view(sys.modules[__name__], sid)
     s = db.session.get(Supplier, sid)
     if not s:
         flash("Supplier not found.", "error")
@@ -6012,6 +5982,7 @@ def supplier_edit(sid):
 @app.route("/suppliers/<sid>/lab_tests/<test_id>/delete", methods=["POST"])
 @editor_required
 def supplier_lab_test_delete(sid, test_id):
+    return suppliers_module.supplier_lab_test_delete_view(sys.modules[__name__], sid, test_id)
     t = db.session.get(LabTest, test_id)
     if not t or t.supplier_id != sid:
         flash("Lab test record not found.", "error")
@@ -6032,6 +6003,7 @@ def supplier_lab_test_delete(sid, test_id):
 @app.route("/suppliers/<sid>/attachments/<attachment_id>/delete", methods=["POST"])
 @editor_required
 def supplier_attachment_delete(sid, attachment_id):
+    return suppliers_module.supplier_attachment_delete_view(sys.modules[__name__], sid, attachment_id)
     a = db.session.get(SupplierAttachment, attachment_id)
     if not a or a.supplier_id != sid:
         flash("Attachment not found.", "error")
@@ -6051,6 +6023,7 @@ def supplier_attachment_delete(sid, attachment_id):
 @app.route("/photos")
 @login_required
 def photos_library():
+    return suppliers_module.photos_library_view(sys.modules[__name__])
     q = (request.args.get("q") or "").strip()
     supplier_id = (request.args.get("supplier_id") or "").strip()
     purchase_id = (request.args.get("purchase_id") or "").strip()
@@ -6091,6 +6064,7 @@ def photos_library():
 @app.route("/photos/upload", methods=["POST"])
 @editor_required
 def photos_upload():
+    return suppliers_module.photos_upload_view(sys.modules[__name__])
     files = request.files.getlist("files")
     ret = _photos_library_filters_from_hidden_form()
     if not files or not any(getattr(f, "filename", None) for f in files if f):
@@ -6138,6 +6112,7 @@ def photos_upload():
 @app.route("/photos/<asset_id>/delete", methods=["POST"])
 @editor_required
 def photo_asset_delete(asset_id):
+    return suppliers_module.photo_asset_delete_view(sys.modules[__name__], asset_id)
     asset = db.session.get(PhotoAsset, asset_id)
     if not asset:
         flash("Asset not found.", "error")
@@ -6156,6 +6131,7 @@ def photo_asset_delete(asset_id):
 @app.route("/purchases/<purchase_id>/supporting_docs/<asset_id>/delete", methods=["POST"])
 @purchase_editor_required
 def purchase_support_doc_delete(purchase_id, asset_id):
+    return suppliers_module.purchase_support_doc_delete_view(sys.modules[__name__], purchase_id, asset_id)
     p = db.session.get(Purchase, purchase_id)
     if not p or p.deleted_at is not None:
         flash("Purchase not found.", "error")
@@ -6182,6 +6158,7 @@ def purchase_support_doc_delete(purchase_id, asset_id):
 @login_required
 def strains_list():
     """Strain performance view grouped by strain name."""
+    return strains_module.strains_list_view(sys.modules[__name__])
     redir = _list_filters_clear_redirect("strains_list")
     if redir:
         return redir
@@ -6807,6 +6784,7 @@ def settings_backfill_photo_assets():
 @app.route("/settings/slack_sync_channel", methods=["POST"])
 @admin_required
 def settings_slack_sync_channel():
+    return slack_integration_module.settings_slack_sync_channel_view(sys.modules[__name__])
     """
     Pull conversations.history for each configured sync channel (max 6).
     First run for a channel uses a rolling window (sync_days); later runs use per-channel watermark ts.
@@ -6909,6 +6887,7 @@ def settings_slack_sync_channel():
 @app.route("/settings/slack-imports")
 @slack_importer_required
 def settings_slack_imports():
+    return slack_integration_module.settings_slack_imports_view(sys.modules[__name__])
     ep = "settings_slack_imports"
     redir = _list_filters_clear_redirect(ep)
     if redir:
@@ -7086,6 +7065,7 @@ def settings_slack_imports():
 @app.route("/settings/slack-imports/<msg_id>/triage-hide", methods=["POST"])
 @slack_importer_required
 def settings_slack_import_triage_hide(msg_id):
+    return slack_integration_module.settings_slack_import_triage_hide_view(sys.modules[__name__], msg_id)
     row = db.session.get(SlackIngestedMessage, msg_id)
     if not row:
         flash("Slack import row not found.", "error")
@@ -7108,6 +7088,7 @@ def settings_slack_import_triage_hide(msg_id):
 @app.route("/settings/slack-imports/<msg_id>/triage-unhide", methods=["POST"])
 @slack_importer_required
 def settings_slack_import_triage_unhide(msg_id):
+    return slack_integration_module.settings_slack_import_triage_unhide_view(sys.modules[__name__], msg_id)
     row = db.session.get(SlackIngestedMessage, msg_id)
     if not row:
         flash("Slack import row not found.", "error")
@@ -7127,6 +7108,7 @@ def settings_slack_import_triage_unhide(msg_id):
 @app.route("/settings/slack-imports/<msg_id>/preview")
 @slack_importer_required
 def settings_slack_import_preview(msg_id):
+    return slack_integration_module.settings_slack_import_preview_view(sys.modules[__name__], msg_id)
     row = db.session.get(SlackIngestedMessage, msg_id)
     if not row:
         flash("Slack import row not found.", "error")
@@ -7192,6 +7174,7 @@ def settings_slack_import_preview(msg_id):
 @app.route("/settings/slack-imports/<msg_id>/apply-run", methods=["GET", "POST"])
 @slack_importer_required
 def settings_slack_import_apply_run(msg_id):
+    return slack_integration_module.settings_slack_import_apply_run_view(sys.modules[__name__], msg_id)
     row = db.session.get(SlackIngestedMessage, msg_id)
     if not row:
         flash("Slack import row not found.", "error")
@@ -7265,6 +7248,7 @@ def settings_slack_import_apply_run(msg_id):
 @app.route("/settings/slack-imports/<msg_id>/apply-intake", methods=["POST"])
 @slack_importer_required
 def settings_slack_import_apply_intake(msg_id):
+    return slack_integration_module.settings_slack_import_apply_intake_view(sys.modules[__name__], msg_id)
     if not current_user.can_edit:
         flash("Saving purchases requires User or Super Admin access.", "error")
         return redirect(url_for("settings_slack_import_preview", msg_id=msg_id))
@@ -7372,6 +7356,7 @@ def settings_slack_import_apply_intake(msg_id):
 @app.route("/settings/slack-run-mappings", methods=["GET", "POST"])
 @admin_required
 def settings_slack_run_mappings():
+    return slack_integration_module.settings_slack_run_mappings_view(sys.modules[__name__])
     if request.method == "POST":
         action = (request.form.get("action") or "").strip()
         if action == "reset_defaults":
@@ -7442,6 +7427,7 @@ def settings_slack_run_mappings():
 
 @app.route("/api/slack/events", methods=["POST"])
 def slack_events():
+    return slack_integration_module.slack_events_view(sys.modules[__name__])
     """
     Slack Events API: URL verification challenge and event callbacks.
     Request URL: https://<your-host>/api/slack/events
@@ -7460,6 +7446,7 @@ def slack_events():
 
 @app.route("/api/slack/command", methods=["POST"])
 def slack_command():
+    return slack_integration_module.slack_command_view(sys.modules[__name__])
     if not _verify_slack_signature(request):
         return "Unauthorized", 401
     cmd_text = (request.form.get("text") or "").strip().lower()
@@ -7482,6 +7469,7 @@ def slack_command():
 
 @app.route("/api/slack/interactivity", methods=["POST"])
 def slack_interactivity():
+    return slack_integration_module.slack_interactivity_view(sys.modules[__name__])
     if not _verify_slack_signature(request):
         return "Unauthorized", 401
     payload_raw = (request.form.get("payload") or "").strip()
@@ -8474,9 +8462,31 @@ def _seed_historical_data():
 
 def _register_extracted_routes(flask_app):
     root = sys.modules[__name__]
-    settings_module.register_routes(flask_app, root)
-    purchases_module.register_routes(flask_app, root)
-    biomass_module.register_routes(flask_app, root)
+    existing = set(flask_app.view_functions)
+    if "settings" not in existing:
+        settings_module.register_routes(flask_app, root)
+    if "purchases_list" not in existing:
+        purchases_module.register_routes(flask_app, root)
+    if "biomass_list" not in existing:
+        biomass_module.register_routes(flask_app, root)
+    if "runs_list" not in existing:
+        runs_module.register_routes(flask_app, root)
+    if "dashboard" not in existing:
+        dashboard_module.register_routes(flask_app, root)
+    if "field_home" not in existing:
+        field_intake_module.register_routes(flask_app, root)
+    if "costs_list" not in existing:
+        costs_module.register_routes(flask_app, root)
+    if "inventory" not in existing:
+        inventory_module.register_routes(flask_app, root)
+    if "batch_edit" not in existing:
+        batch_edit_module.register_routes(flask_app, root)
+    if "suppliers_list" not in existing:
+        suppliers_module.register_routes(flask_app, root)
+    if "purchase_import" not in existing:
+        purchase_import_module.register_routes(flask_app, root)
+    if "strains_list" not in existing:
+        strains_module.register_routes(flask_app, root)
 
 
 _base_create_app = create_app

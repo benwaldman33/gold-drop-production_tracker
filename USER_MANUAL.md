@@ -4,7 +4,7 @@ This guide explains how to use the Gold Drop web app day-to-day. It intentionall
 
 **Other documents:** `FAQ.md` (quick answers), `PRD.md` (product requirements), `ENGINEERING.md` (technical implementation notes for developers).
 
-**Current release note:** the app is being refactored internally for maintainability, but the workflows in this manual are still the ones you should test. Routes, page names, approvals, list screens, and Slack import behavior are intended to work the same as before.
+**Current release note:** the app has now been split internally across dedicated route modules for dashboard, field intake, runs, purchases, biomass, costs, inventory, batch edit, suppliers/photos, purchase import, strains, settings, and Slack integration. The workflows in this manual are still the ones you should test: routes, page names, approvals, list screens, and Slack import behavior are intended to work the same as before.
 
 ---
 

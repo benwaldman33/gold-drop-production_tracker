@@ -92,12 +92,23 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 
 ## Project Structure
 
-Recent breakup work moved the main route and startup flows behind package modules in `gold_drop/`:
+The app still starts from `app.py`, but the active route surface now lives across focused package modules in `gold_drop/`. `app.py` remains the entrypoint, app-factory host, and compatibility layer while route registration and startup bootstrap delegate into extracted modules.
+
+Current extracted route/bootstrap modules:
+- `gold_drop/dashboard_module.py`
+- `gold_drop/field_intake_module.py`
+- `gold_drop/runs_module.py`
 - `gold_drop/purchases_module.py`
 - `gold_drop/biomass_module.py`
+- `gold_drop/costs_module.py`
+- `gold_drop/inventory_module.py`
+- `gold_drop/batch_edit_module.py`
+- `gold_drop/suppliers_module.py`
+- `gold_drop/purchase_import_module.py`
+- `gold_drop/strains_module.py`
+- `gold_drop/settings_module.py`
+- `gold_drop/slack_integration_module.py`
 - `gold_drop/bootstrap_module.py`
-
-Those modules now own the purchase, biomass, and settings route registration for the running app, while `app.py` remains the entrypoint and shared compatibility layer.
 
 ```
 gold-drop/
@@ -163,6 +174,8 @@ gold-drop/
 ---
 
 ## Deploying to Production
+
+Current deployment note: the Flask app is still created through `create_app()` in `app.py`, but active route registration now fans out through the extracted `gold_drop/*_module.py` files and startup bootstrap delegates through `gold_drop/bootstrap_module.py`.
 
 After merging work into **`main`**, deploy by pulling on the server (`git fetch` / `git checkout main` / `git pull`) and **restarting the app process** (e.g. `systemctl restart …`) so Gunicorn reloads code. The Flask app is created through `create_app()` in `app.py`, and database bootstrap still runs during startup. New database columns are applied on startup: SQLite via **`init_db()`** + **`_ensure_sqlite_schema()`**; PostgreSQL via **`init_db()`** + **`_ensure_postgres_run_hte_columns()`** (and `db.create_all()` for new tables).
 

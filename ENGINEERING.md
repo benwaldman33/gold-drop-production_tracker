@@ -13,11 +13,29 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
   - **`gold_drop/purchases.py`** - weekly biomass budget / on-hand purchase helpers
   - **`gold_drop/purchases_module.py`** - purchases list/form/approval route logic delegated from `app.py`
   - **`gold_drop/biomass_module.py`** - biomass pipeline list/form/archive route logic delegated from `app.py`
+  - **`gold_drop/runs_module.py`** - run list/form/delete route logic delegated from `app.py`
+  - **`gold_drop/dashboard_module.py`** - dashboard, department, and biomass purchasing dashboard routes delegated from `app.py`
+  - **`gold_drop/field_intake_module.py`** - field/mobile intake and office purchase submission flows delegated from `app.py`
+  - **`gold_drop/costs_module.py`** - cost entry list/form/delete routes delegated from `app.py`
+  - **`gold_drop/inventory_module.py`** - inventory list/filter route delegated from `app.py`
+  - **`gold_drop/batch_edit_module.py`** - batch edit route and return-url guard delegated from `app.py`
+  - **`gold_drop/suppliers_module.py`** - suppliers, supplier attachments/lab tests, and photos library routes delegated from `app.py`
+  - **`gold_drop/purchase_import_module.py`** - purchase spreadsheet import staging/validation/commit flow delegated from `app.py`
+  - **`gold_drop/strains_module.py`** - strain performance route delegated from `app.py`
   - **`gold_drop/bootstrap_module.py`** - startup database initialization and seed logic delegated from `init_db()`
   - **`gold_drop/settings_module.py`** - extracted settings/admin view logic called by the `/settings` route
   - **`gold_drop/uploads.py`** - upload validation, save helpers, and JSON path normalization
-- `app.py` still re-exports some extracted helpers, but purchases, biomass, and settings are now registered from package modules with `add_url_rule`, and startup init delegates through `gold_drop/bootstrap_module.py`.
+- `app.py` still re-exports some extracted helpers, but the active dashboard, field intake, runs, purchases, biomass, costs, inventory, batch edit, suppliers/photos, purchase import, strains, settings, and Slack surfaces are now registered from package modules with `add_url_rule`, and startup init delegates through `gold_drop/bootstrap_module.py`.
 - `tests/test_app_factory.py` provides a minimal factory + route-registration smoke check so future extractions are verified against a real app object, not just imports.
+
+## Resume checkpoint
+
+- **April 11, 2026:** Slack rebuild resumed after shell loss. Current integration entrypoint is **`gold_drop/slack_integration_module.py`** for Slack settings persistence, history sync, import/apply flows, and `/api/slack/*` handlers.
+- **April 11, 2026:** Modular route extraction now also covers **`gold_drop/costs_module.py`**, **`gold_drop/inventory_module.py`**, **`gold_drop/batch_edit_module.py`**, and **`gold_drop/strains_module.py`**. If work is interrupted again, resume by checking **`app.py`** `_register_extracted_routes()` and **`tests/test_app_factory.py`** to see the current active module surface.
+- `app.py` still contains some Slack compatibility wrappers and lower-level intake/resolution helpers, but Slack route bodies now delegate into the module. If work is interrupted again, resume by checking:
+- **`gold_drop/slack_integration_module.py`** - active Slack integration surface
+- **`gold_drop/settings_module.py`** - Settings POST delegates for `form_type=slack`
+- **`tests/test_app_factory.py`** and **`tests/test_slack_mapping_logic.py`** - current smoke and Slack logic coverage
 
 ## List view filter & sort persistence (`LIST_FILTERS_SESSION_KEY`)
 
@@ -212,14 +230,14 @@ SQLite adds the sync config table in `_ensure_sqlite_schema()`; other engines re
 - **Module:** `purchase_import.py` — `PURCHASE_IMPORT_HEADER_ALIASES` / `_aliases_groups` map normalized headers (lowercase, spaces → underscores) to canonical purchase fields; `parse_purchase_spreadsheet_upload(filename, raw_bytes)` returns rows as `dict` plus `_sheet_row` for display. Supports **CSV** (UTF-8-SIG) and **Excel** via **openpyxl** `load_workbook(..., read_only=True, data_only=True)` on the active sheet.
 - **Detection:** Scans the first **50** grid rows for a header line with **≥2** mapped columns; requires a **supplier** column. Max **2000** data rows.
 - **Routes (Flask):** `GET/POST /purchases/import` (`purchase_import`, `@purchase_editor_required`), `GET /purchases/import/preview`, `POST /purchases/import/commit`, `GET /purchases/import/sample.csv`. Upload writes a staging JSON file under `tempfile.gettempdir()` named `gdp_purchimp_<token>.json`; only a random token is stored in `session["purchase_import_token"]`.
-- **Validation / commit:** `app.py` — `_purchase_import_validate_row`, `_purchase_import_commit_norm`; reuses `_maintain_purchase_inventory_lots`, purchase budget helpers from **`gold_drop/purchases.py`**, and `log_audit`. Imported rows do **not** set **`purchase_approved_at`**; if parsed **`status`** ∈ **`INVENTORY_ON_HAND_PURCHASE_STATUSES`**, commit forces **`ordered`** instead. Optional **Amount** → `total_cost`; **Paid date** / **Week** / **Payment method** folded into **notes**; **invoice** weight can fall back to **actual** weight; **purchase date** can fall back to **paid date** when purchase date is blank.
+- **Validation / commit:** `gold_drop/purchase_import_module.py` — `_purchase_import_validate_row`, `_purchase_import_commit_norm`; reuses `_maintain_purchase_inventory_lots`, purchase budget helpers from **`gold_drop/purchases.py`**, and `log_audit`. Imported rows do **not** set **`purchase_approved_at`**; if parsed **`status`** ∈ **`INVENTORY_ON_HAND_PURCHASE_STATUSES`**, commit forces **`ordered`** instead. Optional **Amount** → `total_cost`; **Paid date** / **Week** / **Payment method** folded into **notes**; **invoice** weight can fall back to **actual** weight; **purchase date** can fall back to **paid date** when purchase date is blank.
 - **Templates:** `purchase_import.html`, `purchase_import_preview.html`. Client uses `DataTransfer` so drag-and-drop assigns `input.files` in modern browsers.
 - **Dependency:** `openpyxl>=3.1.0` in `requirements.txt`.
 
 ## Batch list editing
 
 - **Module:** `batch_edit.py` — pure apply helpers: `parse_uuid_ids`, `apply_batch_runs`, `apply_batch_purchases` (returns `touched` purchases for hooks), `apply_batch_biomass`, `apply_batch_suppliers`, `apply_batch_costs`, `apply_batch_inventory_lots`, `apply_batch_strain_rename`. Max **200** UUIDs per batch. Strain rename uses `STRAIN_PAIR_SEP` (`\\x1f`) between strain name and supplier name in checkbox values / query params.
-- **Route:** `GET/POST /batch-edit/<entity>` (`batch_edit` in `app.py`, `@login_required`). Entities: `runs`, `purchases`, `biomass`, `suppliers`, `costs`, `inventory_lots`, `strains`. Permission: `can_edit` for runs/biomass/costs/suppliers/strains; `can_edit_purchases` for purchases and inventory lots. **`return_to`** query/body param must be a safe relative path (`_safe_batch_return_url`).
+- **Route:** `GET/POST /batch-edit/<entity>` (`batch_edit` in `gold_drop/batch_edit_module.py`, `@login_required`). Entities: `runs`, `purchases`, `biomass`, `suppliers`, `costs`, `inventory_lots`, `strains`. Permission: `can_edit` for runs/biomass/costs/suppliers/strains; `can_edit_purchases` for purchases and inventory lots. **`return_to`** query/body param must be a safe relative path (`safe_batch_return_url`).
 - **Purchases batch:** After `apply_batch_purchases`, for each touched purchase: `_maintain_purchase_inventory_lots`, budget enforcement (`_biomass_budget_snapshot_for_purchase`, `_enforce_weekly_biomass_purchase_limits`). **`ValueError`** from budget rules rolls back the whole batch commit attempt.
 - **Biomass batch:** `apply_batch_biomass` updates **`Purchase`** rows (pipeline list IDs are purchase UUIDs); audit action **`purchase_batch_biomass`**.
 - **Runs batch:** Optional fields only; `run_type`, `hte_pipeline_stage` (form uses `__nochange__` sentinel vs cleared stage), rollover/decarb tri-state, optional load source + checkbox, `notes_append`; `calculate_yields` + `calculate_cost` per changed run.
@@ -229,7 +247,7 @@ SQLite adds the sync config table in `_ensure_sqlite_schema()`; other engines re
 
 ## Inventory (`GET /inventory`)
 
-- **Route:** `inventory()` in `app.py`; template `templates/inventory.html`.
+- **Route:** `inventory()` in `gold_drop/inventory_module.py`; template `templates/inventory.html`.
 - **On-hand lots:** `PurchaseLot` joined to `Purchase` where `remaining_weight_lbs > 0`, both not soft-deleted, `Purchase.status` ∈ `INVENTORY_ON_HAND_PURCHASE_STATUSES` (**`delivered`**, **`in_testing`**, **`available`**, **`processing`** — note **`complete`** is not in this tuple), and **`Purchase.purchase_approved_at` IS NOT NULL**. Optional `supplier_id` and case-insensitive `strain` substring on `PurchaseLot.strain_name`. Same approval filter on **dashboard** on-hand / days-of-supply, **`GET /api/lots/available`**, and **run form** lot query.
 - **In transit:** `Purchase` not deleted, `status` ∈ `("committed", "ordered", "in_transit")`. Optional `supplier_id` only—**no strain filter**, so summary **Total** can mix strain-filtered on-hand with full in-transit for that supplier.
 - **Summary:**

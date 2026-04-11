@@ -259,38 +259,7 @@ def settings_view(root):
             root.flash(f"Password updated for '{u.display_name}'.", "success")
 
         elif form_type == "slack":
-            slack_map = {
-                "slack_enabled": "Enable Slack integration",
-                "slack_webhook_url": "Slack incoming webhook URL",
-                "slack_signing_secret": "Slack signing secret",
-                "slack_bot_token": "Slack bot token",
-                "slack_default_channel": "Default Slack channel",
-            }
-            for key, desc in slack_map.items():
-                if key == "slack_enabled":
-                    val = "1" if root.request.form.get("slack_enabled") else "0"
-                else:
-                    val = (root.request.form.get(key) or "").strip()
-                existing = root.db.session.get(root.SystemSetting, key)
-                if existing:
-                    existing.value = val
-                else:
-                    root.db.session.add(root.SystemSetting(key=key, value=val, description=desc))
-            root._ensure_slack_sync_configs()
-            for i in range(root.SLACK_SYNC_CHANNEL_SLOTS):
-                hint = (root.request.form.get(f"sync_ch_{i}") or "").strip()
-                row = root.SlackChannelSyncConfig.query.filter_by(slot_index=i).first()
-                if not row:
-                    row = root.SlackChannelSyncConfig(slot_index=i, channel_hint=hint)
-                    root.db.session.add(row)
-                else:
-                    old = (row.channel_hint or "").strip()
-                    row.channel_hint = hint
-                    if old != hint:
-                        row.resolved_channel_id = None
-                        row.last_watermark_ts = None
-            root.db.session.commit()
-            root.flash("Slack integration saved (webhook, tokens, default channel, and up to six history-sync channels).", "success")
+            root.slack_integration_module.handle_settings_form(root)
 
         return settings_redirect(root)
 
