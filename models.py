@@ -461,7 +461,7 @@ class SystemSetting(db.Model):
 
     @staticmethod
     def get(key, default=None):
-        s = SystemSetting.query.get(key)
+        s = db.session.get(SystemSetting, key)
         return s.value if s else default
 
     @staticmethod

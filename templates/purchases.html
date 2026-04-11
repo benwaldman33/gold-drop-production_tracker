@@ -120,6 +120,7 @@
         </td>
         <td>{{ p.lots.count() }} lots</td>
         <td>
+          <a href="{{ url_for('purchases_bp.purchase_journey', purchase_id=p.id) }}" class="btn btn-secondary btn-sm">Journey</a>
           {% if current_user.can_edit_purchases %}
           <a href="{{ url_for('purchase_edit', purchase_id=p.id) }}" class="btn btn-secondary btn-sm">Edit</a>
           {% endif %}

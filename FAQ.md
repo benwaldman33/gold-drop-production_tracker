@@ -62,6 +62,23 @@ Common causes: missing **purchase date** (or **paid date** as fallback), missing
 **Are imported purchases approved automatically?**  
 **No.** They are created **unapproved**. If the spreadsheet asked for an on-hand status, the app **downgrades** to a safe status (e.g. **ordered**) until someone uses **Edit Purchase** → **Approve purchase** and sets the real status.
 
+## Batch Journey
+
+**Where do I open the Batch Journey timeline?**  
+From **Purchases** click **Journey** on a row, or open **Edit Purchase** and click **View Journey**.
+
+**Can I export a batch timeline?**  
+Yes. On the Journey page use **Export JSON** or **Export CSV**.
+
+**What happens if I pass an unknown Journey export format in the URL?**  
+The app returns an explicit **400** error with supported formats (`csv`, `json`) instead of guessing.
+
+**Why can’t I open Journey for an archived purchase?**  
+Archived purchases require **Super Admin** and `include_archived=1` (via the Journey page toggle or URL) to view/export.
+
+**Can a non-admin force archived Journey access with `include_archived=1`?**  
+No. Non-admin requests are blocked (API returns not found; page requests redirect with an error flash).
+
 ## Batch edit (list screens)
 
 **What is “Batch edit…” on Runs, Purchases, etc.?**  
@@ -140,6 +157,12 @@ Yes. **Export CSV** on Runs includes pipeline label, terp/distillate grams, and 
 
 **How do I put new code on the server?**  
 Merge your work into **`main`** (e.g. on GitHub), then on the server: **`git pull`** on **`main`** and **restart the app** (e.g. systemd/Gunicorn). Git does not reload Python by itself.
+
+**How does demo seed data behave now?**  
+`SEED_DEMO_DATA` controls startup demo rows. If unset, demo seeding is on in non-production-like envs and off in `prod`/`production`/`staging`. You can override with `SEED_DEMO_DATA=1` or `SEED_DEMO_DATA=0`.
+
+**What extra checks run in production preflight?**  
+`scripts/ops_preflight.py` validates probes and also requires `SECRET_KEY` and `APP_VERSION` in production-like envs.
 
 **Does pulling lose database data?**  
 No. `git pull` only updates application files. Your **database** (SQLite file or PostgreSQL) is separate—back it up on its own schedule.

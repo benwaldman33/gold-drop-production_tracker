@@ -21,6 +21,52 @@ This PRD describes the problem, users, workflows, data requirements, calculation
 
 ---
 
+## Implementation snapshot (April 2026)
+
+The codebase has now moved to a **modular-monolith** shape for purchase-domain functionality. This PRD section tracks the shipped structure so product/docs stay aligned with implementation.
+
+### App/runtime architecture (shipped)
+- **App factory:** `create_app(test_config=None)` is the bootstrap entrypoint used for deterministic test/runtime app setup.
+- **Production secret posture:** startup now fails fast when `APP_ENV`/`FLASK_ENV` is production-like and `SECRET_KEY` is missing.
+- **Demo seed control:** `SEED_DEMO_DATA` controls baseline demo-row seeding; default is enabled in non-prod-like envs and disabled in prod-like envs unless explicitly overridden.
+- **Ops endpoints:**
+  - `GET /livez` (liveness)
+  - `GET /readyz` (readiness, DB check)
+  - `GET /healthz` (compat alias for readiness)
+  - `GET /version` (deploy/env metadata from `APP_VERSION`, `APP_ENV`/`FLASK_ENV`)
+- **Preflight env checks:** production-like preflight requires `SECRET_KEY` and `APP_VERSION` to be present.
+- **Migration tooling:** `manage.py` + Flask-Migrate now define the migration workflow (`db init/migrate/upgrade`).
+
+### Purchase domain boundaries (shipped)
+- **Routes:** purchase journey routes are in `blueprints/purchases.py`.
+- **Policies:** shared transition/approval policy checks are in `policies/purchase_status.py`.
+- **Services:**
+  - `services/purchases.py` handles purchase transition orchestration and approval stamping.
+  - `services/purchases_journey.py` builds the derived journey payload contract used by UI/API/export.
+- **Model modernization:** `SystemSetting.get` uses `db.session.get(...)` (SQLAlchemy 2.x style).
+
+### Batch Journey contract (shipped)
+- Endpoints:
+  - `GET /purchases/<id>/journey`
+  - `GET /api/purchases/<id>/journey`
+  - `GET /purchases/<id>/journey/export?format=json|csv`
+- Export behavior:
+  - Supported formats: `json`, `csv`
+  - Unsupported format returns `400` with a machine-readable payload listing supported formats.
+- Archived access:
+  - `include_archived=1` remains super-admin gated.
+  - non-admin requests with `include_archived=1` are rejected (API `404`, page redirect).
+
+### Test/bootstrap posture (shipped)
+- `pytest.ini` + `tests/conftest.py` provide deterministic test discovery and app context setup.
+- Current coverage includes:
+  - app factory config/secret behavior
+  - liveness/readiness/version endpoints
+  - purchase policy + service orchestration
+  - journey API/UI/export contract and archived behavior
+
+---
+
 ## Problem Statement
 Operations needs a single system to answer:
 - What biomass is available, being tested, committed, delivered, or cancelled?
@@ -46,6 +92,59 @@ Operations needs a single system to answer:
 - Automated lab COAs ingestion (manual entry only)
 - Multi-facility support
 - **Department UIs (initial scope):** replacing Slack as the authoritative capture layer for weights/production logs (see **Operational input authority** below); full barcode / Wi‑Fi or Bluetooth scale integration (roadmap)
+
+---
+
+## Batch Journey Progress Tracker
+
+### Problem to solve
+Operators and managers can see each stage in separate screens today (Pipeline, Purchases, Inventory, Runs, Departments), but there is no **single visual timeline** for one batch from first declaration through downstream outcomes.
+
+### Product intent
+When a user opens a batch (purchase), they should be able to view a **graphic progress tracker** that answers:
+- Where is this batch now?
+- Which stages are complete vs pending vs skipped?
+- What dates/owners/evidence are attached to each stage?
+- What quantity is still active at each step?
+
+### Scope (v1)
+The tracker is a **single-batch journey view** anchored to `Purchase.id` / Batch ID and rendered as a horizontal or vertical stepper:
+1. **Declared** (availability captured)
+2. **Testing** (pre/post-delivery test status)
+3. **Committed / Approved**
+4. **Delivered / Received**
+5. **On-hand inventory** (lots and remaining lbs)
+6. **Extraction** (runs that consumed this batch’s lots)
+7. **Post-processing** (HTE/THCA downstream states where applicable)
+8. **Sales/Disposition** (placeholder step until sales module is expanded)
+
+Each step shows:
+- Status badge (`done`, `in_progress`, `blocked`, `not_started`, `not_applicable`)
+- Timestamp(s)
+- Responsible user (when available)
+- Key metrics (lbs, g, potency, cost)
+- Drill link to source record (purchase, lot, run, etc.)
+
+### Rules / behavior
+- Journey is **derived** from existing source-of-truth records; no duplicate stage table required for v1.
+- A step can be **partially complete** (e.g., only some lots consumed in runs).
+- Soft-deleted records are excluded from default display but can be shown in an “include archived” mode for audit/admin.
+- Approval gates remain authoritative: unapproved batches can show delivered/ordered milestones, but on-hand consumption and run usage remain blocked by existing rules.
+
+### Acceptance criteria (v1)
+- From Purchases list and Purchase detail/edit, user can open **View Journey** for that batch.
+- Journey reflects current state within the same request cycle as underlying records (no stale cache requirement in v1).
+- Every visible step has at least one traceable source link.
+- If a phase has no data yet, UI explicitly shows “Not started” rather than empty space.
+- Export (JSON/CSV) of journey events is available for audit/debug.
+
+### Implementation status (current)
+- Delivered endpoints:
+  - `GET /purchases/<purchase_id>/journey` (timeline page)
+  - `GET /api/purchases/<purchase_id>/journey` (JSON payload)
+  - `GET /purchases/<purchase_id>/journey/export?format=json|csv` (download export)
+- `include_archived=1` is super-admin only for archived purchase visibility/export.
+- Export format validation is explicit: unsupported `format` returns `400` with a machine-readable payload listing supported formats (`csv`, `json`), rather than silently falling back.
 
 ---
 
@@ -631,4 +730,3 @@ Some **potential** purchase / pipeline lines will never be approved. The product
 - Add richer analytics screens (time series, variance by reactor/operator).
 - Add COA upload + parsing, and stronger validation rules around potency/pricing.
 - Add automated alerts for “missing $/lb” purchases linked to recent runs.
-

@@ -32,6 +32,11 @@ from models import (db, User, Supplier, Purchase, PurchaseLot, Run, RunInput,
                     FieldAccessToken, FieldPurchaseSubmission, LabTest, SupplierAttachment, PhotoAsset,
                     SlackIngestedMessage, SlackChannelSyncConfig, gen_uuid)
 from purchase_import import parse_purchase_spreadsheet_upload
+from blueprints.purchases import bp as purchases_bp
+from services.purchases import (
+    apply_pipeline_stage_transition,
+    validate_purchase_status_change_requires_approval,
+)
 from batch_edit import (
     STRAIN_PAIR_SEP,
     apply_batch_runs,
@@ -44,21 +49,41 @@ from batch_edit import (
     parse_uuid_ids,
 )
 
-app = Flask(__name__)
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "gold-drop-dev-key-change-in-prod")
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///golddrop.db")
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
-app.config["FIELD_UPLOAD_DIR"] = os.path.join(app.root_path, "static", "uploads", "field")
-app.config["FIELD_UPLOAD_MAX_BYTES"] = 50 * 1024 * 1024  # 50 MB per image (field intake)
-app.config["LAB_UPLOAD_DIR"] = os.path.join(app.root_path, "static", "uploads", "labs")
-app.config["LAB_UPLOAD_MAX_BYTES"] = 50 * 1024 * 1024  # 50 MB per file
-app.config["PURCHASE_UPLOAD_DIR"] = os.path.join(app.root_path, "static", "uploads", "purchases")
-app.config["PURCHASE_UPLOAD_MAX_BYTES"] = 50 * 1024 * 1024
-app.config["PHOTO_LIBRARY_UPLOAD_DIR"] = os.path.join(app.root_path, "static", "uploads", "library")
-app.config["PHOTO_LIBRARY_MAX_BYTES"] = 50 * 1024 * 1024
-# Max image count per file-picker bucket on field intake (supplier/biomass/coa on purchase; photos on biomass).
-app.config["FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET"] = int(os.environ.get("FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET", 30))
+def create_app(test_config: dict | None = None) -> Flask:
+    """Create/configure the Flask app.
+
+    Keeping this lightweight factory allows tests and scripts to create a
+    deterministic app/context without changing route/module structure yet.
+    """
+    flask_app = Flask(__name__)
+    secret_key = os.environ.get("SECRET_KEY")
+    app_env = (os.environ.get("APP_ENV") or os.environ.get("FLASK_ENV") or "development").strip().lower()
+    production_like_envs = {"prod", "production", "staging"}
+    if not secret_key and app_env in production_like_envs:
+        raise RuntimeError("SECRET_KEY must be set when APP_ENV/FLASK_ENV indicates production-like mode.")
+    flask_app.config["SECRET_KEY"] = secret_key or "gold-drop-dev-key-change-in-prod"
+    flask_app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///golddrop.db")
+    flask_app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    flask_app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
+    flask_app.config["FIELD_UPLOAD_DIR"] = os.path.join(flask_app.root_path, "static", "uploads", "field")
+    flask_app.config["FIELD_UPLOAD_MAX_BYTES"] = 50 * 1024 * 1024  # 50 MB per image (field intake)
+    flask_app.config["LAB_UPLOAD_DIR"] = os.path.join(flask_app.root_path, "static", "uploads", "labs")
+    flask_app.config["LAB_UPLOAD_MAX_BYTES"] = 50 * 1024 * 1024  # 50 MB per file
+    flask_app.config["PURCHASE_UPLOAD_DIR"] = os.path.join(flask_app.root_path, "static", "uploads", "purchases")
+    flask_app.config["PURCHASE_UPLOAD_MAX_BYTES"] = 50 * 1024 * 1024
+    flask_app.config["PHOTO_LIBRARY_UPLOAD_DIR"] = os.path.join(flask_app.root_path, "static", "uploads", "library")
+    flask_app.config["PHOTO_LIBRARY_MAX_BYTES"] = 50 * 1024 * 1024
+    # Max image count per file-picker bucket on field intake (supplier/biomass/coa on purchase; photos on biomass).
+    flask_app.config["FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET"] = int(
+        os.environ.get("FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET", 30)
+    )
+    if test_config:
+        flask_app.config.update(test_config)
+    return flask_app
+
+
+app = create_app()
+app.register_blueprint(purchases_bp)
 
 db.init_app(app)
 login_manager = LoginManager(app)
@@ -239,6 +264,53 @@ def editor_required(f):
             return redirect(url_for("dashboard"))
         return f(*args, **kwargs)
     return decorated
+
+
+def _readiness_payload() -> tuple[dict[str, str], int]:
+    """Readiness check payload + status code (includes DB connectivity)."""
+    try:
+        db.session.execute(text("SELECT 1"))
+        db_ok = True
+    except Exception:
+        db_ok = False
+
+    payload = {
+        "status": "ok" if db_ok else "degraded",
+        "db": "ok" if db_ok else "error",
+        "app_env": (os.environ.get("APP_ENV") or os.environ.get("FLASK_ENV") or "development").strip().lower(),
+    }
+    return payload, (200 if db_ok else 503)
+
+
+@app.route("/livez")
+def livez():
+    """Liveness check: process is up."""
+    return jsonify({"status": "ok"}), 200
+
+
+@app.route("/readyz")
+def readyz():
+    """Readiness check: process + DB connectivity."""
+    payload, status_code = _readiness_payload()
+    return jsonify(payload), status_code
+
+
+@app.route("/healthz")
+def healthz():
+    """Compatibility alias for readiness checks."""
+    payload, status_code = _readiness_payload()
+    return jsonify(payload), status_code
+
+
+@app.route("/version")
+def version():
+    """Expose deploy/version metadata for diagnostics."""
+    return jsonify(
+        {
+            "version": (os.environ.get("APP_VERSION") or "dev").strip(),
+            "app_env": (os.environ.get("APP_ENV") or os.environ.get("FLASK_ENV") or "development").strip().lower(),
+        }
+    )
 
 
 def slack_importer_required(f):
@@ -4989,11 +5061,11 @@ def _save_purchase(existing):
         p.delivery_date = datetime.strptime(dd, "%Y-%m-%d").date() if dd else None
         new_status = request.form.get("status", "ordered")
         # Enforce approval gate: on-hand statuses require prior approval
-        if new_status in INVENTORY_ON_HAND_PURCHASE_STATUSES and not p.is_approved:
-            raise ValueError(
-                f"Cannot set status to \"{new_status.replace('_', ' ').title()}\" — "
-                "this purchase has not been approved yet. Approve it first, then change status."
-            )
+        validate_purchase_status_change_requires_approval(
+            new_status=new_status,
+            is_approved=p.is_approved,
+            on_hand_statuses=INVENTORY_ON_HAND_PURCHASE_STATUSES,
+        )
         p.status = new_status
         p.stated_weight_lbs = float(request.form.get("stated_weight_lbs") or 0)
         aw = request.form.get("actual_weight_lbs", "").strip()
@@ -8564,25 +8636,13 @@ def _save_biomass_purchase(existing):
         if not new_status:
             raise ValueError("Stage is invalid.")
 
-        # Enforce: delivered requires prior commitment
-        if new_status == "delivered" and prev_status not in ("committed", "delivered", None):
-            raise ValueError(
-                "Material cannot be marked as Delivered without first being Committed. "
-                "Move the batch to Committed, then to Delivered."
-            )
-
-        # Approval gate for commitment transitions
-        enters_commitment = new_status == "committed" and prev_status not in ("committed", "delivered")
-        leaves_commitment = prev_status in ("committed", "delivered") and new_status not in ("committed", "delivered")
-        if enters_commitment or leaves_commitment:
-            if not current_user.can_approve_purchase:
-                raise ValueError(
-                    "Only Super Admin or users with purchase approval permission can move a batch "
-                    "to or from Committed / Delivered."
-                )
-        if enters_commitment:
-            p.purchase_approved_at = datetime.utcnow()
-            p.purchase_approved_by_user_id = current_user.id
+        apply_pipeline_stage_transition(
+            purchase=p,
+            prev_status=prev_status,
+            new_status=new_status,
+            can_approve_purchase=current_user.can_approve_purchase,
+            approver_user_id=current_user.id,
+        )
 
         p.status = new_status
         p.notes = request.form.get("notes", "").strip() or None
@@ -8678,6 +8738,7 @@ def biomass_delete(item_id):
 
 
 # ── API endpoints for AJAX ───────────────────────────────────────────────────
+
 
 @app.route("/api/lots/available")
 @login_required
@@ -8785,9 +8846,9 @@ def init_db():
 
     db.session.commit()
 
-    # Seed historical run data if database is empty
-    if Run.query.count() == 0:
-        _seed_historical_data()
+    # Seed one demo row per core module/table (opt-in for prod-like envs via SEED_DEMO_DATA).
+    if _should_seed_demo_data_from_env():
+        _seed_demo_module_rows()
 
     # Backfill batch IDs for any existing purchases (including seeded purchases)
     missing = Purchase.query.filter(db.or_(Purchase.batch_id.is_(None), Purchase.batch_id == "")).all()
@@ -8798,6 +8859,101 @@ def init_db():
         p.batch_id = _ensure_unique_batch_id(_generate_batch_id(supplier_name, d, w), exclude_purchase_id=p.id)
     if missing:
         db.session.commit()
+
+
+def _seed_demo_module_rows():
+    """Seed minimal demo data across core modules when tables are empty."""
+    today = date.today()
+    changed = False
+
+    supplier = Supplier.query.first()
+    if not supplier:
+        supplier = Supplier(name="Demo Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        changed = True
+
+    purchase = Purchase.query.first()
+    if not purchase:
+        purchase = Purchase(
+            supplier_id=supplier.id,
+            purchase_date=today,
+            delivery_date=today,
+            status="delivered",
+            stated_weight_lbs=100.0,
+            actual_weight_lbs=100.0,
+            price_per_lb=1.5,
+            notes="Auto-seeded demo purchase",
+            purchase_approved_at=datetime.utcnow(),
+        )
+        db.session.add(purchase)
+        db.session.flush()
+        purchase.batch_id = _ensure_unique_batch_id(
+            _generate_batch_id(supplier.name, purchase.delivery_date or purchase.purchase_date, purchase.actual_weight_lbs),
+            exclude_purchase_id=purchase.id,
+        )
+        changed = True
+
+    lot = PurchaseLot.query.first()
+    if not lot:
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Demo Strain",
+            weight_lbs=100.0,
+            remaining_weight_lbs=90.0,
+            potency_pct=10.0,
+            location="Demo Shelf",
+            notes="Auto-seeded demo lot",
+        )
+        db.session.add(lot)
+        db.session.flush()
+        changed = True
+
+    if CostEntry.query.count() == 0:
+        db.session.add(
+            CostEntry(
+                cost_type="overhead",
+                name="Demo overhead",
+                unit_cost=None,
+                unit=None,
+                quantity=None,
+                total_cost=100.0,
+                start_date=today,
+                end_date=today,
+                notes="Auto-seeded demo cost entry",
+            )
+        )
+        changed = True
+
+    if Run.query.count() == 0:
+        run = Run(
+            run_date=today,
+            reactor_number=1,
+            bio_in_reactor_lbs=10.0,
+            dry_hte_g=50.0,
+            dry_thca_g=80.0,
+            notes="Auto-seeded demo run",
+        )
+        db.session.add(run)
+        db.session.flush()
+        db.session.add(RunInput(run_id=run.id, lot_id=lot.id, weight_lbs=10.0))
+        run.calculate_yields()
+        run.calculate_cost()
+        changed = True
+
+    if changed:
+        db.session.commit()
+
+
+def _should_seed_demo_data_from_env() -> bool:
+    """Resolve demo-seeding behavior from environment."""
+    app_env = (os.environ.get("APP_ENV") or os.environ.get("FLASK_ENV") or "development").strip().lower()
+    production_like_envs = {"prod", "production", "staging"}
+    raw = os.environ.get("SEED_DEMO_DATA")
+    if raw is None:
+        # Safe-by-default for pre-live/dev, conservative for production-like envs.
+        return app_env not in production_like_envs
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _seed_historical_data():
