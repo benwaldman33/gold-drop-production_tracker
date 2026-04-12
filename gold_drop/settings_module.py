@@ -311,7 +311,7 @@ def settings_view(root):
 
         return settings_redirect(root)
 
-    root._ensure_slack_sync_configs()
+    root.slack_integration_module.ensure_sync_configs(root)
     slack_sync_slots = root.SlackChannelSyncConfig.query.order_by(root.SlackChannelSyncConfig.slot_index).all()
     system_settings = {s.key: s.value for s in root.SystemSetting.query.all()}
     kpis = root.KpiTarget.query.all()

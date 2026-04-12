@@ -63,6 +63,12 @@ def test_slack_imports_route_is_registered_for_admin():
     assert b"Inbox bucket" in page.data
 
 
+def test_biomass_route_is_registered_for_admin():
+    page = _call_view_as_user("/biomass", "biomass_list", "admin")
+    assert page.status_code == 200
+    assert b"Biomass Availability Pipeline" in page.data
+
+
 def test_slack_sync_channel_route_redirects_cleanly_when_bot_token_missing():
     page = _call_view_as_user(
         "/settings/slack_sync_channel",
@@ -161,7 +167,7 @@ def test_slack_preview_surfaces_candidate_lots_with_tracking_ids():
         db.session.add(lot)
         row = SlackIngestedMessage(
             channel_id="C123",
-            message_ts="1743200000.000000",
+            message_ts=f"1743200000.{app_module.gen_uuid().replace('-', '')[:6]}",
             raw_text="reactor: A\nsource: Farmlane\nstrain: Blue Dream\nbio lbs: 100",
             message_kind="production_log",
         )
@@ -294,7 +300,7 @@ def test_slack_apply_run_carries_manual_lot_selection_into_prefill_session():
         db.session.add(lot)
         row = SlackIngestedMessage(
             channel_id="C124",
-            message_ts="1743200001.000000",
+            message_ts=f"1743200001.{app_module.gen_uuid().replace('-', '')[:6]}",
             raw_text="reactor: A\nsource: Farmlane\nstrain: Blue Dream\nbio lbs: 100",
             message_kind="production_log",
         )
