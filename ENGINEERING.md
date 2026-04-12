@@ -11,7 +11,7 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
   - **`gold_drop/list_state.py`** - session filter persistence, timezone helpers, Slack channel labels
   - **`gold_drop/slack.py`** - Slack parsing, mapping, preview, and coverage helpers
   - **`gold_drop/purchases.py`** - weekly biomass budget / on-hand purchase helpers
-  - **`gold_drop/purchases_module.py`** - purchases list/form/approval route logic delegated from `app.py`
+  - **`gold_drop/purchases_module.py`** - purchases list/form/approval route logic delegated from `app.py`; inline list approvals in Purchases and Biomass Pipeline post through this module and preserve `return_to`
   - **`gold_drop/biomass_module.py`** - biomass pipeline list/form/archive route logic delegated from `app.py`
   - **`gold_drop/runs_module.py`** - run list/form/delete route logic delegated from `app.py`
   - **`gold_drop/dashboard_module.py`** - dashboard, department, and biomass purchasing dashboard routes delegated from `app.py`
@@ -23,7 +23,7 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
   - **`gold_drop/purchase_import_module.py`** - purchase spreadsheet import staging/validation/commit flow delegated from `app.py`
   - **`gold_drop/strains_module.py`** - strain performance route delegated from `app.py`
   - **`gold_drop/bootstrap_module.py`** - startup database initialization and seed logic delegated from `init_db()`
-  - **`gold_drop/settings_module.py`** - extracted settings/admin view logic called by the `/settings` route
+  - **`gold_drop/settings_module.py`** - extracted settings/admin view logic called by the `/settings` route; also normalizes legacy field-token datetimes before render so Settings can compare token expiry against aware UTC safely
   - **`gold_drop/uploads.py`** - upload validation, save helpers, and JSON path normalization
   - **`services/lot_allocation.py`** - lot tracking backfill, lot candidate ranking, and run allocation apply / release logic
   - **`services/lot_labels.py`** - lot label payload generation for print / future scan workflows

@@ -99,6 +99,13 @@ def _purchase_form_context(root, purchase):
     }
 
 
+def _safe_purchase_return_url(root, raw: str, default_endpoint: str = "purchases_list") -> str:
+    path = (raw or "").strip()
+    if not path.startswith("/") or "\n" in path or "\r" in path or len(path) > 512:
+        return root.url_for(default_endpoint)
+    return path
+
+
 def _purchase_allocation_state(purchase):
     active_lots = [lot for lot in purchase.lots if getattr(lot, "deleted_at", None) is None]
     total_weight = float(sum(float(lot.weight_lbs or 0) for lot in active_lots))
@@ -252,23 +259,28 @@ def purchase_edit_view(root, purchase_id):
 
 
 def purchase_approve_view(root, purchase_id):
+    return_to = _safe_purchase_return_url(root, root.request.values.get("return_to") or "")
+    if return_to == root.url_for("purchases_list"):
+        fallback_edit_url = root.url_for("purchase_edit", purchase_id=purchase_id)
+    else:
+        fallback_edit_url = return_to
     if not root.current_user.can_approve_purchase:
         root.flash("Only users with purchase approval permission can approve purchases.", "error")
-        return root.redirect(root.url_for("purchase_edit", purchase_id=purchase_id))
+        return root.redirect(fallback_edit_url)
     purchase = root.db.session.get(root.Purchase, purchase_id)
     if not purchase or purchase.deleted_at is not None:
         root.flash("Purchase not found.", "error")
         return root.redirect(root.url_for("purchases_list"))
     if purchase.is_approved:
         root.flash("Purchase is already approved.", "info")
-        return root.redirect(root.url_for("purchase_edit", purchase_id=purchase_id))
+        return root.redirect(fallback_edit_url)
     purchase.purchase_approved_at = datetime.now(timezone.utc)
     purchase.purchase_approved_by_user_id = root.current_user.id
     ensure_purchase_lot_tracking(purchase)
     root.log_audit("approve", "purchase", purchase.id)
     root.db.session.commit()
     root.flash(f"Purchase {purchase.batch_id or purchase.id} approved.", "success")
-    return root.redirect(root.url_for("purchase_edit", purchase_id=purchase_id))
+    return root.redirect(return_to if return_to != root.url_for("purchases_list") else fallback_edit_url)
 
 
 def save_purchase(root, existing):

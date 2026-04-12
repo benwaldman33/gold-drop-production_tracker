@@ -146,6 +146,12 @@
           {% endif %}
         </td>
         <td>
+          {% if not p.is_approved and current_user.can_approve_purchase %}
+          <form method="POST" action="{{ url_for('purchase_approve', purchase_id=p.id) }}" style="display:inline;" onsubmit="return confirm('Approve this purchase? This allows its material to be used in extraction runs.');">
+            <input type="hidden" name="return_to" value="{{ request.full_path }}">
+            <button type="submit" class="btn btn-success btn-sm">Approve</button>
+          </form>
+          {% endif %}
           {% if current_user.can_edit %}
           <a href="{{ url_for('biomass_edit', item_id=p.id) }}" class="btn btn-secondary btn-sm">Edit</a>
           {% endif %}

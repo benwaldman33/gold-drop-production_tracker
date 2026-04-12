@@ -77,6 +77,9 @@ Common causes are missing purchase date or paid-date fallback, missing both invo
 **Are imported purchases approved automatically?**  
 No. They are created unapproved. If the spreadsheet asked for an on-hand status, the app downgrades it to a safe status such as **ordered** until someone approves the purchase and sets the real status.
 
+**Do I have to open a purchase to approve it?**
+No. If your account has purchase-approval permission, unapproved rows now show an inline **Approve** button directly on the **Purchases** list and **Biomass Pipeline** list. The full **Edit Purchase** screen still has the same approval action.
+
 ## Batch Journey
 
 **Where do I open the Batch Journey timeline?**  

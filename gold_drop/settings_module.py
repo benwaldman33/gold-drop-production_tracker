@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -8,6 +9,7 @@ from gold_drop.purchases import (
     biomass_budget_snapshot_for_purchase,
     enforce_weekly_biomass_purchase_limits,
 )
+from models import coerce_utc
 from services.field_submissions import (
     decorate_submission_rows,
     field_approval_return_redirect,
@@ -39,6 +41,38 @@ def register_routes(app, root):
     def settings_backfill_photo_assets():
         return settings_backfill_photo_assets_view(root)
 
+    @root.admin_required
+    def user_toggle_slack_importer(user_id):
+        return user_toggle_slack_importer_view(root, user_id)
+
+    @root.admin_required
+    def user_toggle_purchase_approver(user_id):
+        return user_toggle_purchase_approver_view(root, user_id)
+
+    @root.admin_required
+    def user_toggle_active(user_id):
+        return user_toggle_active_view(root, user_id)
+
+    @root.admin_required
+    def user_delete(user_id):
+        return user_delete_view(root, user_id)
+
+    @root.admin_required
+    def field_token_create():
+        return field_token_create_view(root)
+
+    @root.admin_required
+    def field_token_revoke(token_id):
+        return field_token_revoke_view(root, token_id)
+
+    @root.admin_required
+    def field_token_delete(token_id):
+        return field_token_delete_view(root, token_id)
+
+    @root.admin_required
+    def settings_recalculate_costs():
+        return settings_recalculate_costs_view(root)
+
     app.add_url_rule("/settings", endpoint="settings", view_func=settings, methods=["GET", "POST"])
     app.add_url_rule("/field-approvals", endpoint="field_approvals", view_func=field_approvals)
     app.add_url_rule(
@@ -59,6 +93,14 @@ def register_routes(app, root):
         view_func=settings_backfill_photo_assets,
         methods=["POST"],
     )
+    app.add_url_rule("/settings/users/<user_id>/toggle_slack_importer", endpoint="user_toggle_slack_importer", view_func=user_toggle_slack_importer, methods=["POST"])
+    app.add_url_rule("/settings/users/<user_id>/toggle_purchase_approver", endpoint="user_toggle_purchase_approver", view_func=user_toggle_purchase_approver, methods=["POST"])
+    app.add_url_rule("/settings/users/<user_id>/toggle_active", endpoint="user_toggle_active", view_func=user_toggle_active, methods=["POST"])
+    app.add_url_rule("/settings/users/<user_id>/delete", endpoint="user_delete", view_func=user_delete, methods=["POST"])
+    app.add_url_rule("/settings/field_tokens/create", endpoint="field_token_create", view_func=field_token_create, methods=["POST"])
+    app.add_url_rule("/settings/field_tokens/<token_id>/revoke", endpoint="field_token_revoke", view_func=field_token_revoke, methods=["POST"])
+    app.add_url_rule("/settings/field_tokens/<token_id>/delete", endpoint="field_token_delete", view_func=field_token_delete, methods=["POST"])
+    app.add_url_rule("/settings/recalculate_costs", endpoint="settings_recalculate_costs", view_func=settings_recalculate_costs, methods=["POST"])
 
 
 def settings_redirect(root):
@@ -69,6 +111,20 @@ def settings_redirect(root):
             anchor = f"#{anchor.lstrip('#')}"
         target = f"{target}{anchor}"
     return root.redirect(target)
+
+
+def _hash_field_token(token: str) -> str:
+    return hashlib.sha256((token or "").encode("utf-8")).hexdigest()
+
+
+def _token_share_texts(link: str) -> tuple[str, str, str]:
+    sms = f"Gold Drop field intake link: {link}"
+    subject = "Gold Drop field intake link"
+    body = (
+        "Use this secure Gold Drop field intake link to submit biomass or purchase data:\n\n"
+        f"{link}\n"
+    )
+    return sms, subject, body
 
 
 def settings_view(root):
@@ -317,6 +373,10 @@ def settings_view(root):
     kpis = root.KpiTarget.query.all()
     users = root.User.query.order_by(root.User.created_at.asc()).all()
     field_tokens = root.FieldAccessToken.query.order_by(root.FieldAccessToken.created_at.desc()).all()
+    for token in field_tokens:
+        token.expires_at = coerce_utc(token.expires_at)
+        token.last_used_at = coerce_utc(token.last_used_at)
+        token.revoked_at = coerce_utc(token.revoked_at)
     pending_field_submissions = root.FieldPurchaseSubmission.query.filter_by(status="pending").order_by(
         root.FieldPurchaseSubmission.submitted_at.desc()
     ).all()
@@ -564,4 +624,154 @@ def settings_backfill_photo_assets_view(root):
         root.db.session.rollback()
         root.app.logger.exception("Photo backfill failed")
         root.flash(f"Photo backfill failed: {exc}", "error")
+    return settings_redirect(root)
+
+
+def user_toggle_slack_importer_view(root, user_id):
+    user = root.db.session.get(root.User, user_id)
+    if not user:
+        root.flash("User not found.", "error")
+        return settings_redirect(root)
+    if user.is_super_admin:
+        root.flash("Super Admin always has Slack import access.", "info")
+        return settings_redirect(root)
+    user.is_slack_importer = not bool(user.is_slack_importer)
+    root.log_audit(
+        "user_slack_importer",
+        "user",
+        user.id,
+        details=json.dumps({"enabled": bool(user.is_slack_importer)}),
+    )
+    root.db.session.commit()
+    root.flash(f"Slack import access {'enabled' if user.is_slack_importer else 'disabled'} for {user.display_name}.", "success")
+    return settings_redirect(root)
+
+
+def user_toggle_purchase_approver_view(root, user_id):
+    user = root.db.session.get(root.User, user_id)
+    if not user:
+        root.flash("User not found.", "error")
+        return settings_redirect(root)
+    if user.is_super_admin:
+        root.flash("Super Admin always has purchase approval access.", "info")
+        return settings_redirect(root)
+    user.is_purchase_approver = not bool(user.is_purchase_approver)
+    root.log_audit(
+        "user_purchase_approver",
+        "user",
+        user.id,
+        details=json.dumps({"enabled": bool(user.is_purchase_approver)}),
+    )
+    root.db.session.commit()
+    root.flash(f"Purchase approval {'enabled' if user.is_purchase_approver else 'disabled'} for {user.display_name}.", "success")
+    return settings_redirect(root)
+
+
+def user_toggle_active_view(root, user_id):
+    user = root.db.session.get(root.User, user_id)
+    if not user:
+        root.flash("User not found.", "error")
+        return settings_redirect(root)
+    if user.id == root.current_user.id:
+        root.flash("You cannot disable your own account.", "error")
+        return settings_redirect(root)
+    user.is_active_user = not bool(user.is_active_user)
+    root.log_audit(
+        "user_active_toggle",
+        "user",
+        user.id,
+        details=json.dumps({"active": bool(user.is_active_user)}),
+    )
+    root.db.session.commit()
+    root.flash(f"User {user.display_name} {'activated' if user.is_active_user else 'disabled'}.", "success")
+    return settings_redirect(root)
+
+
+def user_delete_view(root, user_id):
+    user = root.db.session.get(root.User, user_id)
+    if not user:
+        root.flash("User not found.", "error")
+        return settings_redirect(root)
+    if user.id == root.current_user.id:
+        root.flash("You cannot delete your own account.", "error")
+        return settings_redirect(root)
+    has_audit = root.AuditLog.query.filter_by(user_id=user.id).first() is not None
+    if has_audit:
+        root.flash("This user has audit history and cannot be deleted.", "error")
+        return settings_redirect(root)
+    root.db.session.delete(user)
+    root.db.session.commit()
+    root.flash("User deleted.", "success")
+    return settings_redirect(root)
+
+
+def field_token_create_view(root):
+    label = (root.request.form.get("label") or "").strip()
+    expires_days_raw = (root.request.form.get("expires_days") or "").strip()
+    if not label:
+        root.flash("Label is required.", "error")
+        return settings_redirect(root)
+    try:
+        expires_days = int(expires_days_raw or "30")
+    except ValueError:
+        expires_days = 30
+    expires_days = max(1, min(365, expires_days))
+
+    token_value = root.secrets.token_urlsafe(24)
+    token = root.FieldAccessToken(
+        label=label,
+        token_hash=_hash_field_token(token_value),
+        created_by=root.current_user.id,
+        expires_at=datetime.now(timezone.utc) + root.timedelta(days=expires_days),
+    )
+    root.db.session.add(token)
+    root.db.session.commit()
+
+    link = root.url_for("field_home", t=token_value, _external=True)
+    sms, subject, body = _token_share_texts(link)
+    root.session["last_field_link"] = link
+    root.session["last_field_sms"] = sms
+    root.session["last_field_email_subject"] = subject
+    root.session["last_field_email_body"] = body
+    root.log_audit("create", "field_access_token", token.id, details=json.dumps({"label": label, "expires_days": expires_days}))
+    root.db.session.commit()
+    root.flash("Field access link created.", "success")
+    return settings_redirect(root)
+
+
+def field_token_revoke_view(root, token_id):
+    token = root.db.session.get(root.FieldAccessToken, token_id)
+    if not token:
+        root.flash("Field token not found.", "error")
+        return settings_redirect(root)
+    if token.revoked_at is None:
+        token.revoked_at = datetime.now(timezone.utc)
+        root.log_audit("revoke", "field_access_token", token.id, details=json.dumps({"label": token.label}))
+        root.db.session.commit()
+    root.flash("Field token revoked.", "success")
+    return settings_redirect(root)
+
+
+def field_token_delete_view(root, token_id):
+    token = root.db.session.get(root.FieldAccessToken, token_id)
+    if not token:
+        root.flash("Field token not found.", "error")
+        return settings_redirect(root)
+    if token.revoked_at is None and (token.expires_at is None or token.expires_at >= datetime.now(timezone.utc)):
+        root.flash("Only revoked or expired tokens can be deleted.", "error")
+        return settings_redirect(root)
+    root.db.session.delete(token)
+    root.db.session.commit()
+    root.flash("Field token deleted.", "success")
+    return settings_redirect(root)
+
+
+def settings_recalculate_costs_view(root):
+    runs = root.Run.query.filter(root.Run.deleted_at.is_(None)).all()
+    for run in runs:
+        run.calculate_yields()
+        run.calculate_cost()
+    root.log_audit("recalculate", "run_costs", root.gen_uuid(), details=json.dumps({"run_count": len(runs)}))
+    root.db.session.commit()
+    root.flash(f"Recalculated costs for {len(runs)} run(s).", "success")
     return settings_redirect(root)

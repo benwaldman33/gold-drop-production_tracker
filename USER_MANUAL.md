@@ -296,7 +296,7 @@ Purchases support:
 - True-up amount calculation when potency changes and actual weight is known
 
 ### Purchase approval and status
-- **Approve purchase** (top of **Edit Purchase**, for **Super Admin** and users marked as purchase approvers): sets **Approved** with a timestamp. Until then, a yellow banner explains that material **cannot** be used in extraction runs or appear in **On Hand** inventory.
+- **Approve purchase** (top of **Edit Purchase**, and now inline on **Purchases** and **Biomass Pipeline** list rows for eligible approvers): sets **Approved** with a timestamp. Until then, a yellow banner explains that material **cannot** be used in extraction runs or appear in **On Hand** inventory.
 - You **cannot** set on-hand statuses (**Delivered**, **In testing**, **Available**, **Processing**) until the purchase is approved; try **Approve purchase** first, then change status.
 - **Biomass Pipeline** and **Purchases** are the **same records**: changing status on either screen is changing that purchase.
 
@@ -347,7 +347,7 @@ Editors can use **Select all** / **Select none** and **Batch edit…** on the pi
 You can open the same batch anytime from **Purchases** (search by **Batch ID** or supplier). There is **no separate “link” step**—one row serves both screens.
 
 ### Approvers and Committed
-Only **Super Admin** or users with **purchase approval** permission may move a batch **into** or **out of** **Committed** (and therefore control the approval stamp tied to that transition). If you lack permission, ask an approver to edit the batch or adjust your user flag in **Settings**.
+Only **Super Admin** or users with **purchase approval** permission may move a batch **into** or **out of** **Committed** (and therefore control the approval stamp tied to that transition). If you lack permission, ask an approver to edit the batch or adjust your user flag in **Settings**. If you do have permission, you can approve directly from the **Biomass Pipeline** row without opening the form first.
 
 ### Adding field photos
 Field intake for biomass declarations (and purchase requests) still supports optional photo uploads; stored paths attach to the resulting **purchase** record.

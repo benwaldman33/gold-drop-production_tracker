@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import patch
 
 import app as app_module
 import gold_drop.bootstrap_module as bootstrap_module
-from models import FieldPurchaseSubmission, Purchase, PurchaseLot, ScaleDevice, SlackIngestedMessage, Supplier, SystemSetting, User, WeightCapture, db
+from models import FieldAccessToken, FieldPurchaseSubmission, Purchase, PurchaseLot, ScaleDevice, SlackIngestedMessage, Supplier, SystemSetting, User, WeightCapture, db
 from flask_login import login_user
 from services.scale_ingest import create_weight_capture
 
@@ -53,6 +53,31 @@ def test_settings_route_rejects_non_admin_user():
     page = _call_view_as_user("/settings", "settings", "viewer")
     assert page.status_code in (302, 303)
     assert page.headers["Location"].endswith("/")
+
+
+def test_settings_route_renders_with_legacy_naive_field_token_expiry():
+    app = app_module.app
+    with app.app_context():
+        token = FieldAccessToken(
+            label="Legacy token",
+            token_hash="legacy-naive-expiry",
+            expires_at=datetime.now() - timedelta(days=1),
+        )
+        db.session.add(token)
+        db.session.commit()
+        token_id = token.id
+
+    try:
+        page = _call_view_as_user("/settings", "settings", "admin")
+        assert page.status_code == 200
+        assert b"Legacy token" in page.data
+        assert b"Expired" in page.data
+    finally:
+        with app.app_context():
+            token = db.session.get(FieldAccessToken, token_id)
+            if token is not None:
+                db.session.delete(token)
+                db.session.commit()
 
 
 def test_slack_imports_route_is_registered_for_admin():
@@ -192,16 +217,16 @@ def test_slack_preview_surfaces_candidate_lots_with_tracking_ids():
         assert b"score" in page.data
     finally:
         with app.app_context():
+            lot_obj = db.session.get(PurchaseLot, lot_id)
+            purchase_obj = db.session.get(Purchase, purchase_id)
+            supplier_obj = db.session.get(Supplier, supplier_id)
             row_obj = db.session.get(SlackIngestedMessage, row_id)
             if row_obj:
                 db.session.delete(row_obj)
-            lot_obj = db.session.get(PurchaseLot, lot_id)
             if lot_obj:
                 db.session.delete(lot_obj)
-            purchase_obj = db.session.get(Purchase, purchase_id)
             if purchase_obj:
                 db.session.delete(purchase_obj)
-            supplier_obj = db.session.get(Supplier, supplier_id)
             if supplier_obj:
                 db.session.delete(supplier_obj)
             db.session.commit()
@@ -437,6 +462,54 @@ def test_batch_edit_purchase_path_runs_inventory_and_budget_side_effects():
         audit_mock.assert_called_once()
 
 
+def test_purchase_approve_respects_inline_return_target():
+    app = app_module.app
+    with app.app_context():
+        supplier = Supplier(name="Approve Inline Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = Purchase(
+            supplier_id=supplier.id,
+            purchase_date=date.today(),
+            delivery_date=date.today(),
+            status="ordered",
+            stated_weight_lbs=10.0,
+            batch_id="INLINE-APPROVE-001",
+        )
+        db.session.add(purchase)
+        db.session.commit()
+        purchase_id = purchase.id
+        supplier_id = supplier.id
+
+    try:
+        resp = _call_view_as_user(
+            f"/purchases/{purchase_id}/approve",
+            "purchase_approve",
+            "admin",
+            method="POST",
+            data={"return_to": "/purchases?status=ordered"},
+            purchase_id=purchase_id,
+        )
+        assert resp.status_code in (302, 303)
+        assert resp.headers["Location"].endswith("/purchases?status=ordered")
+
+        with app.app_context():
+            purchase = db.session.get(Purchase, purchase_id)
+            assert purchase is not None
+            assert purchase.purchase_approved_at is not None
+    finally:
+        with app.app_context():
+            purchase = db.session.get(Purchase, purchase_id)
+            if purchase is not None:
+                for lot in PurchaseLot.query.filter_by(purchase_id=purchase_id).all():
+                    db.session.delete(lot)
+                db.session.delete(purchase)
+            supplier = db.session.get(Supplier, supplier_id)
+            if supplier is not None:
+                db.session.delete(supplier)
+            db.session.commit()
+
+
 def test_scale_readiness_models_and_weight_capture_persist():
     app = app_module.app
     with app.app_context():
@@ -508,9 +581,20 @@ def test_scale_readiness_models_and_weight_capture_persist():
         assert saved.purchase_lot_id == lot_id
         assert saved.raw_payload == "ST,GS, 124.6 lb"
 
-        db.session.delete(saved)
-        db.session.delete(db.session.get(PurchaseLot, lot_id))
-        db.session.delete(db.session.get(Purchase, purchase_id))
-        db.session.delete(db.session.get(Supplier, supplier_id))
-        db.session.delete(db.session.get(ScaleDevice, device_id))
+    with app.app_context():
+        capture = db.session.get(WeightCapture, capture_id)
+        if capture is not None:
+            db.session.delete(capture)
+        lot = db.session.get(PurchaseLot, lot_id)
+        if lot is not None:
+            db.session.delete(lot)
+        purchase = db.session.get(Purchase, purchase_id)
+        if purchase is not None:
+            db.session.delete(purchase)
+        supplier = db.session.get(Supplier, supplier_id)
+        if supplier is not None:
+            db.session.delete(supplier)
+        device = db.session.get(ScaleDevice, device_id)
+        if device is not None:
+            db.session.delete(device)
         db.session.commit()
