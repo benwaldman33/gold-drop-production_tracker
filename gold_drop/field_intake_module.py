@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from gold_drop.uploads import save_field_photos, validate_field_intake_photo_bucket
+
 
 def register_routes(app, root):
     @root.field_token_required
@@ -163,12 +165,12 @@ def parse_field_purchase_intake_form_to_submission(root, supplier, *, source_tok
     supplier_photos = root.request.files.getlist("supplier_photos")
     biomass_photos = root.request.files.getlist("biomass_photos")
     coa_photos = root.request.files.getlist("coa_photos")
-    root._validate_field_intake_photo_bucket(supplier_photos, "Supplier / License photos")
-    root._validate_field_intake_photo_bucket(biomass_photos, "Biomass photos")
-    root._validate_field_intake_photo_bucket(coa_photos, "Testing / COA photos")
-    saved_supplier_paths = root._save_field_photos(supplier_photos, prefix="purchase-supplier")
-    saved_biomass_paths = root._save_field_photos(biomass_photos, prefix="purchase-biomass")
-    saved_coa_paths = root._save_field_photos(coa_photos, prefix="purchase-coa")
+    validate_field_intake_photo_bucket(supplier_photos, "Supplier / License photos")
+    validate_field_intake_photo_bucket(biomass_photos, "Biomass photos")
+    validate_field_intake_photo_bucket(coa_photos, "Testing / COA photos")
+    saved_supplier_paths = save_field_photos(supplier_photos, prefix="purchase-supplier")
+    saved_biomass_paths = save_field_photos(biomass_photos, prefix="purchase-biomass")
+    saved_coa_paths = save_field_photos(coa_photos, prefix="purchase-coa")
     all_paths = saved_supplier_paths + saved_biomass_paths + saved_coa_paths
 
     return root.FieldPurchaseSubmission(
@@ -229,8 +231,8 @@ def field_biomass_new_view(root, token):
                 raise ValueError("Estimated Potency must be between 0 and 100.")
 
             photos = root.request.files.getlist("photos")
-            root._validate_field_intake_photo_bucket(photos, "Photos")
-            saved_photo_paths = root._save_field_photos(photos, prefix="biomass")
+            validate_field_intake_photo_bucket(photos, "Photos")
+            saved_photo_paths = save_field_photos(photos, prefix="biomass")
             strain_name = (root.request.form.get("strain_name") or "").strip() or None
 
             purchase = root.Purchase(

@@ -1,6 +1,20 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
+
+from gold_drop.list_state import LIST_FILTERS_SESSION_KEY, list_filters_clear_redirect, list_filters_merge
+from gold_drop.purchases import biomass_budget_snapshot_for_purchase, enforce_weekly_biomass_purchase_limits
+from gold_drop.uploads import save_purchase_support_docs
+from services.lot_labels import build_lot_label_payload, build_purchase_label_payloads
+from services.lot_allocation import ensure_lot_tracking_fields, ensure_purchase_lot_tracking
+from services.purchase_helpers import (
+    create_photo_asset,
+    ensure_unique_batch_id,
+    generate_batch_id,
+    maintain_purchase_inventory_lots,
+    normalize_photo_category,
+    photo_asset_exists,
+)
 
 
 def register_routes(app, root):
@@ -24,11 +38,41 @@ def register_routes(app, root):
     def lot_new(purchase_id):
         return lot_new_view(root, purchase_id)
 
+    @root.login_required
+    def lot_label(lot_id):
+        return lot_label_view(root, lot_id)
+
+    @root.login_required
+    def purchase_labels(purchase_id):
+        return purchase_labels_view(root, purchase_id)
+
+    @root.login_required
+    def scan_lot(tracking_id):
+        return scan_lot_view(root, tracking_id)
+
+    @root.purchase_editor_required
+    def purchase_delete(purchase_id):
+        return purchase_delete_view(root, purchase_id)
+
+    @root.admin_required
+    def purchase_hard_delete(purchase_id):
+        return purchase_hard_delete_view(root, purchase_id)
+
     app.add_url_rule("/purchases", endpoint="purchases_list", view_func=purchases_list)
     app.add_url_rule("/purchases/new", endpoint="purchase_new", view_func=purchase_new, methods=["GET", "POST"])
     app.add_url_rule("/purchases/<purchase_id>/edit", endpoint="purchase_edit", view_func=purchase_edit, methods=["GET", "POST"])
     app.add_url_rule("/purchases/<purchase_id>/approve", endpoint="purchase_approve", view_func=purchase_approve, methods=["POST"])
     app.add_url_rule("/purchases/<purchase_id>/lots/new", endpoint="lot_new", view_func=lot_new, methods=["POST"])
+    app.add_url_rule("/lots/<lot_id>/label", endpoint="lot_label", view_func=lot_label)
+    app.add_url_rule("/purchases/<purchase_id>/labels", endpoint="purchase_labels", view_func=purchase_labels)
+    app.add_url_rule("/scan/lot/<tracking_id>", endpoint="scan_lot", view_func=scan_lot)
+    app.add_url_rule("/purchases/<purchase_id>/delete", endpoint="purchase_delete", view_func=purchase_delete, methods=["POST"])
+    app.add_url_rule(
+        "/purchases/<purchase_id>/hard_delete",
+        endpoint="purchase_hard_delete",
+        view_func=purchase_hard_delete,
+        methods=["POST"],
+    )
 
 
 def _purchase_form_context(root, purchase):
@@ -55,15 +99,61 @@ def _purchase_form_context(root, purchase):
     }
 
 
+def _purchase_allocation_state(purchase):
+    active_lots = [lot for lot in purchase.lots if getattr(lot, "deleted_at", None) is None]
+    total_weight = float(sum(float(lot.weight_lbs or 0) for lot in active_lots))
+    total_remaining = float(sum(float(lot.remaining_weight_lbs or 0) for lot in active_lots))
+    total_allocated = max(0.0, total_weight - total_remaining)
+    if not active_lots:
+        return "no_lots", "Needs lots", total_weight, total_allocated, total_remaining
+    if total_allocated <= 0.01:
+        return "unallocated", "On hand", total_weight, total_allocated, total_remaining
+    if total_remaining <= 0.01:
+        return "fully_allocated", "Fully allocated", total_weight, total_allocated, total_remaining
+    return "partially_allocated", "Partially allocated", total_weight, total_allocated, total_remaining
+
+
+def _annotate_purchase_row(purchase):
+    state_key, state_label, total_weight, total_allocated, total_remaining = _purchase_allocation_state(purchase)
+    active_lots = [lot for lot in purchase.lots if getattr(lot, "deleted_at", None) is None]
+    tracking_ready = sum(1 for lot in active_lots if getattr(lot, "tracking_id", None))
+    exceptions: list[str] = []
+    if not purchase.is_approved:
+        exceptions.append("Approval required")
+    if not active_lots and float(purchase.stated_weight_lbs or 0) > 0:
+        exceptions.append("No inventory lots")
+    if active_lots and tracking_ready < len(active_lots):
+        exceptions.append("Tracking incomplete")
+    if purchase.price_per_lb in (None, 0):
+        exceptions.append("Missing price")
+    purchase._allocation_state_key = state_key
+    purchase._allocation_state_label = state_label
+    purchase._lot_count = len(active_lots)
+    purchase._tracking_ready_count = tracking_ready
+    purchase._total_weight = total_weight
+    purchase._total_allocated = total_allocated
+    purchase._total_remaining = total_remaining
+    purchase._exceptions = exceptions
+    if not purchase.is_approved:
+        purchase._next_action = "Approve purchase"
+    elif state_key == "no_lots":
+        purchase._next_action = "Add lots"
+    elif state_key == "partially_allocated":
+        purchase._next_action = "Review journey"
+    else:
+        purchase._next_action = "Manage inventory"
+    return purchase
+
+
 def purchases_list_view(root):
-    redir = root._list_filters_clear_redirect("purchases_list")
+    redir = list_filters_clear_redirect("purchases_list")
     if redir:
         return redir
     keys = ("page", "status", "start_date", "end_date", "supplier_id", "min_potency", "max_potency", "hide_terminal")
-    m = root._list_filters_merge("purchases_list", keys)
+    m = list_filters_merge("purchases_list", keys)
     if root.request.args.get("filter_form") == "1":
         m["hide_terminal"] = "1" if root.request.args.get("hide_terminal") == "1" else ""
-        root.session[root.LIST_FILTERS_SESSION_KEY]["purchases_list"]["hide_terminal"] = m["hide_terminal"]
+        root.session[LIST_FILTERS_SESSION_KEY]["purchases_list"]["hide_terminal"] = m["hide_terminal"]
         root.session.modified = True
     try:
         page = int(m.get("page") or 1)
@@ -103,14 +193,16 @@ def purchases_list_view(root):
         query = query.filter(root.Purchase.stated_potency_pct >= min_potency)
     if max_potency is not None:
         query = query.filter(root.Purchase.stated_potency_pct <= max_potency)
+    summary_pool = [_annotate_purchase_row(purchase) for purchase in query.all()]
     pagination = query.order_by(root.Purchase.purchase_date.desc()).paginate(page=page, per_page=25, error_out=False)
     if pagination.pages and page > pagination.pages:
         page = pagination.pages
         pagination = query.order_by(root.Purchase.purchase_date.desc()).paginate(page=page, per_page=25, error_out=False)
-        lf = root.session.get(root.LIST_FILTERS_SESSION_KEY)
+        lf = root.session.get(LIST_FILTERS_SESSION_KEY)
         if isinstance(lf, dict) and isinstance(lf.get("purchases_list"), dict):
             lf["purchases_list"]["page"] = str(page)
             root.session.modified = True
+    pagination.items = [_annotate_purchase_row(purchase) for purchase in pagination.items]
     suppliers = root.Supplier.query.filter_by(is_active=True).order_by(root.Supplier.name).all()
     purchases_filters_active = (
         page > 1
@@ -118,6 +210,13 @@ def purchases_list_view(root):
         or bool(start_raw or end_raw or supplier_filter or min_pot_raw or max_pot_raw)
         or hide_terminal
     )
+    summary_counts = {
+        "visible": len(summary_pool),
+        "unapproved": sum(1 for purchase in summary_pool if not purchase.is_approved),
+        "partially_allocated": sum(1 for purchase in summary_pool if purchase._allocation_state_key == "partially_allocated"),
+        "needs_review": sum(1 for purchase in summary_pool if purchase._exceptions),
+        "remaining_lbs": float(sum(purchase._total_remaining for purchase in summary_pool)),
+    }
     return root.render_template(
         "purchases.html",
         purchases=pagination.items,
@@ -130,6 +229,7 @@ def purchases_list_view(root):
         min_potency=min_pot_raw,
         max_potency=max_pot_raw,
         hide_terminal=hide_terminal,
+        summary_counts=summary_counts,
         list_filters_active=purchases_filters_active,
         clear_filters_url=root.url_for("purchases_list", clear_filters=1),
     )
@@ -162,8 +262,9 @@ def purchase_approve_view(root, purchase_id):
     if purchase.is_approved:
         root.flash("Purchase is already approved.", "info")
         return root.redirect(root.url_for("purchase_edit", purchase_id=purchase_id))
-    purchase.purchase_approved_at = datetime.utcnow()
+    purchase.purchase_approved_at = datetime.now(timezone.utc)
     purchase.purchase_approved_by_user_id = root.current_user.id
+    ensure_purchase_lot_tracking(purchase)
     root.log_audit("approve", "purchase", purchase.id)
     root.db.session.commit()
     root.flash(f"Purchase {purchase.batch_id or purchase.id} approved.", "success")
@@ -239,8 +340,8 @@ def save_purchase(root, existing):
             supplier_name = supplier.name if supplier else "BATCH"
             batch_date = purchase.delivery_date or purchase.purchase_date
             batch_weight = purchase.actual_weight_lbs or purchase.stated_weight_lbs
-            purchase.batch_id = root._ensure_unique_batch_id(
-                root._generate_batch_id(supplier_name, batch_date, batch_weight),
+            purchase.batch_id = ensure_unique_batch_id(
+                generate_batch_id(supplier_name, batch_date, batch_weight),
                 exclude_purchase_id=purchase.id,
             )
 
@@ -255,14 +356,15 @@ def save_purchase(root, existing):
                         weight_lbs=float(weight_value),
                         remaining_weight_lbs=float(weight_value),
                     )
+                    ensure_lot_tracking_fields(lot)
                     root.db.session.add(lot)
 
-        root._maintain_purchase_inventory_lots(purchase)
+        maintain_purchase_inventory_lots(purchase, root.INVENTORY_ON_HAND_PURCHASE_STATUSES)
 
         support_files = root.request.files.getlist("purchase_supporting_files")
         if support_files and any(getattr(f, "filename", None) for f in support_files if f):
-            saved_docs = root._save_purchase_support_docs(support_files, prefix=f"purchase-{purchase.id}")
-            support_category = root._normalize_photo_category(
+            saved_docs = save_purchase_support_docs(support_files, prefix=f"purchase-{purchase.id}")
+            support_category = normalize_photo_category(
                 root.request.form.get("purchase_support_category", ""),
                 fallback="supporting_doc",
             )
@@ -270,13 +372,13 @@ def save_purchase(root, existing):
             support_tags_raw = (root.request.form.get("purchase_support_tags") or "").strip()
             support_tags = [tag.strip().lower() for tag in support_tags_raw.split(",") if tag.strip()]
             for path in saved_docs:
-                if not root._photo_asset_exists(
+                if not photo_asset_exists(
                     file_path=path,
                     source_type="purchase_upload",
                     category=support_category,
                     purchase_id=purchase.id,
                 ):
-                    root._create_photo_asset(
+                    create_photo_asset(
                         path,
                         source_type="purchase_upload",
                         category=support_category,
@@ -287,8 +389,8 @@ def save_purchase(root, existing):
                         uploaded_by=root.current_user.id,
                     )
 
-        new_snapshot = root._biomass_budget_snapshot_for_purchase(purchase)
-        root._enforce_weekly_biomass_purchase_limits(purchase, new_snapshot, enforce_cap=True)
+        new_snapshot = biomass_budget_snapshot_for_purchase(purchase)
+        enforce_weekly_biomass_purchase_limits(purchase, new_snapshot, enforce_cap=True)
 
         root.log_audit("update" if existing else "create", "purchase", purchase.id)
         root.db.session.commit()
@@ -320,8 +422,106 @@ def lot_new_view(root, purchase_id):
         milled="milled" in root.request.form,
         location=root.request.form.get("location", "").strip() or None,
     )
+    ensure_lot_tracking_fields(lot)
     root.db.session.add(lot)
     root.log_audit("create", "lot", lot.id)
     root.db.session.commit()
     root.flash("Lot added.", "success")
     return root.redirect(root.url_for("purchase_edit", purchase_id=purchase_id))
+
+
+def lot_label_view(root, lot_id):
+    lot = root.db.session.get(root.PurchaseLot, lot_id)
+    if not lot or lot.deleted_at is not None:
+        root.flash("Lot not found.", "error")
+        return root.redirect(root.url_for("inventory"))
+    ensure_lot_tracking_fields(lot)
+    root.db.session.commit()
+    label = build_lot_label_payload(lot)
+    return root.render_template("lot_label_print.html", labels=[label], purchase=lot.purchase)
+
+
+def purchase_labels_view(root, purchase_id):
+    purchase = root.db.session.get(root.Purchase, purchase_id)
+    if not purchase or purchase.deleted_at is not None:
+        root.flash("Purchase not found.", "error")
+        return root.redirect(root.url_for("purchases_list"))
+    ensure_purchase_lot_tracking(purchase)
+    root.db.session.commit()
+    labels = build_purchase_label_payloads(purchase)
+    if not labels:
+        root.flash("This purchase does not have any active lots to label.", "warning")
+        return root.redirect(root.url_for("purchase_edit", purchase_id=purchase.id))
+    return root.render_template("lot_label_print.html", labels=labels, purchase=purchase)
+
+
+def scan_lot_view(root, tracking_id):
+    lot = root.PurchaseLot.query.filter(
+        root.PurchaseLot.tracking_id == tracking_id,
+        root.PurchaseLot.deleted_at.is_(None),
+    ).first()
+    if not lot or not lot.purchase or lot.purchase.deleted_at is not None:
+        root.flash("Tracked lot not found.", "error")
+        return root.redirect(root.url_for("inventory"))
+    return root.redirect(root.url_for("purchases_bp.purchase_journey", purchase_id=lot.purchase.id, lot=tracking_id))
+
+
+def purchase_delete_view(root, purchase_id):
+    purchase = root.db.session.get(root.Purchase, purchase_id)
+    if not purchase or purchase.deleted_at is not None:
+        root.flash("Purchase not found.", "error")
+        return root.redirect(root.url_for("purchases_list"))
+
+    has_run_inputs = (
+        root.db.session.query(root.RunInput.id)
+        .join(root.PurchaseLot)
+        .join(root.Run)
+        .filter(
+            root.PurchaseLot.purchase_id == purchase.id,
+            root.PurchaseLot.deleted_at.is_(None),
+            root.Run.deleted_at.is_(None),
+        )
+        .first()
+        is not None
+    )
+    if has_run_inputs:
+        root.flash("Cannot delete purchase that is used in active runs. Delete those runs first.", "error")
+        return root.redirect(root.url_for("purchase_edit", purchase_id=purchase.id))
+
+    deleted_at = root.datetime.now(root.timezone.utc)
+    purchase.deleted_at = deleted_at
+    purchase.deleted_by = root.current_user.id
+    for lot in purchase.lots:
+        lot.deleted_at = deleted_at
+        lot.deleted_by = root.current_user.id
+
+    root.log_audit("delete", "purchase", purchase.id, details=root.json.dumps({"mode": "soft"}))
+    root.db.session.commit()
+    root.notify_slack(f"Purchase soft-deleted: {purchase.batch_id or purchase.id}.")
+    root.flash("Purchase deleted.", "success")
+    return root.redirect(root.url_for("purchases_list"))
+
+
+def purchase_hard_delete_view(root, purchase_id):
+    purchase = root.db.session.get(root.Purchase, purchase_id)
+    if not purchase:
+        root.flash("Purchase not found.", "error")
+        return root.redirect(root.url_for("purchases_list"))
+
+    has_any_run_inputs = (
+        root.db.session.query(root.RunInput.id)
+        .join(root.PurchaseLot)
+        .filter(root.PurchaseLot.purchase_id == purchase.id)
+        .first()
+        is not None
+    )
+    if has_any_run_inputs:
+        root.flash("Cannot hard-delete purchase that has run history.", "error")
+        return root.redirect(root.url_for("purchase_edit", purchase_id=purchase.id))
+
+    root.log_audit("delete", "purchase", purchase.id, details=root.json.dumps({"mode": "hard"}))
+    root.db.session.delete(purchase)
+    root.db.session.commit()
+    root.notify_slack(f"Purchase hard-deleted: {purchase.batch_id or purchase.id}.")
+    root.flash("Purchase permanently deleted.", "success")
+    return root.redirect(root.url_for("purchases_list"))

@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 
 from gold_drop.list_state import app_display_zoneinfo
+from models import SystemSetting
 
 SLACK_IMPORT_KIND_FILTER_CHOICES = (
     ("all", "All kinds"),
@@ -169,6 +170,18 @@ def _ensure_slack_message_date_derived(derived: dict, message_ts: str) -> None:
         derived["slack_message_date"] = ts_date.isoformat()
 
 
+def _slack_ts_to_display_datetime_str(ts_str: str | None) -> str:
+    if not (ts_str or "").strip():
+        return "-"
+    try:
+        sec = float(str(ts_str).split(".")[0])
+        utc_dt = datetime.fromtimestamp(sec, tz=timezone.utc)
+        local_dt = utc_dt.astimezone(app_display_zoneinfo())
+        return local_dt.strftime("%b %d, %Y %I:%M:%S %p %Z")
+    except (ValueError, OSError, TypeError, OverflowError):
+        return "-"
+
+
 def _apply_slack_mapping_transform(raw_val, transform: dict | None, message_ts: str, source_key: str):
     t = (transform or {}).get("type") or "passthrough"
     if raw_val is None and source_key == "__message_ts__":
@@ -294,6 +307,86 @@ def _slack_coverage_label(preview: dict) -> str:
     if (preview.get("unmapped_keys") or []) or (preview.get("missing_recommended") or []):
         return "partial"
     return "full"
+
+
+def _load_slack_run_field_rules() -> list:
+    raw = SystemSetting.get(SLACK_RUN_MAPPINGS_KEY)
+    if not raw or not str(raw).strip():
+        return _default_slack_run_field_rules()
+    try:
+        data = json.loads(raw)
+        rules = data.get("rules")
+        if isinstance(rules, list) and len(rules) > 0:
+            return rules
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return _default_slack_run_field_rules()
+
+
+def _slack_non_run_mapping_rule_count(rules: list) -> int:
+    count = 0
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        destination = (rule.get("destination") or "run").strip() or "run"
+        if destination != "run" and destination in SLACK_MAPPING_ALLOWED_DESTINATIONS:
+            count += 1
+    return count
+
+
+def _slack_mapping_transform_from_form(ttype: str, arg: str) -> dict:
+    ttype = (ttype or "passthrough").strip()
+    if ttype not in SLACK_MAPPING_TRANSFORM_TYPES:
+        ttype = "passthrough"
+    arg = (arg or "").strip()
+    if ttype == "multiply":
+        try:
+            factor = float(arg) if arg else 1.0
+        except ValueError:
+            factor = 1.0
+        return {"type": "multiply", "factor": factor}
+    if ttype in ("prefix", "suffix"):
+        return {"type": ttype, "value": arg}
+    return {"type": ttype}
+
+
+def _slack_run_rules_from_mapping_form(form) -> list:
+    rules: list = []
+    for i in range(SLACK_RUN_MAPPING_MAX_FORM_ROWS):
+        source_key = (form.get(f"rule_source_{i}") or "").strip()
+        destination = (form.get(f"rule_destination_{i}") or "run").strip() or "run"
+        if destination not in SLACK_MAPPING_ALLOWED_DESTINATIONS:
+            destination = "run"
+        if destination == "run":
+            target_field = (form.get(f"rule_target_select_{i}") or "").strip()
+        else:
+            target_field = (form.get(f"rule_target_text_{i}") or "").strip()
+        if not source_key or not target_field:
+            continue
+        kinds_raw = (form.get(f"rule_kinds_{i}") or "all").strip()
+        if kinds_raw.lower() in ("", "all"):
+            message_kinds: list = []
+        else:
+            message_kinds = [kind.strip() for kind in kinds_raw.split(",") if kind.strip()]
+        transform_type = (form.get(f"rule_transform_{i}") or "passthrough").strip()
+        transform_arg = form.get(f"rule_transform_arg_{i}", "") or ""
+        transform = _slack_mapping_transform_from_form(transform_type, transform_arg)
+        row = {
+            "message_kinds": message_kinds,
+            "source_key": source_key,
+            "target_field": target_field,
+            "transform": transform,
+        }
+        if destination != "run":
+            row["destination"] = destination
+        rules.append(row)
+    return rules
+
+
+def _slack_rule_kind_select_value(kinds: list | None) -> str:
+    if not kinds:
+        return "all"
+    return ",".join(kinds)
 
 
 def _slack_message_needs_resolution_ui(derived: dict) -> bool:

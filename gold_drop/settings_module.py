@@ -1,8 +1,21 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from gold_drop.purchases import (
+    biomass_budget_snapshot_for_purchase,
+    enforce_weekly_biomass_purchase_limits,
+)
+from services.field_submissions import (
+    decorate_submission_rows,
+    field_approval_return_redirect,
+    field_submission_error_redirect,
+    load_lots,
+    promote_submission_photos,
+    submission_total_weight,
+)
 
 
 def register_routes(app, root):
@@ -10,7 +23,42 @@ def register_routes(app, root):
     def settings():
         return settings_view(root)
 
+    @root.login_required
+    def field_approvals():
+        return field_approvals_view(root)
+
+    @root.field_purchase_approval_required
+    def field_submission_approve(submission_id):
+        return field_submission_approve_view(root, submission_id)
+
+    @root.field_purchase_approval_required
+    def field_submission_reject(submission_id):
+        return field_submission_reject_view(root, submission_id)
+
+    @root.admin_required
+    def settings_backfill_photo_assets():
+        return settings_backfill_photo_assets_view(root)
+
     app.add_url_rule("/settings", endpoint="settings", view_func=settings, methods=["GET", "POST"])
+    app.add_url_rule("/field-approvals", endpoint="field_approvals", view_func=field_approvals)
+    app.add_url_rule(
+        "/settings/field_submissions/<submission_id>/approve",
+        endpoint="field_submission_approve",
+        view_func=field_submission_approve,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/settings/field_submissions/<submission_id>/reject",
+        endpoint="field_submission_reject",
+        view_func=field_submission_reject,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/settings/backfill_photo_assets",
+        endpoint="settings_backfill_photo_assets",
+        view_func=settings_backfill_photo_assets,
+        methods=["POST"],
+    )
 
 
 def settings_redirect(root):
@@ -275,7 +323,7 @@ def settings_view(root):
     reviewed_field_submissions = root.FieldPurchaseSubmission.query.filter(
         root.FieldPurchaseSubmission.status.in_(("approved", "rejected"))
     ).order_by(root.FieldPurchaseSubmission.submitted_at.desc()).all()
-    root._decorate_field_submission_rows(pending_field_submissions + reviewed_field_submissions)
+    decorate_submission_rows(pending_field_submissions + reviewed_field_submissions)
 
     last_field_link = root.session.pop("last_field_link", None)
     last_field_sms = root.session.pop("last_field_sms", None)
@@ -311,9 +359,209 @@ def settings_view(root):
         pending_submissions_total_lbs=pending_submissions_total_lbs,
         reviewed_approved_total_lbs=reviewed_approved_total_lbs,
         reviewed_rejected_total_lbs=reviewed_rejected_total_lbs,
-        server_now=datetime.utcnow(),
+        server_now=datetime.now(timezone.utc),
         last_field_link=last_field_link,
         last_field_sms=last_field_sms,
         last_field_email_subject=last_field_email_subject,
         last_field_email_body=last_field_email_body,
     )
+
+
+def field_approvals_view(root):
+    if not root.current_user.can_approve_field_purchases:
+        root.flash("You don't have access to field purchase approvals.", "error")
+        return root.redirect(root.url_for("dashboard"))
+    pending_field_submissions = root.FieldPurchaseSubmission.query.filter_by(status="pending").order_by(
+        root.FieldPurchaseSubmission.submitted_at.desc()
+    ).all()
+    reviewed_field_submissions = root.FieldPurchaseSubmission.query.filter(
+        root.FieldPurchaseSubmission.status.in_(("approved", "rejected"))
+    ).order_by(root.FieldPurchaseSubmission.submitted_at.desc()).all()
+    decorate_submission_rows(pending_field_submissions + reviewed_field_submissions)
+    pending_submissions_total_lbs = sum(
+        float(getattr(submission, "total_weight_lbs", 0) or 0) for submission in pending_field_submissions
+    )
+    reviewed_approved_total_lbs = sum(
+        float(getattr(submission, "total_weight_lbs", 0) or 0)
+        for submission in reviewed_field_submissions
+        if submission.status == "approved"
+    )
+    reviewed_rejected_total_lbs = sum(
+        float(getattr(submission, "total_weight_lbs", 0) or 0)
+        for submission in reviewed_field_submissions
+        if submission.status == "rejected"
+    )
+    return root.render_template(
+        "field_approvals.html",
+        field_submissions=pending_field_submissions,
+        reviewed_field_submissions=reviewed_field_submissions,
+        submission_return_to="",
+        show_submission_approval_buttons=True,
+        pending_submissions_total_lbs=pending_submissions_total_lbs,
+        reviewed_approved_total_lbs=reviewed_approved_total_lbs,
+        reviewed_rejected_total_lbs=reviewed_rejected_total_lbs,
+    )
+
+
+def field_submission_approve_view(root, submission_id):
+    submission = root.db.session.get(root.FieldPurchaseSubmission, submission_id)
+    if not submission:
+        root.flash("Submission not found.", "error")
+        return field_submission_error_redirect(root)
+    if submission.status != "pending":
+        root.flash("Submission has already been reviewed.", "error")
+        return field_submission_error_redirect(root)
+
+    lots = load_lots(submission.lots_json)
+    total_weight = submission_total_weight(lots)
+    if total_weight < 0:
+        root.flash("Submission lot weights are invalid.", "error")
+        return field_submission_error_redirect(root)
+
+    purchase = root.Purchase(
+        supplier_id=submission.supplier_id,
+        purchase_date=submission.purchase_date,
+        delivery_date=submission.delivery_date,
+        harvest_date=submission.harvest_date,
+        status="committed",
+        stated_weight_lbs=(total_weight if total_weight > 0 else 0.0),
+        stated_potency_pct=submission.estimated_potency_pct,
+        price_per_lb=submission.price_per_lb,
+        storage_note=submission.storage_note,
+        license_info=submission.license_info,
+        queue_placement=submission.queue_placement,
+        coa_status_text=submission.coa_status_text,
+        notes=(submission.notes or "") + (
+            f"\n\nApproved from field submission {submission.id}"
+            if submission.notes else f"Approved from field submission {submission.id}"
+        ),
+        purchase_approved_at=datetime.now(timezone.utc),
+        purchase_approved_by_user_id=root.current_user.id,
+    )
+    root.db.session.add(purchase)
+    root.db.session.flush()
+
+    for lot_row in lots:
+        strain_name = (lot_row.get("strain") or "").strip()
+        weight_value = lot_row.get("weight_lbs")
+        weight_lbs = float(weight_value) if weight_value is not None else 0.0
+        if weight_lbs <= 0:
+            continue
+        root.db.session.add(root.PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name=(strain_name or "Unspecified"),
+            weight_lbs=weight_lbs,
+            remaining_weight_lbs=weight_lbs,
+        ))
+
+    supplier = root.db.session.get(root.Supplier, purchase.supplier_id)
+    supplier_name = supplier.name if supplier else "BATCH"
+    batch_date = purchase.delivery_date or purchase.purchase_date
+    purchase.batch_id = root._ensure_unique_batch_id(
+        root._generate_batch_id(supplier_name, batch_date, (total_weight if total_weight > 0 else 0.0)),
+        exclude_purchase_id=purchase.id,
+    )
+
+    if purchase.price_per_lb:
+        purchase.total_cost = purchase.stated_weight_lbs * purchase.price_per_lb
+
+    promote_submission_photos(submission, purchase.id, root.current_user.id)
+
+    submission.status = "approved"
+    submission.reviewed_at = datetime.now(timezone.utc)
+    submission.reviewed_by = root.current_user.id
+    submission.review_notes = (root.request.form.get("review_notes") or "").strip() or None
+    submission.approved_purchase_id = purchase.id
+
+    try:
+        enforce_weekly_biomass_purchase_limits(
+            purchase,
+            biomass_budget_snapshot_for_purchase(purchase),
+            enforce_cap=True,
+        )
+    except ValueError as exc:
+        root.db.session.rollback()
+        root.flash(str(exc), "error")
+        return field_submission_error_redirect(root)
+
+    root.log_audit(
+        "approve",
+        "field_purchase_submission",
+        submission.id,
+        details=json.dumps({"purchase_id": purchase.id}),
+    )
+    root.log_audit(
+        "create",
+        "purchase",
+        purchase.id,
+        details=json.dumps({"source": "field_submission", "submission_id": submission.id}),
+    )
+    root.db.session.commit()
+    root.notify_slack(
+        f"Field submission approved for {submission.supplier.name if submission.supplier else 'supplier'}; "
+        f"purchase {purchase.batch_id or purchase.id} created."
+    )
+    root.flash("Submission approved and converted to a Purchase.", "success")
+    return root.redirect(root.url_for("purchase_edit", purchase_id=purchase.id))
+
+
+def field_submission_reject_view(root, submission_id):
+    submission = root.db.session.get(root.FieldPurchaseSubmission, submission_id)
+    if not submission:
+        root.flash("Submission not found.", "error")
+        return field_submission_error_redirect(root)
+    if submission.status != "pending":
+        root.flash("Submission has already been reviewed.", "error")
+        return field_submission_error_redirect(root)
+    submission.status = "rejected"
+    submission.reviewed_at = datetime.now(timezone.utc)
+    submission.reviewed_by = root.current_user.id
+    submission.review_notes = (root.request.form.get("review_notes") or "").strip() or None
+    root.log_audit(
+        "reject",
+        "field_purchase_submission",
+        submission.id,
+        details=json.dumps({"notes": submission.review_notes}),
+    )
+    root.db.session.commit()
+    root.notify_slack(
+        f"Field submission rejected for {submission.supplier.name if submission.supplier else 'supplier'}."
+    )
+    root.flash("Submission rejected.", "success")
+    return field_approval_return_redirect(root)
+
+
+def settings_backfill_photo_assets_view(root):
+    try:
+        submissions = root.FieldPurchaseSubmission.query.filter(
+            root.FieldPurchaseSubmission.status == "approved",
+            root.FieldPurchaseSubmission.approved_purchase_id.isnot(None),
+        ).all()
+
+        supplier_attachments_added = 0
+        assets_added = 0
+        touched_submissions = 0
+
+        for submission in submissions:
+            supplier_id = submission.supplier_id
+            purchase_id = submission.approved_purchase_id
+            if not supplier_id or not purchase_id:
+                continue
+
+            counts = promote_submission_photos(submission, purchase_id, root.current_user.id)
+            if counts["supplier_attachments_added"] or counts["assets_added"]:
+                touched_submissions += 1
+            supplier_attachments_added += counts["supplier_attachments_added"]
+            assets_added += counts["assets_added"]
+
+        root.db.session.commit()
+        root.flash(
+            f"Photo backfill complete. Updated {touched_submissions} submissions, added "
+            f"{supplier_attachments_added} supplier attachment(s) and {assets_added} photo asset(s).",
+            "success",
+        )
+    except Exception as exc:
+        root.db.session.rollback()
+        root.app.logger.exception("Photo backfill failed")
+        root.flash(f"Photo backfill failed: {exc}", "error")
+    return settings_redirect(root)

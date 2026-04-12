@@ -29,11 +29,17 @@ After logging in as **admin**:
    - Click **View Journey** in the header.
 3. **Journey page (UI)**
    - Open: `http://localhost:5050/purchases/<purchase_id>/journey`
-   - Validate stage cards, status badges, and drill links.
-4. **Journey API (JSON)**
+   - Validate stage cards, inventory lots, run allocations, tracking IDs, and drill links.
+4. **Slack preview -> run allocation flow**
+   - Open: `http://localhost:5050/settings/slack-imports`
+   - Preview a synced message, review candidate lots, optionally split lot weights, then open **Create run from Slack**.
+5. **Run form allocation summary**
+   - Open: `http://localhost:5050/runs/new`
+   - Validate the live allocation summary, projected remaining lot balances, and exact-match requirement against **Lbs in Reactor**.
+6. **Journey API (JSON)**
    - Open: `http://localhost:5050/api/purchases/<purchase_id>/journey`
    - Optional admin-only archived mode: `?include_archived=1`
-5. **Journey exports**
+7. **Journey exports**
    - JSON export: `http://localhost:5050/purchases/<purchase_id>/journey/export?format=json`
    - CSV export: `http://localhost:5050/purchases/<purchase_id>/journey/export?format=csv`
 
@@ -56,19 +62,20 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 - **Docs update (Apr 2026)** — Journey endpoints now share one validation path for missing/archived purchases, and Journey export rejects unsupported formats with an explicit `400` JSON error (`{"error":"Unsupported export format","supported_formats":["csv","json"]}`) instead of silently defaulting.
 - **Dashboard** — KPI cards with configurable green/yellow/red traffic lights (on-hand biomass and days-of-supply use **approved** purchases only; see **Purchases** below)
 - **Biomass purchasing** — Landing page (`/biomass-purchasing`) for weekly buyer targets vs actuals, field submission queues, and reviewed history (first sidebar item after **Extraction**)
-- **Run Logging** — Log extraction runs with source lots, wet/dry HTE & THCA output; optional **HTE post-extraction pipeline** (lab staging, clean vs dirty, COA file attachments, terp-strip queue, terpenes + retail distillate grams after Prescott strip)
+- **Run Logging** — Log extraction runs with source lots, wet/dry HTE & THCA output, and live source-lot allocation status against **Lbs in Reactor**; optional **HTE post-extraction pipeline** (lab staging, clean vs dirty, COA file attachments, terp-strip queue, terpenes + retail distillate grams after Prescott strip)
 - **Departments** — Focused lenses (`/dept`, `/dept/<slug>`) on the same data: quick links, rollups, and filtered run lists (e.g. HTE pipeline stage) for finance, purchasing, intake, extraction, THCA/HTE/LD, terpenes, testing, bulk sales
 - **Auto-Calculations** — Yield %, cost per gram, true-up amounts calculated automatically
 - **Costs** — Enter solvent/personnel/overhead costs with date ranges; allocated into $/g
 - **Cost Allocation Settings** — Choose THCA vs HTE allocation (uniform, 50/50, custom %)
-- **Inventory** — Track biomass on hand, in transit, and days of supply
+- **Inventory** — Track biomass on hand, in transit, and days of supply, with per-lot remaining pounds and lot tracking IDs ready for future label / scan workflows
 - **Purchases** — Record purchases with potency-based pricing and true-up tracking
-- **Batch Journey** — Per-purchase lifecycle timeline (UI + API + export): open from Purchases list (**Journey**) or Purchase edit (**View Journey**) to see derived stages (`declared`, `testing`, `committed`, `delivered`, `inventory`, `extraction`, `post_processing`, `sales`) with status, timestamps, metrics, and drill links.
+- **Batch Journey** — Per-purchase lifecycle timeline (UI + API + export): open from Purchases list (**Journey**) or Purchase edit (**View Journey**) to see derived stages (`declared`, `testing`, `committed`, `delivered`, `inventory`, `extraction`, `post_processing`, `sales`) plus explicit **inventory lots**, **run allocations**, tracking IDs, remaining pounds, and drill links.
 - **Purchase spreadsheet import** — Upload **.csv**, **.xlsx**, or **.xlsm** via **Purchases → Import spreadsheet** (drag-and-drop or browse). Headers are mapped automatically (e.g. Vendor, Purchase Date, Invoice Weight, Actual Weight, Manifest, Amount, Paid Date, Payment Method, Week). Preview validates rows; commit creates **unapproved** purchases (on-hand statuses from the file are capped to **ordered** until **Approve purchase**). Optional auto-create suppliers. See `purchase_import.py` (header alias map) and `ENGINEERING.md` → **Purchase spreadsheet import**.
 - **Batch edit (list screens)** — On Runs, Purchases, Inventory (on-hand lots and in-transit purchases), Biomass Pipeline, Suppliers, Costs, and Strain Performance, use row checkboxes plus **Select all** / **Select none**; with **two or more** rows selected, **Batch edit…** opens a screen to apply the same field changes to all selected records (permissions match single-record edit). Strain performance uses **Batch rename…** to retag matching purchase lots.
 - **Batch IDs** — Unique, readable batch IDs for all purchases (auto-generated if blank)
 - **Biomass Pipeline** — Same **`Purchase`** rows as **Purchases**: early statuses **`declared`** / **`in_testing`** (UI label *Testing*), then **`committed`**, **`delivered`**, **`cancelled`**, with pipeline fields on the purchase (`availability_date`, declared weight/price, testing metadata, field photos). No separate `BiomassAvailability` sync—one record end-to-end. **Super Admin** or **`is_purchase_approver`** must approve when moving **to or from Committed** on the pipeline form (stamps `purchase_approved_at`). **Edit Purchase** also has **Approve purchase** for the standard purchase workflow.
 - **Purchase approval gate** — On-hand inventory, dashboard on-hand, run lot pickers, and saving runs that consume lots require **`purchase_approved_at`**. You cannot set on-hand statuses (**delivered**, **in_testing**, **available**, **processing**) on **Edit Purchase** until approved. Existing on-hand purchases are **backfilled** as approved on startup. Slack **biomass intake** creates purchases as **`ordered`** until reviewed/approved per your process.
+- **Lot tracking IDs** — Purchase lots now receive machine-readable tracking fields (`tracking_id`, barcode payload, QR payload, label metadata) at creation or approval time so the inventory model is ready for future labels and scan workflows.
 - **Field Photo Uploads** — Field users can attach multiple photos to biomass and purchase submissions (JPG/JPEG/PNG/WEBP/HEIC/HEIF, max 50 MB each)
 - **Field Purchase Intake Enhancements** — Harvest date, storage note, license info, queue placement, testing/COA status, and categorized photo uploads
 - **Soft Delete + Admin Hard Delete** — Runs and purchases support safe delete plus super-admin permanent cleanup
@@ -80,7 +87,7 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 - **Purchases list** — Optional **Hide complete & cancelled** on the filter row; **Export CSV** can follow the same option when active.
 - **Purchase form** — **Save Purchase** at the top of the screen (same submit as the bottom) for long forms.
 - **Windows / IANA timezones** — `tzdata` is listed in `requirements.txt` so `zoneinfo` (Slack message dates, display timezone) works on Windows; install dependencies with `pip install -r requirements.txt`.
-- **Slack Integration** — Outbound notifications; inbound slash commands, interactivity, and Events API URL (`/api/slack/events`); optional **channel history sync** for up to six channels with per-channel cursors (`conversations.history` → **Slack imports** triage UI); **Phase 2 manual Run apply** (prefilled new run from mappings, Run backlink + audit, **Slack Importer** user flag)
+- **Slack Integration** — Outbound notifications; inbound slash commands, interactivity, and Events API URL (`/api/slack/events`); optional **channel history sync** for up to six channels with per-channel cursors (`conversations.history` → **Slack imports** triage UI); **Run apply** now includes ranked candidate source lots, manual lot selection or split allocation on preview, prefilled run allocation rows, Run backlink + audit, and **Slack Importer** user flag
 - **Supplier Performance** — All-time, 90-day, and last-batch analytics per farm
 - **Strain Performance** — Compare yields and cost/gram across strains and suppliers
 - **Data Quality Controls** — Flag runs missing $/lb; optionally exclude unpriced runs from analytics
@@ -91,6 +98,13 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 ---
 
 ## Project Structure
+
+### Current UX / automation-ready additions
+
+- Purchases and Inventory now emphasize allocation state, exceptions, remaining pounds, tracking readiness, and next actions.
+- Slack imports now behaves more like an inbox, with triage buckets that distinguish auto-ready rows from rows needing confirmation, manual matching, or exception handling.
+- Printable lot label pages and `/scan/lot/<tracking_id>` resolver routes are in place so future barcode / QR rendering can reuse the same lot identity model.
+- The data model now includes `ScaleDevice` and `WeightCapture` for future smart-scale integration work.
 
 The app still starts from `app.py`, but the active route surface now lives across focused package modules in `gold_drop/`. `app.py` remains the entrypoint, app-factory host, and compatibility layer while route registration and startup bootstrap delegate into extracted modules.
 
@@ -109,6 +123,7 @@ Current extracted route/bootstrap modules:
 - `gold_drop/settings_module.py`
 - `gold_drop/slack_integration_module.py`
 - `gold_drop/bootstrap_module.py`
+- `services/lot_allocation.py`
 
 ```
 gold-drop/
@@ -174,6 +189,8 @@ gold-drop/
 ---
 
 ## Deploying to Production
+
+Testing note: `pytest.ini` disables pytest's cache provider (`-p no:cacheprovider`) because `.pytest_cache` is not reliable in this environment.
 
 Current deployment note: the Flask app is still created through `create_app()` in `app.py`, but active route registration now fans out through the extracted `gold_drop/*_module.py` files and startup bootstrap delegates through `gold_drop/bootstrap_module.py`.
 
@@ -300,7 +317,9 @@ Use **Purchases → Import spreadsheet** (not the **Import** menu used for runs)
 - **Lab tests / supplier attachments** are stored as file references under `static/uploads/labs/`
 - **Photo assets** are indexed in `photo_assets` for cross-screen search/filter and audit traceability
 - **Cost Entries** are allocated across total dry grams in their date ranges
-- **Lots** → **Run Inputs** → **Runs** (many-to-many through run_inputs)
-- Lot `remaining_weight_lbs` is automatically decremented when used in a run
+- **Lots** → **Run Inputs** → **Runs** (many-to-many through run_inputs; `RunInput` is the explicit lot allocation record)
+- Purchase lots now carry `tracking_id`, barcode payload, QR payload, and label metadata for future scan / label workflows
+- Lot `remaining_weight_lbs` is automatically decremented when used in a run, and run saves require selected lot allocations to match `bio_in_reactor_lbs`
+- Slack run preview can rank candidate lots and prefill one-lot or split-lot allocations before the run form opens
 - Yield calculations and cost-per-gram are auto-computed on save
 - **Runs** may store **HTE pipeline stage** (awaiting lab → lab clean / queued for strip → stripped), **lab/COA file paths** (JSON, under `static/uploads/labs/`), and **terpenes / retail distillate grams** after stripping

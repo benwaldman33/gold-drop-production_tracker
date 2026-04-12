@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Lot labels{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Lot labels{% if purchase %} - {{ purchase.batch_id or purchase.id }}{% endif %}</h2>
+  {% if purchase %}
+  <a href="{{ url_for('purchases_bp.purchase_journey', purchase_id=purchase.id) }}" class="btn btn-secondary">Back to journey</a>
+  {% endif %}
+  <button type="button" class="btn btn-primary" onclick="window.print()">Print</button>
+</div>
+
+<div class="summary-row" style="margin-bottom:16px;">
+  <div class="summary-card">
+    <div class="summary-label">Labels</div>
+    <div class="summary-value">{{ labels|length }}</div>
+    <div class="summary-footnote">One per physical inventory lot</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-label">Purchase</div>
+    <div class="summary-value">{{ purchase.batch_id if purchase else 'Lot label' }}</div>
+    <div class="summary-footnote">{{ purchase.supplier.name if purchase and purchase.supplier else 'Inventory tracking' }}</div>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;">
+  {% for label in labels %}
+  <div class="card" style="border:2px solid var(--border); break-inside:avoid; page-break-inside:avoid;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+      <div>
+        <div class="text-sm cell-muted">Tracking ID</div>
+        <div class="text-mono" style="font-size:1.2rem;font-weight:700;">{{ label.tracking_id }}</div>
+      </div>
+      <div style="text-align:right;">
+        <div class="text-sm cell-muted">Label version</div>
+        <div>{{ label.label_version }}</div>
+      </div>
+    </div>
+
+    <div style="margin-top:14px;">
+      <div><strong>Batch:</strong> {{ label.batch_id or '-' }}</div>
+      <div><strong>Supplier:</strong> {{ label.supplier_name or '-' }}</div>
+      <div><strong>Strain:</strong> {{ label.strain_name or '-' }}</div>
+    </div>
+
+    <div class="summary-row" style="margin-top:14px;">
+      <div class="summary-card" style="margin:0;">
+        <div class="summary-label">Lot lbs</div>
+        <div class="summary-value">{{ '%.1f'|format(label.weight_lbs or 0) }}</div>
+      </div>
+      <div class="summary-card" style="margin:0;">
+        <div class="summary-label">Remaining lbs</div>
+        <div class="summary-value">{{ '%.1f'|format(label.remaining_weight_lbs or 0) }}</div>
+      </div>
+    </div>
+
+    <div style="margin-top:14px;">
+      <div><strong>Potency:</strong> {{ label.potency_pct if label.potency_pct is not none else '-' }}</div>
+      <div><strong>Condition:</strong> {{ label.clean_or_dirty or '-' }}</div>
+      <div><strong>Testing:</strong> {{ label.testing_status or '-' }}</div>
+    </div>
+
+    <div style="margin-top:14px;">
+      <div class="text-sm cell-muted">Barcode payload</div>
+      <div class="text-mono" style="word-break:break-all;">{{ label.barcode_value }}</div>
+    </div>
+    <div style="margin-top:10px;">
+      <div class="text-sm cell-muted">QR / scan payload</div>
+      <div class="text-mono" style="word-break:break-all;">{{ label.scan_url or label.qr_value }}</div>
+    </div>
+
+    <div style="margin-top:16px;padding:14px;border:1px dashed var(--border);text-align:center;">
+      <div class="text-sm cell-muted">Barcode / QR render placeholder</div>
+      <div class="text-mono" style="margin-top:6px;">{{ label.tracking_id }}</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

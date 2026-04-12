@@ -49,11 +49,13 @@ def purchase_journey(purchase_id):
     if error:
         return error
     journey = build_purchase_journey_payload(purchase, include_archived=include_archived)
+    focus_tracking_id = (request.args.get("lot") or "").strip()
     return render_template(
         "purchase_journey.html",
         purchase=purchase,
         journey=journey,
         include_archived=include_archived,
+        focus_tracking_id=focus_tracking_id,
     )
 
 

@@ -1,5 +1,54 @@
 from __future__ import annotations
 
+import os
+
+from flask import current_app, request, url_for
+
+from gold_drop.uploads import json_paths, save_lab_files, save_photo_library_files
+from services.photo_assets import create_photo_asset, normalize_photo_category
+
+
+def remove_upload_if_unreferenced(root, file_path: str) -> None:
+    if not file_path:
+        return
+    if root.PhotoAsset.query.filter_by(file_path=file_path).first():
+        return
+    if not (
+        file_path.startswith("uploads/library/")
+        or file_path.startswith("uploads/purchases/")
+    ):
+        return
+    abs_path = os.path.join(current_app.static_folder, file_path.replace("/", os.sep))
+    try:
+        if os.path.isfile(abs_path):
+            os.remove(abs_path)
+    except OSError:
+        pass
+
+
+def safe_internal_redirect(form_key: str = "next", default_endpoint: str = "photos_library", **default_kwargs) -> str:
+    url = (request.form.get(form_key) or "").strip()
+    if url.startswith("/") and not url.startswith("//"):
+        return url
+    return url_for(default_endpoint, **default_kwargs)
+
+
+def photos_library_filters_from_hidden_form() -> dict:
+    out = {}
+    q = (request.form.get("ret_q") or "").strip()
+    if q:
+        out["q"] = q
+    sid = (request.form.get("ret_supplier_id") or "").strip()
+    if sid:
+        out["supplier_id"] = sid
+    pid = (request.form.get("ret_purchase_id") or "").strip()
+    if pid:
+        out["purchase_id"] = pid
+    category = (request.form.get("ret_category") or "").strip()
+    if category:
+        out["category"] = category
+    return out
+
 
 def register_routes(app, root):
     @root.login_required
@@ -250,7 +299,7 @@ def supplier_edit_view(root, sid):
                 root.flash("Lab test date is invalid.", "error")
                 return root.redirect(root.url_for("supplier_edit", sid=supplier.id))
             files = root.request.files.getlist("lab_files")
-            saved_paths = root._save_lab_files(files, prefix=f"lab-{supplier.id}")
+            saved_paths = save_lab_files(files, prefix=f"lab-{supplier.id}")
             pot_raw = (root.request.form.get("potency_pct") or "").strip()
             try:
                 potency_pct = float(pot_raw) if pot_raw else None
@@ -270,7 +319,7 @@ def supplier_edit_view(root, sid):
             )
             root.db.session.add(test)
             for path in saved_paths:
-                root._create_photo_asset(path, source_type="lab_test", category="lab_result", tags=["lab", "test", "supplier"], title=f"Lab test {test_date.isoformat()}", supplier_id=supplier.id, purchase_id=test.purchase_id, uploaded_by=root.current_user.id)
+                create_photo_asset(path, source_type="lab_test", category="lab_result", tags=["lab", "test", "supplier"], title=f"Lab test {test_date.isoformat()}", supplier_id=supplier.id, purchase_id=test.purchase_id, uploaded_by=root.current_user.id)
             root.log_audit("create", "lab_test", test.id, details=root.json.dumps({"supplier_id": supplier.id, "files": len(saved_paths)}))
             root.db.session.commit()
             root.flash("Lab test entry added.", "success")
@@ -278,13 +327,13 @@ def supplier_edit_view(root, sid):
             files = root.request.files.getlist("attachment_files")
             title = (root.request.form.get("title") or "").strip() or None
             doc_type = ((root.request.form.get("document_type") or "coa").strip() or "coa")
-            saved_paths = root._save_lab_files(files, prefix=f"supplier-{supplier.id}")
+            saved_paths = save_lab_files(files, prefix=f"supplier-{supplier.id}")
             if not saved_paths:
                 root.flash("Select at least one attachment file.", "error")
                 return root.redirect(root.url_for("supplier_edit", sid=supplier.id))
             for path in saved_paths:
                 root.db.session.add(root.SupplierAttachment(supplier_id=supplier.id, document_type=doc_type, title=title, file_path=path, uploaded_by=root.current_user.id))
-                root._create_photo_asset(path, source_type="supplier_attachment", category="supplier_doc", tags=["supplier", doc_type], title=title or f"Supplier {doc_type}", supplier_id=supplier.id, uploaded_by=root.current_user.id)
+                create_photo_asset(path, source_type="supplier_attachment", category="supplier_doc", tags=["supplier", doc_type], title=title or f"Supplier {doc_type}", supplier_id=supplier.id, uploaded_by=root.current_user.id)
             root.log_audit("create", "supplier_attachment", supplier.id, details=root.json.dumps({"count": len(saved_paths), "type": doc_type}))
             root.db.session.commit()
             root.flash("Supplier attachments uploaded.", "success")
@@ -307,7 +356,7 @@ def supplier_lab_test_delete_view(root, sid, test_id):
     if not test or test.supplier_id != sid:
         root.flash("Lab test record not found.", "error")
         return root.redirect(root.url_for("supplier_edit", sid=sid))
-    for path in root._json_paths(test.result_paths_json):
+    for path in json_paths(test.result_paths_json):
         root.PhotoAsset.query.filter(root.PhotoAsset.file_path == path, root.PhotoAsset.supplier_id == sid, root.PhotoAsset.source_type == "lab_test").delete(synchronize_session=False)
     root.log_audit("delete", "lab_test", test.id, details=root.json.dumps({"supplier_id": sid}))
     root.db.session.delete(test)
@@ -357,16 +406,16 @@ def photos_library_view(root):
 
 def photos_upload_view(root):
     files = root.request.files.getlist("files")
-    ret = root._photos_library_filters_from_hidden_form()
+    ret = photos_library_filters_from_hidden_form()
     if not files or not any(getattr(f, "filename", None) for f in files if f):
         root.flash("Choose one or more files to upload.", "error")
         return root.redirect(root.url_for("photos_library", **ret))
     try:
-        saved = root._save_photo_library_files(files, prefix="library")
+        saved = save_photo_library_files(files, prefix="library")
     except ValueError as exc:
         root.flash(str(exc), "error")
         return root.redirect(root.url_for("photos_library", **ret))
-    category = root._normalize_photo_category(root.request.form.get("category", ""), fallback="other")
+    category = normalize_photo_category(root.request.form.get("category", ""), fallback="other")
     title = (root.request.form.get("title") or "").strip() or None
     tags = [tag.strip().lower() for tag in (root.request.form.get("tags") or "").strip().split(",") if tag.strip()]
     supplier_id = (root.request.form.get("supplier_id") or "").strip() or None
@@ -378,7 +427,7 @@ def photos_upload_view(root):
         if not purchase or purchase.deleted_at is not None:
             purchase_id = None
     for path in saved:
-        root._create_photo_asset(path, source_type="manual", category=category, tags=tags, title=title, supplier_id=supplier_id, purchase_id=purchase_id, uploaded_by=root.current_user.id)
+        create_photo_asset(path, source_type="manual", category=category, tags=tags, title=title, supplier_id=supplier_id, purchase_id=purchase_id, uploaded_by=root.current_user.id)
     try:
         root.db.session.commit()
     except Exception:
@@ -394,16 +443,16 @@ def photo_asset_delete_view(root, asset_id):
     asset = root.db.session.get(root.PhotoAsset, asset_id)
     if not asset:
         root.flash("Asset not found.", "error")
-        return root.redirect(root._safe_internal_redirect())
+        return root.redirect(safe_internal_redirect())
     if asset.source_type not in ("manual", "purchase_upload"):
         root.flash("This file is tied to field intake, suppliers, or lab records and cannot be deleted here.", "error")
-        return root.redirect(root._safe_internal_redirect())
+        return root.redirect(safe_internal_redirect())
     path = asset.file_path
     root.db.session.delete(asset)
     root.db.session.commit()
-    root._remove_upload_if_unreferenced(path)
+    remove_upload_if_unreferenced(root, path)
     root.flash("File removed.", "success")
-    return root.redirect(root._safe_internal_redirect())
+    return root.redirect(safe_internal_redirect())
 
 
 def purchase_support_doc_delete_view(root, purchase_id, asset_id):
@@ -418,6 +467,6 @@ def purchase_support_doc_delete_view(root, purchase_id, asset_id):
     path = asset.file_path
     root.db.session.delete(asset)
     root.db.session.commit()
-    root._remove_upload_if_unreferenced(path)
+    remove_upload_if_unreferenced(root, path)
     root.flash("Supporting document removed.", "success")
     return root.redirect(root.url_for("purchase_edit", purchase_id=purchase_id))

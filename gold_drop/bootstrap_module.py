@@ -2,6 +2,17 @@ from __future__ import annotations
 
 import json
 
+from gold_drop.slack import _default_slack_run_field_rules
+from services.bootstrap_helpers import (
+    backfill_default_inventory_lots,
+    backfill_purchase_approval,
+    ensure_postgres_run_hte_columns,
+    ensure_postgres_slack_ingested_columns,
+    ensure_sqlite_schema,
+    migrate_biomass_to_purchase,
+    reconcile_closed_purchase_inventory_lots,
+)
+
 
 def init_db(root):
     """Create tables and seed initial data."""
@@ -12,13 +23,13 @@ def init_db(root):
         err_txt = str(getattr(exc, "orig", None) or exc).lower()
         if "already exists" not in err_txt and "duplicate" not in err_txt:
             raise
-    root._ensure_sqlite_schema()
-    root._ensure_postgres_run_hte_columns()
-    root._ensure_postgres_slack_ingested_columns()
-    root._reconcile_closed_purchase_inventory_lots()
-    root._backfill_default_inventory_lots()
-    root._backfill_purchase_approval()
-    root._migrate_biomass_to_purchase()
+    ensure_sqlite_schema(root)
+    ensure_postgres_run_hte_columns(root)
+    ensure_postgres_slack_ingested_columns(root)
+    reconcile_closed_purchase_inventory_lots(root)
+    backfill_default_inventory_lots(root)
+    backfill_purchase_approval(root)
+    migrate_biomass_to_purchase(root)
 
     if not root.User.query.first():
         admin = root.User(username="admin", display_name="Admin", role="super_admin")
@@ -59,7 +70,7 @@ def init_db(root):
     if not root.db.session.get(root.SystemSetting, root.SLACK_RUN_MAPPINGS_KEY):
         root.db.session.add(root.SystemSetting(
             key=root.SLACK_RUN_MAPPINGS_KEY,
-            value=json.dumps({"rules": root._default_slack_run_field_rules()}),
+            value=json.dumps({"rules": _default_slack_run_field_rules()}),
             description="Slack derived_json -> Run field preview mappings (Phase 1 JSON)",
         ))
 

@@ -20,7 +20,19 @@ Saving a new hint clears that row's resolved channel ID and cursor so the next s
 No. **Sync** only stores rows in **Slack imports**. It does not create Runs or Purchases by itself.
 
 **How do I turn a Slack message into a Run?**  
-Someone with **Slack Importer** access (or Super Admin) opens **Slack imports** -> **Create run** or **Create run from Slack** on the preview. That opens **New Run** with fields prefilled from mapping rules. You still must **Save** the run, which requires **User** or **Super Admin**.
+Someone with **Slack Importer** access (or Super Admin) opens **Slack imports** -> **Preview**. The preview shows mapped Run fields plus candidate source lots. You can accept a suggested lot, manually choose a lot, or split the weight across multiple lots, then open **Create run from Slack**. The app opens **New Run** prefilled from mapping rules and your lot selection. You still must **Save** the run, which requires **User** or **Super Admin**.
+
+**What do the inbox buckets on Slack imports mean?**  
+They are triage groups: **Auto-ready**, **Needs confirmation**, **Needs manual match**, **Blocked**, and **Processed**. They help operators work the safest rows first and isolate ambiguity instead of guessing.
+
+**How does the app decide which lot a Slack message should use?**  
+It ranks candidate lots using supplier, strain, remaining quantity, and received date. If there is one clearly defensible lot, the preview suggests it. If there are multiple plausible lots, you must confirm or choose manually.
+
+**Can I split one Slack run across multiple lots?**  
+Yes. On the Slack preview page, enter per-lot weights on the candidate lot card. The selected split carries into the Run form as prefilled lot rows.
+
+**Why won’t a Slack-created run save if the lot rows look mostly right?**  
+Because the selected lot weights must add up exactly to **Lbs in Reactor**. The Run form now shows a live allocation summary and projected remaining lot balances so you can fix the difference before saving.
 
 **Who can open Slack imports?**  
 Users with the **Slack Importer** flag in **Settings -> Users**, and all **Super Admins**. Admins can also reach it from Settings.
@@ -70,6 +82,9 @@ No. They are created unapproved. If the spreadsheet asked for an on-hand status,
 **Where do I open the Batch Journey timeline?**  
 From **Purchases** click **Journey** on a row, or open **Edit Purchase** and click **View Journey**.
 
+**What does the Journey show now besides stages?**  
+It now shows inventory lots, lot tracking IDs, remaining and allocated weights, and run allocations so you can trace which lots fed which runs.
+
 **Can I export a batch timeline?**  
 Yes. On the Journey page use **Export JSON** or **Export CSV**.
 
@@ -108,6 +123,15 @@ Days of supply uses on-hand pounds only, divided by your **Daily Throughput Targ
 
 **Why don't I see a purchase on the On Hand inventory table?**  
 **On Hand** only lists lots from purchases that are both in an arrived status (**delivered**, **in_testing**, **available**, **processing**) and approved (`purchase_approved_at` set). Approve the purchase first, then set the right status.
+
+**What is a tracking ID on a lot?**  
+It is the permanent machine-readable identity for that physical lot. The app now stores it so future barcode / QR label workflows can use the same lot record.
+
+**Can I print a lot label already?**  
+Yes. Label pages are available from Purchases, Inventory, and Journey surfaces. They currently print the lot identity, payloads, and scan path even before full barcode / QR image rendering is added.
+
+**Is the app ready for smart scales?**  
+At the data-model level, yes. The system now has `ScaleDevice` and `WeightCapture` so future device-captured weights can attach to intake, lot, or run workflows without redesigning the material model.
 
 ## Biomass Pipeline and Purchases
 

@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+from gold_drop.purchases import (
+    biomass_budget_snapshot_for_purchase,
+    enforce_weekly_biomass_purchase_limits,
+)
+from services.bootstrap_helpers import maintain_purchase_inventory_lots
+
 
 BATCH_EDIT_META = {
     "runs": {"label": "Extraction runs", "perm": "can_edit"},
@@ -109,9 +115,9 @@ def batch_edit_view(root, entity):
                 root.flash(e, "error")
             if touched:
                 for p in touched:
-                    root._maintain_purchase_inventory_lots(p)
-                    new_snap = root._biomass_budget_snapshot_for_purchase(p)
-                    root._enforce_weekly_biomass_purchase_limits(p, new_snap, enforce_cap=True)
+                    maintain_purchase_inventory_lots(root, p)
+                    new_snap = biomass_budget_snapshot_for_purchase(p)
+                    enforce_weekly_biomass_purchase_limits(p, new_snap, enforce_cap=True)
             if n:
                 root.log_audit("update", "purchase_batch", root.gen_uuid(), details=f"count={n}")
                 root.db.session.commit()

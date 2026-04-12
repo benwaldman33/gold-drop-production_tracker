@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+from gold_drop.purchases import biomass_budget_snapshot_for_purchase, enforce_weekly_biomass_purchase_limits
+from services.purchase_helpers import (
+    ensure_unique_batch_id,
+    generate_batch_id,
+    maintain_purchase_inventory_lots,
+    parse_sheet_date,
+)
 
 PURCHASE_IMPORT_ALLOWED_STATUSES = frozenset({
     "declared", "committed", "ordered", "in_transit", "delivered",
@@ -69,10 +76,7 @@ def purchase_import_parse_date(root, value: str):
             return root.datetime.strptime(value[:10], "%Y-%m-%d").date()
         except ValueError:
             pass
-    parsed = root._parse_date(value)
-    if parsed and parsed.year == 1900:
-        parsed = parsed.replace(year=root.date.today().year)
-    return parsed
+    return parse_sheet_date(value)
 
 
 def purchase_import_parse_required_positive_float(value: str) -> float | None:
@@ -356,15 +360,22 @@ def purchase_import_commit_norm(root, norm: dict, *, create_suppliers: bool) -> 
     else:
         d = purchase.delivery_date or purchase.purchase_date
         w = purchase.actual_weight_lbs or purchase.stated_weight_lbs
-        purchase.batch_id = root._ensure_unique_batch_id(root._generate_batch_id(supplier.name, d, w), exclude_purchase_id=purchase.id)
+        purchase.batch_id = ensure_unique_batch_id(
+            generate_batch_id(supplier.name, d, w),
+            exclude_purchase_id=purchase.id,
+        )
 
     strain = norm.get("strain")
     if strain:
         wlot = float(purchase.stated_weight_lbs)
         root.db.session.add(root.PurchaseLot(purchase_id=purchase.id, strain_name=strain, weight_lbs=wlot, remaining_weight_lbs=wlot))
 
-    root._maintain_purchase_inventory_lots(purchase)
-    root._enforce_weekly_biomass_purchase_limits(purchase, root._biomass_budget_snapshot_for_purchase(purchase), enforce_cap=True)
+    maintain_purchase_inventory_lots(purchase, root.INVENTORY_ON_HAND_PURCHASE_STATUSES)
+    enforce_weekly_biomass_purchase_limits(
+        purchase,
+        biomass_budget_snapshot_for_purchase(purchase),
+        enforce_cap=True,
+    )
     root.log_audit("create", "purchase", purchase.id)
     root.db.session.commit()
 

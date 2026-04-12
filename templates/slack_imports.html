@@ -11,20 +11,49 @@
 <div class="page-header">
   <h2>Slack channel imports</h2>
   {% if current_user.is_super_admin %}
-  <a href="{{ url_for('settings') }}#settings-maintenance" class="btn btn-secondary">← Settings</a>
+  <a href="{{ url_for('settings') }}#settings-maintenance" class="btn btn-secondary">&larr; Settings</a>
   {% endif %}
   {% if current_user.is_super_admin %}
-  <a href="{{ url_for('settings_slack_run_mappings') }}" class="btn btn-secondary">Slack → field mappings</a>
+  <a href="{{ url_for('settings_slack_run_mappings') }}" class="btn btn-secondary">Slack to field mappings</a>
   {% endif %}
+</div>
+
+<div class="summary-row" style="margin-bottom:16px;">
+  <div class="summary-card">
+    <div class="summary-label">Auto-ready</div>
+    <div class="summary-value">{{ bucket_counts.auto_ready }}</div>
+    <div class="summary-footnote">Safe to apply with a clear lot choice</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-label">Needs confirmation</div>
+    <div class="summary-value">{{ bucket_counts.needs_confirmation }}</div>
+    <div class="summary-footnote">Likely match, but operator confirmation is prudent</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-label">Manual match</div>
+    <div class="summary-value">{{ bucket_counts.needs_manual_match }}</div>
+    <div class="summary-footnote">Ambiguous source lots or missing context</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-label">Blocked</div>
+    <div class="summary-value">{{ bucket_counts.blocked }}</div>
+    <div class="summary-footnote">Cannot promote until required data is added</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-label">Processed</div>
+    <div class="summary-value">{{ bucket_counts.processed }}</div>
+    <div class="summary-footnote">Already linked or intentionally hidden</div>
+  </div>
 </div>
 
 <div class="card" style="margin-bottom:16px;">
   <p class="text-sm" style="color:var(--text-muted);">
-    Rows come from channel history sync (Super Admin → Settings → Slack). Channel names in the filter use the labels from <strong>Channel history sync</strong> (e.g. <code>#biomass-intake</code>) plus the Slack id. Date filters use the app display timezone (Settings → Operational parameters).
-    <strong>Phase 2:</strong> use <strong>Create run from Slack</strong> to open the Run form prefilled from mapping rules; linkage is stored when you save the run.
-    <strong>Triage:</strong> <em>Promotion</em> = whether a saved run backlinks this message; <em>Coverage</em> = whether Run-target rules used the full derived payload (heuristic).
-    Use <strong>Hide from list</strong> on a row to remove noise you will never promote (stored for everyone; use <strong>Include hidden messages</strong> below to find and restore).
-    <strong>Hide imported</strong> under the table only hides rows already linked to a run in your browser until you toggle it off.
+    Treat this page like an operator inbox. Every row is sorted into a triage bucket so the team can work from auto-ready rows to blocked exceptions.
+    Use <strong>Preview</strong> to inspect the parsed payload, candidate source lots, and manual split-allocation controls before you open the Run form.
+  </p>
+  <p class="text-sm" style="color:var(--text-muted); margin-top:8px;">
+    Rows come from channel history sync. Date filters use the app display timezone (Settings &rarr; Operational parameters). Use
+    <strong>Hide from list</strong> for noise you never want in the inbox. <strong>Hide imported</strong> only hides rows already linked to a saved run in your browser session.
   </p>
 
   <form method="GET" action="{{ url_for('settings_slack_imports') }}" style="margin-top:14px;display:grid;gap:10px;">
@@ -32,7 +61,7 @@
     <div class="form-row-3">
       <div class="form-group" style="margin:0;">
         <label class="text-sm">Date from <span class="cell-muted">({{ app_display_timezone_name }})</span></label>
-        <input type="date" name="start_date" value="{{ start_date or '' }}" title="Slack message local calendar date in {{ app_display_timezone_name }} (same as Message time column)">
+        <input type="date" name="start_date" value="{{ start_date or '' }}" title="Slack message local calendar date in {{ app_display_timezone_name }}">
       </div>
       <div class="form-group" style="margin:0;">
         <label class="text-sm">Date to <span class="cell-muted">(inclusive, {{ app_display_timezone_name }})</span></label>
@@ -100,17 +129,13 @@
         Include hidden messages (triage-dismissed rows)
       </label>
     </div>
-    <p class="text-sm cell-muted" style="margin:0;">
-      <strong>Contains</strong> / <strong>Does not contain</strong> use case-insensitive substring tests on the raw body.
-      <strong>Equals</strong> compares the entire message (after trimming). Kind uses live parsing (same as Preview).
-    </p>
   </form>
 </div>
 
 <div class="card">
   <div class="slack-imports-table-toolbar" style="display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;margin-top:4px;margin-bottom:12px;">
     <button type="button" id="slack-imports-toggle-imported" class="btn btn-secondary btn-sm"
-      title="Imported here means the Slack message is already linked to a saved run (Promotion column)."
+      title="Imported here means the Slack message is already linked to a saved run."
       aria-pressed="false">Hide imported</button>
     <span id="slack-imports-hide-note" class="text-sm cell-muted" hidden></span>
   </div>
@@ -118,22 +143,37 @@
     <table>
       <thead>
         <tr>
+          <th>Inbox bucket</th>
           <th>Message time <span class="cell-muted" style="font-weight:400;">({{ app_display_timezone_name }})</span></th>
-          <th>Slack ts</th>
           <th>Kind</th>
           <th>Promotion</th>
           <th>Coverage</th>
-          <th>Derived</th>
+          <th>Derived / Suggested lots</th>
           <th>Raw (trimmed)</th>
           <th></th>
         </tr>
       </thead>
       <tbody>
         {% for r in rows %}
+        {% set bucket_class = {
+          'auto_ready': 'badge-green',
+          'needs_confirmation': 'badge-gold',
+          'needs_manual_match': 'badge-gray',
+          'blocked': 'badge-red',
+          'processed': 'badge-blue'
+        }.get(r._triage_bucket, 'badge-gray') %}
         <tr class="{% if r.hidden_from_imports %}slack-import-row--triage-hidden{% endif %}" data-slack-linked="{% if r._linked_run_ids %}1{% else %}0{% endif %}">
-          <td class="text-sm">{{ r.message_ts | slack_ts_la }}</td>
-          <td class="text-mono text-sm cell-muted" title="Slack API timestamp">{{ r.message_ts }}</td>
-          <td><span class="badge badge-gray">{{ r.derived.get('message_kind') or r.message_kind or '—' }}</span></td>
+          <td class="text-sm" style="min-width:180px;">
+            <span class="badge {{ bucket_class }}">{{ r._triage_bucket_label }}</span>
+            <div class="cell-muted" style="margin-top:6px;">{{ r._triage_bucket_reason }}</div>
+          </td>
+          <td class="text-sm">
+            <div>{{ r.message_ts | slack_ts_la }}</div>
+            <div class="text-mono cell-muted" title="Slack API timestamp">{{ r.message_ts }}</div>
+          </td>
+          <td>
+            <span class="badge badge-gray">{{ r.derived.get('message_kind') or r.message_kind or '-' }}</span>
+          </td>
           <td class="text-sm">
             {% if r.hidden_from_imports %}
             <span class="badge badge-gray" style="margin-bottom:4px;display:inline-block;">Hidden from list</span><br>
@@ -147,16 +187,28 @@
             {% endif %}
           </td>
           <td><span class="badge {% if r._coverage == 'full' %}badge-green{% elif r._coverage == 'partial' %}badge-gold{% else %}badge-gray{% endif %}">{{ r._coverage }}</span></td>
-          <td class="text-sm" style="max-width:260px;word-break:break-word;">
+          <td class="text-sm" style="max-width:320px;word-break:break-word;">
             {% if r.derived %}
               {% for k, v in r.derived.items() %}
               <strong>{{ k }}</strong>: {{ v }}{% if not loop.last %}<br>{% endif %}
               {% endfor %}
             {% else %}
-              —
+              -
+            {% endif %}
+            {% if r._lot_candidates %}
+            <div style="margin-top:8px;">
+              <strong>Suggested lots</strong>
+              {% for candidate in r._lot_candidates[:2] %}
+              <div class="cell-muted" style="margin-top:4px;">
+                {{ candidate.tracking_id or ('Lot #' ~ candidate.lot_id) }} |
+                {{ '%.1f'|format(candidate.remaining_weight_lbs or 0) }} lbs remaining |
+                score {{ candidate.score }}
+              </div>
+              {% endfor %}
+            </div>
             {% endif %}
           </td>
-          <td class="text-sm" style="max-width:320px;white-space:pre-wrap;word-break:break-word;">{{ (r.raw_text or '')[:500] }}{% if r.raw_text and r.raw_text|length > 500 %}…{% endif %}</td>
+          <td class="text-sm" style="max-width:320px;white-space:pre-wrap;word-break:break-word;">{{ (r.raw_text or '')[:500] }}{% if r.raw_text and r.raw_text|length > 500 %}...{% endif %}</td>
           <td style="white-space:nowrap;">
             <div style="display:flex;flex-direction:column;align-items:stretch;gap:6px;">
               <div style="display:flex;flex-wrap:wrap;gap:6px;">

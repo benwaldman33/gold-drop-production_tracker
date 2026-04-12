@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 
 def register_routes(app, root):
@@ -286,7 +286,7 @@ def save_biomass_purchase(root, existing):
                     "to or from Committed / Delivered."
                 )
         if enters_commitment:
-            purchase.purchase_approved_at = datetime.utcnow()
+            purchase.purchase_approved_at = datetime.now(timezone.utc)
             purchase.purchase_approved_by_user_id = root.current_user.id
 
         purchase.status = new_status
@@ -367,7 +367,7 @@ def save_biomass_purchase(root, existing):
 def biomass_delete_view(root, item_id):
     item = root.db.session.get(root.Purchase, item_id)
     if item:
-        deleted_at = datetime.utcnow()
+        deleted_at = datetime.now(timezone.utc)
         item.deleted_at = deleted_at
         item.deleted_by = root.current_user.id
         for lot in item.lots:

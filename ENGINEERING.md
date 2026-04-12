@@ -25,6 +25,9 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
   - **`gold_drop/bootstrap_module.py`** - startup database initialization and seed logic delegated from `init_db()`
   - **`gold_drop/settings_module.py`** - extracted settings/admin view logic called by the `/settings` route
   - **`gold_drop/uploads.py`** - upload validation, save helpers, and JSON path normalization
+  - **`services/lot_allocation.py`** - lot tracking backfill, lot candidate ranking, and run allocation apply / release logic
+  - **`services/lot_labels.py`** - lot label payload generation for print / future scan workflows
+  - **`services/scale_ingest.py`** - future manual / device weight-capture service boundary
 - `app.py` still re-exports some extracted helpers, but the active dashboard, field intake, runs, purchases, biomass, costs, inventory, batch edit, suppliers/photos, purchase import, strains, settings, and Slack surfaces are now registered from package modules with `add_url_rule`, and startup init delegates through `gold_drop/bootstrap_module.py`.
 - `tests/test_app_factory.py` provides a minimal factory + route-registration smoke check so future extractions are verified against a real app object, not just imports.
 
@@ -36,6 +39,37 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
 - **`gold_drop/slack_integration_module.py`** - active Slack integration surface
 - **`gold_drop/settings_module.py`** - Settings POST delegates for `form_type=slack`
 - **`tests/test_app_factory.py`** and **`tests/test_slack_mapping_logic.py`** - current smoke and Slack logic coverage
+
+## Lot allocation integrity + lot identity
+
+- **Models (`models.py`)**
+  - `PurchaseLot` now carries `tracking_id`, `barcode_value`, `qr_value`, `label_generated_at`, and `label_version`.
+  - `PurchaseLot` exposes `allocated_weight_lbs` and `remaining_pct` convenience properties for views and services.
+  - `RunInput` now carries `allocation_source`, `allocation_confidence`, `allocation_notes`, and `slack_ingested_message_id`.
+- **Generation / backfill**
+  - New lots receive tracking / label fields on insert.
+  - `services/bootstrap_helpers.py` extends SQLite schema compatibility for the new `purchase_lots` and `run_inputs` columns.
+  - Purchase approval and inventory-lot maintenance backfill missing lot tracking fields so legacy rows are upgraded without a manual migration step.
+- **Service boundary**
+  - `services/lot_allocation.py`
+    - `ensure_lot_tracking_fields`
+    - `ensure_purchase_lot_tracking`
+    - `collect_run_allocations_from_form`
+    - `apply_run_allocations`
+    - `release_run_allocations`
+    - `rank_lot_candidates`
+    - `choose_default_lot_allocation`
+- **Active callers**
+  - `gold_drop/purchases_module.py` uses the service to backfill tracking on approval and lot creation.
+  - `gold_drop/runs_module.py` uses the service for allocation validation, decrement, and release instead of inline lot math.
+- **Rule now enforced**
+  - Run save fails unless selected lot allocations equal `bio_in_reactor_lbs` exactly.
+- **Label / scan surfaces**
+  - `GET /lots/<lot_id>/label`
+  - `GET /purchases/<purchase_id>/labels`
+  - `GET /scan/lot/<tracking_id>` -> currently resolves into purchase journey with focused lot context
+- **Coverage**
+  - `tests/test_lot_allocation.py` covers tracking-id generation, approval-time backfill, partial allocation / release, and over-allocation rejection.
 
 ## List view filter & sort persistence (`LIST_FILTERS_SESSION_KEY`)
 
@@ -212,6 +246,32 @@ SQLite adds the sync config table in `_ensure_sqlite_schema()`; other engines re
 - **Triage helpers:** `_slack_linked_run_ids_index`, `_slack_coverage_label(preview)` (full / partial / none aligned with PRD heuristic).
 - **Audit:** Run `create` with JSON `details` when saved from Slack (`slack_import`, ids, `duplicate_apply`, `prefill_keys`).
 - **Templates:** `slack_imports.html`, `slack_import_preview.html`, `slack_import_apply_confirm.html`, `run_form.html` (hidden Slack fields + `can_save_run`). `base.html` sidebar link when `current_user.can_slack_import`.
+- **Lot-resolution additions (current):**
+  - Slack preview loads ranked candidate lots through `services/lot_allocation.py`.
+  - `templates/slack_import_preview.html` allows manual or split lot-weight entry and serializes the selection into `slack_selected_allocations_json`.
+  - `services/slack_workflow.py` validates `slack_selected_allocations_json` and preserves it through duplicate-confirm passthrough.
+  - `gold_drop/runs_module.py` hydrates those selected lot rows into the Run form.
+  - `templates/run_form.html` shows live allocation totals, target vs delta, and projected remaining balances per lot row. Client-side summary is advisory; server-side validation remains authoritative.
+  - `templates/slack_imports.html` now groups rows into inbox buckets (`auto_ready`, `needs_confirmation`, `needs_manual_match`, `blocked`, `processed`) while still showing promotion and coverage dimensions.
+
+## Scale-readiness
+
+- **Models (`models.py`)**
+  - `ScaleDevice` - connection / protocol metadata for future connected scales
+  - `WeightCapture` - accepted weight evidence linked to purchase, lot, run, and optional device
+- **Service boundary**
+  - `services/scale_ingest.py`
+    - `parse_ascii_scale_payload`
+    - `create_weight_capture`
+- **Current scope**
+  - No live hardware polling yet.
+  - The model is ready for manual vs device-captured weights and stores raw payload, source mode, stability flag, and linked operational object ids.
+
+## Time handling and test runner notes
+
+- App/runtime timestamps now use timezone-aware UTC (`datetime.now(timezone.utc)` or model-level `utc_now()` helpers) instead of `datetime.utcnow()`.
+- `models.py` includes `coerce_utc()` so older naive `expires_at` values can still be compared safely.
+- `pytest.ini` disables pytest cache provider (`-p no:cacheprovider`) because `.pytest_cache` is unreliable in this environment; normal local test runs should no longer emit cache warnings.
 
 ### Slack → field mappings (Phase 1)
 
@@ -271,15 +331,19 @@ Implemented baseline: clickable journey page + JSON API + JSON/CSV export for a 
 - `GET /purchases/<id>/journey/export?format=json|csv` (download)
 - Routes are now served from `blueprints/purchases.py`; payload generation lives in `services/purchases_journey.py` (no lazy runtime import of `app`).
 
-### Event model (example)
+### Event model (current payload)
 - `stage_key`: declared | testing | committed | delivered | inventory | extraction | post_processing | sales
 - `state`: done | in_progress | blocked | not_started | not_applicable
 - `started_at`, `completed_at`
 - `metrics`: lbs/g/$ summary at that stage
 - `links`: list of source record URLs/ids
+- `lots`: purchase-lot payloads including tracking id, original / allocated / remaining lbs, potency, testing state, and clean / dirty state
+- `allocations`: explicit `RunInput` edges from lot to run
+- `runs`: downstream run nodes used by the HTML timeline and API consumers
 
 ### UI notes
 - Render as stepper/timeline with status colors and tooltips.
 - Show partial completion (e.g., some lots consumed in runs, others still on-hand).
 - Include “last updated” and “include archived” toggles for audit contexts.
 - Include direct **Export JSON** / **Export CSV** actions on the journey page.
+- `templates/purchase_journey.html` now includes dedicated **Inventory Lots** and **Run Allocations** sections rather than only stage summaries.

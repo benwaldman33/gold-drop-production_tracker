@@ -1,5 +1,39 @@
 from __future__ import annotations
 
+from gold_drop.purchases import budget_week_purchase_metrics, purchase_week_start
+
+from services.field_submissions import decorate_submission_rows
+
+
+DEPARTMENT_PAGES = {
+    "operations": {
+        "title": "Operations",
+        "intro": "Run throughput, recent production performance, and extraction workflow metrics.",
+        "links": [
+            {"label": "Dashboard", "endpoint": "dashboard"},
+            {"label": "Runs", "endpoint": "runs_list"},
+        ],
+    },
+    "purchasing": {
+        "title": "Purchasing",
+        "intro": "Purchasing budget, supplier activity, and inventory commitments tied to biomass intake.",
+        "links": [
+            {"label": "Purchasing", "endpoint": "biomass_purchasing_dashboard"},
+            {"label": "Purchases", "endpoint": "purchases_list"},
+            {"label": "Suppliers", "endpoint": "suppliers_list"},
+        ],
+    },
+    "quality": {
+        "title": "Quality",
+        "intro": "Supplier quality context, field approvals, and test-linked operating data.",
+        "links": [
+            {"label": "Suppliers", "endpoint": "suppliers_list"},
+            {"label": "Field approvals", "endpoint": "field_approvals"},
+            {"label": "Strains", "endpoint": "strains_list"},
+        ],
+    },
+}
+
 
 def register_routes(app, root):
     @root.login_required
@@ -23,6 +57,93 @@ def register_routes(app, root):
     app.add_url_rule("/dept/", endpoint="dept_index_slash", view_func=dept_index)
     app.add_url_rule("/dept/<slug>", endpoint="dept_view", view_func=dept_view)
     app.add_url_rule("/biomass-purchasing", endpoint="biomass_purchasing_dashboard", view_func=biomass_purchasing_dashboard)
+
+
+def _weekly_finance_snapshot(root):
+    week_start = purchase_week_start(root.date.today())
+    week_end = week_start + root.timedelta(days=6)
+    weekly_dollar_budget = root.SystemSetting.get_float("weekly_dollar_budget", 0)
+
+    week_commitment_dollars = root.db.session.query(
+        root.func.sum(root.Purchase.total_cost)
+    ).filter(
+        root.Purchase.deleted_at.is_(None),
+        root.Purchase.purchase_approved_at.isnot(None),
+        root.Purchase.purchase_approved_at >= root.datetime.combine(week_start, root.datetime.min.time()),
+        root.Purchase.purchase_approved_at < root.datetime.combine(week_end + root.timedelta(days=1), root.datetime.min.time()),
+    ).scalar() or 0
+
+    week_purchase_dollars = root.db.session.query(
+        root.func.sum(root.Purchase.total_cost)
+    ).filter(
+        root.Purchase.deleted_at.is_(None),
+        root.Purchase.purchase_date >= week_start,
+        root.Purchase.purchase_date <= week_end,
+    ).scalar() or 0
+
+    return {
+        "week_start": week_start,
+        "week_end": week_end,
+        "weekly_dollar_budget": float(weekly_dollar_budget or 0),
+        "week_commitment_dollars": float(week_commitment_dollars or 0),
+        "week_purchase_dollars": float(week_purchase_dollars or 0),
+    }
+
+
+def _department_stat_sections(root, slug: str):
+    if slug == "operations":
+        runs_30 = root.Run.query.filter(
+            root.Run.deleted_at.is_(None),
+            root.Run.run_date >= root.date.today() - root.timedelta(days=30),
+        ).all()
+        total_runs = len(runs_30)
+        total_lbs = sum(float(r.bio_in_reactor_lbs or 0) for r in runs_30)
+        avg_yield = (
+            sum(float(r.overall_yield_pct or 0) for r in runs_30 if r.overall_yield_pct is not None) /
+            max(1, sum(1 for r in runs_30 if r.overall_yield_pct is not None))
+        ) if runs_30 else 0.0
+        return [{
+            "title": "30 day snapshot",
+            "rows": [
+                ("Runs", total_runs),
+                ("Biomass processed (lbs)", f"{total_lbs:,.0f}"),
+                ("Average overall yield", f"{avg_yield:.2f}%"),
+            ],
+        }]
+
+    if slug == "purchasing":
+        snap = _weekly_finance_snapshot(root)
+        on_hand = root.db.session.query(root.func.sum(root.PurchaseLot.remaining_weight_lbs)).join(root.Purchase).filter(
+            root.PurchaseLot.remaining_weight_lbs > 0,
+            root.PurchaseLot.deleted_at.is_(None),
+            root.Purchase.deleted_at.is_(None),
+            root.Purchase.status.in_(root.INVENTORY_ON_HAND_PURCHASE_STATUSES),
+            root.Purchase.purchase_approved_at.isnot(None),
+        ).scalar() or 0
+        return [{
+            "title": "This week",
+            "rows": [
+                ("Weekly $ budget", f"${snap['weekly_dollar_budget']:,.0f}"),
+                ("Commitments", f"${snap['week_commitment_dollars']:,.0f}"),
+                ("Purchases", f"${snap['week_purchase_dollars']:,.0f}"),
+                ("Inventory on hand (lbs)", f"{float(on_hand or 0):,.0f}"),
+            ],
+        }]
+
+    if slug == "quality":
+        pending_submissions = root.FieldPurchaseSubmission.query.filter_by(status="pending").count()
+        lab_tests = root.LabTest.query.count()
+        active_suppliers = root.Supplier.query.filter_by(is_active=True).count()
+        return [{
+            "title": "Current state",
+            "rows": [
+                ("Pending field approvals", pending_submissions),
+                ("Lab tests recorded", lab_tests),
+                ("Active suppliers", active_suppliers),
+            ],
+        }]
+
+    return []
 
 
 def dashboard_view(root):
@@ -190,7 +311,7 @@ def dashboard_view(root):
         else:
             best_supplier_mom["pct_change"] = None
 
-    fin = root._weekly_finance_snapshot()
+    fin = _weekly_finance_snapshot(root)
     return root.render_template(
         "dashboard.html",
         kpi_cards=kpi_cards,
@@ -213,20 +334,20 @@ def dashboard_view(root):
 
 
 def dept_index_view(root):
-    return root.render_template("dept_index.html", departments=root.DEPARTMENT_PAGES)
+    return root.render_template("dept_index.html", departments=DEPARTMENT_PAGES)
 
 
 def dept_view_view(root, slug):
-    cfg = root.DEPARTMENT_PAGES.get(slug)
+    cfg = DEPARTMENT_PAGES.get(slug)
     if not cfg:
         root.abort(404)
-    stat_sections = root._department_stat_sections(slug)
+    stat_sections = _department_stat_sections(root, slug)
     return root.render_template("dept_view.html", slug=slug, dept=cfg, stat_sections=stat_sections)
 
 
 def biomass_purchasing_dashboard_view(root):
     today = root.date.today()
-    current_monday = root._purchase_week_start(today)
+    current_monday = purchase_week_start(today)
     weekly_budget_usd = root.SystemSetting.get_float("biomass_purchase_weekly_budget_usd", 0)
     weekly_target_lbs = root.SystemSetting.get_float("biomass_purchase_weekly_target_lbs", 0)
     target_pot = root.SystemSetting.get_float("biomass_purchase_weekly_target_potency_pct", 0)
@@ -237,7 +358,7 @@ def biomass_purchasing_dashboard_view(root):
     for offset in (-2, -1, 0, 1, 2):
         ws = current_monday + root.timedelta(weeks=offset)
         we = ws + root.timedelta(days=6)
-        metrics = root._budget_week_purchase_metrics(ws, we)
+        metrics = budget_week_purchase_metrics(ws, we)
         avg_pot = (metrics["weighted_pot_sum"] / metrics["lbs"]) if metrics["lbs"] > 1e-9 else None
         if offset == -2:
             bucket_label = "2 wks ago"
@@ -269,7 +390,7 @@ def biomass_purchasing_dashboard_view(root):
     reviewed = root.FieldPurchaseSubmission.query.filter(
         root.FieldPurchaseSubmission.status.in_(("approved", "rejected"))
     ).order_by(root.FieldPurchaseSubmission.submitted_at.desc()).all()
-    root._decorate_field_submission_rows(pending + reviewed)
+    decorate_submission_rows(pending + reviewed)
     return root.render_template(
         "biomass_purchasing_dashboard.html",
         weeks=weeks,

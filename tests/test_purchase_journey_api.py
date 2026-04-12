@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 import app as app_module
 from models import Purchase, PurchaseLot, Run, RunInput, Supplier, db, gen_uuid
@@ -26,7 +26,7 @@ def test_purchase_journey_api_includes_extraction_and_post_processing():
         delivery_date=date(2026, 4, 2),
         status="delivered",
         stated_weight_lbs=100,
-        purchase_approved_at=datetime.utcnow(),
+        purchase_approved_at=datetime.now(timezone.utc),
     )
     lot = PurchaseLot(strain_name="Journey Strain", weight_lbs=100, remaining_weight_lbs=60)
     run = Run(run_date=date(2026, 4, 3), reactor_number=1, dry_hte_g=10, dry_thca_g=20, hte_pipeline_stage="awaiting_lab")
@@ -60,6 +60,10 @@ def test_purchase_journey_api_includes_extraction_and_post_processing():
             assert stages["extraction"]["metrics"]["run_count"] == 1
             assert stages["post_processing"]["state"] == "in_progress"
             assert stages["inventory"]["metrics"]["remaining_lbs"] == 60.0
+            assert payload["lots"][0]["tracking_id"].startswith("LOT-")
+            assert payload["lots"][0]["allocated_weight_lbs"] == 40.0
+            assert payload["allocations"][0]["weight_lbs"] == 40.0
+            assert payload["runs"][0]["run_id"] == run_id
     finally:
         with app.app_context():
             ri = RunInput.query.filter_by(run_id=run_id, lot_id=lot_id).first()
@@ -94,7 +98,7 @@ def test_purchase_journey_api_include_archived_flag_for_admin():
         strain_name="Archived",
         weight_lbs=20,
         remaining_weight_lbs=20,
-        deleted_at=datetime.utcnow(),
+        deleted_at=datetime.now(timezone.utc),
     )
     with app.app_context():
         db.session.add(supplier)
@@ -199,7 +203,7 @@ def test_archived_purchase_journey_requires_include_archived_flag():
         purchase_date=date(2026, 4, 1),
         status="cancelled",
         stated_weight_lbs=10,
-        deleted_at=datetime.utcnow(),
+        deleted_at=datetime.now(timezone.utc),
     )
     with app.app_context():
         db.session.add(supplier)
