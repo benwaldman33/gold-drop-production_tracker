@@ -197,6 +197,7 @@ Current deployment note: the Flask app is still created through `create_app()` i
 After merging work into **`main`**, deploy by pulling on the server (`git fetch` / `git checkout main` / `git pull`) and **restarting the app process** (e.g. `systemctl restart …`) so Gunicorn reloads code. The Flask app is created through `create_app()` in `app.py`, and database bootstrap still runs during startup. New database columns are applied on startup: SQLite via **`init_db()`** + **`_ensure_sqlite_schema()`**; PostgreSQL via **`init_db()`** + **`_ensure_postgres_run_hte_columns()`** (and `db.create_all()` for new tables).
 
 **Important:** restart from the project root (the directory that contains `app.py`, `models.py`, `templates/`, and `requirements.txt`).
+- Normal startup now seeds only baseline users, settings, KPI targets, and Slack mapping defaults. Historical/demo records are loaded only when you run the explicit demo seed script.
 - In this repo/environment that directory is: `/workspace/gold-drop-production_tracker`
 - In the VPS example below it is: `/opt/gold-drop`
 
@@ -281,6 +282,43 @@ EOF
 
 sudo systemctl enable golddrop
 sudo systemctl start golddrop
+```
+
+### Fresh operational reset
+
+Use the reset script when you want a clean working database without losing the ability to log in.
+
+What it keeps:
+- users and passwords
+- system settings and KPI targets
+- Slack sync configuration
+- cost entries
+- scale-device configuration
+
+What it clears:
+- purchases and lots
+- runs and run inputs
+- Slack imported rows
+- field submissions and intake tokens
+- suppliers, attachments, lab tests, and photo assets
+- audit/history rows
+
+It creates a SQLite backup automatically when a SQLite DB file is present.
+
+```bash
+cd /opt/gold-drop
+source venv/bin/activate
+python scripts/reset_operational_data.py --yes
+sudo systemctl restart golddrop
+```
+
+If you intentionally want the old demo/historical dataset in a fresh environment, seed it explicitly:
+
+```bash
+cd /opt/gold-drop
+source venv/bin/activate
+python scripts/seed_demo_data.py --yes
+sudo systemctl restart golddrop
 ```
 
 ---

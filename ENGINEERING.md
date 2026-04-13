@@ -22,7 +22,7 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
   - **`gold_drop/suppliers_module.py`** - suppliers, supplier attachments/lab tests, and photos library routes delegated from `app.py`
   - **`gold_drop/purchase_import_module.py`** - purchase spreadsheet import staging/validation/commit flow delegated from `app.py`
   - **`gold_drop/strains_module.py`** - strain performance route delegated from `app.py`
-  - **`gold_drop/bootstrap_module.py`** - startup database initialization and seed logic delegated from `init_db()`
+  - **`gold_drop/bootstrap_module.py`** - startup database initialization and baseline seed logic delegated from `init_db()`; historical/demo seeding is now explicit, not automatic
   - **`gold_drop/settings_module.py`** - extracted settings/admin view logic called by the `/settings` route; also normalizes legacy field-token datetimes before render so Settings can compare token expiry against aware UTC safely
   - **`gold_drop/uploads.py`** - upload validation, save helpers, and JSON path normalization
   - **`services/lot_allocation.py`** - lot tracking backfill, lot candidate ranking, and run allocation apply / release logic
@@ -30,6 +30,20 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
   - **`services/scale_ingest.py`** - future manual / device weight-capture service boundary
 - `app.py` still re-exports some extracted helpers, but the active dashboard, field intake, runs, purchases, biomass, costs, inventory, batch edit, suppliers/photos, purchase import, strains, settings, and Slack surfaces are now registered from package modules with `add_url_rule`, and startup init delegates through `gold_drop/bootstrap_module.py`.
 - `tests/test_app_factory.py` provides a minimal factory + route-registration smoke check so future extractions are verified against a real app object, not just imports.
+
+## Reset + seeding operations
+
+- **Startup bootstrap (`gold_drop/bootstrap_module.init_db`)** now seeds only baseline rows:
+  - default users (`admin`, `ops`, `viewer`)
+  - system settings
+  - KPI targets
+  - Slack mapping defaults
+- **Historical/demo data is no longer auto-seeded on startup.**
+- **Explicit demo seed:** `python scripts/seed_demo_data.py --yes`
+- **Operational reset:** `python scripts/reset_operational_data.py --yes`
+  - keeps users/passwords, system settings, KPI targets, Slack sync config, scale devices, and cost entries
+  - clears purchases/lots, runs/run inputs, Slack imports, field submissions/tokens, suppliers and related attachments/photos/tests, and audit/history rows
+  - creates a SQLite backup automatically when a SQLite DB file is present
 
 ## Resume checkpoint
 
