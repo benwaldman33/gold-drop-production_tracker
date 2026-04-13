@@ -80,6 +80,12 @@ No. They are created unapproved. If the spreadsheet asked for an on-hand status,
 **Do I have to open a purchase to approve it?**
 No. If your account has purchase-approval permission, unapproved rows now show an inline **Approve** button directly on the **Purchases** list and **Biomass Pipeline** list. The full **Edit Purchase** screen still has the same approval action.
 
+**How do I start fresh without losing login access?**
+Use the server-side reset script, not a manual database wipe. `python scripts/reset_operational_data.py --yes` clears operational data but keeps users/passwords, system settings, KPI targets, Slack sync config, scale-device config, and cost entries. It also creates a SQLite backup automatically when applicable.
+
+**Why did a blank database come back with demo/history records?**
+That used to happen because startup bootstrap seeded historical/demo data automatically when no runs existed. The app now only seeds baseline users/settings/KPIs on startup. Demo/history loading is explicit via `python scripts/seed_demo_data.py --yes`.
+
 ## Batch Journey
 
 **Where do I open the Batch Journey timeline?**  

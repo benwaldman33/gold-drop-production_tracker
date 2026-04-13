@@ -33,6 +33,7 @@ Use the left sidebar:
 - **Photo Library**: searchable media across supplier/purchase/field contexts; editors can upload and remove certain attachment types here (see **Photo Library** section)
 - **Slack imports** (Slack Importer capability or Super Admin): triage synced Slack messages, preview mapped Run fields, review candidate source lots, optionally split a run across multiple lots, then **create run from Slack** (prefilled form)
 - **Settings** (Super Admin only): system parameters, KPIs, users, maintenance actions
+- **Fresh operational reset** (server-side admin task): clears operational business data while keeping users, passwords, settings, KPI targets, Slack sync config, and cost entries
 - **Import**: CSV import for **historical runs** (run-style exports)—not the same as **Purchases → Import spreadsheet**
 
 ---
@@ -480,6 +481,40 @@ Set KPI targets and green/yellow thresholds to match operational goals.
 ### Users
 Admins can create users and assign roles. (This manual does not include any credentials.)
 - Disabled users can be reactivated.
+
+### Fresh start / operational reset
+
+If you want to start over with a clean operating database but still keep login access and financial settings, use the server-side reset script instead of deleting the database file manually.
+
+The supported reset keeps:
+- users and passwords
+- system settings and KPI targets
+- Slack sync configuration
+- cost entries
+- scale-device configuration
+
+It clears:
+- purchases, lots, runs, and run inputs
+- Slack imports
+- field submissions and field access tokens
+- suppliers, related attachments/tests/photos
+- audit/history rows
+
+Run from the project root on the server:
+
+```bash
+source venv/bin/activate
+python scripts/reset_operational_data.py --yes
+sudo systemctl restart golddrop
+```
+
+If you explicitly want demo/historical data in a fresh environment, seed it separately:
+
+```bash
+source venv/bin/activate
+python scripts/seed_demo_data.py --yes
+sudo systemctl restart golddrop
+```
 - Permanent delete is available only when no historical audit activity exists.
 - **Slack Importer:** For accounts that are not Super Admin, you can grant **Slack import** (sidebar **Slack imports**, preview, and apply-to-new-run). Super Admins always have this capability. Optionally check **Slack Importer** when creating a user. Editors with this flag can complete the full apply flow; **Viewer + Slack Importer** can review prefilled runs but cannot save them.
 

@@ -98,9 +98,6 @@ def init_db(root):
 
     root.db.session.commit()
 
-    if root.Run.query.count() == 0:
-        root._seed_historical_data()
-
     missing = root.Purchase.query.filter(root.db.or_(root.Purchase.batch_id.is_(None), root.Purchase.batch_id == "")).all()
     for purchase in missing:
         supplier_name = purchase.supplier_name

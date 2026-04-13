@@ -39,14 +39,17 @@ def _call_view_as_user(
 
 def test_bootstrap_init_db_is_idempotent_for_seeded_rows():
     app = app_module.app
-    with app.app_context():
-        bootstrap_module.init_db(app_module)
-        bootstrap_module.init_db(app_module)
+    with patch.object(app_module, "_seed_historical_data") as seed_mock:
+        with app.app_context():
+            bootstrap_module.init_db(app_module)
+            bootstrap_module.init_db(app_module)
 
-        assert User.query.filter_by(username="admin").count() == 1
-        assert User.query.filter_by(username="ops").count() == 1
-        assert User.query.filter_by(username="viewer").count() == 1
-        assert SystemSetting.query.filter_by(key=app_module.SLACK_RUN_MAPPINGS_KEY).count() == 1
+            assert User.query.filter_by(username="admin").count() == 1
+            assert User.query.filter_by(username="ops").count() == 1
+            assert User.query.filter_by(username="viewer").count() == 1
+            assert SystemSetting.query.filter_by(key=app_module.SLACK_RUN_MAPPINGS_KEY).count() == 1
+
+        seed_mock.assert_not_called()
 
 
 def test_settings_route_rejects_non_admin_user():
