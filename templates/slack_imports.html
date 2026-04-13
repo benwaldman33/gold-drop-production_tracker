@@ -139,18 +139,21 @@
       aria-pressed="false">Hide imported</button>
     <span id="slack-imports-hide-note" class="text-sm cell-muted" hidden></span>
   </div>
+  <div id="slack-imports-scrollbar-top" class="slack-imports-scrollbar-top" aria-hidden="true">
+    <div id="slack-imports-scrollbar-top-inner"></div>
+  </div>
   <div id="slack-imports-table-wrap" class="table-wrap slack-imports-table-wrap">
-    <table>
+    <table class="slack-imports-table">
       <thead>
         <tr>
-          <th>Inbox bucket</th>
-          <th>Message time <span class="cell-muted" style="font-weight:400;">({{ app_display_timezone_name }})</span></th>
-          <th>Kind</th>
-          <th>Promotion</th>
-          <th>Coverage</th>
-          <th>Derived / Suggested lots</th>
-          <th>Raw (trimmed)</th>
-          <th></th>
+          <th class="slack-col-bucket">Inbox bucket</th>
+          <th class="slack-col-time">Message time <span class="cell-muted" style="font-weight:400;">({{ app_display_timezone_name }})</span></th>
+          <th class="slack-col-kind">Kind</th>
+          <th class="slack-col-promotion">Promotion</th>
+          <th class="slack-col-coverage">Coverage</th>
+          <th class="slack-col-derived">Derived / Suggested lots</th>
+          <th class="slack-col-raw">Raw (trimmed)</th>
+          <th class="slack-col-actions"></th>
         </tr>
       </thead>
       <tbody>
@@ -163,18 +166,18 @@
           'processed': 'badge-blue'
         }.get(r._triage_bucket, 'badge-gray') %}
         <tr class="{% if r.hidden_from_imports %}slack-import-row--triage-hidden{% endif %}" data-slack-linked="{% if r._linked_run_ids %}1{% else %}0{% endif %}">
-          <td class="text-sm" style="min-width:180px;">
+          <td class="text-sm slack-col-bucket">
             <span class="badge {{ bucket_class }}">{{ r._triage_bucket_label }}</span>
             <div class="cell-muted" style="margin-top:6px;">{{ r._triage_bucket_reason }}</div>
           </td>
-          <td class="text-sm">
+          <td class="text-sm slack-col-time">
             <div>{{ r.message_ts | slack_ts_la }}</div>
             <div class="text-mono cell-muted" title="Slack API timestamp">{{ r.message_ts }}</div>
           </td>
-          <td>
+          <td class="slack-col-kind">
             <span class="badge badge-gray">{{ r.derived.get('message_kind') or r.message_kind or '-' }}</span>
           </td>
-          <td class="text-sm">
+          <td class="text-sm slack-col-promotion">
             {% if r.hidden_from_imports %}
             <span class="badge badge-gray" style="margin-bottom:4px;display:inline-block;">Hidden from list</span><br>
             {% endif %}
@@ -186,8 +189,8 @@
               <span class="badge badge-gray">Not promoted</span>
             {% endif %}
           </td>
-          <td><span class="badge {% if r._coverage == 'full' %}badge-green{% elif r._coverage == 'partial' %}badge-gold{% else %}badge-gray{% endif %}">{{ r._coverage }}</span></td>
-          <td class="text-sm" style="max-width:320px;word-break:break-word;">
+          <td class="slack-col-coverage"><span class="badge {% if r._coverage == 'full' %}badge-green{% elif r._coverage == 'partial' %}badge-gold{% else %}badge-gray{% endif %}">{{ r._coverage }}</span></td>
+          <td class="text-sm slack-col-derived">
             {% if r.derived %}
               {% for k, v in r.derived.items() %}
               <strong>{{ k }}</strong>: {{ v }}{% if not loop.last %}<br>{% endif %}
@@ -208,8 +211,8 @@
             </div>
             {% endif %}
           </td>
-          <td class="text-sm" style="max-width:320px;white-space:pre-wrap;word-break:break-word;">{{ (r.raw_text or '')[:500] }}{% if r.raw_text and r.raw_text|length > 500 %}...{% endif %}</td>
-          <td style="white-space:nowrap;">
+          <td class="text-sm slack-col-raw">{{ (r.raw_text or '')[:500] }}{% if r.raw_text and r.raw_text|length > 500 %}...{% endif %}</td>
+          <td class="slack-col-actions">
             <div style="display:flex;flex-direction:column;align-items:stretch;gap:6px;">
               <div style="display:flex;flex-wrap:wrap;gap:6px;">
                 <a href="{{ url_for('settings_slack_import_preview', msg_id=r.id) }}" class="btn btn-secondary btn-sm">Preview</a>
@@ -245,6 +248,8 @@
   var wrap = document.getElementById("slack-imports-table-wrap");
   var btn = document.getElementById("slack-imports-toggle-imported");
   var note = document.getElementById("slack-imports-hide-note");
+  var topBar = document.getElementById("slack-imports-scrollbar-top");
+  var topInner = document.getElementById("slack-imports-scrollbar-top-inner");
   if (!wrap || !btn) return;
 
   function linkedCount() {
@@ -269,6 +274,29 @@
     }
   }
 
+  function syncTopScrollbarWidth() {
+    if (!topBar || !topInner) return;
+    topInner.style.width = wrap.scrollWidth + "px";
+    topBar.hidden = wrap.scrollWidth <= wrap.clientWidth + 2;
+  }
+
+  var syncing = false;
+  if (topBar && topInner) {
+    topBar.addEventListener("scroll", function () {
+      if (syncing) return;
+      syncing = true;
+      wrap.scrollLeft = topBar.scrollLeft;
+      syncing = false;
+    });
+    wrap.addEventListener("scroll", function () {
+      if (syncing) return;
+      syncing = true;
+      topBar.scrollLeft = wrap.scrollLeft;
+      syncing = false;
+    });
+    window.addEventListener("resize", syncTopScrollbarWidth);
+  }
+
   btn.addEventListener("click", function () {
     apply(!wrap.classList.contains("slack-imports-table-wrap--hide-linked"));
   });
@@ -278,6 +306,7 @@
       apply(true);
     }
   } catch (e) {}
+  syncTopScrollbarWidth();
 })();
 </script>
 {% endblock %}
