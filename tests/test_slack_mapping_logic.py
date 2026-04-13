@@ -182,10 +182,12 @@ class SlackMappingLogicTest(unittest.TestCase):
             "slack_supplier_mode": "existing",
             "slack_supplier_id": "abc",
             "slack_confirm_fuzzy_supplier": "1",
+            "slack_canonical_strain": "Blue Dream",
         }
         d = app_module._slack_apply_form_passthrough(form)
         self.assertEqual(d["slack_supplier_id"], "abc")
         self.assertEqual(d["slack_confirm_fuzzy_supplier"], "1")
+        self.assertEqual(d["slack_canonical_strain"], "Blue Dream")
 
     def test_resolution_errors_on_source_without_supplier_choice(self) -> None:
         form = {"slack_supplier_mode": "skip"}
@@ -222,6 +224,63 @@ class SlackMappingLogicTest(unittest.TestCase):
         )
         self.assertIsNotNone(res2)
         self.assertIsNone(err2)
+
+    def test_supplier_alias_match_does_not_require_confirm(self) -> None:
+        sup = MagicMock()
+        sup.name = "Worldwide Farms LLC"
+        self.assertTrue(app_module._slack_supplier_exact_name_match("Worldwide", sup))
+        cand = app_module._slack_build_supplier_candidate("Worldwide", sup)
+        self.assertIsNotNone(cand)
+        self.assertFalse(cand["requires_confirmation"])
+
+    def test_selected_canonical_strain_requires_confirm_for_near_match(self) -> None:
+        strain, err = app_module._slack_selected_canonical_strain(
+            {
+                "slack_canonical_strain": "Blue Dream BX1",
+                "slack_biomass_strain": "Blue Dream",
+            },
+            raw_strain="Blue Dream",
+            text_field="slack_biomass_strain",
+            canonical_field="slack_canonical_strain",
+            confirm_field="slack_confirm_fuzzy_strain",
+            required_for_label="canonical strain",
+        )
+        self.assertEqual(strain, "")
+        self.assertIn("Confirm canonical strain mapping", err or "")
+        strain2, err2 = app_module._slack_selected_canonical_strain(
+            {
+                "slack_canonical_strain": "Blue Dream BX1",
+                "slack_biomass_strain": "Blue Dream",
+                "slack_confirm_fuzzy_strain": "1",
+            },
+            raw_strain="Blue Dream",
+            text_field="slack_biomass_strain",
+            canonical_field="slack_canonical_strain",
+            confirm_field="slack_confirm_fuzzy_strain",
+            required_for_label="canonical strain",
+        )
+        self.assertEqual(strain2, "Blue Dream BX1")
+        self.assertIsNone(err2)
+
+    @patch.object(app_module.db.session, "query")
+    def test_strain_candidates_weight_supplier_context(self, mock_query) -> None:
+        query = MagicMock()
+        query.join.return_value = query
+        query.filter.return_value = query
+        query.all.return_value = [
+            ("Luxury Runtz", "supplier-a", "Worldwide Farms"),
+            ("Luxury Runtz BX1", "supplier-b", "Other Farm"),
+            ("Luxury Runtz", "supplier-a", "Worldwide Farms"),
+        ]
+        mock_query.return_value = query
+        cands = app_module._slack_strain_candidates_for_name(
+            "Luxury Runtz",
+            supplier_ids=["supplier-a"],
+        )
+        self.assertTrue(cands)
+        self.assertEqual(cands[0]["name"], "Luxury Runtz")
+        self.assertTrue(cands[0]["supplier_match"])
+        self.assertFalse(cands[0]["requires_confirmation"])
 
 
 if __name__ == "__main__":

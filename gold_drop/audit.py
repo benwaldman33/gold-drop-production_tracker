@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from flask_login import current_user
 
@@ -15,7 +15,6 @@ def log_audit(action, entity_type, entity_id, details=None, user_id=None):
         entity_type=entity_type,
         entity_id=entity_id,
         details=details,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
     )
     db.session.add(audit)
-

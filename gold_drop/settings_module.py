@@ -1,8 +1,106 @@
 from __future__ import annotations
 
+import hashlib
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from gold_drop.purchases import (
+    biomass_budget_snapshot_for_purchase,
+    enforce_weekly_biomass_purchase_limits,
+)
+from models import coerce_utc
+from services.field_submissions import (
+    decorate_submission_rows,
+    field_approval_return_redirect,
+    field_submission_error_redirect,
+    load_lots,
+    promote_submission_photos,
+    submission_total_weight,
+)
+
+
+def register_routes(app, root):
+    @root.admin_required
+    def settings():
+        return settings_view(root)
+
+    @root.login_required
+    def field_approvals():
+        return field_approvals_view(root)
+
+    @root.field_purchase_approval_required
+    def field_submission_approve(submission_id):
+        return field_submission_approve_view(root, submission_id)
+
+    @root.field_purchase_approval_required
+    def field_submission_reject(submission_id):
+        return field_submission_reject_view(root, submission_id)
+
+    @root.admin_required
+    def settings_backfill_photo_assets():
+        return settings_backfill_photo_assets_view(root)
+
+    @root.admin_required
+    def user_toggle_slack_importer(user_id):
+        return user_toggle_slack_importer_view(root, user_id)
+
+    @root.admin_required
+    def user_toggle_purchase_approver(user_id):
+        return user_toggle_purchase_approver_view(root, user_id)
+
+    @root.admin_required
+    def user_toggle_active(user_id):
+        return user_toggle_active_view(root, user_id)
+
+    @root.admin_required
+    def user_delete(user_id):
+        return user_delete_view(root, user_id)
+
+    @root.admin_required
+    def field_token_create():
+        return field_token_create_view(root)
+
+    @root.admin_required
+    def field_token_revoke(token_id):
+        return field_token_revoke_view(root, token_id)
+
+    @root.admin_required
+    def field_token_delete(token_id):
+        return field_token_delete_view(root, token_id)
+
+    @root.admin_required
+    def settings_recalculate_costs():
+        return settings_recalculate_costs_view(root)
+
+    app.add_url_rule("/settings", endpoint="settings", view_func=settings, methods=["GET", "POST"])
+    app.add_url_rule("/field-approvals", endpoint="field_approvals", view_func=field_approvals)
+    app.add_url_rule(
+        "/settings/field_submissions/<submission_id>/approve",
+        endpoint="field_submission_approve",
+        view_func=field_submission_approve,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/settings/field_submissions/<submission_id>/reject",
+        endpoint="field_submission_reject",
+        view_func=field_submission_reject,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/settings/backfill_photo_assets",
+        endpoint="settings_backfill_photo_assets",
+        view_func=settings_backfill_photo_assets,
+        methods=["POST"],
+    )
+    app.add_url_rule("/settings/users/<user_id>/toggle_slack_importer", endpoint="user_toggle_slack_importer", view_func=user_toggle_slack_importer, methods=["POST"])
+    app.add_url_rule("/settings/users/<user_id>/toggle_purchase_approver", endpoint="user_toggle_purchase_approver", view_func=user_toggle_purchase_approver, methods=["POST"])
+    app.add_url_rule("/settings/users/<user_id>/toggle_active", endpoint="user_toggle_active", view_func=user_toggle_active, methods=["POST"])
+    app.add_url_rule("/settings/users/<user_id>/delete", endpoint="user_delete", view_func=user_delete, methods=["POST"])
+    app.add_url_rule("/settings/field_tokens/create", endpoint="field_token_create", view_func=field_token_create, methods=["POST"])
+    app.add_url_rule("/settings/field_tokens/<token_id>/revoke", endpoint="field_token_revoke", view_func=field_token_revoke, methods=["POST"])
+    app.add_url_rule("/settings/field_tokens/<token_id>/delete", endpoint="field_token_delete", view_func=field_token_delete, methods=["POST"])
+    app.add_url_rule("/settings/recalculate_costs", endpoint="settings_recalculate_costs", view_func=settings_recalculate_costs, methods=["POST"])
 
 
 def settings_redirect(root):
@@ -13,6 +111,20 @@ def settings_redirect(root):
             anchor = f"#{anchor.lstrip('#')}"
         target = f"{target}{anchor}"
     return root.redirect(target)
+
+
+def _hash_field_token(token: str) -> str:
+    return hashlib.sha256((token or "").encode("utf-8")).hexdigest()
+
+
+def _token_share_texts(link: str) -> tuple[str, str, str]:
+    sms = f"Gold Drop field intake link: {link}"
+    subject = "Gold Drop field intake link"
+    body = (
+        "Use this secure Gold Drop field intake link to submit biomass or purchase data:\n\n"
+        f"{link}\n"
+    )
+    return sms, subject, body
 
 
 def settings_view(root):
@@ -251,54 +363,27 @@ def settings_view(root):
             root.flash(f"Password updated for '{u.display_name}'.", "success")
 
         elif form_type == "slack":
-            slack_map = {
-                "slack_enabled": "Enable Slack integration",
-                "slack_webhook_url": "Slack incoming webhook URL",
-                "slack_signing_secret": "Slack signing secret",
-                "slack_bot_token": "Slack bot token",
-                "slack_default_channel": "Default Slack channel",
-            }
-            for key, desc in slack_map.items():
-                if key == "slack_enabled":
-                    val = "1" if root.request.form.get("slack_enabled") else "0"
-                else:
-                    val = (root.request.form.get(key) or "").strip()
-                existing = root.db.session.get(root.SystemSetting, key)
-                if existing:
-                    existing.value = val
-                else:
-                    root.db.session.add(root.SystemSetting(key=key, value=val, description=desc))
-            root._ensure_slack_sync_configs()
-            for i in range(root.SLACK_SYNC_CHANNEL_SLOTS):
-                hint = (root.request.form.get(f"sync_ch_{i}") or "").strip()
-                row = root.SlackChannelSyncConfig.query.filter_by(slot_index=i).first()
-                if not row:
-                    row = root.SlackChannelSyncConfig(slot_index=i, channel_hint=hint)
-                    root.db.session.add(row)
-                else:
-                    old = (row.channel_hint or "").strip()
-                    row.channel_hint = hint
-                    if old != hint:
-                        row.resolved_channel_id = None
-                        row.last_watermark_ts = None
-            root.db.session.commit()
-            root.flash("Slack integration saved (webhook, tokens, default channel, and up to six history-sync channels).", "success")
+            root.slack_integration_module.handle_settings_form(root)
 
         return settings_redirect(root)
 
-    root._ensure_slack_sync_configs()
+    root.slack_integration_module.ensure_sync_configs(root)
     slack_sync_slots = root.SlackChannelSyncConfig.query.order_by(root.SlackChannelSyncConfig.slot_index).all()
     system_settings = {s.key: s.value for s in root.SystemSetting.query.all()}
     kpis = root.KpiTarget.query.all()
     users = root.User.query.order_by(root.User.created_at.asc()).all()
     field_tokens = root.FieldAccessToken.query.order_by(root.FieldAccessToken.created_at.desc()).all()
+    for token in field_tokens:
+        token.expires_at = coerce_utc(token.expires_at)
+        token.last_used_at = coerce_utc(token.last_used_at)
+        token.revoked_at = coerce_utc(token.revoked_at)
     pending_field_submissions = root.FieldPurchaseSubmission.query.filter_by(status="pending").order_by(
         root.FieldPurchaseSubmission.submitted_at.desc()
     ).all()
     reviewed_field_submissions = root.FieldPurchaseSubmission.query.filter(
         root.FieldPurchaseSubmission.status.in_(("approved", "rejected"))
     ).order_by(root.FieldPurchaseSubmission.submitted_at.desc()).all()
-    root._decorate_field_submission_rows(pending_field_submissions + reviewed_field_submissions)
+    decorate_submission_rows(pending_field_submissions + reviewed_field_submissions)
 
     last_field_link = root.session.pop("last_field_link", None)
     last_field_sms = root.session.pop("last_field_sms", None)
@@ -334,9 +419,359 @@ def settings_view(root):
         pending_submissions_total_lbs=pending_submissions_total_lbs,
         reviewed_approved_total_lbs=reviewed_approved_total_lbs,
         reviewed_rejected_total_lbs=reviewed_rejected_total_lbs,
-        server_now=datetime.utcnow(),
+        server_now=datetime.now(timezone.utc),
         last_field_link=last_field_link,
         last_field_sms=last_field_sms,
         last_field_email_subject=last_field_email_subject,
         last_field_email_body=last_field_email_body,
     )
+
+
+def field_approvals_view(root):
+    if not root.current_user.can_approve_field_purchases:
+        root.flash("You don't have access to field purchase approvals.", "error")
+        return root.redirect(root.url_for("dashboard"))
+    pending_field_submissions = root.FieldPurchaseSubmission.query.filter_by(status="pending").order_by(
+        root.FieldPurchaseSubmission.submitted_at.desc()
+    ).all()
+    reviewed_field_submissions = root.FieldPurchaseSubmission.query.filter(
+        root.FieldPurchaseSubmission.status.in_(("approved", "rejected"))
+    ).order_by(root.FieldPurchaseSubmission.submitted_at.desc()).all()
+    decorate_submission_rows(pending_field_submissions + reviewed_field_submissions)
+    pending_submissions_total_lbs = sum(
+        float(getattr(submission, "total_weight_lbs", 0) or 0) for submission in pending_field_submissions
+    )
+    reviewed_approved_total_lbs = sum(
+        float(getattr(submission, "total_weight_lbs", 0) or 0)
+        for submission in reviewed_field_submissions
+        if submission.status == "approved"
+    )
+    reviewed_rejected_total_lbs = sum(
+        float(getattr(submission, "total_weight_lbs", 0) or 0)
+        for submission in reviewed_field_submissions
+        if submission.status == "rejected"
+    )
+    return root.render_template(
+        "field_approvals.html",
+        field_submissions=pending_field_submissions,
+        reviewed_field_submissions=reviewed_field_submissions,
+        submission_return_to="",
+        show_submission_approval_buttons=True,
+        pending_submissions_total_lbs=pending_submissions_total_lbs,
+        reviewed_approved_total_lbs=reviewed_approved_total_lbs,
+        reviewed_rejected_total_lbs=reviewed_rejected_total_lbs,
+    )
+
+
+def field_submission_approve_view(root, submission_id):
+    submission = root.db.session.get(root.FieldPurchaseSubmission, submission_id)
+    if not submission:
+        root.flash("Submission not found.", "error")
+        return field_submission_error_redirect(root)
+    if submission.status != "pending":
+        root.flash("Submission has already been reviewed.", "error")
+        return field_submission_error_redirect(root)
+
+    lots = load_lots(submission.lots_json)
+    total_weight = submission_total_weight(lots)
+    if total_weight < 0:
+        root.flash("Submission lot weights are invalid.", "error")
+        return field_submission_error_redirect(root)
+
+    purchase = root.Purchase(
+        supplier_id=submission.supplier_id,
+        purchase_date=submission.purchase_date,
+        delivery_date=submission.delivery_date,
+        harvest_date=submission.harvest_date,
+        status="committed",
+        stated_weight_lbs=(total_weight if total_weight > 0 else 0.0),
+        stated_potency_pct=submission.estimated_potency_pct,
+        price_per_lb=submission.price_per_lb,
+        storage_note=submission.storage_note,
+        license_info=submission.license_info,
+        queue_placement=submission.queue_placement,
+        coa_status_text=submission.coa_status_text,
+        notes=(submission.notes or "") + (
+            f"\n\nApproved from field submission {submission.id}"
+            if submission.notes else f"Approved from field submission {submission.id}"
+        ),
+        purchase_approved_at=datetime.now(timezone.utc),
+        purchase_approved_by_user_id=root.current_user.id,
+    )
+    root.db.session.add(purchase)
+    root.db.session.flush()
+
+    for lot_row in lots:
+        strain_name = (lot_row.get("strain") or "").strip()
+        weight_value = lot_row.get("weight_lbs")
+        weight_lbs = float(weight_value) if weight_value is not None else 0.0
+        if weight_lbs <= 0:
+            continue
+        root.db.session.add(root.PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name=(strain_name or "Unspecified"),
+            weight_lbs=weight_lbs,
+            remaining_weight_lbs=weight_lbs,
+        ))
+
+    supplier = root.db.session.get(root.Supplier, purchase.supplier_id)
+    supplier_name = supplier.name if supplier else "BATCH"
+    batch_date = purchase.delivery_date or purchase.purchase_date
+    purchase.batch_id = root._ensure_unique_batch_id(
+        root._generate_batch_id(supplier_name, batch_date, (total_weight if total_weight > 0 else 0.0)),
+        exclude_purchase_id=purchase.id,
+    )
+
+    if purchase.price_per_lb:
+        purchase.total_cost = purchase.stated_weight_lbs * purchase.price_per_lb
+
+    promote_submission_photos(submission, purchase.id, root.current_user.id)
+
+    submission.status = "approved"
+    submission.reviewed_at = datetime.now(timezone.utc)
+    submission.reviewed_by = root.current_user.id
+    submission.review_notes = (root.request.form.get("review_notes") or "").strip() or None
+    submission.approved_purchase_id = purchase.id
+
+    try:
+        enforce_weekly_biomass_purchase_limits(
+            purchase,
+            biomass_budget_snapshot_for_purchase(purchase),
+            enforce_cap=True,
+        )
+    except ValueError as exc:
+        root.db.session.rollback()
+        root.flash(str(exc), "error")
+        return field_submission_error_redirect(root)
+
+    root.log_audit(
+        "approve",
+        "field_purchase_submission",
+        submission.id,
+        details=json.dumps({"purchase_id": purchase.id}),
+    )
+    root.log_audit(
+        "create",
+        "purchase",
+        purchase.id,
+        details=json.dumps({"source": "field_submission", "submission_id": submission.id}),
+    )
+    root.db.session.commit()
+    root.notify_slack(
+        f"Field submission approved for {submission.supplier.name if submission.supplier else 'supplier'}; "
+        f"purchase {purchase.batch_id or purchase.id} created."
+    )
+    root.flash("Submission approved and converted to a Purchase.", "success")
+    return root.redirect(root.url_for("purchase_edit", purchase_id=purchase.id))
+
+
+def field_submission_reject_view(root, submission_id):
+    submission = root.db.session.get(root.FieldPurchaseSubmission, submission_id)
+    if not submission:
+        root.flash("Submission not found.", "error")
+        return field_submission_error_redirect(root)
+    if submission.status != "pending":
+        root.flash("Submission has already been reviewed.", "error")
+        return field_submission_error_redirect(root)
+    submission.status = "rejected"
+    submission.reviewed_at = datetime.now(timezone.utc)
+    submission.reviewed_by = root.current_user.id
+    submission.review_notes = (root.request.form.get("review_notes") or "").strip() or None
+    root.log_audit(
+        "reject",
+        "field_purchase_submission",
+        submission.id,
+        details=json.dumps({"notes": submission.review_notes}),
+    )
+    root.db.session.commit()
+    root.notify_slack(
+        f"Field submission rejected for {submission.supplier.name if submission.supplier else 'supplier'}."
+    )
+    root.flash("Submission rejected.", "success")
+    return field_approval_return_redirect(root)
+
+
+def settings_backfill_photo_assets_view(root):
+    try:
+        submissions = root.FieldPurchaseSubmission.query.filter(
+            root.FieldPurchaseSubmission.status == "approved",
+            root.FieldPurchaseSubmission.approved_purchase_id.isnot(None),
+        ).all()
+
+        supplier_attachments_added = 0
+        assets_added = 0
+        touched_submissions = 0
+
+        for submission in submissions:
+            supplier_id = submission.supplier_id
+            purchase_id = submission.approved_purchase_id
+            if not supplier_id or not purchase_id:
+                continue
+
+            counts = promote_submission_photos(submission, purchase_id, root.current_user.id)
+            if counts["supplier_attachments_added"] or counts["assets_added"]:
+                touched_submissions += 1
+            supplier_attachments_added += counts["supplier_attachments_added"]
+            assets_added += counts["assets_added"]
+
+        root.db.session.commit()
+        root.flash(
+            f"Photo backfill complete. Updated {touched_submissions} submissions, added "
+            f"{supplier_attachments_added} supplier attachment(s) and {assets_added} photo asset(s).",
+            "success",
+        )
+    except Exception as exc:
+        root.db.session.rollback()
+        root.app.logger.exception("Photo backfill failed")
+        root.flash(f"Photo backfill failed: {exc}", "error")
+    return settings_redirect(root)
+
+
+def user_toggle_slack_importer_view(root, user_id):
+    user = root.db.session.get(root.User, user_id)
+    if not user:
+        root.flash("User not found.", "error")
+        return settings_redirect(root)
+    if user.is_super_admin:
+        root.flash("Super Admin always has Slack import access.", "info")
+        return settings_redirect(root)
+    user.is_slack_importer = not bool(user.is_slack_importer)
+    root.log_audit(
+        "user_slack_importer",
+        "user",
+        user.id,
+        details=json.dumps({"enabled": bool(user.is_slack_importer)}),
+    )
+    root.db.session.commit()
+    root.flash(f"Slack import access {'enabled' if user.is_slack_importer else 'disabled'} for {user.display_name}.", "success")
+    return settings_redirect(root)
+
+
+def user_toggle_purchase_approver_view(root, user_id):
+    user = root.db.session.get(root.User, user_id)
+    if not user:
+        root.flash("User not found.", "error")
+        return settings_redirect(root)
+    if user.is_super_admin:
+        root.flash("Super Admin always has purchase approval access.", "info")
+        return settings_redirect(root)
+    user.is_purchase_approver = not bool(user.is_purchase_approver)
+    root.log_audit(
+        "user_purchase_approver",
+        "user",
+        user.id,
+        details=json.dumps({"enabled": bool(user.is_purchase_approver)}),
+    )
+    root.db.session.commit()
+    root.flash(f"Purchase approval {'enabled' if user.is_purchase_approver else 'disabled'} for {user.display_name}.", "success")
+    return settings_redirect(root)
+
+
+def user_toggle_active_view(root, user_id):
+    user = root.db.session.get(root.User, user_id)
+    if not user:
+        root.flash("User not found.", "error")
+        return settings_redirect(root)
+    if user.id == root.current_user.id:
+        root.flash("You cannot disable your own account.", "error")
+        return settings_redirect(root)
+    user.is_active_user = not bool(user.is_active_user)
+    root.log_audit(
+        "user_active_toggle",
+        "user",
+        user.id,
+        details=json.dumps({"active": bool(user.is_active_user)}),
+    )
+    root.db.session.commit()
+    root.flash(f"User {user.display_name} {'activated' if user.is_active_user else 'disabled'}.", "success")
+    return settings_redirect(root)
+
+
+def user_delete_view(root, user_id):
+    user = root.db.session.get(root.User, user_id)
+    if not user:
+        root.flash("User not found.", "error")
+        return settings_redirect(root)
+    if user.id == root.current_user.id:
+        root.flash("You cannot delete your own account.", "error")
+        return settings_redirect(root)
+    has_audit = root.AuditLog.query.filter_by(user_id=user.id).first() is not None
+    if has_audit:
+        root.flash("This user has audit history and cannot be deleted.", "error")
+        return settings_redirect(root)
+    root.db.session.delete(user)
+    root.db.session.commit()
+    root.flash("User deleted.", "success")
+    return settings_redirect(root)
+
+
+def field_token_create_view(root):
+    label = (root.request.form.get("label") or "").strip()
+    expires_days_raw = (root.request.form.get("expires_days") or "").strip()
+    if not label:
+        root.flash("Label is required.", "error")
+        return settings_redirect(root)
+    try:
+        expires_days = int(expires_days_raw or "30")
+    except ValueError:
+        expires_days = 30
+    expires_days = max(1, min(365, expires_days))
+
+    token_value = root.secrets.token_urlsafe(24)
+    token = root.FieldAccessToken(
+        label=label,
+        token_hash=_hash_field_token(token_value),
+        created_by=root.current_user.id,
+        expires_at=datetime.now(timezone.utc) + root.timedelta(days=expires_days),
+    )
+    root.db.session.add(token)
+    root.db.session.commit()
+
+    link = root.url_for("field_home", t=token_value, _external=True)
+    sms, subject, body = _token_share_texts(link)
+    root.session["last_field_link"] = link
+    root.session["last_field_sms"] = sms
+    root.session["last_field_email_subject"] = subject
+    root.session["last_field_email_body"] = body
+    root.log_audit("create", "field_access_token", token.id, details=json.dumps({"label": label, "expires_days": expires_days}))
+    root.db.session.commit()
+    root.flash("Field access link created.", "success")
+    return settings_redirect(root)
+
+
+def field_token_revoke_view(root, token_id):
+    token = root.db.session.get(root.FieldAccessToken, token_id)
+    if not token:
+        root.flash("Field token not found.", "error")
+        return settings_redirect(root)
+    if token.revoked_at is None:
+        token.revoked_at = datetime.now(timezone.utc)
+        root.log_audit("revoke", "field_access_token", token.id, details=json.dumps({"label": token.label}))
+        root.db.session.commit()
+    root.flash("Field token revoked.", "success")
+    return settings_redirect(root)
+
+
+def field_token_delete_view(root, token_id):
+    token = root.db.session.get(root.FieldAccessToken, token_id)
+    if not token:
+        root.flash("Field token not found.", "error")
+        return settings_redirect(root)
+    if token.revoked_at is None and (token.expires_at is None or token.expires_at >= datetime.now(timezone.utc)):
+        root.flash("Only revoked or expired tokens can be deleted.", "error")
+        return settings_redirect(root)
+    root.db.session.delete(token)
+    root.db.session.commit()
+    root.flash("Field token deleted.", "success")
+    return settings_redirect(root)
+
+
+def settings_recalculate_costs_view(root):
+    runs = root.Run.query.filter(root.Run.deleted_at.is_(None)).all()
+    for run in runs:
+        run.calculate_yields()
+        run.calculate_cost()
+    root.log_audit("recalculate", "run_costs", root.gen_uuid(), details=json.dumps({"run_count": len(runs)}))
+    root.db.session.commit()
+    root.flash(f"Recalculated costs for {len(runs)} run(s).", "success")
+    return settings_redirect(root)

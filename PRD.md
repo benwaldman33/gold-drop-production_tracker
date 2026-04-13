@@ -9,7 +9,7 @@ Gold Drop is an operations tracker for biomass intake → inventory → extracti
 - **Analytics controls** to exclude runs missing biomass pricing,
 - **Audit logging** for traceability and compliance.
 
-**Cross-cutting product direction (department views & governance):** the same underlying data should be exposed through **department-focused UIs** (finance, purchasing, intake, extraction, downstream processing, testing, sales) without duplicating business rules; **Slack** remains the **authoritative operational input channel** for floor capture until a future phase (e.g. barcodes, connected scales). **Purchase approval** uses **per-user capabilities**; a single approval promotes a potential purchase to a **system-wide commitment**, including the **weekly budget dashboard**. **Potential** pipeline lines that never close otherwise **age out** to **Old Lots** and then **soft-delete** on a configurable schedule anchored to **`created_at`**.
+**Cross-cutting product direction (department views & governance):** the same underlying data should be exposed through **department-focused UIs** (finance, purchasing, intake, extraction, downstream processing, testing, sales) without duplicating business rules; **Slack** remains the **authoritative operational input channel** for floor capture until a future phase adds first-class barcode / QR and connected-scale workflows. **Purchase approval** uses **per-user capabilities**; a single approval promotes a potential purchase to a **system-wide commitment**, including the **weekly budget dashboard**. **Potential** pipeline lines that never close otherwise **age out** to **Old Lots** and then **soft-delete** on a configurable schedule anchored to **`created_at`**.
 
 **Operator workflow — list views:** On primary **list screens** (Runs, Purchases, Biomass Pipeline, Costs, Inventory, Strains, Slack imports), **filters, date constraints, sort order, and related query state** are **persisted in the user’s server session** so operators can **navigate freely between app sections** and return **without re-entering** those choices—reducing repetitive work and supporting multi-step review (e.g. cross-checking Slack imports against Purchases). Persistence is **session-scoped** (not a permanent per-user database preference): sign-out, cookie loss, or timeout ends it. Each list exposes **Remove filters** (or equivalent) to restore the default unfiltered view. **Pagination** resets to **page 1** when filters are applied or certain primary facets change (e.g. Purchases status) so narrowed result sets are not shown as empty due to a stale page index.
 
@@ -18,6 +18,14 @@ Gold Drop is an operations tracker for biomass intake → inventory → extracti
 **Operator workflow — purchase spreadsheet import:** Users with purchase edit access can upload **CSV or Excel** (`.csv`, `.xlsx`, `.xlsm`) via **Purchases → Import spreadsheet**; the system **maps columns by header name** (including common accounting layouts: Vendor, Purchase Date, Invoice Weight, Actual Weight, Manifest, Amount, etc.), shows a **preview** with per-row validation, then commits selected rows into **Purchase** records (and optional **PurchaseLot** when a strain column is present). Staging uses a **server temp file** plus session token (not large cookie payloads). Duplicate **Batch ID** values are rejected; optional **auto-create suppliers** is supported.
 
 This PRD describes the problem, users, workflows, data requirements, calculations, settings, and acceptance criteria.
+
+**April 2026 product direction update:** the next product phase prioritizes **operator clarity and automation readiness** over further internal cleanup. The app must make it obvious **where each batch / lot is in the process**, **what physical state it is in** (weight, remaining weight, potency, clean/dirty, cost, testing state), and **which exact source lot** feeds each downstream run allocation. The flagship UX surfaces for this phase are:
+- a richer **Batch Journey** rooted in `Purchase -> PurchaseLot -> RunInput allocation -> Run -> outputs`
+- a **Slack imports inbox** organized by confidence / manual resolution need
+- **lot identity** at creation time via **tracking ID + barcode + QR**
+- readiness for future **connected scale** capture as a structured input channel
+
+Current implementation note: the active modular extraction surface now includes dashboard, field intake, runs, purchases, biomass, costs, inventory, batch edit, suppliers/photos, purchase import, strains, settings, Slack integration, and startup bootstrap modules. This remains an engineering delivery change only; product behavior and operator-facing workflow are intended to stay the same.
 
 **Release note â€” April 2026:** the current upgrade train includes a substantial internal modularization of `app.py` into package-backed route and bootstrap modules. This is an **engineering delivery change only**; product behavior, URLs, approvals, list workflows, Slack ingest behavior, and operator-facing page structure are intended to remain unchanged.
 
@@ -38,6 +46,9 @@ Operations needs a single system to answer:
 - **Pipeline visibility**: track biomass availability as it moves from declaration → testing → commitment → delivery.
 - **Batch-level traceability**: every purchase has a **unique, human-readable Batch ID**.
 - **One source of truth** for material usage: lots decrement as runs consume them.
+- **Allocation integrity**: every reactor input must resolve to a **specific source lot**; the product must never silently guess between multiple viable lots from the same supplier.
+- **Physical-state visibility**: operators must be able to see **weight, remaining weight, potency, testing state, clean/dirty, and cost** anywhere material is reviewed or matched.
+- **Automation readiness**: lots must be ready for future **barcode / QR scanning** and **connected scale** workflows without changing the core data model later.
 - **Accurate $/g**: include biomass $/lb inputs and allocated operational costs.
 - **Configurable allocation**: choose how total run dollars are distributed between THCA and HTE.
 - **Data quality controls**: clearly flag runs missing biomass pricing and optionally exclude them from analytics.
@@ -62,17 +73,20 @@ When a user opens a batch (purchase), they should be able to view a **graphic pr
 - Which stages are complete vs pending vs skipped?
 - What dates/owners/evidence are attached to each stage?
 - What quantity is still active at each step?
+- Which exact lots and allocations fed each downstream run?
+- What is the physical/economic state of the material at each node?
 
-### Scope (v1)
-The tracker is a **single-batch journey view** anchored to `Purchase.id` / Batch ID and rendered as a horizontal or vertical stepper:
+### Scope (vNext target)
+The tracker is a **single-batch journey view** anchored to `Purchase.id` / Batch ID and rendered as a horizontal or vertical stepper plus linked node/edge graph:
 1. **Declared** (availability captured)
 2. **Testing** (pre/post-delivery test status)
 3. **Committed / Approved**
 4. **Delivered / Received**
-5. **On-hand inventory** (lots and remaining lbs)
-6. **Extraction** (runs that consumed this batch’s lots)
-7. **Post-processing** (HTE/THCA downstream states where applicable)
-8. **Sales/Disposition** (placeholder step until sales module is expanded)
+5. **On-hand inventory** (specific lots and remaining lbs)
+6. **Allocation to extraction** (one or more explicit `RunInput` records from named lots)
+7. **Extraction** (runs that consumed this batch’s lots)
+8. **Post-processing** (HTE/THCA downstream states where applicable)
+9. **Sales/Disposition** (placeholder step until sales module is expanded)
 
 Each step shows:
 - Status badge (`done`, `in_progress`, `blocked`, `not_started`, `not_applicable`)
@@ -81,9 +95,20 @@ Each step shows:
 - Key metrics (lbs, g, potency, cost)
 - Drill link to source record (purchase, lot, run, etc.)
 
+Each **node** in the detailed journey should also expose a common material summary shape:
+- Current stage / status
+- Weight, allocated weight, remaining weight
+- Potency / testing state
+- Clean / dirty state
+- Cost basis when available
+- Exceptions / unresolved ambiguity
+
 ### Rules / behavior
 - Journey is **derived** from existing source-of-truth records; no duplicate stage table required for v1.
 - A step can be **partially complete** (e.g., only some lots consumed in runs).
+- The journey must make the chain **explicit**: `Supplier -> Purchase -> PurchaseLot -> RunInput allocation -> Run -> output / downstream state`.
+- A **run input** is an **allocation event**, not just a quantity field on a run. The product must always be able to show which lot(s) fed the run and how much each contributed.
+- If a run is fed by multiple lots, the journey must show **split allocations**.
 - Soft-deleted records are excluded from default display but can be shown in an “include archived” mode for audit/admin.
 - Approval gates remain authoritative: unapproved batches can show delivered/ordered milestones, but on-hand consumption and run usage remain blocked by existing rules.
 
@@ -94,6 +119,13 @@ Each step shows:
 - If a phase has no data yet, UI explicitly shows “Not started” rather than empty space.
 - Export (JSON/CSV) of journey events is available for audit/debug.
 
+### Acceptance criteria (next phase)
+- Journey shows **lot-level** remaining inventory and total allocated quantity, not only purchase-level totals.
+- Journey shows **explicit edges** from `PurchaseLot` to `Run` via `RunInput` allocation records.
+- From any run node, an operator can trace **backward** to the exact source lot(s); from any lot node, an operator can trace **forward** to all consuming runs.
+- Journey nodes visibly surface **weight**, **potency**, **clean/dirty**, **testing state**, and **cost** when available.
+- Any unresolved ambiguity (for example, a Slack message that names a supplier but not a lot) is visible as an **exception state**, not hidden.
+
 ### Implementation status (current)
 - Delivered endpoints:
   - `GET /purchases/<purchase_id>/journey` (timeline page)
@@ -101,6 +133,11 @@ Each step shows:
   - `GET /purchases/<purchase_id>/journey/export?format=json|csv` (download export)
 - `include_archived=1` is super-admin only for archived purchase visibility/export.
 - Export format validation is explicit: unsupported `format` returns `400` with a machine-readable payload listing supported formats (`csv`, `json`), rather than silently falling back.
+- Current journey payload and page already expose lot-level detail:
+  - `lots` with tracking id, original / allocated / remaining weight, potency, testing state, and clean/dirty state
+  - `allocations` representing explicit `RunInput` edges from lot to run
+  - `runs` as separate downstream nodes
+- The current HTML journey page already shows dedicated **Inventory Lots** and **Run Allocations** sections, so operators can inspect lot-to-run traceability before the future graph UI ships.
 
 ---
 
@@ -117,12 +154,17 @@ Authorization should use **named capabilities per user** (flags or equivalent), 
 ### Purchase approval
 - **Eligible approvers:** any account with **`can_approve_purchase`** (`User.is_super_admin` **or** **`is_purchase_approver`**). The business requires that **Super-Buyer**, **COO**, and **Super Admin** users be able to approve; it is **any one** of these (or any user with the flag)—**not** a multi-signature workflow.
 - **Effect on approve:** sets **`purchase_approved_at`** / **`purchase_approved_by_user_id`**. Until then, the product **must not** treat the batch as usable for **on-hand inventory**, **run consumption**, or **dashboard on-hand / days-of-supply** (lot pickers and inventory queries require approval). **Edit Purchase** cannot move into on-hand statuses (**delivered**, **in_testing**, **available**, **processing**) until approved. **Biomass Pipeline:** moving stage to **Committed** (purchase **`status = committed`**) requires the same approver capability and **stamps** approval as part of that transition.
+- **Operator UX:** eligible approvers should be able to approve directly from list views, not only from the edit form. The shipped workflow now exposes inline **Approve** actions on unapproved rows in **Purchases** and **Biomass Pipeline**, returning the user to the same filtered list after approval.
 - **Commitments / finance:** weekly **commitments** dollar rollups use **`committed`/`delivered`** purchases, weighted toward rows with **`purchase_approved_at`** in the calendar week (with a legacy fallback when approval is null—see **`ENGINEERING.md`**).
 - **Audit:** log **who** approved and **when**; approval is **idempotent** (subsequent approve actions are no-ops or blocked with a clear message).
 
 ### Operational input authority
 - **Today:** **Slack** is the **authoritative** channel for operational posts (e.g. intake weights, photos, production variables) that operators treat as ground truth; the app **ingests, links, or mirrors** that information per existing Slack integration behavior.
-- **Future:** optional **barcode** and **connected scales** as additional input channels; department web UIs prioritize **visibility**, **rollup**, and **downstream data entry** that does not conflict with Slack authority until product explicitly changes this.
+- **Future:** **barcode / QR** and **connected scales** become additional structured input channels. Slack remains authoritative until those channels are explicitly turned on for a workflow, but the model must be ready now for:
+  - scan-based lot identification
+  - scan-based allocation / movement confirmation
+  - device-captured weights with audit trail
+  - mixed manual + device-assisted workflows
 
 ---
 
@@ -175,6 +217,61 @@ Represents strains within a purchase with:
 - Weight and remaining weight
 - Potency %
 - Location / milled flag
+
+This is the **physical inventory bucket** that can actually be consumed by extraction. A purchase may create one or more lots, and lots may be split or created manually after approval as operations require.
+
+Each lot must eventually support:
+- A permanent **tracking identity** (`tracking_id`)
+- **Barcode** payload
+- **QR** payload
+- Printable label metadata
+- Physical descriptors shown consistently in the UI:
+  - original weight
+  - allocated weight
+  - remaining weight
+  - potency
+  - testing state
+  - clean / dirty
+  - cost basis where available
+
+### Run inputs as allocation records
+`RunInput` is the canonical **inventory allocation** record between a `PurchaseLot` and a `Run`.
+
+Product rules:
+- A reactor run must consume from one or more **specific lots**, never from a supplier name alone.
+- If multiple lots from the same supplier are viable, the system must either:
+  - auto-select only when confidence is high and there is one clearly correct candidate, or
+  - ask for confirmation, or
+  - require manual lot selection / split allocation.
+- The system must never silently guess between two open lots from the same supplier.
+- Remaining lot quantity must always be derivable from explicit allocations.
+
+### Canonical material descriptors
+Every raw or finished material-facing UI should present both **process state** and **physical/economic state**.
+
+At minimum, the product should be able to represent:
+- Identity:
+  - batch id
+  - lot id
+  - supplier
+  - strain
+  - linked Slack / scan / scale evidence
+- Process state:
+  - current stage
+  - previous stages
+  - next required action
+  - exception / blocked state
+- Physical state:
+  - gross weight
+  - allocated weight
+  - remaining weight
+  - potency
+  - testing status / date
+  - clean / dirty
+- Economic state:
+  - price per lb
+  - total cost
+  - remaining cost basis
 
 ### Runs (extraction)
 Represents an extraction run with:
@@ -567,6 +664,12 @@ Super Admins need to **configure** how parsed Slack fields (`derived_json` / `me
 
 **Implementation (shipped):** **`User.is_slack_importer`** (Settings toggle + create-user checkbox; Super Admin always has importer capability via **`User.can_slack_import`**). Sidebar **Slack imports** for eligible users. **`GET /settings/slack-imports`** with filters (Slack message date, channel(s), promotion **not linked / linked**, coverage **full / partial / none**). **`GET .../preview`** and **`GET .../apply-run`** (`confirm=1` after duplicate interstitial). Session key stores prefilled Run fields; **`GET /runs/new`** hydrates the form; hidden inputs post Slack ids + duplicate flag; **`_save_run`** sets **`Run.slack_channel_id`**, **`slack_message_ts`**, **`slack_import_applied_at`** on new saves; audit **`create`/`run`** with JSON details (and **`slack_duplicate_apply_confirm`** when confirmed). SQLite schema patched in **`_ensure_sqlite_schema`**. Mapping editor remains Super Admin only (`/settings/slack-run-mappings`).
 
+**Implementation update (April 2026):**
+- Slack preview now surfaces ranked candidate lots for run-style messages, including tracking IDs and remaining pounds.
+- Operators can assign one lot or split the run weight across multiple lots directly on the preview page before opening the Run form.
+- The selected split is preserved into the Run prefill session and rendered as source-lot rows on **New Run**.
+- The Run form now shows a live allocation summary and projected remaining lot balances; save still fails server-side if selected lot allocations do not equal `bio_in_reactor_lbs`.
+
 ---
 
 #### Phase 3 — Resolution, breadth, optional automation
@@ -578,6 +681,7 @@ Super Admins need to **configure** how parsed Slack fields (`derived_json` / `me
 1. **Entity resolution strategies** (configurable per mapping or global defaults):
    - Match Slack `source` / supplier-like strings to **Supplier** (exact, fuzzy, manual pick list in UI).
    - Match `strain` to **Strain** / **PurchaseLot** context where applicable.
+   - Resolve Slack biomass usage against **specific candidate lots**, not only suppliers.
    - Clarify behavior when **no match**: block apply, create placeholder note, or require manual selection.
 
 2. **Additional entity targets** (as separate mapping rules):
@@ -587,6 +691,23 @@ Super Admins need to **configure** how parsed Slack fields (`derived_json` / `me
 
 3. **Optional automation** (off by default):
    - Post-sync hook: “auto-preview queue” or “auto-create draft Run” for messages matching strict rules, with notification and rollback path.
+
+4. **Confidence-based lot allocation workflow**
+   - Inbox buckets should distinguish:
+     - **Auto-ready**
+     - **Needs confirmation**
+     - **Needs manual match**
+     - **Blocked / exception**
+   - When Slack supplies enough context (supplier, strain, quantity, date, reactor), the system should rank candidate lots using:
+     - supplier
+     - strain
+     - available quantity
+     - received date / FIFO preference
+     - clean / dirty state
+     - testing state
+   - If one candidate is clearly correct, the system may propose or auto-apply that lot allocation.
+   - If multiple lots remain plausible, the UI must present a short guided list with lot id, received date, remaining lbs, strain, and state.
+   - Split allocation across multiple lots must be supported when no single lot can satisfy the requested quantity.
 
 **Success criteria**
 
@@ -648,10 +769,34 @@ Acceptance criteria (department initiative):
 ### Canonical material flow (narrative)
 1. Buyer sources **potential** biomass (field intake); weekly **volume** and **quality** goals align with plant throughput targets (e.g. lbs/day targets—configurable).
 2. An approver promotes a line to **commitment** → **financial obligation**, logistics, and intake planning; testing may occur before or after commitment; **commercial terms** (e.g. pesticide repricing) must be representable in data.
-3. Intake weighs and documents receipt; variance vs promised matters; media may flow through **Slack**; strains enter **inventory**.
-4. Extraction consumes lots in **runs** (e.g. batch sizes, multiple reactors); production variables captured per operational policy (**Slack**-authoritative today).
+3. Intake weighs and documents receipt; variance vs promised matters; media may flow through **Slack**; strains enter **inventory lots** with explicit remaining quantity.
+4. Extraction consumes lots in **runs** (e.g. batch sizes, multiple reactors); each run input is an explicit **allocation from a named lot**; production variables captured per operational policy (**Slack**-authoritative today).
 5. Outputs split into **wet THCA** and **wet HTE**, then dry weights; downstream: THCA → powder or Liquid Diamonds; HTE → outside lab test (staged/awaiting), then **clean** (menu/sale) or **dirty** (queued for Prescott terp strip) → **stripped** with terpenes and retail distillate grams recorded on the **Run**.
 6. **Bulk sales** reduces finished inventory.
+
+### Scanability and device-readiness
+The product should be designed so physical handling can become machine-assisted without reworking the underlying material model.
+
+#### Lot identity
+- Every `PurchaseLot` should receive a permanent **tracking id** when created or authorized.
+- Each lot should be able to generate:
+  - a human-readable label
+  - a **barcode** payload
+  - a **QR** payload
+- If a purchase produces multiple lots, each lot gets its own identifier and code.
+- If a lot is split into new physical lots, each child lot gets its own identifier while preserving lineage.
+
+#### Scale readiness
+- The product should support both **manual** and **device-captured** weights.
+- Future connected-scale support should store:
+  - measured value
+  - unit
+  - timestamp
+  - source mode (`manual`, `device`)
+  - device identity
+  - raw device payload
+  - accepted / rejected state
+- A scale reading should not silently mutate inventory by itself; it becomes evidence that is accepted into an intake, allocation, or output workflow.
 
 ---
 
@@ -679,6 +824,11 @@ Some **potential** purchase / pipeline lines will never be approved. The product
 ---
 
 ## Future Improvements (Roadmap)
+- **Lot allocation integrity + UX:** make `PurchaseLot` and `RunInput` the explicit `Purchase -> Lot -> Allocation -> Run -> Output` chain; add guided resolution when multiple same-supplier lots exist.
+- **Batch Journey upgrade:** evolve the current purchase timeline into a true graph/timeline view with lot nodes, allocation edges, physical descriptors, and exception states.
+- **Slack inbox redesign:** move from raw import review to confidence buckets, candidate-lot resolution, and simple manual allocation/split workflows.
+- **Lot identity + labels:** generate `tracking_id`, barcode, and QR for each lot at purchase authorization / lot creation; support printable labels and future `/scan/lot/<tracking_id>` resolution.
+- **Connected scale readiness:** add device-backed weight capture as a future structured input channel without changing the operator-facing material model. The current delivery already includes `ScaleDevice` and `WeightCapture` as the persistence layer for that later workflow.
 - **Department UIs + governance:** **capabilities**, **purchase approval**, **Old Lots** + **soft delete**, and **`/dept` department hub + per-department pages** are implemented; continue to deepen per-department workflows (e.g. explicit “on stripper” stage, richer testing integrations) per **Operational departments & shared data model**.
 - **Explicit close-out reasons** for potential lines (declined, lost, withdrawn) — optional enhancement beyond aging; supports analytics such as win rate by supplier without relying on soft-delete alone.
 - **Slack → operational mapping:** phased roadmap under **Integrations — Slack** → **Proposed: Field mapping control panel (phased roadmap)** (Phase 1: mapping UI + preview; Phase 2: manual apply; Phase 3: resolution + breadth + optional automation).

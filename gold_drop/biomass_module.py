@@ -1,7 +1,45 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
+
+
+POTENTIAL_BIOMASS_STATUSES = ("declared", "in_testing")
+STAGE_TO_STATUS = {
+    "declared": "declared",
+    "testing": "in_testing",
+    "committed": "committed",
+    "delivered": "delivered",
+    "cancelled": "cancelled",
+}
+
+
+def register_routes(app, root):
+    @root.login_required
+    def biomass_list():
+        return biomass_list_view(root)
+
+    @root.editor_required
+    def biomass_new():
+        return biomass_new_view(root)
+
+    @root.editor_required
+    def biomass_edit(item_id):
+        return biomass_edit_view(root, item_id)
+
+    @root.admin_required
+    def biomass_restore(item_id):
+        return biomass_restore_view(root, item_id)
+
+    @root.editor_required
+    def biomass_delete(item_id):
+        return biomass_delete_view(root, item_id)
+
+    app.add_url_rule("/biomass", endpoint="biomass_list", view_func=biomass_list)
+    app.add_url_rule("/biomass/new", endpoint="biomass_new", view_func=biomass_new, methods=["GET", "POST"])
+    app.add_url_rule("/biomass/<item_id>/edit", endpoint="biomass_edit", view_func=biomass_edit, methods=["GET", "POST"])
+    app.add_url_rule("/biomass/<item_id>/restore", endpoint="biomass_restore", view_func=biomass_restore, methods=["POST"])
+    app.add_url_rule("/biomass/<item_id>/delete", endpoint="biomass_delete", view_func=biomass_delete, methods=["POST"])
 
 
 def _biomass_form_context(root, item):
@@ -13,8 +51,71 @@ def _biomass_form_context(root, item):
     }
 
 
+def _potential_lot_age_days(root):
+    try:
+        days_to_old = int(root.SystemSetting.get("potential_lot_days_to_old", 10) or 10)
+    except (TypeError, ValueError):
+        days_to_old = 10
+    try:
+        days_to_soft_delete = int(root.SystemSetting.get("potential_lot_days_to_soft_delete", 30) or 30)
+    except (TypeError, ValueError):
+        days_to_soft_delete = 30
+    days_to_old = max(1, days_to_old)
+    days_to_soft_delete = max(days_to_old, days_to_soft_delete)
+    return days_to_old, days_to_soft_delete
+
+
+def _apply_biomass_potential_soft_delete(root):
+    _, days_to_soft_delete = _potential_lot_age_days(root)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days_to_soft_delete)
+    stale_rows = (
+        root.Purchase.query.filter(
+            root.Purchase.deleted_at.is_(None),
+            root.Purchase.status.in_(POTENTIAL_BIOMASS_STATUSES),
+            root.Purchase.created_at <= cutoff,
+        )
+        .all()
+    )
+    if not stale_rows:
+        return 0
+    now = datetime.now(timezone.utc)
+    for row in stale_rows:
+        row.deleted_at = now
+        for lot in row.lots:
+            if lot.deleted_at is None:
+                lot.deleted_at = now
+    root.db.session.commit()
+    return len(stale_rows)
+
+
+def _biomass_bucket_filter(root, query, bucket, days_to_old, days_to_soft_delete):
+    now = datetime.now(timezone.utc)
+    old_cutoff = now - timedelta(days=days_to_old)
+    soft_delete_cutoff = now - timedelta(days=days_to_soft_delete)
+
+    if bucket == "deleted":
+        return query.filter(root.Purchase.deleted_at.isnot(None))
+
+    query = query.filter(root.Purchase.deleted_at.is_(None))
+    if bucket == "all":
+        return query
+    if bucket == "old":
+        return query.filter(
+            root.Purchase.status.in_(POTENTIAL_BIOMASS_STATUSES),
+            root.Purchase.created_at <= old_cutoff,
+            root.Purchase.created_at > soft_delete_cutoff,
+        )
+
+    return query.filter(
+        root.or_(
+            root.Purchase.status.notin_(POTENTIAL_BIOMASS_STATUSES),
+            root.Purchase.created_at > old_cutoff,
+        )
+    )
+
+
 def biomass_list_view(root):
-    root._apply_biomass_potential_soft_delete()
+    _apply_biomass_potential_soft_delete(root)
     redir = root._list_filters_clear_redirect("biomass_list")
     if redir:
         return redir
@@ -22,7 +123,7 @@ def biomass_list_view(root):
         "biomass_list",
         ("bucket", "stage", "start_date", "end_date", "supplier_id", "strain"),
     )
-    days_to_old, days_to_soft_delete = root._potential_lot_age_days()
+    days_to_old, days_to_soft_delete = _potential_lot_age_days(root)
     bucket = (m.get("bucket") or "current").strip().lower()
     if bucket == "deleted" and not root.current_user.is_super_admin:
         bucket = "current"
@@ -39,9 +140,9 @@ def biomass_list_view(root):
         start_date = None
         end_date = None
     query = root.Purchase.query.join(root.Supplier)
-    query = root._biomass_bucket_filter(query, bucket, days_to_old, days_to_soft_delete)
+    query = _biomass_bucket_filter(root, query, bucket, days_to_old, days_to_soft_delete)
     if stage:
-        mapped_status = root._STAGE_TO_STATUS.get(stage, stage)
+        mapped_status = STAGE_TO_STATUS.get(stage, stage)
         query = query.filter(root.Purchase.status == mapped_status)
     if start_date:
         query = query.filter(root.Purchase.availability_date >= start_date)
@@ -258,7 +359,7 @@ def save_biomass_purchase(root, existing):
                     "to or from Committed / Delivered."
                 )
         if enters_commitment:
-            purchase.purchase_approved_at = datetime.utcnow()
+            purchase.purchase_approved_at = datetime.now(timezone.utc)
             purchase.purchase_approved_by_user_id = root.current_user.id
 
         purchase.status = new_status
@@ -339,7 +440,7 @@ def save_biomass_purchase(root, existing):
 def biomass_delete_view(root, item_id):
     item = root.db.session.get(root.Purchase, item_id)
     if item:
-        deleted_at = datetime.utcnow()
+        deleted_at = datetime.now(timezone.utc)
         item.deleted_at = deleted_at
         item.deleted_by = root.current_user.id
         for lot in item.lots:

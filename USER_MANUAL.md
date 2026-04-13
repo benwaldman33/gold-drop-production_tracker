@@ -4,7 +4,9 @@ This guide explains how to use the Gold Drop web app day-to-day. It intentionall
 
 **Other documents:** `FAQ.md` (quick answers), `PRD.md` (product requirements), `ENGINEERING.md` (technical implementation notes for developers).
 
-**Current release note:** the app is being refactored internally for maintainability, but the workflows in this manual are still the ones you should test. Routes, page names, approvals, list screens, and Slack import behavior are intended to work the same as before.
+**Current release note:** the app has now been split internally across dedicated route modules for dashboard, field intake, runs, purchases, biomass, costs, inventory, batch edit, suppliers/photos, purchase import, strains, settings, and Slack integration. The workflows in this manual are still the ones you should test: routes, page names, approvals, list screens, and Slack import behavior are intended to work the same as before.
+
+**Operator-facing additions in the current release:** Purchases and Inventory are more status-first, the Journey page is richer, Slack imports now includes inbox buckets, lot labels can be printed, and the data model is prepared for future smart-scale capture.
 
 ---
 
@@ -22,14 +24,14 @@ Use the left sidebar:
 - **Biomass purchasing**: buyer weekly snapshot, field submission queues, and reviewed history
 - **Departments**: hub of department-focused pages (same data as the rest of the app; quick links and rollups per team—finance, purchasing, intake, extraction, THCA/HTE/Liquid Diamonds, terpenes, testing, bulk sales)
 - **Runs**: extraction runs log + cost/yield outputs
-- **Inventory**: on-hand lots + in-transit purchases
+- **Inventory**: on-hand lots + in-transit purchases, including lot tracking IDs and remaining pounds
 - **Purchases**: batch-level purchase records + batch IDs (same underlying rows as **Biomass Pipeline**); **Approve purchase** when your role allows; **Import spreadsheet** for bulk purchase upload; row **batch edit** on the list
 - **Costs**: operational cost entries (solvent/personnel/overhead)
 - **Biomass Pipeline**: pipeline view of **purchases** in early/procurement stages (**Declared** → **Testing** → **Committed** → **Delivered** / **Cancelled**); one **Batch ID** per row end-to-end
 - **Suppliers**: supplier performance analytics
 - **Strains**: strain performance analytics
 - **Photo Library**: searchable media across supplier/purchase/field contexts; editors can upload and remove certain attachment types here (see **Photo Library** section)
-- **Slack imports** (Slack Importer capability or Super Admin): triage synced Slack messages, preview mapped Run fields, **create run from Slack** (prefilled form)
+- **Slack imports** (Slack Importer capability or Super Admin): triage synced Slack messages, preview mapped Run fields, review candidate source lots, optionally split a run across multiple lots, then **create run from Slack** (prefilled form)
 - **Settings** (Super Admin only): system parameters, KPIs, users, maintenance actions
 - **Import**: CSV import for **historical runs** (run-style exports)—not the same as **Purchases → Import spreadsheet**
 
@@ -120,14 +122,26 @@ On the **Runs** list, use the **HTE pipeline** filter to see only runs in a give
 3. Add **input lots** (the biomass lots consumed by this run) and the weight used from each lot.
 4. Save.
 
+Before you save, the form now shows a live allocation summary:
+- **Total allocated**
+- **Target Lbs in Reactor**
+- **Delta** (over / under / exact)
+
+Each lot row also shows a projected remaining balance so you can see the impact before committing the run. The run will not save unless the selected lot weights add up exactly to **Lbs in Reactor**.
+
 ### Creating a run from Slack (optional)
 If your account has **Slack Importer** access (or you are a Super Admin), you can promote a synced channel message into a **prefilled** new run:
 
 1. Open **Slack imports** in the sidebar (or **Settings → View Slack imports** if you are a Super Admin).
 2. Use **filters** (message date, channel, promotion status, mapping coverage) to find the row you want. Filter choices **persist while your session is active** when you navigate away and return—see **Saved filters, sorts, and list state**. Use **Remove filters** to reset. Rows that cannot be assigned a calendar date from the Slack timestamp are **not removed** solely because you set a date range (they still appear alongside in-range messages).
-3. Click **Preview** to see mapped Run fields, or **Create run** / **Create run from Slack** on the preview page.
-4. The app opens **New Run** with values filled from your active **Slack → Run** mapping rules. Review everything; add input lots if needed.
-5. **Save** the run to store it. Nothing is written to Runs until you save.
+3. Click **Preview** to see mapped Run fields, ranked candidate source lots, and any suggested lot allocation.
+4. If the Slack message refers to biomass going into a run, you can:
+   - accept the suggested lot,
+   - manually assign one lot, or
+   - split the run across multiple candidate lots before leaving the preview page.
+5. Click **Create run** / **Create run from Slack**.
+6. The app opens **New Run** with values filled from your active **Slack → Run** mapping rules and with your selected lot rows prefilled. Review everything before saving.
+7. **Save** the run to store it. Nothing is written to Runs until you save.
 
 **Roles:** Opening the Slack imports UI and the apply flow requires the **Slack Importer** flag (Settings → Users) or **Super Admin**. **Saving** the run still requires **User** or **Super Admin** (edit access). If you are a **Viewer** with Slack Importer, you can review the prefilled form, but Save stays disabled until an editor saves the run (or your role is upgraded).
 
@@ -137,6 +151,7 @@ If your account has **Slack Importer** access (or you are a Super Admin), you ca
 
 ### What happens on save
 - **Approved lots only:** you cannot allocate weight from a lot whose purchase is **not approved**; the app shows an error naming the batch. Approve the purchase on **Edit Purchase** (or complete the **Committed** approval path on **Biomass Pipeline**) first.
+- **Exact allocation required:** the sum of your selected lot rows must match **Lbs in Reactor** exactly. If the total is over or under, fix the lot weights before saving.
 - **Yields** are recalculated automatically (overall, THCA, HTE).
 - **Lot remaining weights** are automatically decreased based on the input weights.
 - **Cost per gram** is recalculated based on:
@@ -196,6 +211,10 @@ This table lists lots with remaining weight, including:
 
 Purchase editors see **Select all**, **Select none**, and **Batch edit…** above this table to change strain name, location, milled, potency, or notes on **multiple lots** at once (see **Batch editing from list screens**).
 
+Lots may also show a **tracking ID**. This is the permanent machine-readable identity for that physical lot and is being added now so future barcode / QR label workflows can use the same lot record without changing your inventory process.
+
+Where available, use the **Label** action from Inventory, Purchases, or Journey to print a lot-facing label page. The current label output prints the stable tracking and scan payloads even before dedicated barcode / QR graphics are added.
+
 ### In Transit / On Order
 This table lists purchases that are not yet fully received, including:
 - Supplier and status
@@ -236,6 +255,10 @@ Each stage includes:
 - key metrics
 - links back to source records
 
+The Journey page now also shows:
+- **Inventory lots** for the purchase, including remaining weight, allocated weight, potency, clean/dirty state, testing state, and tracking ID when available
+- **Run allocations** showing which runs consumed which lots and how much weight was allocated into each run
+
 Exports:
 - **Export JSON**
 - **Export CSV**
@@ -249,6 +272,8 @@ Archived rows:
 2. Choose supplier, purchase date, status, and weight/pricing fields.
 3. (Optional) add lots/strains for the purchase at creation time.
 4. Save.
+
+When a lot is created or later approved into active inventory, the app now assigns it machine-readable tracking fields so it is ready for future labels and scan-based workflows.
 
 ### Importing purchases from a spreadsheet
 Use **Purchases** → **Import spreadsheet** when you have many purchases in Excel or CSV (for example accounting exports with **Vendor**, **Purchase Date**, **Invoice Weight**, **Actual Weight**, **Manifest**, **Amount**, **Paid Date**, **Payment Method**, **Week**).
@@ -271,7 +296,7 @@ Purchases support:
 - True-up amount calculation when potency changes and actual weight is known
 
 ### Purchase approval and status
-- **Approve purchase** (top of **Edit Purchase**, for **Super Admin** and users marked as purchase approvers): sets **Approved** with a timestamp. Until then, a yellow banner explains that material **cannot** be used in extraction runs or appear in **On Hand** inventory.
+- **Approve purchase** (top of **Edit Purchase**, and now inline on **Purchases** and **Biomass Pipeline** list rows for eligible approvers): sets **Approved** with a timestamp. Until then, a yellow banner explains that material **cannot** be used in extraction runs or appear in **On Hand** inventory.
 - You **cannot** set on-hand statuses (**Delivered**, **In testing**, **Available**, **Processing**) until the purchase is approved; try **Approve purchase** first, then change status.
 - **Biomass Pipeline** and **Purchases** are the **same records**: changing status on either screen is changing that purchase.
 
@@ -322,7 +347,7 @@ Editors can use **Select all** / **Select none** and **Batch edit…** on the pi
 You can open the same batch anytime from **Purchases** (search by **Batch ID** or supplier). There is **no separate “link” step**—one row serves both screens.
 
 ### Approvers and Committed
-Only **Super Admin** or users with **purchase approval** permission may move a batch **into** or **out of** **Committed** (and therefore control the approval stamp tied to that transition). If you lack permission, ask an approver to edit the batch or adjust your user flag in **Settings**.
+Only **Super Admin** or users with **purchase approval** permission may move a batch **into** or **out of** **Committed** (and therefore control the approval stamp tied to that transition). If you lack permission, ask an approver to edit the batch or adjust your user flag in **Settings**. If you do have permission, you can approve directly from the **Biomass Pipeline** row without opening the form first.
 
 ### Adding field photos
 Field intake for biomass declarations (and purchase requests) still supports optional photo uploads; stored paths attach to the resulting **purchase** record.
@@ -468,7 +493,7 @@ Admins can create users and assign roles. (This manual does not include any cred
 - **Inbound:** Slash commands and interactivity use `/api/slack/command` and `/api/slack/interactivity`.
 - **Event Subscriptions:** In the Slack app, set the Request URL to `https://your-site/api/slack/events` (HTTPS). The app answers Slack’s URL challenge and accepts `event_callback` pings (extend later for channel messages). The **Signing Secret** in Slack must match the value saved in Settings.
 - **Channel history sync:** Under **Settings → Slack Integration → Channel history sync**, configure up to **six** channels (`#name` or channel ID), then use **Settings → Maintenance → Sync Slack channel history**. The **Days back** value applies to the **first** sync of each channel; after that, each channel keeps its own cursor (last message timestamp) so only newer messages are scanned. The bot must be **invited** to every channel and have `channels:history` + `channels:read` (and for private channels, `groups:history` + `groups:read`). Each message is stored once (deduped by channel + Slack timestamp).
-- **Slack imports & apply (Phase 2):** Sync **stores messages only**—it does not create Runs. Users with **Slack Importer** (or Super Admin) use **Slack imports** to filter/triage rows, open **Run preview**, and **Create run from Slack** so the normal Run form opens prefilled from **Settings → Slack → field mappings** (Run destination rules). Runs are created only when someone **saves** the Run form. Mapping rules for non-Run destinations remain preview/storage for future modules. Super Admins edit mappings at **`/settings/slack-run-mappings`**; the imports list is at **`/settings/slack-imports`** and is also linked from the sidebar for importers.
+- **Slack imports & apply:** Sync **stores messages only**—it does not create Runs. Users with **Slack Importer** (or Super Admin) use **Slack imports** to filter/triage rows, open **Run preview**, review candidate source lots, optionally assign or split lot weights, and **Create run from Slack** so the normal Run form opens prefilled from **Settings → Slack → field mappings** (Run destination rules). Runs are created only when someone **saves** the Run form. Mapping rules for non-Run destinations remain preview/storage for future modules. Super Admins edit mappings at **`/settings/slack-run-mappings`**; the imports list is at **`/settings/slack-imports`** and is also linked from the sidebar for importers.
 
 ### Maintenance: Recalculate all run costs
 Use **Recalculate All Run Costs** after:
@@ -527,6 +552,8 @@ Use exports for reporting, reconciliation, or offline analysis.
 - **A pipeline record didn’t create a purchase**: set stage to **Committed** (or Delivered) and save; ensure required fields are valid.
 - **I don’t see Slack imports in the sidebar**: ask a Super Admin to enable **Slack Importer** on your user (Super Admins always have access).
 - **Slack prefilled run won’t save**: you need **User** or **Super Admin** to save Runs; Viewer accounts can only review the prefilled form.
+- **Slack prefilled run won’t save because the lot total is wrong**: the selected lot rows must add up exactly to **Lbs in Reactor**. Use the live allocation summary on the Run form to find the difference.
+- **What do the inbox buckets on Slack imports mean?**: they separate rows into **Auto-ready**, **Needs confirmation**, **Needs manual match**, **Blocked**, and **Processed** so operators can work the safest rows first.
 - **Slack says this message is already linked to a run**: expected after a successful apply; confirm only if you intentionally need a second run from the same Slack message.
 - **Upload rejected (file too large or wrong type)**: field intake photos allow **images only** up to **50 MB** each; Photo Library uploads, purchase supporting docs, and supplier lab/attachment uploads allow **images or PDF** up to **50 MB** each. Compress or split large PDFs if needed.
 - **Field intake says too many photos in one section**: each category has a cap (default **30** images per supplier/biomass/COA bucket on the purchase form, and **30** on the biomass form). Remove extras in the list before submitting, or ask your administrator to raise `FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET` if policy allows.

@@ -44,12 +44,19 @@
     <div class="value {% if days_supply >= 5 %}text-green{% elif days_supply >= 3 %}text-gold{% else %}cell-red{% endif %}">{{ "{:.1f}".format(days_supply) }}</div>
   </div>
   <div class="summary-stat">
-    <div class="label">Total</div>
-    <div class="value">{{ "{:,.0f}".format(total_on_hand + total_in_transit) }} lbs</div>
+    <div class="label">Partially Allocated</div>
+    <div class="value {% if partially_allocated_count %}text-gold{% endif %}">{{ partially_allocated_count }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Low Remaining</div>
+    <div class="value {% if low_remaining_count %}cell-red{% endif %}">{{ low_remaining_count }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Missing Tracking</div>
+    <div class="value {% if missing_tracking_count %}cell-red{% endif %}">{{ missing_tracking_count }}</div>
   </div>
 </div>
 
-<!-- On Hand -->
 <div class="card">
   <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
     <h3 style="margin:0;">Biomass On Hand</h3>
@@ -66,13 +73,13 @@
       <thead>
         <tr>
           {% if current_user.can_edit_purchases %}<th class="text-center" style="width:36px;"></th>{% endif %}
-          <th>Strain</th>
+          <th>Lot</th>
           <th>Supplier</th>
-          <th class="text-right">Original (lbs)</th>
-          <th class="text-right">Remaining (lbs)</th>
-          <th class="text-right">Potency %</th>
-          <th>Milled</th>
-          <th>Location</th>
+          <th>Allocation State</th>
+          <th>Weights</th>
+          <th>Material State</th>
+          <th>Exceptions</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
@@ -81,13 +88,41 @@
           {% if current_user.can_edit_purchases %}
           <td class="text-center"><input type="checkbox" class="batch-select-cb" data-batch-entity="inventory_lots" value="{{ lot.id }}" aria-label="Select lot"></td>
           {% endif %}
-          <td><strong>{{ lot.strain_name }}</strong></td>
+          <td class="text-sm">
+            <div><strong>{{ lot.strain_name }}</strong></div>
+            <div class="text-mono cell-muted">{{ lot.tracking_id or 'Tracking pending' }}</div>
+            <div class="cell-muted">{{ lot.location or 'No location' }}</div>
+          </td>
           <td>{{ lot.supplier_name }}</td>
-          <td class="text-right text-mono">{{ "{:,.0f}".format(lot.weight_lbs) }}</td>
-          <td class="text-right text-mono"><strong>{{ "{:,.0f}".format(lot.remaining_weight_lbs) }}</strong></td>
-          <td class="text-right text-mono">{{ "{:.1f}".format(lot.potency_pct) if lot.potency_pct else '—' }}</td>
-          <td>{% if lot.milled %}<span class="badge badge-green">Yes</span>{% else %}<span class="badge badge-gray">No</span>{% endif %}</td>
-          <td>{{ lot.location or '—' }}</td>
+          <td>
+            <span class="badge {% if lot._allocation_state_key == 'fully_allocated' %}badge-gray{% elif lot._allocation_state_key == 'partially_allocated' %}badge-gold{% else %}badge-green{% endif %}">
+              {{ lot._allocation_state_label }}
+            </span>
+          </td>
+          <td class="text-sm">
+            <div><strong>{{ "{:,.0f}".format(lot.remaining_weight_lbs) }}</strong> of {{ "{:,.0f}".format(lot.weight_lbs) }} lbs</div>
+            <div class="cell-muted">{{ "{:,.0f}".format(lot.allocated_weight_lbs) }} lbs allocated</div>
+            <div class="cell-muted">{% if lot.potency_pct %}{{ "{:.1f}".format(lot.potency_pct) }}% potency{% else %}Potency pending{% endif %}</div>
+          </td>
+          <td class="text-sm">
+            <div>{{ lot._material_state }}</div>
+            <div class="cell-muted">Milled: {% if lot.milled %}Yes{% else %}No{% endif %}</div>
+          </td>
+          <td class="text-sm">
+            {% if lot._exceptions %}
+            <div style="display:flex;flex-wrap:wrap;gap:6px;">
+              {% for item in lot._exceptions %}
+              <span class="badge badge-red">{{ item }}</span>
+              {% endfor %}
+            </div>
+            {% else %}
+            <span class="badge badge-green">No open exceptions</span>
+            {% endif %}
+          </td>
+          <td style="white-space:nowrap;">
+            <a href="{{ url_for('lot_label', lot_id=lot.id) }}" class="btn btn-secondary btn-sm">Label</a>
+            <a href="{{ url_for('purchases_bp.purchase_journey', purchase_id=lot.purchase_id, lot=lot.tracking_id or '') }}" class="btn btn-secondary btn-sm">Journey</a>
+          </td>
         </tr>
         {% else %}
         <tr><td colspan="{% if current_user.can_edit_purchases %}8{% else %}7{% endif %}" class="text-center cell-muted" style="padding:30px;">No biomass currently on hand.</td></tr>
@@ -97,7 +132,6 @@
   </div>
 </div>
 
-<!-- In Transit -->
 <div class="card">
   <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
     <h3 style="margin:0;">In Transit / On Order</h3>
@@ -116,10 +150,9 @@
           {% if current_user.can_edit_purchases %}<th class="text-center" style="width:36px;"></th>{% endif %}
           <th>Supplier</th>
           <th>Status</th>
-          <th class="text-right">Weight (lbs)</th>
-          <th>Order Date</th>
-          <th>Expected Delivery</th>
-          <th class="text-right">Price/lb</th>
+          <th>Weight / Cost</th>
+          <th>Dates</th>
+          <th>Exceptions / Next Step</th>
         </tr>
       </thead>
       <tbody>
@@ -128,15 +161,34 @@
           {% if current_user.can_edit_purchases %}
           <td class="text-center"><input type="checkbox" class="batch-select-cb" data-batch-entity="purchases" value="{{ p.id }}" aria-label="Select purchase"></td>
           {% endif %}
-          <td><strong>{{ p.supplier_name }}</strong></td>
+          <td>
+            <div><strong>{{ p.supplier_name }}</strong></div>
+            <div class="text-mono cell-muted">{{ p.batch_id or 'No batch id' }}</div>
+          </td>
           <td><span class="badge status-{{ p.status }}">{{ p.status.replace('_', ' ') }}</span></td>
-          <td class="text-right text-mono">{{ "{:,.0f}".format(p.stated_weight_lbs) }}</td>
-          <td>{{ p.purchase_date.strftime('%m/%d/%y') if p.purchase_date else '—' }}</td>
-          <td>{{ p.delivery_date.strftime('%m/%d/%y') if p.delivery_date else '—' }}</td>
-          <td class="text-right text-mono">{{ "${:,.2f}".format(p.price_per_lb) if p.price_per_lb else '—' }}</td>
+          <td class="text-sm">
+            <div><strong>{{ "{:,.0f}".format(p.stated_weight_lbs) }}</strong> lbs</div>
+            <div class="cell-muted">{{ "${:,.2f}".format(p.price_per_lb) if p.price_per_lb else 'No $/lb' }}</div>
+          </td>
+          <td class="text-sm">
+            <div>Order: {{ p.purchase_date.strftime('%m/%d/%y') if p.purchase_date else '—' }}</div>
+            <div class="cell-muted">Expected: {{ p.delivery_date.strftime('%m/%d/%y') if p.delivery_date else '—' }}</div>
+          </td>
+          <td class="text-sm">
+            {% if p._exceptions %}
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;">
+              {% for item in p._exceptions %}
+              <span class="badge badge-red">{{ item }}</span>
+              {% endfor %}
+            </div>
+            {% else %}
+            <span class="badge badge-green">No open exceptions</span>
+            {% endif %}
+            <div class="cell-muted" style="margin-top:6px;">Next: {{ p._next_action }}</div>
+          </td>
         </tr>
         {% else %}
-        <tr><td colspan="{% if current_user.can_edit_purchases %}7{% else %}6{% endif %}" class="text-center cell-muted" style="padding:30px;">No orders in transit.</td></tr>
+        <tr><td colspan="{% if current_user.can_edit_purchases %}6{% else %}5{% endif %}" class="text-center cell-muted" style="padding:30px;">No orders in transit.</td></tr>
         {% endfor %}
       </tbody>
     </table>

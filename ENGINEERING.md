@@ -11,13 +11,65 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
   - **`gold_drop/list_state.py`** - session filter persistence, timezone helpers, Slack channel labels
   - **`gold_drop/slack.py`** - Slack parsing, mapping, preview, and coverage helpers
   - **`gold_drop/purchases.py`** - weekly biomass budget / on-hand purchase helpers
-  - **`gold_drop/purchases_module.py`** - purchases list/form/approval route logic delegated from `app.py`
+  - **`gold_drop/purchases_module.py`** - purchases list/form/approval route logic delegated from `app.py`; inline list approvals in Purchases and Biomass Pipeline post through this module and preserve `return_to`
   - **`gold_drop/biomass_module.py`** - biomass pipeline list/form/archive route logic delegated from `app.py`
+  - **`gold_drop/runs_module.py`** - run list/form/delete route logic delegated from `app.py`
+  - **`gold_drop/dashboard_module.py`** - dashboard, department, and biomass purchasing dashboard routes delegated from `app.py`
+  - **`gold_drop/field_intake_module.py`** - field/mobile intake and office purchase submission flows delegated from `app.py`
+  - **`gold_drop/costs_module.py`** - cost entry list/form/delete routes delegated from `app.py`
+  - **`gold_drop/inventory_module.py`** - inventory list/filter route delegated from `app.py`
+  - **`gold_drop/batch_edit_module.py`** - batch edit route and return-url guard delegated from `app.py`
+  - **`gold_drop/suppliers_module.py`** - suppliers, supplier attachments/lab tests, and photos library routes delegated from `app.py`
+  - **`gold_drop/purchase_import_module.py`** - purchase spreadsheet import staging/validation/commit flow delegated from `app.py`
+  - **`gold_drop/strains_module.py`** - strain performance route delegated from `app.py`
   - **`gold_drop/bootstrap_module.py`** - startup database initialization and seed logic delegated from `init_db()`
-  - **`gold_drop/settings_module.py`** - extracted settings/admin view logic called by the `/settings` route
+  - **`gold_drop/settings_module.py`** - extracted settings/admin view logic called by the `/settings` route; also normalizes legacy field-token datetimes before render so Settings can compare token expiry against aware UTC safely
   - **`gold_drop/uploads.py`** - upload validation, save helpers, and JSON path normalization
-- `app.py` still re-exports some extracted helpers and keeps the Flask route decorators, but purchases, biomass, settings, and startup init now delegate immediately into package modules.
+  - **`services/lot_allocation.py`** - lot tracking backfill, lot candidate ranking, and run allocation apply / release logic
+  - **`services/lot_labels.py`** - lot label payload generation for print / future scan workflows
+  - **`services/scale_ingest.py`** - future manual / device weight-capture service boundary
+- `app.py` still re-exports some extracted helpers, but the active dashboard, field intake, runs, purchases, biomass, costs, inventory, batch edit, suppliers/photos, purchase import, strains, settings, and Slack surfaces are now registered from package modules with `add_url_rule`, and startup init delegates through `gold_drop/bootstrap_module.py`.
 - `tests/test_app_factory.py` provides a minimal factory + route-registration smoke check so future extractions are verified against a real app object, not just imports.
+
+## Resume checkpoint
+
+- **April 11, 2026:** Slack rebuild resumed after shell loss. Current integration entrypoint is **`gold_drop/slack_integration_module.py`** for Slack settings persistence, history sync, import/apply flows, and `/api/slack/*` handlers.
+- **April 11, 2026:** Modular route extraction now also covers **`gold_drop/costs_module.py`**, **`gold_drop/inventory_module.py`**, **`gold_drop/batch_edit_module.py`**, and **`gold_drop/strains_module.py`**. If work is interrupted again, resume by checking **`app.py`** `_register_extracted_routes()` and **`tests/test_app_factory.py`** to see the current active module surface.
+- `app.py` still contains some Slack compatibility wrappers and lower-level intake/resolution helpers, but Slack route bodies now delegate into the module. If work is interrupted again, resume by checking:
+- **`gold_drop/slack_integration_module.py`** - active Slack integration surface
+- **`gold_drop/settings_module.py`** - Settings POST delegates for `form_type=slack`
+- **`tests/test_app_factory.py`** and **`tests/test_slack_mapping_logic.py`** - current smoke and Slack logic coverage
+
+## Lot allocation integrity + lot identity
+
+- **Models (`models.py`)**
+  - `PurchaseLot` now carries `tracking_id`, `barcode_value`, `qr_value`, `label_generated_at`, and `label_version`.
+  - `PurchaseLot` exposes `allocated_weight_lbs` and `remaining_pct` convenience properties for views and services.
+  - `RunInput` now carries `allocation_source`, `allocation_confidence`, `allocation_notes`, and `slack_ingested_message_id`.
+- **Generation / backfill**
+  - New lots receive tracking / label fields on insert.
+  - `services/bootstrap_helpers.py` extends SQLite schema compatibility for the new `purchase_lots` and `run_inputs` columns.
+  - Purchase approval and inventory-lot maintenance backfill missing lot tracking fields so legacy rows are upgraded without a manual migration step.
+- **Service boundary**
+  - `services/lot_allocation.py`
+    - `ensure_lot_tracking_fields`
+    - `ensure_purchase_lot_tracking`
+    - `collect_run_allocations_from_form`
+    - `apply_run_allocations`
+    - `release_run_allocations`
+    - `rank_lot_candidates`
+    - `choose_default_lot_allocation`
+- **Active callers**
+  - `gold_drop/purchases_module.py` uses the service to backfill tracking on approval and lot creation.
+  - `gold_drop/runs_module.py` uses the service for allocation validation, decrement, and release instead of inline lot math.
+- **Rule now enforced**
+  - Run save fails unless selected lot allocations equal `bio_in_reactor_lbs` exactly.
+- **Label / scan surfaces**
+  - `GET /lots/<lot_id>/label`
+  - `GET /purchases/<purchase_id>/labels`
+  - `GET /scan/lot/<tracking_id>` -> currently resolves into purchase journey with focused lot context
+- **Coverage**
+  - `tests/test_lot_allocation.py` covers tracking-id generation, approval-time backfill, partial allocation / release, and over-allocation rejection.
 
 ## List view filter & sort persistence (`LIST_FILTERS_SESSION_KEY`)
 
@@ -194,6 +246,32 @@ SQLite adds the sync config table in `_ensure_sqlite_schema()`; other engines re
 - **Triage helpers:** `_slack_linked_run_ids_index`, `_slack_coverage_label(preview)` (full / partial / none aligned with PRD heuristic).
 - **Audit:** Run `create` with JSON `details` when saved from Slack (`slack_import`, ids, `duplicate_apply`, `prefill_keys`).
 - **Templates:** `slack_imports.html`, `slack_import_preview.html`, `slack_import_apply_confirm.html`, `run_form.html` (hidden Slack fields + `can_save_run`). `base.html` sidebar link when `current_user.can_slack_import`.
+- **Lot-resolution additions (current):**
+  - Slack preview loads ranked candidate lots through `services/lot_allocation.py`.
+  - `templates/slack_import_preview.html` allows manual or split lot-weight entry and serializes the selection into `slack_selected_allocations_json`.
+  - `services/slack_workflow.py` validates `slack_selected_allocations_json` and preserves it through duplicate-confirm passthrough.
+  - `gold_drop/runs_module.py` hydrates those selected lot rows into the Run form.
+  - `templates/run_form.html` shows live allocation totals, target vs delta, and projected remaining balances per lot row. Client-side summary is advisory; server-side validation remains authoritative.
+  - `templates/slack_imports.html` now groups rows into inbox buckets (`auto_ready`, `needs_confirmation`, `needs_manual_match`, `blocked`, `processed`) while still showing promotion and coverage dimensions.
+
+## Scale-readiness
+
+- **Models (`models.py`)**
+  - `ScaleDevice` - connection / protocol metadata for future connected scales
+  - `WeightCapture` - accepted weight evidence linked to purchase, lot, run, and optional device
+- **Service boundary**
+  - `services/scale_ingest.py`
+    - `parse_ascii_scale_payload`
+    - `create_weight_capture`
+- **Current scope**
+  - No live hardware polling yet.
+  - The model is ready for manual vs device-captured weights and stores raw payload, source mode, stability flag, and linked operational object ids.
+
+## Time handling and test runner notes
+
+- App/runtime timestamps now use timezone-aware UTC (`datetime.now(timezone.utc)` or model-level `utc_now()` helpers) instead of `datetime.utcnow()`.
+- `models.py` includes `coerce_utc()` so older naive `expires_at` values can still be compared safely.
+- `pytest.ini` disables pytest cache provider (`-p no:cacheprovider`) because `.pytest_cache` is unreliable in this environment; normal local test runs should no longer emit cache warnings.
 
 ### Slack → field mappings (Phase 1)
 
@@ -212,14 +290,14 @@ SQLite adds the sync config table in `_ensure_sqlite_schema()`; other engines re
 - **Module:** `purchase_import.py` — `PURCHASE_IMPORT_HEADER_ALIASES` / `_aliases_groups` map normalized headers (lowercase, spaces → underscores) to canonical purchase fields; `parse_purchase_spreadsheet_upload(filename, raw_bytes)` returns rows as `dict` plus `_sheet_row` for display. Supports **CSV** (UTF-8-SIG) and **Excel** via **openpyxl** `load_workbook(..., read_only=True, data_only=True)` on the active sheet.
 - **Detection:** Scans the first **50** grid rows for a header line with **≥2** mapped columns; requires a **supplier** column. Max **2000** data rows.
 - **Routes (Flask):** `GET/POST /purchases/import` (`purchase_import`, `@purchase_editor_required`), `GET /purchases/import/preview`, `POST /purchases/import/commit`, `GET /purchases/import/sample.csv`. Upload writes a staging JSON file under `tempfile.gettempdir()` named `gdp_purchimp_<token>.json`; only a random token is stored in `session["purchase_import_token"]`.
-- **Validation / commit:** `app.py` — `_purchase_import_validate_row`, `_purchase_import_commit_norm`; reuses `_maintain_purchase_inventory_lots`, purchase budget helpers from **`gold_drop/purchases.py`**, and `log_audit`. Imported rows do **not** set **`purchase_approved_at`**; if parsed **`status`** ∈ **`INVENTORY_ON_HAND_PURCHASE_STATUSES`**, commit forces **`ordered`** instead. Optional **Amount** → `total_cost`; **Paid date** / **Week** / **Payment method** folded into **notes**; **invoice** weight can fall back to **actual** weight; **purchase date** can fall back to **paid date** when purchase date is blank.
+- **Validation / commit:** `gold_drop/purchase_import_module.py` — `_purchase_import_validate_row`, `_purchase_import_commit_norm`; reuses `_maintain_purchase_inventory_lots`, purchase budget helpers from **`gold_drop/purchases.py`**, and `log_audit`. Imported rows do **not** set **`purchase_approved_at`**; if parsed **`status`** ∈ **`INVENTORY_ON_HAND_PURCHASE_STATUSES`**, commit forces **`ordered`** instead. Optional **Amount** → `total_cost`; **Paid date** / **Week** / **Payment method** folded into **notes**; **invoice** weight can fall back to **actual** weight; **purchase date** can fall back to **paid date** when purchase date is blank.
 - **Templates:** `purchase_import.html`, `purchase_import_preview.html`. Client uses `DataTransfer` so drag-and-drop assigns `input.files` in modern browsers.
 - **Dependency:** `openpyxl>=3.1.0` in `requirements.txt`.
 
 ## Batch list editing
 
 - **Module:** `batch_edit.py` — pure apply helpers: `parse_uuid_ids`, `apply_batch_runs`, `apply_batch_purchases` (returns `touched` purchases for hooks), `apply_batch_biomass`, `apply_batch_suppliers`, `apply_batch_costs`, `apply_batch_inventory_lots`, `apply_batch_strain_rename`. Max **200** UUIDs per batch. Strain rename uses `STRAIN_PAIR_SEP` (`\\x1f`) between strain name and supplier name in checkbox values / query params.
-- **Route:** `GET/POST /batch-edit/<entity>` (`batch_edit` in `app.py`, `@login_required`). Entities: `runs`, `purchases`, `biomass`, `suppliers`, `costs`, `inventory_lots`, `strains`. Permission: `can_edit` for runs/biomass/costs/suppliers/strains; `can_edit_purchases` for purchases and inventory lots. **`return_to`** query/body param must be a safe relative path (`_safe_batch_return_url`).
+- **Route:** `GET/POST /batch-edit/<entity>` (`batch_edit` in `gold_drop/batch_edit_module.py`, `@login_required`). Entities: `runs`, `purchases`, `biomass`, `suppliers`, `costs`, `inventory_lots`, `strains`. Permission: `can_edit` for runs/biomass/costs/suppliers/strains; `can_edit_purchases` for purchases and inventory lots. **`return_to`** query/body param must be a safe relative path (`safe_batch_return_url`).
 - **Purchases batch:** After `apply_batch_purchases`, for each touched purchase: `_maintain_purchase_inventory_lots`, budget enforcement (`_biomass_budget_snapshot_for_purchase`, `_enforce_weekly_biomass_purchase_limits`). **`ValueError`** from budget rules rolls back the whole batch commit attempt.
 - **Biomass batch:** `apply_batch_biomass` updates **`Purchase`** rows (pipeline list IDs are purchase UUIDs); audit action **`purchase_batch_biomass`**.
 - **Runs batch:** Optional fields only; `run_type`, `hte_pipeline_stage` (form uses `__nochange__` sentinel vs cleared stage), rollover/decarb tri-state, optional load source + checkbox, `notes_append`; `calculate_yields` + `calculate_cost` per changed run.
@@ -229,7 +307,7 @@ SQLite adds the sync config table in `_ensure_sqlite_schema()`; other engines re
 
 ## Inventory (`GET /inventory`)
 
-- **Route:** `inventory()` in `app.py`; template `templates/inventory.html`.
+- **Route:** `inventory()` in `gold_drop/inventory_module.py`; template `templates/inventory.html`.
 - **On-hand lots:** `PurchaseLot` joined to `Purchase` where `remaining_weight_lbs > 0`, both not soft-deleted, `Purchase.status` ∈ `INVENTORY_ON_HAND_PURCHASE_STATUSES` (**`delivered`**, **`in_testing`**, **`available`**, **`processing`** — note **`complete`** is not in this tuple), and **`Purchase.purchase_approved_at` IS NOT NULL**. Optional `supplier_id` and case-insensitive `strain` substring on `PurchaseLot.strain_name`. Same approval filter on **dashboard** on-hand / days-of-supply, **`GET /api/lots/available`**, and **run form** lot query.
 - **In transit:** `Purchase` not deleted, `status` ∈ `("committed", "ordered", "in_transit")`. Optional `supplier_id` only—**no strain filter**, so summary **Total** can mix strain-filtered on-hand with full in-transit for that supplier.
 - **Summary:**
@@ -253,15 +331,19 @@ Implemented baseline: clickable journey page + JSON API + JSON/CSV export for a 
 - `GET /purchases/<id>/journey/export?format=json|csv` (download)
 - Routes are now served from `blueprints/purchases.py`; payload generation lives in `services/purchases_journey.py` (no lazy runtime import of `app`).
 
-### Event model (example)
+### Event model (current payload)
 - `stage_key`: declared | testing | committed | delivered | inventory | extraction | post_processing | sales
 - `state`: done | in_progress | blocked | not_started | not_applicable
 - `started_at`, `completed_at`
 - `metrics`: lbs/g/$ summary at that stage
 - `links`: list of source record URLs/ids
+- `lots`: purchase-lot payloads including tracking id, original / allocated / remaining lbs, potency, testing state, and clean / dirty state
+- `allocations`: explicit `RunInput` edges from lot to run
+- `runs`: downstream run nodes used by the HTML timeline and API consumers
 
 ### UI notes
 - Render as stepper/timeline with status colors and tooltips.
 - Show partial completion (e.g., some lots consumed in runs, others still on-hand).
 - Include “last updated” and “include archived” toggles for audit contexts.
 - Include direct **Export JSON** / **Export CSV** actions on the journey page.
+- `templates/purchase_journey.html` now includes dedicated **Inventory Lots** and **Run Allocations** sections rather than only stage summaries.

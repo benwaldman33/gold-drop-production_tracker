@@ -34,6 +34,16 @@ def build_purchase_journey_payload(
         run_id_rows = run_id_rows.filter(Run.deleted_at.is_(None), PurchaseLot.deleted_at.is_(None))
     run_ids = [rid for (rid,) in run_id_rows.group_by(Run.id).all()]
     runs = Run.query.filter(Run.id.in_(run_ids)).all() if run_ids else []
+    run_inputs_q = (
+        RunInput.query.join(PurchaseLot, PurchaseLot.id == RunInput.lot_id)
+        .filter(PurchaseLot.purchase_id == purchase.id)
+    )
+    if not include_archived:
+        run_inputs_q = run_inputs_q.join(Run, Run.id == RunInput.run_id).filter(
+            PurchaseLot.deleted_at.is_(None),
+            Run.deleted_at.is_(None),
+        )
+    run_inputs = run_inputs_q.all()
 
     total_lot_lbs = float(sum(l.weight_lbs or 0 for l in lots))
     total_remaining_lbs = float(sum(l.remaining_weight_lbs or 0 for l in lots))
@@ -132,10 +142,93 @@ def build_purchase_journey_payload(
         },
     ]
 
+    lot_nodes = [
+        {
+            "lot_id": lot.id,
+            "tracking_id": getattr(lot, "tracking_id", None),
+            "batch_id": purchase.batch_id,
+            "supplier_name": lot.supplier_name,
+            "strain_name": lot.strain_name,
+            "weight_lbs": float(lot.weight_lbs or 0),
+            "allocated_weight_lbs": float(getattr(lot, "allocated_weight_lbs", 0) or 0),
+            "remaining_weight_lbs": float(lot.remaining_weight_lbs or 0),
+            "remaining_pct": float(getattr(lot, "remaining_pct", 0) or 0),
+            "potency_pct": float(lot.potency_pct or 0) if lot.potency_pct is not None else None,
+            "clean_or_dirty": purchase.clean_or_dirty,
+            "testing_status": purchase.testing_status,
+            "location": lot.location,
+            "purchase_url": url_for("purchase_edit", purchase_id=purchase.id),
+        }
+        for lot in lots
+    ]
+    allocation_edges = [
+        {
+            "run_input_id": inp.id,
+            "run_id": inp.run_id,
+            "lot_id": inp.lot_id,
+            "weight_lbs": float(inp.weight_lbs or 0),
+            "allocation_source": getattr(inp, "allocation_source", None),
+            "allocation_confidence": getattr(inp, "allocation_confidence", None),
+            "slack_ingested_message_id": getattr(inp, "slack_ingested_message_id", None),
+        }
+        for inp in run_inputs
+    ]
+    run_nodes = [
+        {
+            "run_id": run.id,
+            "run_date": run.run_date.isoformat() if run.run_date else None,
+            "reactor_number": run.reactor_number,
+            "bio_in_reactor_lbs": float(run.bio_in_reactor_lbs or 0),
+            "dry_thca_g": float(run.dry_thca_g or 0),
+            "dry_hte_g": float(run.dry_hte_g or 0),
+            "hte_pipeline_stage": run.hte_pipeline_stage,
+            "run_url": url_for("run_edit", run_id=run.id),
+        }
+        for run in sorted(runs, key=lambda item: (item.run_date or "", item.id))
+    ]
+
+    exceptions: list[dict] = []
+    if not purchase.is_approved:
+        exceptions.append({
+            "level": "warning",
+            "label": "Approval required",
+            "detail": "This purchase is not yet approved, so its material cannot be consumed in runs.",
+        })
+    if not lots and float(purchase.stated_weight_lbs or 0) > 0:
+        exceptions.append({
+            "level": "warning",
+            "label": "No inventory lots",
+            "detail": "This purchase has weight but no active lots to allocate from.",
+        })
+    for lot in lots:
+        if not getattr(lot, "tracking_id", None):
+            exceptions.append({
+                "level": "warning",
+                "label": "Missing lot tracking",
+                "detail": f"Lot {lot.strain_name} does not have a tracking ID yet.",
+            })
+        if float(lot.remaining_weight_lbs or 0) < 0:
+            exceptions.append({
+                "level": "error",
+                "label": "Negative remaining weight",
+                "detail": f"Lot {lot.strain_name} is below zero remaining weight.",
+            })
+
     return {
         "purchase_id": purchase.id,
         "batch_id": purchase.batch_id,
         "status": purchase.status,
         "include_archived": bool(include_archived),
         "events": events,
+        "lots": lot_nodes,
+        "allocations": allocation_edges,
+        "runs": run_nodes,
+        "exceptions": exceptions,
+        "summary": {
+            "lot_count": len(lot_nodes),
+            "run_count": len(run_nodes),
+            "total_lot_lbs": total_lot_lbs,
+            "remaining_lbs": total_remaining_lbs,
+            "allocated_lbs": consumed_lbs,
+        },
     }
