@@ -818,6 +818,71 @@ body.supplier-incomplete-banner-on .main-content {
   display: none;
 }
 
+.slack-imports-scrollbar-top {
+  overflow-x: auto;
+  overflow-y: hidden;
+  height: 14px;
+  margin-bottom: 10px;
+  border: 1px solid var(--dark-border);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.slack-imports-scrollbar-top[hidden] {
+  display: none;
+}
+
+.slack-imports-scrollbar-top > div {
+  height: 1px;
+}
+
+.slack-imports-table {
+  min-width: 1280px;
+  table-layout: fixed;
+}
+
+.slack-imports-table th,
+.slack-imports-table td {
+  white-space: normal;
+  vertical-align: top;
+}
+
+.slack-col-bucket {
+  width: 190px;
+}
+
+.slack-col-time {
+  width: 170px;
+}
+
+.slack-col-kind {
+  width: 110px;
+}
+
+.slack-col-promotion {
+  width: 150px;
+}
+
+.slack-col-coverage {
+  width: 95px;
+}
+
+.slack-col-derived {
+  width: 280px;
+  word-break: break-word;
+}
+
+.slack-col-raw {
+  width: 300px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.slack-col-actions {
+  width: 150px;
+  white-space: nowrap;
+}
+
 /* Slack imports: triage-hidden rows (shown only when "Include hidden" is on) */
 .slack-import-row--triage-hidden td {
   background: rgba(107, 105, 117, 0.08);

@@ -192,7 +192,7 @@ def test_slack_preview_surfaces_candidate_lots_with_tracking_ids():
         db.session.add(lot)
         row = SlackIngestedMessage(
             channel_id="C123",
-            message_ts=f"1743200000.{app_module.gen_uuid().replace('-', '')[:6]}",
+            message_ts="1743200000.327470",
             raw_text="reactor: A\nsource: Farmlane\nstrain: Blue Dream\nbio lbs: 100",
             message_kind="production_log",
         )
