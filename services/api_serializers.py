@@ -277,3 +277,14 @@ def serialize_strain_performance_row(
         "total_thca_g": float(total_thca_g or 0),
         "total_hte_g": float(total_hte_g or 0),
     }
+
+
+def serialize_search_result(*, entity_type, entity_id, label, subtitle=None, match_fields=None, context=None):
+    return {
+        "entity_type": entity_type,
+        "entity_id": entity_id,
+        "label": label,
+        "subtitle": subtitle,
+        "match_fields": match_fields or [],
+        "context": context or {},
+    }

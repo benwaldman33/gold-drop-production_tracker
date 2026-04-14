@@ -328,6 +328,7 @@ This app now exposes a read-only internal API under `/api/v1` for trusted intern
 Current endpoints:
 - `/api/v1/site`
 - `/api/v1/capabilities`
+- `/api/v1/search`
 - `/api/v1/summary/dashboard`
 - `/api/v1/departments`
 - `/api/v1/departments/<slug>`
@@ -376,6 +377,7 @@ Useful read scopes now include:
 - `read:runs`
 - `read:inventory`
 - `read:dashboard`
+- `read:search`
 - `read:slack_imports`
 - `read:exceptions`
 - `read:suppliers`
@@ -385,6 +387,12 @@ Example request:
 
 ```bash
 curl -H "Authorization: Bearer YOUR_TOKEN_HERE" http://127.0.0.1:5050/api/v1/site
+```
+
+Search example:
+
+```bash
+curl -H "Authorization: Bearer YOUR_TOKEN_HERE" "http://127.0.0.1:5050/api/v1/search?q=farmlane&types=suppliers,purchases,lots"
 ```
 
 Every `/api/v1` response includes:

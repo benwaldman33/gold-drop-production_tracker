@@ -111,6 +111,90 @@ def test_api_v1_departments_list_and_detail():
             db.session.commit()
 
 
+def test_api_v1_search_requires_scope_and_returns_entity_matches():
+    app = app_module.app
+    supplier = Supplier(name=f"Searchable Supplier {gen_uuid()[:8]}", is_active=True)
+    purchase = Purchase(
+        supplier_id="",
+        purchase_date=date(2026, 4, 5),
+        delivery_date=date(2026, 4, 6),
+        status="delivered",
+        stated_weight_lbs=80,
+        purchase_approved_at=datetime.now(timezone.utc),
+        batch_id=f"SEARCH-{gen_uuid()[:6]}",
+        notes="search alpha batch",
+    )
+    lot = PurchaseLot(strain_name="Search Dream", weight_lbs=80, remaining_weight_lbs=40)
+    run = Run(
+        run_date=date(2026, 4, 8),
+        reactor_number=3,
+        bio_in_reactor_lbs=40,
+        notes="search alpha run",
+    )
+    with app.app_context():
+        db.session.add(supplier)
+        db.session.flush()
+        purchase.supplier_id = supplier.id
+        db.session.add(purchase)
+        db.session.flush()
+        lot.purchase_id = purchase.id
+        db.session.add(lot)
+        db.session.flush()
+        db.session.add(run)
+        db.session.commit()
+        supplier_id = supplier.id
+        purchase_id = purchase.id
+        lot_id = lot.id
+        run_id = run.id
+
+    bad_headers, bad_client_id = _make_api_headers("read:site")
+    good_headers, good_client_id = _make_api_headers("read:search")
+    try:
+        with app.test_client() as client:
+            forbidden = client.get("/api/v1/search?q=alpha", headers=bad_headers)
+            assert forbidden.status_code == 403
+
+            response = client.get("/api/v1/search?q=alpha", headers=good_headers)
+            assert response.status_code == 200
+            payload = response.get_json()["data"]
+            entity_types = {item["entity_type"] for item in payload["results"]}
+            assert "purchase" in entity_types
+            assert "run" in entity_types
+
+            supplier_res = client.get("/api/v1/search?q=Searchable&types=suppliers", headers=good_headers)
+            assert supplier_res.status_code == 200
+            supplier_payload = supplier_res.get_json()["data"]
+            assert supplier_payload["results"][0]["entity_type"] == "supplier"
+
+            lot_res = client.get("/api/v1/search?q=Search&types=lots", headers=good_headers)
+            assert lot_res.status_code == 200
+            lot_payload = lot_res.get_json()["data"]
+            lot_ids = {item["entity_id"] for item in lot_payload["results"]}
+            assert lot_id in lot_ids
+
+            missing_q = client.get("/api/v1/search", headers=good_headers)
+            assert missing_q.status_code == 400
+    finally:
+        with app.app_context():
+            for client_id in (bad_client_id, good_client_id):
+                api_client = db.session.get(ApiClient, client_id)
+                if api_client:
+                    db.session.delete(api_client)
+            run_obj = db.session.get(Run, run_id)
+            if run_obj:
+                db.session.delete(run_obj)
+            lot_obj = db.session.get(PurchaseLot, lot_id)
+            if lot_obj:
+                db.session.delete(lot_obj)
+            purchase_obj = db.session.get(Purchase, purchase_id)
+            if purchase_obj:
+                db.session.delete(purchase_obj)
+            supplier_obj = db.session.get(Supplier, supplier_id)
+            if supplier_obj:
+                db.session.delete(supplier_obj)
+            db.session.commit()
+
+
 def test_api_v1_site_returns_site_meta_and_data():
     app = app_module.app
     headers, client_id = _make_api_headers("read:site")

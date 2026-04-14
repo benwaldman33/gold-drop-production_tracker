@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from flask import jsonify, request
+from sqlalchemy import or_
 
 from gold_drop.inventory_module import _annotate_inventory_lot
 from gold_drop.purchases_module import _annotate_purchase_row
@@ -43,6 +44,7 @@ from services.api_serializers import (
     serialize_slack_import_summary,
     serialize_strain_performance_row,
     serialize_supplier_performance_row,
+    serialize_search_result,
 )
 from services.api_site import get_site_identity
 from services.lot_allocation import choose_default_lot_allocation, rank_lot_candidates
@@ -56,6 +58,7 @@ def register_routes(app, root):
     API_ROOT = root
     app.add_url_rule("/api/v1/site", endpoint="api_v1_site", view_func=api_v1_site)
     app.add_url_rule("/api/v1/capabilities", endpoint="api_v1_capabilities", view_func=api_v1_capabilities)
+    app.add_url_rule("/api/v1/search", endpoint="api_v1_search", view_func=api_v1_search)
     app.add_url_rule("/api/v1/summary/dashboard", endpoint="api_v1_dashboard_summary", view_func=api_v1_dashboard_summary)
     app.add_url_rule("/api/v1/departments", endpoint="api_v1_departments", view_func=api_v1_departments)
     app.add_url_rule("/api/v1/departments/<slug>", endpoint="api_v1_department_detail", view_func=api_v1_department_detail)
@@ -106,6 +109,7 @@ def api_v1_capabilities():
             "read:runs",
             "read:inventory",
             "read:dashboard",
+            "read:search",
             "read:slack_imports",
             "read:exceptions",
             "read:suppliers",
@@ -114,6 +118,7 @@ def api_v1_capabilities():
         "endpoints": [
             {"path": "/api/v1/site", "scope": "read:site", "kind": "identity"},
             {"path": "/api/v1/capabilities", "scope": "read:site", "kind": "discovery"},
+            {"path": "/api/v1/search", "scope": "read:search", "kind": "search"},
             {"path": "/api/v1/summary/dashboard", "scope": "read:dashboard", "kind": "summary"},
             {"path": "/api/v1/departments", "scope": "read:dashboard", "kind": "list"},
             {"path": "/api/v1/departments/<slug>", "scope": "read:dashboard", "kind": "detail"},
@@ -137,6 +142,127 @@ def api_v1_capabilities():
         ],
     }
     return jsonify(envelope(payload))
+
+
+@require_api_scope("read:search")
+def api_v1_search():
+    query_text = (request.args.get("q") or "").strip()
+    if not query_text:
+        return json_api_error("Missing q", status_code=400, code="bad_request")
+    limit, _offset = parse_limit_offset(request, default_limit=25, max_limit=100)
+    requested_types = {
+        value.strip().lower()
+        for value in (request.args.get("types") or "").split(",")
+        if value.strip()
+    }
+    allowed_types = {"suppliers", "purchases", "lots", "runs"}
+    if requested_types and not requested_types.issubset(allowed_types):
+        return json_api_error("Invalid types filter", status_code=400, code="bad_request")
+    if not requested_types:
+        requested_types = allowed_types
+
+    results = []
+
+    if "suppliers" in requested_types:
+        suppliers = Supplier.query.filter(Supplier.name.ilike(f"%{query_text}%")).order_by(Supplier.name.asc()).limit(limit).all()
+        for supplier in suppliers:
+            results.append(
+                serialize_search_result(
+                    entity_type="supplier",
+                    entity_id=supplier.id,
+                    label=supplier.name,
+                    subtitle=supplier.location or supplier.contact_name,
+                    match_fields=["name"],
+                    context={"is_active": bool(supplier.is_active)},
+                )
+            )
+
+    if "purchases" in requested_types:
+        purchases = Purchase.query.filter(
+            Purchase.deleted_at.is_(None),
+            or_(
+                Purchase.batch_id.ilike(f"%{query_text}%"),
+                Purchase.notes.ilike(f"%{query_text}%"),
+            ),
+        ).order_by(Purchase.purchase_date.desc(), Purchase.id.desc()).limit(limit).all()
+        for purchase in purchases:
+            results.append(
+                serialize_search_result(
+                    entity_type="purchase",
+                    entity_id=purchase.id,
+                    label=purchase.batch_id or purchase.id,
+                    subtitle=purchase.supplier.name if purchase.supplier else None,
+                    match_fields=[
+                        field for field, value in (
+                            ("batch_id", purchase.batch_id),
+                            ("notes", purchase.notes),
+                        ) if value and query_text.lower() in value.lower()
+                    ],
+                    context={
+                        "status": purchase.status,
+                        "purchase_date": purchase.purchase_date.isoformat() if purchase.purchase_date else None,
+                    },
+                )
+            )
+
+    if "lots" in requested_types:
+        lots = PurchaseLot.query.join(Purchase).filter(
+            Purchase.deleted_at.is_(None),
+            PurchaseLot.deleted_at.is_(None),
+            or_(
+                PurchaseLot.tracking_id == query_text,
+                PurchaseLot.strain_name.ilike(f"%{query_text}%"),
+                Purchase.batch_id.ilike(f"%{query_text}%"),
+            ),
+        ).order_by(Purchase.purchase_date.desc(), PurchaseLot.id.desc()).limit(limit).all()
+        for lot in lots:
+            match_fields = []
+            if (lot.tracking_id or "") == query_text:
+                match_fields.append("tracking_id")
+            if query_text.lower() in (lot.strain_name or "").lower():
+                match_fields.append("strain_name")
+            if lot.purchase and query_text.lower() in (lot.purchase.batch_id or "").lower():
+                match_fields.append("batch_id")
+            results.append(
+                serialize_search_result(
+                    entity_type="lot",
+                    entity_id=lot.id,
+                    label=lot.display_label,
+                    subtitle=lot.purchase.batch_id if lot.purchase else None,
+                    match_fields=match_fields,
+                    context={
+                        "tracking_id": lot.tracking_id,
+                        "remaining_weight_lbs": float(lot.remaining_weight_lbs or 0),
+                    },
+                )
+            )
+
+    if "runs" in requested_types:
+        runs_query = Run.query.filter(Run.deleted_at.is_(None))
+        if query_text.isdigit():
+            runs_query = runs_query.filter(Run.reactor_number == int(query_text))
+        else:
+            runs_query = runs_query.filter(Run.notes.ilike(f"%{query_text}%"))
+        runs = runs_query.order_by(Run.run_date.desc(), Run.id.desc()).limit(limit).all()
+        for run in runs:
+            match_fields = ["reactor_number"] if query_text.isdigit() else ["notes"]
+            results.append(
+                serialize_search_result(
+                    entity_type="run",
+                    entity_id=run.id,
+                    label=f"Run {run.id[:8]}",
+                    subtitle=f"Reactor {run.reactor_number} on {run.run_date.isoformat() if run.run_date else 'unknown date'}",
+                    match_fields=match_fields,
+                    context={
+                        "reactor_number": run.reactor_number,
+                        "run_date": run.run_date.isoformat() if run.run_date else None,
+                        "bio_in_reactor_lbs": float(run.bio_in_reactor_lbs or 0) if run.bio_in_reactor_lbs is not None else None,
+                    },
+                )
+            )
+
+    results = results[:limit]
+    return jsonify(envelope({"query": query_text, "results": results, "count": len(results)}))
 
 
 def _parse_optional_date(raw_value: str | None):

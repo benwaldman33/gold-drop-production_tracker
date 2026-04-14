@@ -152,6 +152,7 @@ def _parse_api_client_scopes(form) -> list[str]:
         "read:runs",
         "read:inventory",
         "read:dashboard",
+        "read:search",
         "read:slack_imports",
         "read:exceptions",
         "read:suppliers",
