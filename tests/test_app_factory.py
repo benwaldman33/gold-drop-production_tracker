@@ -54,6 +54,8 @@ class AppFactorySmokeTest(unittest.TestCase):
         self.assertIn("/api/v1/aggregation/sites", rules)
         self.assertIn("/api/v1/aggregation/sites/<site_id>", rules)
         self.assertIn("/api/v1/aggregation/summary", rules)
+        self.assertIn("/api/v1/aggregation/suppliers", rules)
+        self.assertIn("/api/v1/aggregation/strains", rules)
         self.assertIn("/api/v1/search", rules)
         self.assertIn("/api/v1/tools/inventory-snapshot", rules)
         self.assertIn("/api/v1/tools/open-lots", rules)

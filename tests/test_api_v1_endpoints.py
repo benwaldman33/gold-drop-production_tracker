@@ -48,6 +48,8 @@ def test_api_v1_capabilities_requires_site_scope_and_returns_discovery_payload()
             assert "/api/v1/summary/dashboard" in paths
             assert "/api/v1/summary/exceptions" in paths
             assert "/api/v1/aggregation/summary" in paths
+            assert "/api/v1/aggregation/suppliers" in paths
+            assert "/api/v1/aggregation/strains" in paths
     finally:
         with app.app_context():
             for client_id in (bad_client_id, good_client_id):
@@ -431,6 +433,114 @@ def test_api_v1_aggregation_sites_and_summary_use_cached_remote_payloads():
             site = db.session.get(RemoteSite, site_id)
             if site:
                 db.session.delete(site)
+            api_client = db.session.get(ApiClient, client_id)
+            if api_client:
+                db.session.delete(api_client)
+            db.session.commit()
+
+
+def test_api_v1_aggregation_supplier_and_strain_comparison():
+    app = app_module.app
+    headers, client_id = _make_api_headers("read:aggregation")
+    supplier = Supplier(name=f"Compare Supplier {gen_uuid()[:8]}", is_active=True)
+    purchase = Purchase(
+        supplier_id="",
+        purchase_date=date(2026, 4, 9),
+        delivery_date=date(2026, 4, 10),
+        status="delivered",
+        stated_weight_lbs=70,
+        purchase_approved_at=datetime.now(timezone.utc),
+        batch_id=f"COMPARE-{gen_uuid()[:6]}",
+    )
+    lot = PurchaseLot(strain_name="Compare Dream", weight_lbs=70, remaining_weight_lbs=20)
+    run = Run(
+        run_date=date(2026, 4, 11),
+        reactor_number=5,
+        bio_in_reactor_lbs=50,
+        dry_hte_g=8,
+        dry_thca_g=18,
+    )
+    remote_base_url = f"https://compare-{gen_uuid()[:8]}.example.com"
+    with app.app_context():
+        db.session.add(supplier)
+        db.session.flush()
+        purchase.supplier_id = supplier.id
+        db.session.add(purchase)
+        db.session.flush()
+        lot.purchase_id = purchase.id
+        db.session.add(lot)
+        db.session.flush()
+        db.session.add(run)
+        db.session.flush()
+        db.session.add(RunInput(run_id=run.id, lot_id=lot.id, weight_lbs=50, allocation_source="manual"))
+        remote_site = RemoteSite(
+            name="Remote Compare",
+            base_url=remote_base_url,
+            site_code="CMP",
+            site_name="Compare Remote",
+            is_active=True,
+            last_pull_status="success",
+        )
+        remote_site.set_payload("last_suppliers_payload_json", [{
+            "supplier": {"id": "remote-supplier-1", "name": "Remote Compare Supplier"},
+            "profile_incomplete": False,
+            "all_time": {"yield": 11.5, "thca": 6.2, "hte": 5.3, "cpg": 4.4, "runs": 3, "lbs": 180.0, "total_thca": 320.0, "total_hte": 140.0},
+            "ninety_day": {"yield": 10.8, "thca": 5.9, "hte": 4.9, "cpg": 4.6, "runs": 2},
+            "last_batch": {"yield": 12.1, "thca": 6.5, "hte": 5.6, "cpg": 4.2, "date": "2026-04-10"},
+        }])
+        remote_site.set_payload("last_strains_payload_json", [{
+            "strain_name": "Remote Compare Dream",
+            "supplier_name": "Remote Compare Supplier",
+            "view": "all",
+            "avg_yield": 11.5,
+            "avg_thca": 6.2,
+            "avg_hte": 5.3,
+            "avg_cpg": 4.4,
+            "run_count": 3,
+            "total_lbs": 180.0,
+            "total_thca_g": 320.0,
+            "total_hte_g": 140.0,
+        }])
+        db.session.add(remote_site)
+        db.session.commit()
+        supplier_id = supplier.id
+        purchase_id = purchase.id
+        lot_id = lot.id
+        run_id = run.id
+        remote_site_id = remote_site.id
+    try:
+        with app.test_client() as client:
+            supplier_res = client.get("/api/v1/aggregation/suppliers?q=compare", headers=headers)
+            assert supplier_res.status_code == 200
+            supplier_rows = supplier_res.get_json()["data"]
+            assert any(row["site"]["source"] == "local" for row in supplier_rows)
+            assert any(row["site"]["source"] == "remote_cache" for row in supplier_rows)
+
+            strain_res = client.get("/api/v1/aggregation/strains?q=compare", headers=headers)
+            assert strain_res.status_code == 200
+            strain_rows = strain_res.get_json()["data"]
+            assert any(row["site"]["source"] == "local" for row in strain_rows)
+            assert any(row["site"]["source"] == "remote_cache" for row in strain_rows)
+    finally:
+        with app.app_context():
+            remote_site = db.session.get(RemoteSite, remote_site_id)
+            if remote_site:
+                db.session.delete(remote_site)
+            run_input = RunInput.query.filter_by(run_id=run_id, lot_id=lot_id).first()
+            if run_input:
+                db.session.delete(run_input)
+            run = db.session.get(Run, run_id)
+            if run:
+                db.session.delete(run)
+            lot = db.session.get(PurchaseLot, lot_id)
+            if lot:
+                db.session.delete(lot)
+            purchase = db.session.get(Purchase, purchase_id)
+            if purchase:
+                db.session.delete(purchase)
+            supplier = db.session.get(Supplier, supplier_id)
+            if supplier:
+                db.session.delete(supplier)
             api_client = db.session.get(ApiClient, client_id)
             if api_client:
                 db.session.delete(api_client)

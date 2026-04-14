@@ -63,6 +63,8 @@ def register_routes(app, root):
     app.add_url_rule("/api/v1/aggregation/sites", endpoint="api_v1_aggregation_sites", view_func=api_v1_aggregation_sites)
     app.add_url_rule("/api/v1/aggregation/sites/<site_id>", endpoint="api_v1_aggregation_site_detail", view_func=api_v1_aggregation_site_detail)
     app.add_url_rule("/api/v1/aggregation/summary", endpoint="api_v1_aggregation_summary", view_func=api_v1_aggregation_summary)
+    app.add_url_rule("/api/v1/aggregation/suppliers", endpoint="api_v1_aggregation_suppliers", view_func=api_v1_aggregation_suppliers)
+    app.add_url_rule("/api/v1/aggregation/strains", endpoint="api_v1_aggregation_strains", view_func=api_v1_aggregation_strains)
     app.add_url_rule("/api/v1/search", endpoint="api_v1_search", view_func=api_v1_search)
     app.add_url_rule("/api/v1/tools/inventory-snapshot", endpoint="api_v1_tool_inventory_snapshot", view_func=api_v1_tool_inventory_snapshot)
     app.add_url_rule("/api/v1/tools/open-lots", endpoint="api_v1_tool_open_lots", view_func=api_v1_tool_open_lots)
@@ -179,6 +181,8 @@ def api_v1_capabilities():
             {"path": "/api/v1/aggregation/sites", "scope": "read:aggregation", "kind": "list"},
             {"path": "/api/v1/aggregation/sites/<site_id>", "scope": "read:aggregation", "kind": "detail"},
             {"path": "/api/v1/aggregation/summary", "scope": "read:aggregation", "kind": "summary"},
+            {"path": "/api/v1/aggregation/suppliers", "scope": "read:aggregation", "kind": "list"},
+            {"path": "/api/v1/aggregation/strains", "scope": "read:aggregation", "kind": "list"},
             {"path": "/api/v1/search", "scope": "read:search", "kind": "search"},
             {"path": "/api/v1/tools/inventory-snapshot", "scope": "read:tools", "kind": "tool"},
             {"path": "/api/v1/tools/open-lots", "scope": "read:tools", "kind": "tool"},
@@ -731,6 +735,97 @@ def api_v1_aggregation_summary():
     )
     payload["period"] = period
     return jsonify(envelope(payload))
+
+
+def _aggregation_site_stub(*, source: str, site_code: str | None, site_name: str | None, site_region: str | None, site_environment: str | None, **_ignored):
+    return {
+        "source": source,
+        "site_code": site_code,
+        "site_name": site_name,
+        "site_region": site_region,
+        "site_environment": site_environment,
+    }
+
+
+@require_api_scope("read:aggregation")
+def api_v1_aggregation_suppliers():
+    root = _require_root()
+    limit, offset = parse_limit_offset(request, default_limit=100, max_limit=500)
+    query_text = (request.args.get("q") or "").strip().lower()
+    local_site = get_site_identity()
+    rows = []
+    for supplier in Supplier.query.order_by(Supplier.name.asc(), Supplier.id.asc()).all():
+        payload = _supplier_performance_payload(root, supplier)
+        if query_text and query_text not in ((payload.get("supplier") or {}).get("name") or "").lower():
+            continue
+        payload["site"] = _aggregation_site_stub(source="local", **local_site)
+        rows.append(payload)
+
+    for remote_site in RemoteSite.query.filter(RemoteSite.is_active.is_(True)).order_by(RemoteSite.name.asc()).all():
+        cached_rows = remote_site.payload("last_suppliers_payload_json") or []
+        for payload in cached_rows:
+            supplier_name = ((payload.get("supplier") or {}).get("name") or "").lower()
+            if query_text and query_text not in supplier_name:
+                continue
+            item = dict(payload)
+            item["site"] = _aggregation_site_stub(
+                source="remote_cache",
+                site_code=remote_site.site_code,
+                site_name=remote_site.site_name or remote_site.name,
+                site_region=remote_site.site_region,
+                site_environment=remote_site.site_environment,
+            )
+            rows.append(item)
+
+    total = len(rows)
+    return jsonify(envelope(rows[offset : offset + limit], count=total, limit=limit, offset=offset))
+
+
+@require_api_scope("read:aggregation")
+def api_v1_aggregation_strains():
+    root = _require_root()
+    limit, offset = parse_limit_offset(request, default_limit=100, max_limit=500)
+    query_text = (request.args.get("q") or "").strip().lower()
+    supplier_filter = (request.args.get("supplier_name") or "").strip().lower()
+    local_site = get_site_identity()
+
+    local_view = root.app.test_request_context(
+        "/internal/aggregation/strains",
+        query_string={"view": "all", "supplier_id": "", "strain": query_text},
+    )
+    rows = []
+    with local_view:
+        local_response = api_v1_strains.__wrapped__()
+        local_payload = local_response.get_json()["data"]
+    for payload in local_payload:
+        supplier_name = (payload.get("supplier_name") or "").lower()
+        if supplier_filter and supplier_filter not in supplier_name:
+            continue
+        item = dict(payload)
+        item["site"] = _aggregation_site_stub(source="local", **local_site)
+        rows.append(item)
+
+    for remote_site in RemoteSite.query.filter(RemoteSite.is_active.is_(True)).order_by(RemoteSite.name.asc()).all():
+        cached_rows = remote_site.payload("last_strains_payload_json") or []
+        for payload in cached_rows:
+            strain_name = (payload.get("strain_name") or "").lower()
+            supplier_name = (payload.get("supplier_name") or "").lower()
+            if query_text and query_text not in strain_name:
+                continue
+            if supplier_filter and supplier_filter not in supplier_name:
+                continue
+            item = dict(payload)
+            item["site"] = _aggregation_site_stub(
+                source="remote_cache",
+                site_code=remote_site.site_code,
+                site_name=remote_site.site_name or remote_site.name,
+                site_region=remote_site.site_region,
+                site_environment=remote_site.site_environment,
+            )
+            rows.append(item)
+
+    total = len(rows)
+    return jsonify(envelope(rows[offset : offset + limit], count=total, limit=limit, offset=offset))
 
 
 @require_api_scope("read:dashboard")
