@@ -334,6 +334,9 @@ Current endpoints:
 - `/api/v1/lots/<lot_id>`
 - `/api/v1/runs`
 - `/api/v1/runs/<run_id>`
+- `/api/v1/slack-imports`
+- `/api/v1/slack-imports/<msg_id>`
+- `/api/v1/exceptions`
 - `/api/v1/inventory/on-hand`
 
 Authentication:
@@ -356,6 +359,8 @@ Useful read scopes now include:
 - `read:lots`
 - `read:runs`
 - `read:inventory`
+- `read:slack_imports`
+- `read:exceptions`
 
 Example request:
 

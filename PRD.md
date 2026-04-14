@@ -190,6 +190,9 @@ The current first slice of the internal API includes:
 - `GET /api/v1/lots/<lot_id>`
 - `GET /api/v1/runs`
 - `GET /api/v1/runs/<run_id>`
+- `GET /api/v1/slack-imports`
+- `GET /api/v1/slack-imports/<msg_id>`
+- `GET /api/v1/exceptions`
 - `GET /api/v1/inventory/on-hand`
 
 These endpoints:
@@ -200,7 +203,7 @@ These endpoints:
 
 ### Internal API future direction
 Future phases should expand the internal API with:
-- exception / unresolved Slack import reads where useful
+- higher-value derived reconciliation and analytics reads beyond the current Slack-import and exception surfaces
 
 Longer term, the architecture should support:
 - a separate rollup / aggregation service that pulls from multiple site APIs

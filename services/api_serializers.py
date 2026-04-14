@@ -181,3 +181,60 @@ def serialize_run_detail(run):
         }
     )
     return payload
+
+
+def serialize_slack_import_summary(row, *, derived=None, coverage=None, linked_run_ids=None):
+    derived = derived or {}
+    return {
+        "id": row.id,
+        "channel_id": row.channel_id,
+        "message_ts": row.message_ts,
+        "slack_user_id": row.slack_user_id,
+        "message_kind": row.message_kind,
+        "derived_message_kind": derived.get("message_kind") or row.message_kind,
+        "raw_text": row.raw_text,
+        "source": derived.get("source"),
+        "strain": derived.get("strain"),
+        "hidden_from_imports": bool(getattr(row, "hidden_from_imports", False)),
+        "coverage": coverage,
+        "linked_run_ids": linked_run_ids or [],
+        "promotion_status": "linked" if linked_run_ids else "not_linked",
+        "ingested_at": iso_dt(row.ingested_at),
+    }
+
+
+def serialize_slack_import_detail(
+    row,
+    *,
+    derived=None,
+    preview=None,
+    coverage=None,
+    linked_run_ids=None,
+    needs_resolution_ui: bool = False,
+):
+    payload = serialize_slack_import_summary(
+        row,
+        derived=derived,
+        coverage=coverage,
+        linked_run_ids=linked_run_ids,
+    )
+    payload.update(
+        {
+            "derived": derived or {},
+            "preview": preview or {},
+            "needs_resolution_ui": bool(needs_resolution_ui),
+        }
+    )
+    return payload
+
+
+def serialize_exception_item(*, category, entity_type, entity_id, label, detail, level="warning", context=None):
+    return {
+        "category": category,
+        "entity_type": entity_type,
+        "entity_id": entity_id,
+        "level": level,
+        "label": label,
+        "detail": detail,
+        "context": context or {},
+    }

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 
 import app as app_module
-from models import ApiClient, Purchase, PurchaseLot, Run, RunInput, Supplier, db, gen_uuid
+from models import ApiClient, Purchase, PurchaseLot, Run, RunInput, SlackIngestedMessage, Supplier, db, gen_uuid
 from services.api_auth import hash_api_token
 
 
@@ -300,6 +300,103 @@ def test_api_v1_runs_list_and_detail():
             run_obj = db.session.get(Run, run_id)
             if run_obj:
                 db.session.delete(run_obj)
+            lot_obj = db.session.get(PurchaseLot, lot_id)
+            if lot_obj:
+                db.session.delete(lot_obj)
+            purchase_obj = db.session.get(Purchase, purchase_id)
+            if purchase_obj:
+                db.session.delete(purchase_obj)
+            supplier_obj = db.session.get(Supplier, supplier_id)
+            if supplier_obj:
+                db.session.delete(supplier_obj)
+            db.session.commit()
+
+
+def test_api_v1_slack_imports_list_and_detail():
+    app = app_module.app
+    row = SlackIngestedMessage(
+        channel_id="C-SLACK-API",
+        message_ts="1710000001.000100",
+        raw_text="Reactor: A\nStrain: Blue Dream\nSource: Farmlane\nBio wt: 100\nWet THCA: 10\nWet HTE: 20",
+        message_kind="production_log",
+        derived_json="{}",
+    )
+    with app.app_context():
+        db.session.add(row)
+        db.session.commit()
+        row_id = row.id
+
+    headers, client_id = _make_api_headers("read:slack_imports")
+    try:
+        with app.test_client() as client:
+            list_res = client.get("/api/v1/slack-imports?channel_id=C-SLACK-API&promotion=not_linked", headers=headers)
+            assert list_res.status_code == 200
+            list_payload = list_res.get_json()
+            row_ids = {item["id"] for item in list_payload["data"]}
+            assert row_id in row_ids
+
+            detail_res = client.get(f"/api/v1/slack-imports/{row_id}", headers=headers)
+            assert detail_res.status_code == 200
+            detail_payload = detail_res.get_json()["data"]
+            assert detail_payload["id"] == row_id
+            assert detail_payload["promotion_status"] == "not_linked"
+            assert detail_payload["coverage"] in {"full", "partial", "none"}
+            assert "preview" in detail_payload
+    finally:
+        with app.app_context():
+            api_client = db.session.get(ApiClient, client_id)
+            if api_client:
+                db.session.delete(api_client)
+            row_obj = db.session.get(SlackIngestedMessage, row_id)
+            if row_obj:
+                db.session.delete(row_obj)
+            db.session.commit()
+
+
+def test_api_v1_exceptions_returns_purchase_and_inventory_signals():
+    app = app_module.app
+    supplier = Supplier(name=f"API Exceptions {gen_uuid()[:8]}", is_active=True)
+    purchase = Purchase(
+        supplier_id="",
+        purchase_date=date(2099, 4, 14),
+        delivery_date=date(2099, 4, 15),
+        status="delivered",
+        stated_weight_lbs=100,
+        batch_id=f"EXC-{gen_uuid()[:6]}",
+        purchase_approved_at=datetime.now(timezone.utc),
+    )
+    lot = PurchaseLot(strain_name="Exception Strain", weight_lbs=100, remaining_weight_lbs=10)
+    with app.app_context():
+        db.session.add(supplier)
+        db.session.flush()
+        purchase.supplier_id = supplier.id
+        db.session.add(purchase)
+        db.session.flush()
+        lot.purchase_id = purchase.id
+        db.session.add(lot)
+        db.session.commit()
+        supplier_id = supplier.id
+        purchase_id = purchase.id
+        lot_id = lot.id
+
+    headers, client_id = _make_api_headers("read:exceptions")
+    try:
+        with app.test_client() as client:
+            purchase_response = client.get("/api/v1/exceptions?category=purchases&limit=200", headers=headers)
+            inventory_response = client.get("/api/v1/exceptions?category=inventory&limit=200", headers=headers)
+        assert purchase_response.status_code == 200
+        assert inventory_response.status_code == 200
+        purchase_payload = purchase_response.get_json()
+        inventory_payload = inventory_response.get_json()
+        purchase_categories = {(item["category"], item["entity_type"], item["entity_id"]) for item in purchase_payload["data"]}
+        inventory_categories = {(item["category"], item["entity_type"], item["entity_id"]) for item in inventory_payload["data"]}
+        assert ("purchases", "purchase", purchase_id) in purchase_categories
+        assert ("inventory", "purchase_lot", lot_id) in inventory_categories
+    finally:
+        with app.app_context():
+            api_client = db.session.get(ApiClient, client_id)
+            if api_client:
+                db.session.delete(api_client)
             lot_obj = db.session.get(PurchaseLot, lot_id)
             if lot_obj:
                 db.session.delete(lot_obj)
