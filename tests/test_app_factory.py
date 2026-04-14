@@ -50,6 +50,7 @@ class AppFactorySmokeTest(unittest.TestCase):
         self.assertIn("/api/slack/events", rules)
         self.assertIn("/api/v1/site", rules)
         self.assertIn("/api/v1/capabilities", rules)
+        self.assertIn("/api/v1/sync/manifest", rules)
         self.assertIn("/api/v1/search", rules)
         self.assertIn("/api/v1/tools/inventory-snapshot", rules)
         self.assertIn("/api/v1/tools/open-lots", rules)

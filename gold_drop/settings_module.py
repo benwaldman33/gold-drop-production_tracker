@@ -288,9 +288,13 @@ def settings_view(root):
             site_code_raw = (root.request.form.get("site_code") or "").strip().upper()
             site_name_raw = (root.request.form.get("site_name") or "").strip()
             site_timezone_raw = (root.request.form.get("site_timezone") or "").strip()
+            site_region_raw = (root.request.form.get("site_region") or "").strip()
+            site_environment_raw = (root.request.form.get("site_environment") or "").strip().lower()
 
             site_code = site_code_raw[:24] if site_code_raw else "DEFAULT"
             site_name = site_name_raw[:120] if site_name_raw else "Gold Drop"
+            site_region = site_region_raw[:80]
+            site_environment = site_environment_raw if site_environment_raw in {"production", "staging", "development", "test"} else "production"
             site_timezone_ok = True
             if site_timezone_raw:
                 try:
@@ -304,6 +308,8 @@ def settings_view(root):
             for key, val, desc in (
                 ("site_code", site_code, "Short site code used in internal API metadata"),
                 ("site_name", site_name, "Facility/site name used in internal API metadata"),
+                ("site_region", site_region, "Optional site region used in internal API metadata"),
+                ("site_environment", site_environment, "Deployment environment label used in internal API metadata"),
             ):
                 existing = root.db.session.get(root.SystemSetting, key)
                 if existing:

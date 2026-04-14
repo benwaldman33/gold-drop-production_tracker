@@ -79,6 +79,13 @@ def ensure_sqlite_schema(root) -> None:
         if "is_purchase_approver" not in cols:
             root.db.session.execute(text("ALTER TABLE users ADD COLUMN is_purchase_approver BOOLEAN DEFAULT 0"))
 
+    if has_table("api_clients"):
+        cols = column_names("api_clients")
+        if "last_used_scope" not in cols:
+            root.db.session.execute(text("ALTER TABLE api_clients ADD COLUMN last_used_scope VARCHAR(64)"))
+        if "last_used_endpoint" not in cols:
+            root.db.session.execute(text("ALTER TABLE api_clients ADD COLUMN last_used_endpoint VARCHAR(255)"))
+
     if has_table("runs"):
         cols = column_names("runs")
         if "cost_per_gram_thca" not in cols:

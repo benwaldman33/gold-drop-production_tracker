@@ -10,6 +10,8 @@ def get_site_identity() -> dict[str, str]:
         "site_code": SystemSetting.get("site_code", "DEFAULT"),
         "site_name": SystemSetting.get("site_name", "Gold Drop"),
         "site_timezone": SystemSetting.get("site_timezone", "America/Los_Angeles"),
+        "site_region": SystemSetting.get("site_region", ""),
+        "site_environment": SystemSetting.get("site_environment", "production"),
     }
 
 
@@ -20,6 +22,8 @@ def build_meta(*, count: int | None = None, limit: int | None = None, offset: in
         "site_code": site["site_code"],
         "site_name": site["site_name"],
         "site_timezone": site["site_timezone"],
+        "site_region": site["site_region"],
+        "site_environment": site["site_environment"],
         "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
     if count is not None:

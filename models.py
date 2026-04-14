@@ -99,6 +99,8 @@ class ApiClient(db.Model):
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
     last_used_at = db.Column(db.DateTime)
+    last_used_scope = db.Column(db.String(64))
+    last_used_endpoint = db.Column(db.String(255))
 
     @property
     def scopes(self):

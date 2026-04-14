@@ -83,6 +83,28 @@
           </div>
         </div>
       </div>
+      <div class="form-row-3" style="margin-bottom:12px;">
+        <div class="form-group">
+          <label>Site Region</label>
+          <input type="text" name="site_region" value="{{ system_settings.get('site_region', '') }}" maxlength="80" placeholder="e.g. California">
+          <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">
+            Optional regional label for future multi-site rollups.
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Site Environment</label>
+          {% set cur_site_env = system_settings.get('site_environment', 'production') %}
+          <select name="site_environment">
+            {% for env in ['production', 'staging', 'development', 'test'] %}
+            <option value="{{ env }}" {% if cur_site_env == env %}selected{% endif %}>{{ env }}</option>
+            {% endfor %}
+          </select>
+          <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">
+            Included in internal API metadata and future aggregation manifests.
+          </div>
+        </div>
+        <div class="form-group"></div>
+      </div>
       {% set cur_site_tz = system_settings.get('site_timezone', 'America/Los_Angeles') %}
       <label>Site timezone (internal API / site identity)</label>
       <select name="site_timezone" style="max-width:100%;">
@@ -646,7 +668,7 @@
     <div class="table-wrap mb-2">
       <table>
         <thead>
-          <tr><th>Name</th><th>Scopes</th><th>Status</th><th>Created</th><th>Last Used</th><th></th></tr>
+          <tr><th>Name</th><th>Scopes</th><th>Status</th><th>Created</th><th>Last Used</th><th>Last Endpoint</th><th></th></tr>
         </thead>
         <tbody>
           {% for client in api_clients %}
@@ -673,6 +695,16 @@
             </td>
             <td>{{ client.created_at.strftime('%m/%d/%y %H:%M') if client.created_at else '—' }}</td>
             <td>{{ client.last_used_at.strftime('%m/%d/%y %H:%M') if client.last_used_at else '—' }}</td>
+            <td class="text-sm">
+              {% if client.last_used_endpoint %}
+                <code>{{ client.last_used_endpoint }}</code>
+                {% if client.last_used_scope %}
+                <div class="cell-muted" style="margin-top:4px;"><code>{{ client.last_used_scope }}</code></div>
+                {% endif %}
+              {% else %}
+                <span class="cell-muted">—</span>
+              {% endif %}
+            </td>
             <td style="white-space:nowrap;">
               <form method="POST" action="{{ url_for('api_client_toggle_active', client_id=client.id) }}" style="display:inline;" onsubmit="return confirm('{{ 'Revoke' if client.is_active else 'Activate' }} this API client?');">
                 <input type="hidden" name="return_to" value="#settings-api-clients">
@@ -691,7 +723,7 @@
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="6" class="text-center cell-muted" style="padding:20px;">No API clients created yet.</td></tr>
+          <tr><td colspan="7" class="text-center cell-muted" style="padding:20px;">No API clients created yet.</td></tr>
           {% endfor %}
         </tbody>
       </table>

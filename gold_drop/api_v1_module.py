@@ -58,6 +58,7 @@ def register_routes(app, root):
     API_ROOT = root
     app.add_url_rule("/api/v1/site", endpoint="api_v1_site", view_func=api_v1_site)
     app.add_url_rule("/api/v1/capabilities", endpoint="api_v1_capabilities", view_func=api_v1_capabilities)
+    app.add_url_rule("/api/v1/sync/manifest", endpoint="api_v1_sync_manifest", view_func=api_v1_sync_manifest)
     app.add_url_rule("/api/v1/search", endpoint="api_v1_search", view_func=api_v1_search)
     app.add_url_rule("/api/v1/tools/inventory-snapshot", endpoint="api_v1_tool_inventory_snapshot", view_func=api_v1_tool_inventory_snapshot)
     app.add_url_rule("/api/v1/tools/open-lots", endpoint="api_v1_tool_open_lots", view_func=api_v1_tool_open_lots)
@@ -101,6 +102,50 @@ def api_v1_site():
 
 
 @require_api_scope("read:site")
+def api_v1_sync_manifest():
+    datasets = {
+        "purchases": {
+            "count": Purchase.query.filter(Purchase.deleted_at.is_(None)).count(),
+            "archived_count": Purchase.query.filter(Purchase.deleted_at.isnot(None)).count(),
+            "last_created_at": db.session.query(db.func.max(Purchase.created_at)).scalar(),
+            "last_updated_at": db.session.query(db.func.max(Purchase.updated_at)).scalar(),
+        },
+        "lots": {
+            "count": PurchaseLot.query.filter(PurchaseLot.deleted_at.is_(None)).count(),
+            "archived_count": PurchaseLot.query.filter(PurchaseLot.deleted_at.isnot(None)).count(),
+            "last_label_generated_at": db.session.query(db.func.max(PurchaseLot.label_generated_at)).scalar(),
+        },
+        "runs": {
+            "count": Run.query.filter(Run.deleted_at.is_(None)).count(),
+            "archived_count": Run.query.filter(Run.deleted_at.isnot(None)).count(),
+            "last_created_at": db.session.query(db.func.max(Run.created_at)).scalar(),
+            "last_run_date": db.session.query(db.func.max(Run.run_date)).scalar(),
+        },
+        "slack_imports": {
+            "count": SlackIngestedMessage.query.count(),
+            "last_ingested_at": db.session.query(db.func.max(SlackIngestedMessage.ingested_at)).scalar(),
+        },
+        "suppliers": {
+            "count": Supplier.query.count(),
+            "active_count": Supplier.query.filter(Supplier.is_active.is_(True)).count(),
+            "last_created_at": db.session.query(db.func.max(Supplier.created_at)).scalar(),
+        },
+    }
+    payload = {
+        "site": get_site_identity(),
+        "datasets": {
+            name: {
+                key: (value.isoformat().replace("+00:00", "Z") if isinstance(value, datetime) else value.isoformat() if hasattr(value, "isoformat") and value is not None else value)
+                for key, value in dataset.items()
+            }
+            for name, dataset in datasets.items()
+        },
+        "capabilities_endpoint": "/api/v1/capabilities",
+    }
+    return jsonify(envelope(payload))
+
+
+@require_api_scope("read:site")
 def api_v1_capabilities():
     payload = {
         "authentication": {
@@ -125,6 +170,7 @@ def api_v1_capabilities():
         "endpoints": [
             {"path": "/api/v1/site", "scope": "read:site", "kind": "identity"},
             {"path": "/api/v1/capabilities", "scope": "read:site", "kind": "discovery"},
+            {"path": "/api/v1/sync/manifest", "scope": "read:site", "kind": "manifest"},
             {"path": "/api/v1/search", "scope": "read:search", "kind": "search"},
             {"path": "/api/v1/tools/inventory-snapshot", "scope": "read:tools", "kind": "tool"},
             {"path": "/api/v1/tools/open-lots", "scope": "read:tools", "kind": "tool"},

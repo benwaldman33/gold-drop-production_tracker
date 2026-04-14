@@ -319,9 +319,13 @@ def test_api_v1_site_returns_site_meta_and_data():
         original_code = SystemSetting.get("site_code")
         original_name = SystemSetting.get("site_name")
         original_timezone = SystemSetting.get("site_timezone")
+        original_region = SystemSetting.get("site_region")
+        original_environment = SystemSetting.get("site_environment")
         db.session.get(SystemSetting, "site_code").value = "SAC"
         db.session.get(SystemSetting, "site_name").value = "Gold Drop Sacramento"
         db.session.get(SystemSetting, "site_timezone").value = "America/New_York"
+        db.session.get(SystemSetting, "site_region").value = "California"
+        db.session.get(SystemSetting, "site_environment").value = "staging"
         db.session.commit()
     try:
         with app.test_client() as client:
@@ -332,14 +336,45 @@ def test_api_v1_site_returns_site_meta_and_data():
         assert payload["meta"]["site_code"] == "SAC"
         assert payload["meta"]["site_name"] == "Gold Drop Sacramento"
         assert payload["meta"]["site_timezone"] == "America/New_York"
+        assert payload["meta"]["site_region"] == "California"
+        assert payload["meta"]["site_environment"] == "staging"
         assert payload["data"]["site_code"] == "SAC"
         assert payload["data"]["site_name"] == "Gold Drop Sacramento"
         assert payload["data"]["site_timezone"] == "America/New_York"
+        assert payload["data"]["site_region"] == "California"
+        assert payload["data"]["site_environment"] == "staging"
+        with app.app_context():
+            api_client = db.session.get(ApiClient, client_id)
+            assert api_client.last_used_scope == "read:site"
+            assert api_client.last_used_endpoint == "/api/v1/site"
     finally:
         with app.app_context():
             db.session.get(SystemSetting, "site_code").value = original_code
             db.session.get(SystemSetting, "site_name").value = original_name
             db.session.get(SystemSetting, "site_timezone").value = original_timezone
+            db.session.get(SystemSetting, "site_region").value = original_region
+            db.session.get(SystemSetting, "site_environment").value = original_environment
+            api_client = db.session.get(ApiClient, client_id)
+            if api_client:
+                db.session.delete(api_client)
+            db.session.commit()
+
+
+def test_api_v1_sync_manifest_returns_dataset_metadata():
+    app = app_module.app
+    headers, client_id = _make_api_headers("read:site")
+    try:
+        with app.test_client() as client:
+            response = client.get("/api/v1/sync/manifest", headers=headers)
+        assert response.status_code == 200
+        payload = response.get_json()["data"]
+        assert "site" in payload
+        assert "datasets" in payload
+        assert "purchases" in payload["datasets"]
+        assert "runs" in payload["datasets"]
+        assert payload["capabilities_endpoint"] == "/api/v1/capabilities"
+    finally:
+        with app.app_context():
             api_client = db.session.get(ApiClient, client_id)
             if api_client:
                 db.session.delete(api_client)

@@ -57,6 +57,8 @@ def require_api_scope(scope: str):
                 return json_api_error(f"Missing scope {scope}", status_code=403, code="forbidden")
 
             client.last_used_at = utc_now()
+            client.last_used_scope = scope
+            client.last_used_endpoint = request.path
             db.session.commit()
             g.api_client = client
             return fn(*args, **kwargs)
