@@ -639,6 +639,129 @@ def test_scanned_lot_can_confirm_movement_and_testing():
             db.session.commit()
 
 
+def test_run_form_scale_capture_prefills_reactor_weight_and_links_capture():
+    app = app_module.app
+    with app.app_context():
+        supplier = Supplier(name="Run Scale Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = Purchase(
+            supplier_id=supplier.id,
+            purchase_date=date(2026, 4, 12),
+            delivery_date=date(2026, 4, 12),
+            status="delivered",
+            stated_weight_lbs=100,
+            purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            clean_or_dirty="clean",
+            testing_status="completed",
+            batch_id=f"RUNSC-{app_module.gen_uuid()[:6]}",
+        )
+        db.session.add(purchase)
+        db.session.flush()
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Run Scale Strain",
+            weight_lbs=100,
+            remaining_weight_lbs=100,
+        )
+        device = ScaleDevice(
+            name="Run Scale Device",
+            location="Lab",
+            interface_type="rs232",
+            protocol_type="ascii",
+            connection_target="COM5",
+            is_active=True,
+        )
+        db.session.add(lot)
+        db.session.add(device)
+        db.session.commit()
+        supplier_id = supplier.id
+        purchase_id = purchase.id
+        lot_id = lot.id
+        device_id = device.id
+
+    run_id = None
+    capture_id = None
+    try:
+        with app.test_client() as client:
+            _login(client, "admin")
+            capture = client.post(
+                "/runs/scale-capture",
+                data={
+                    "scale_device_id": device_id,
+                    "scale_raw_payload": "ST,GS, 44.2 lb",
+                    "scale_notes": "run form capture",
+                },
+                follow_redirects=False,
+            )
+            assert capture.status_code in (302, 303)
+            assert capture.headers["Location"].endswith("/runs/new")
+
+            with client.session_transaction() as sess:
+                prefill = sess.get(app_module.RUN_SCALE_PREFILL_SESSION_KEY)
+                assert prefill is not None
+                assert float(prefill["measured_weight"]) == 44.2
+                capture_id = prefill["capture_id"]
+
+            run_new = client.get("/runs/new")
+            assert run_new.status_code == 200
+            assert b"Scale prefill:" in run_new.data
+            assert b"44.20" in run_new.data
+
+            save = client.post(
+                "/runs/new",
+                data={
+                    "run_date": "2026-04-14",
+                    "reactor_number": "1",
+                    "run_type": "standard",
+                    "bio_in_reactor_lbs": "44.2",
+                    "dry_hte_g": "10",
+                    "dry_thca_g": "20",
+                    "lot_ids[]": [lot_id],
+                    "lot_weights[]": ["44.2"],
+                    "scale_capture_id": capture_id,
+                },
+                follow_redirects=False,
+            )
+            assert save.status_code in (302, 303)
+            assert save.headers["Location"].endswith("/runs")
+
+            with app.app_context():
+                capture_obj = db.session.get(WeightCapture, capture_id)
+                assert capture_obj is not None
+                assert capture_obj.run_id is not None
+                run_id = capture_obj.run_id
+                run = db.session.get(app_module.Run, run_id)
+                assert run is not None
+                assert float(run.bio_in_reactor_lbs or 0) == 44.2
+    finally:
+        with app.app_context():
+            if run_id:
+                run_input = app_module.RunInput.query.filter_by(run_id=run_id, lot_id=lot_id).first()
+                if run_input:
+                    db.session.delete(run_input)
+                run_obj = db.session.get(app_module.Run, run_id)
+                if run_obj:
+                    db.session.delete(run_obj)
+            if capture_id:
+                capture_obj = db.session.get(WeightCapture, capture_id)
+                if capture_obj:
+                    db.session.delete(capture_obj)
+            lot_obj = db.session.get(PurchaseLot, lot_id)
+            if lot_obj:
+                db.session.delete(lot_obj)
+            purchase_obj = db.session.get(Purchase, purchase_id)
+            if purchase_obj:
+                db.session.delete(purchase_obj)
+            supplier_obj = db.session.get(Supplier, supplier_id)
+            if supplier_obj:
+                db.session.delete(supplier_obj)
+            device_obj = db.session.get(ScaleDevice, device_id)
+            if device_obj:
+                db.session.delete(device_obj)
+            db.session.commit()
+
+
 def test_slack_apply_run_carries_manual_lot_selection_into_prefill_session():
     app = app_module.app
     with app.app_context():

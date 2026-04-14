@@ -417,6 +417,7 @@ def export_csv(entity: str):
 
 SLACK_RUN_PREFILL_SESSION_KEY = "slack_run_prefill"
 SCAN_RUN_PREFILL_SESSION_KEY = "scan_run_prefill"
+RUN_SCALE_PREFILL_SESSION_KEY = "run_scale_prefill"
 
 
 def _slack_apply_form_passthrough(form) -> dict[str, str]:
