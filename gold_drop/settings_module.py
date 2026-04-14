@@ -9,7 +9,7 @@ from gold_drop.purchases import (
     biomass_budget_snapshot_for_purchase,
     enforce_weekly_biomass_purchase_limits,
 )
-from models import ApiClient, RemoteSite, coerce_utc
+from models import ApiClient, ApiClientRequestLog, RemoteSite, coerce_utc
 from services.field_submissions import (
     decorate_submission_rows,
     field_approval_return_redirect,
@@ -487,20 +487,23 @@ def settings_view(root):
     kpis = root.KpiTarget.query.all()
     users = root.User.query.order_by(root.User.created_at.asc()).all()
     field_tokens = root.FieldAccessToken.query.order_by(root.FieldAccessToken.created_at.desc()).all()
-    for token in field_tokens:
-        token.expires_at = coerce_utc(token.expires_at)
-        token.last_used_at = coerce_utc(token.last_used_at)
-        token.revoked_at = coerce_utc(token.revoked_at)
     api_clients = ApiClient.query.order_by(ApiClient.created_at.desc()).all()
-    for client in api_clients:
-        client.created_at = coerce_utc(client.created_at)
-        client.last_used_at = coerce_utc(client.last_used_at)
+    api_request_logs = ApiClientRequestLog.query.order_by(ApiClientRequestLog.created_at.desc()).limit(25).all()
     remote_sites = RemoteSite.query.order_by(RemoteSite.created_at.desc()).all()
+    for token in field_tokens:
+        token._display_expires_at = coerce_utc(token.expires_at)
+        token._display_last_used_at = coerce_utc(token.last_used_at)
+        token._display_revoked_at = coerce_utc(token.revoked_at)
+    for client in api_clients:
+        client._display_created_at = coerce_utc(client.created_at)
+        client._display_last_used_at = coerce_utc(client.last_used_at)
+    for log in api_request_logs:
+        log._display_created_at = coerce_utc(log.created_at)
     for site in remote_sites:
-        site.created_at = coerce_utc(site.created_at)
-        site.updated_at = coerce_utc(site.updated_at)
-        site.last_pull_started_at = coerce_utc(site.last_pull_started_at)
-        site.last_pull_finished_at = coerce_utc(site.last_pull_finished_at)
+        site._display_created_at = coerce_utc(site.created_at)
+        site._display_updated_at = coerce_utc(site.updated_at)
+        site._display_last_pull_started_at = coerce_utc(site.last_pull_started_at)
+        site._display_last_pull_finished_at = coerce_utc(site.last_pull_finished_at)
     pending_field_submissions = root.FieldPurchaseSubmission.query.filter_by(status="pending").order_by(
         root.FieldPurchaseSubmission.submitted_at.desc()
     ).all()
@@ -540,6 +543,7 @@ def settings_view(root):
         users=users,
         field_tokens=field_tokens,
         api_clients=api_clients,
+        api_request_logs=api_request_logs,
         remote_sites=remote_sites,
         field_submissions=pending_field_submissions,
         reviewed_field_submissions=reviewed_field_submissions,

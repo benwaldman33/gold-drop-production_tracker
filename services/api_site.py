@@ -15,7 +15,13 @@ def get_site_identity() -> dict[str, str]:
     }
 
 
-def build_meta(*, count: int | None = None, limit: int | None = None, offset: int | None = None) -> dict[str, object]:
+def build_meta(
+    *,
+    count: int | None = None,
+    limit: int | None = None,
+    offset: int | None = None,
+    extra: dict[str, object] | None = None,
+) -> dict[str, object]:
     site = get_site_identity()
     meta: dict[str, object] = {
         "api_version": "v1",
@@ -32,4 +38,6 @@ def build_meta(*, count: int | None = None, limit: int | None = None, offset: in
         meta["limit"] = limit
     if offset is not None:
         meta["offset"] = offset
+    if extra:
+        meta.update(extra)
     return meta

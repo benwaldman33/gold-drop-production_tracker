@@ -22,9 +22,9 @@ def iso_date(value):
     return str(value)
 
 
-def envelope(data, *, count=None, limit=None, offset=None):
+def envelope(data, *, count=None, limit=None, offset=None, **meta_extra):
     return {
-        "meta": build_meta(count=count, limit=limit, offset=offset),
+        "meta": build_meta(count=count, limit=limit, offset=offset, extra=meta_extra or None),
         "data": data,
     }
 

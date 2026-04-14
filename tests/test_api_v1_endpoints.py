@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 
 import app as app_module
-from models import ApiClient, Purchase, PurchaseLot, RemoteSite, Run, RunInput, SlackIngestedMessage, Supplier, SystemSetting, db, gen_uuid
+from models import ApiClient, ApiClientRequestLog, Purchase, PurchaseLot, RemoteSite, Run, RunInput, SlackIngestedMessage, Supplier, SystemSetting, db, gen_uuid
 from services.api_auth import hash_api_token
 
 
@@ -160,7 +160,10 @@ def test_api_v1_search_requires_scope_and_returns_entity_matches():
 
             response = client.get("/api/v1/search?q=alpha", headers=good_headers)
             assert response.status_code == 200
-            payload = response.get_json()["data"]
+            search_json = response.get_json()
+            assert search_json["meta"]["sort"] == "relevance"
+            assert search_json["meta"]["filters"]["q"] == "alpha"
+            payload = search_json["data"]
             entity_types = {item["entity_type"] for item in payload["results"]}
             assert "purchase" in entity_types
             assert "run" in entity_types
@@ -351,6 +354,10 @@ def test_api_v1_site_returns_site_meta_and_data():
             api_client = db.session.get(ApiClient, client_id)
             assert api_client.last_used_scope == "read:site"
             assert api_client.last_used_endpoint == "/api/v1/site"
+            request_log = ApiClientRequestLog.query.filter_by(api_client_id=client_id).order_by(ApiClientRequestLog.created_at.desc()).first()
+            assert request_log is not None
+            assert request_log.request_path == "/api/v1/site"
+            assert request_log.scope_used == "read:site"
     finally:
         with app.app_context():
             db.session.get(SystemSetting, "site_code").value = original_code
@@ -411,7 +418,9 @@ def test_api_v1_aggregation_sites_and_summary_use_cached_remote_payloads():
         with app.test_client() as client:
             list_res = client.get("/api/v1/aggregation/sites", headers=headers)
             assert list_res.status_code == 200
-            items = list_res.get_json()["data"]
+            list_payload = list_res.get_json()
+            assert list_payload["meta"]["sort"] == "name_ascending"
+            items = list_payload["data"]
             assert any(item["id"] == site_id for item in items)
 
             detail_res = client.get(f"/api/v1/aggregation/sites/{site_id}", headers=headers)
@@ -512,13 +521,19 @@ def test_api_v1_aggregation_supplier_and_strain_comparison():
         with app.test_client() as client:
             supplier_res = client.get("/api/v1/aggregation/suppliers?q=compare", headers=headers)
             assert supplier_res.status_code == 200
-            supplier_rows = supplier_res.get_json()["data"]
+            supplier_payload = supplier_res.get_json()
+            assert supplier_payload["meta"]["sort"] == "supplier_name_ascending"
+            assert supplier_payload["meta"]["filters"]["q"] == "compare"
+            supplier_rows = supplier_payload["data"]
             assert any(row["site"]["source"] == "local" for row in supplier_rows)
             assert any(row["site"]["source"] == "remote_cache" for row in supplier_rows)
 
             strain_res = client.get("/api/v1/aggregation/strains?q=compare", headers=headers)
             assert strain_res.status_code == 200
-            strain_rows = strain_res.get_json()["data"]
+            strain_payload = strain_res.get_json()
+            assert strain_payload["meta"]["sort"] == "avg_yield_desc"
+            assert strain_payload["meta"]["filters"]["q"] == "compare"
+            strain_rows = strain_payload["data"]
             assert any(row["site"]["source"] == "local" for row in strain_rows)
             assert any(row["site"]["source"] == "remote_cache" for row in strain_rows)
     finally:
@@ -588,6 +603,8 @@ def test_api_v1_lots_and_inventory_match_operational_rules():
             lots_res = client.get(f"/api/v1/lots?open_only=1&supplier_id={supplier_id}", headers=headers)
             assert lots_res.status_code == 200
             lots_payload = lots_res.get_json()
+            assert lots_payload["meta"]["sort"] == "purchase_date_desc"
+            assert lots_payload["meta"]["filters"]["open_only"] is True
             lot_ids = {item["id"] for item in lots_payload["data"]}
             assert open_lot_id in lot_ids
             assert spent_lot_id not in lot_ids
@@ -602,6 +619,8 @@ def test_api_v1_lots_and_inventory_match_operational_rules():
             inv_res = client.get(f"/api/v1/inventory/on-hand?supplier_id={supplier_id}", headers=headers)
             assert inv_res.status_code == 200
             inv_payload = inv_res.get_json()
+            assert inv_payload["meta"]["sort"] == "purchase_date_desc"
+            assert inv_payload["meta"]["filters"]["supplier_id"] == supplier_id
             inv_ids = {item["id"] for item in inv_payload["data"]}
             assert inv_ids == {open_lot_id}
 
@@ -782,6 +801,9 @@ def test_api_v1_purchases_list_and_detail():
             assert list_res.status_code == 200
             list_payload = list_res.get_json()
             assert list_payload["meta"]["count"] >= 1
+            assert list_payload["meta"]["sort"] == "purchase_date_desc"
+            assert list_payload["meta"]["filters"]["supplier_id"] == supplier_id
+            assert list_payload["meta"]["filters"]["approved"] is True
             purchase_ids = {item["id"] for item in list_payload["data"]}
             assert purchase_id in purchase_ids
 
@@ -861,6 +883,9 @@ def test_api_v1_runs_list_and_detail():
             list_res = client.get(f"/api/v1/runs?supplier_id={supplier_id}&reactor_number=2&slack_linked=1", headers=headers)
             assert list_res.status_code == 200
             list_payload = list_res.get_json()
+            assert list_payload["meta"]["sort"] == "run_date_desc"
+            assert list_payload["meta"]["filters"]["reactor_number"] == 2
+            assert list_payload["meta"]["filters"]["slack_linked"] is True
             run_ids = {item["id"] for item in list_payload["data"]}
             assert run_id in run_ids
 
@@ -1025,6 +1050,8 @@ def test_api_v1_suppliers_list_and_detail():
             list_res = client.get(f"/api/v1/suppliers?q={supplier.name}", headers=headers)
             assert list_res.status_code == 200
             list_payload = list_res.get_json()
+            assert list_payload["meta"]["sort"] == "name_ascending"
+            assert list_payload["meta"]["filters"]["q"] == supplier.name
             supplier_ids = {item["supplier"]["id"] for item in list_payload["data"]}
             assert supplier_id in supplier_ids
 
@@ -1107,6 +1134,9 @@ def test_api_v1_strains_list():
             assert list_res.status_code == 200
             payload = list_res.get_json()
             assert payload["meta"]["count"] >= 1
+            assert payload["meta"]["sort"] == "avg_yield_desc"
+            assert payload["meta"]["filters"]["view"] == "all"
+            assert payload["meta"]["filters"]["supplier_id"] == supplier_id
             first = payload["data"][0]
             assert first["strain_name"] == "Blue Dream"
             assert first["supplier_name"] == supplier.name
@@ -1155,6 +1185,9 @@ def test_api_v1_slack_imports_list_and_detail():
             list_res = client.get("/api/v1/slack-imports?channel_id=C-SLACK-API&promotion=not_linked", headers=headers)
             assert list_res.status_code == 200
             list_payload = list_res.get_json()
+            assert list_payload["meta"]["sort"] == "message_ts_desc"
+            assert list_payload["meta"]["filters"]["channel_id"] == "C-SLACK-API"
+            assert list_payload["meta"]["filters"]["promotion"] == "not_linked"
             row_ids = {item["id"] for item in list_payload["data"]}
             assert row_id in row_ids
 
@@ -1219,6 +1252,9 @@ def test_api_v1_exceptions_returns_purchase_and_inventory_signals():
         assert summary_response.status_code == 200
         purchase_payload = purchase_response.get_json()
         inventory_payload = inventory_response.get_json()
+        assert purchase_payload["meta"]["sort"] == "category_then_label"
+        assert purchase_payload["meta"]["filters"]["category"] == "purchases"
+        assert inventory_payload["meta"]["filters"]["category"] == "inventory"
         summary_payload = summary_response.get_json()["data"]
         purchase_categories = {(item["category"], item["entity_type"], item["entity_id"]) for item in purchase_payload["data"]}
         inventory_categories = {(item["category"], item["entity_type"], item["entity_id"]) for item in inventory_payload["data"]}

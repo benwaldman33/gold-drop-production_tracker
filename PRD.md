@@ -222,6 +222,7 @@ These endpoints:
 - are token-authenticated
 - are read-only
 - return JSON envelopes with site metadata
+- return explicit list/search contract metadata for paging and interpretation (`count`, `limit`, `offset`, `sort`, `filters`)
 - are intended for internal consumers only
 - expose a machine-readable discovery surface so internal tools and future MCP clients can discover scopes and supported endpoints
 - expose a site sync manifest so future aggregation services can identify the site, dataset counts, and basic freshness markers before pulling deeper data

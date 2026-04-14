@@ -6,7 +6,7 @@ from functools import wraps
 
 from flask import g, jsonify, request
 
-from models import ApiClient, db, utc_now
+from models import ApiClient, ApiClientRequestLog, db, gen_uuid, utc_now
 from services.api_site import build_meta
 
 
@@ -56,12 +56,29 @@ def require_api_scope(scope: str):
             if scope not in set(client.scopes):
                 return json_api_error(f"Missing scope {scope}", status_code=403, code="forbidden")
 
-            client.last_used_at = utc_now()
-            client.last_used_scope = scope
-            client.last_used_endpoint = request.path
-            db.session.commit()
             g.api_client = client
-            return fn(*args, **kwargs)
+            response = fn(*args, **kwargs)
+            flask_response = response if hasattr(response, "status_code") else None
+            status_code = getattr(flask_response, "status_code", None)
+
+            try:
+                client.last_used_at = utc_now()
+                client.last_used_scope = scope
+                client.last_used_endpoint = request.path
+                db.session.add(
+                    ApiClientRequestLog(
+                        id=gen_uuid(),
+                        api_client_id=client.id,
+                        request_path=request.path,
+                        request_method=request.method,
+                        scope_used=scope,
+                        status_code=status_code,
+                    )
+                )
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+            return response
 
         return wrapped
 

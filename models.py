@@ -115,6 +115,20 @@ class ApiClient(db.Model):
         self.scopes_json = json.dumps(normalized)
 
 
+class ApiClientRequestLog(db.Model):
+    __tablename__ = "api_client_request_logs"
+
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    api_client_id = db.Column(db.String(36), db.ForeignKey("api_clients.id"), nullable=False, index=True)
+    request_path = db.Column(db.String(255), nullable=False)
+    request_method = db.Column(db.String(16), nullable=False, default="GET")
+    scope_used = db.Column(db.String(64), nullable=False)
+    status_code = db.Column(db.Integer)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+
+    api_client = db.relationship("ApiClient", backref=db.backref("request_logs", lazy="dynamic", cascade="all, delete-orphan"))
+
+
 class RemoteSite(db.Model):
     __tablename__ = "remote_sites"
 

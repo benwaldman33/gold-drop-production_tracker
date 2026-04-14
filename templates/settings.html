@@ -504,14 +504,14 @@
             <td>
               {% if t.revoked_at %}
                 <span class="badge badge-gray">Revoked</span>
-              {% elif t.expires_at and t.expires_at < server_now %}
+              {% elif t._display_expires_at and t._display_expires_at < server_now %}
                 <span class="badge badge-gray">Expired</span>
               {% else %}
                 <span class="badge badge-green">Active</span>
               {% endif %}
             </td>
-            <td>{{ t.expires_at.strftime('%m/%d/%y') if t.expires_at else '—' }}</td>
-            <td>{{ t.last_used_at.strftime('%m/%d/%y %H:%M') if t.last_used_at else '—' }}</td>
+            <td>{{ t._display_expires_at.strftime('%m/%d/%y') if t._display_expires_at else '—' }}</td>
+            <td>{{ t._display_last_used_at.strftime('%m/%d/%y %H:%M') if t._display_last_used_at else '—' }}</td>
             <td>
               {% if not t.revoked_at %}
               <form method="POST" action="{{ url_for('field_token_revoke', token_id=t.id) }}" style="display:inline;" onsubmit="return confirm('Revoke this token? Existing links will stop working.');">
@@ -519,7 +519,7 @@
                 <button type="submit" class="btn btn-danger btn-sm">Revoke</button>
               </form>
               {% endif %}
-              {% if t.revoked_at or (t.expires_at and t.expires_at < server_now) %}
+              {% if t._display_revoked_at or (t._display_expires_at and t._display_expires_at < server_now) %}
               <form method="POST" action="{{ url_for('field_token_delete', token_id=t.id) }}" style="display:inline;" onsubmit="return confirm('Delete this revoked/expired token record?');">
                 <input type="hidden" name="return_to" value="#settings-field-intake">
                 <button type="submit" class="btn btn-secondary btn-sm">Delete</button>
@@ -693,8 +693,8 @@
                 <span class="badge badge-gray">Revoked</span>
               {% endif %}
             </td>
-            <td>{{ client.created_at.strftime('%m/%d/%y %H:%M') if client.created_at else '—' }}</td>
-            <td>{{ client.last_used_at.strftime('%m/%d/%y %H:%M') if client.last_used_at else '—' }}</td>
+            <td>{{ client._display_created_at.strftime('%m/%d/%y %H:%M') if client._display_created_at else '—' }}</td>
+            <td>{{ client._display_last_used_at.strftime('%m/%d/%y %H:%M') if client._display_last_used_at else '—' }}</td>
             <td class="text-sm">
               {% if client.last_used_endpoint %}
                 <code>{{ client.last_used_endpoint }}</code>
@@ -724,6 +724,28 @@
           </tr>
           {% else %}
           <tr><td colspan="7" class="text-center cell-muted" style="padding:20px;">No API clients created yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:18px 0 12px;">Recent API Request Log</h4>
+    <div class="table-wrap mb-2">
+      <table>
+        <thead>
+          <tr><th>When</th><th>Client</th><th>Method</th><th>Path</th><th>Scope</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          {% for log in api_request_logs %}
+          <tr>
+            <td>{{ log._display_created_at.strftime('%m/%d/%y %H:%M') if log._display_created_at else '—' }}</td>
+            <td>{{ log.api_client.name if log.api_client else 'Unknown client' }}</td>
+            <td><code>{{ log.request_method }}</code></td>
+            <td><code>{{ log.request_path }}</code></td>
+            <td><code>{{ log.scope_used }}</code></td>
+            <td>{{ log.status_code if log.status_code is not none else '—' }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-center cell-muted" style="padding:20px;">No API requests logged yet.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -818,7 +840,7 @@
                 {% endif %}
               </div>
               <div class="cell-muted" style="margin-top:4px;">
-                {{ site.last_pull_finished_at.strftime('%m/%d/%y %H:%M') if site.last_pull_finished_at else '—' }}
+                {{ site._display_last_pull_finished_at.strftime('%m/%d/%y %H:%M') if site._display_last_pull_finished_at else '—' }}
               </div>
               {% if site.last_pull_error %}
               <div class="cell-muted" style="margin-top:4px;">{{ site.last_pull_error }}</div>

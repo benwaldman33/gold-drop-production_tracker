@@ -427,6 +427,15 @@ Every `/api/v1` response includes:
 - `generated_at`
 - `api_version`
 
+List and search responses also now expose normalized contract metadata:
+- `count`
+- `limit`
+- `offset`
+- `sort`
+- `filters`
+
+`sort` reports the applied default ordering for the endpoint, and `filters` echoes the normalized filter values the API actually used after validation/defaulting. Internal consumers should prefer these values over inferring behavior from request strings.
+
 The site identity values come from `SystemSetting` and can be edited in:
 
 - `Settings -> Operational Parameters`

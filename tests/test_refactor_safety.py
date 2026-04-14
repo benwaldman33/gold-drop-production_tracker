@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import app as app_module
 import gold_drop.bootstrap_module as bootstrap_module
-from models import ApiClient, FieldAccessToken, FieldPurchaseSubmission, Purchase, PurchaseLot, RemoteSite, ScaleDevice, SlackIngestedMessage, Supplier, SystemSetting, User, WeightCapture, db
+from models import ApiClient, FieldAccessToken, FieldPurchaseSubmission, Purchase, PurchaseLot, RemoteSite, ScaleDevice, SlackIngestedMessage, Supplier, SystemSetting, User, WeightCapture, db, gen_uuid
 from flask_login import login_user
 from services.scale_ingest import create_weight_capture
 
@@ -88,6 +88,7 @@ def test_settings_route_renders_api_clients_section():
     assert page.status_code == 200
     assert b"Internal API Clients" in page.data
     assert b"Create API Client" in page.data
+    assert b"Recent API Request Log" in page.data
 
 
 def test_settings_route_renders_remote_sites_section():
@@ -140,14 +141,15 @@ def test_admin_can_create_and_revoke_api_client_from_settings():
 
 
 def test_admin_can_create_and_pull_remote_site_from_settings():
+    suffix = gen_uuid()[:8]
     create = _call_view_as_user(
         "/settings/remote_sites/create",
         "remote_site_create",
         "admin",
         method="POST",
         data={
-            "name": "Remote Site Alpha",
-            "base_url": "https://alpha.example.com/",
+            "name": f"Remote Site Alpha {suffix}",
+            "base_url": f"https://alpha-{suffix}.example.com/",
             "api_token": "remote-secret",
             "notes": "created in test",
             "return_to": "#settings-remote-sites",
@@ -158,10 +160,10 @@ def test_admin_can_create_and_pull_remote_site_from_settings():
 
     app = app_module.app
     with app.app_context():
-        site = RemoteSite.query.filter_by(name="Remote Site Alpha").first()
+        site = RemoteSite.query.filter_by(name=f"Remote Site Alpha {suffix}").first()
         assert site is not None
         site_id = site.id
-        assert site.base_url == "https://alpha.example.com"
+        assert site.base_url == f"https://alpha-{suffix}.example.com"
 
     fake_pull = type("PullResult", (), {"status": "success", "error_message": None})()
     with patch("gold_drop.settings_module.pull_remote_site", return_value=fake_pull) as pull_mock:

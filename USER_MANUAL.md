@@ -494,6 +494,7 @@ Super Admin can manage bearer-token clients for the internal read-only API under
 - The raw bearer token is shown only once when the client is created.
 - Clients can be revoked, reactivated, and deleted later from the same table.
 - The table also shows **Last Used** plus the last endpoint/scope the token touched, which helps with internal audit and troubleshooting.
+- The same section now shows a **Recent API Request Log** so you can quickly see which client hit which endpoint, with method, scope, status, and timestamp.
 
 ### Remote Sites
 Super Admin can manage cross-site cache registrations under **Settings -> Remote Sites**.

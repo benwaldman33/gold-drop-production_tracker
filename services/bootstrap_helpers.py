@@ -87,6 +87,19 @@ def ensure_sqlite_schema(root) -> None:
         if "last_used_endpoint" not in cols:
             root.db.session.execute(text("ALTER TABLE api_clients ADD COLUMN last_used_endpoint VARCHAR(255)"))
 
+    if not has_table("api_client_request_logs"):
+        root.db.session.execute(text(
+            "CREATE TABLE api_client_request_logs ("
+            "id VARCHAR(36) PRIMARY KEY, "
+            "api_client_id VARCHAR(36) NOT NULL, "
+            "request_path VARCHAR(255) NOT NULL, "
+            "request_method VARCHAR(16) NOT NULL DEFAULT 'GET', "
+            "scope_used VARCHAR(64) NOT NULL, "
+            "status_code INTEGER, "
+            "created_at DATETIME NOT NULL"
+            ")"
+        ))
+
     if has_table("remote_sites"):
         cols = column_names("remote_sites")
         if "last_suppliers_payload_json" not in cols:

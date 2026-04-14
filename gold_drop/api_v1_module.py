@@ -221,7 +221,15 @@ def api_v1_aggregation_sites():
     sites = RemoteSite.query.order_by(RemoteSite.name.asc()).all()
     payload = [serialize_remote_site_cache(site) for site in sites]
     total = len(payload)
-    return jsonify(envelope(payload[offset : offset + limit], count=total, limit=limit, offset=offset))
+    return jsonify(
+        envelope(
+            payload[offset : offset + limit],
+            count=total,
+            limit=limit,
+            offset=offset,
+            sort="name_ascending",
+        )
+    )
 
 
 @require_api_scope("read:aggregation")
@@ -237,7 +245,7 @@ def api_v1_search():
     query_text = (request.args.get("q") or "").strip()
     if not query_text:
         return json_api_error("Missing q", status_code=400, code="bad_request")
-    limit, _offset = parse_limit_offset(request, default_limit=25, max_limit=100)
+    limit, offset = parse_limit_offset(request, default_limit=25, max_limit=100)
     requested_types = {
         value.strip().lower()
         for value in (request.args.get("types") or "").split(",")
@@ -349,8 +357,18 @@ def api_v1_search():
                 )
             )
 
-    results = results[:limit]
-    return jsonify(envelope({"query": query_text, "results": results, "count": len(results)}))
+    total = len(results)
+    results = results[offset : offset + limit]
+    return jsonify(
+        envelope(
+            {"query": query_text, "results": results, "count": total},
+            count=total,
+            limit=limit,
+            offset=offset,
+            sort="relevance",
+            filters={"q": query_text, "types": sorted(requested_types)},
+        )
+    )
 
 
 @require_api_scope("read:tools")
@@ -778,7 +796,16 @@ def api_v1_aggregation_suppliers():
             rows.append(item)
 
     total = len(rows)
-    return jsonify(envelope(rows[offset : offset + limit], count=total, limit=limit, offset=offset))
+    return jsonify(
+        envelope(
+            rows[offset : offset + limit],
+            count=total,
+            limit=limit,
+            offset=offset,
+            sort="supplier_name_ascending",
+            filters={"q": query_text or None},
+        )
+    )
 
 
 @require_api_scope("read:aggregation")
@@ -825,7 +852,16 @@ def api_v1_aggregation_strains():
             rows.append(item)
 
     total = len(rows)
-    return jsonify(envelope(rows[offset : offset + limit], count=total, limit=limit, offset=offset))
+    return jsonify(
+        envelope(
+            rows[offset : offset + limit],
+            count=total,
+            limit=limit,
+            offset=offset,
+            sort="avg_yield_desc",
+            filters={"q": query_text or None, "supplier_name": supplier_filter or None},
+        )
+    )
 
 
 @require_api_scope("read:dashboard")
@@ -888,7 +924,23 @@ def api_v1_purchases():
     )
     total = query.count()
     purchases = query.offset(offset).limit(limit).all()
-    return jsonify(envelope([serialize_purchase_summary(purchase) for purchase in purchases], count=total, limit=limit, offset=offset))
+    return jsonify(
+        envelope(
+            [serialize_purchase_summary(purchase) for purchase in purchases],
+            count=total,
+            limit=limit,
+            offset=offset,
+            sort="purchase_date_desc",
+            filters={
+                "status": (request.args.get("status") or "").strip() or None,
+                "supplier_id": (request.args.get("supplier_id") or "").strip() or None,
+                "approved": approved,
+                "start_date": start_date.isoformat() if start_date else None,
+                "end_date": end_date.isoformat() if end_date else None,
+                "include_archived": request.args.get("include_archived") == "1",
+            },
+        )
+    )
 
 
 @require_api_scope("read:purchases")
@@ -931,7 +983,23 @@ def api_v1_lots():
     )
     total = query.count()
     lots = query.offset(offset).limit(limit).all()
-    return jsonify(envelope([serialize_lot_summary(lot) for lot in lots], count=total, limit=limit, offset=offset))
+    return jsonify(
+        envelope(
+            [serialize_lot_summary(lot) for lot in lots],
+            count=total,
+            limit=limit,
+            offset=offset,
+            sort="purchase_date_desc",
+            filters={
+                "purchase_id": (request.args.get("purchase_id") or "").strip() or None,
+                "supplier_id": (request.args.get("supplier_id") or "").strip() or None,
+                "strain": (request.args.get("strain") or "").strip() or None,
+                "tracking_id": (request.args.get("tracking_id") or "").strip() or None,
+                "open_only": request.args.get("open_only") == "1",
+                "include_archived": request.args.get("include_archived") == "1",
+            },
+        )
+    )
 
 
 @require_api_scope("read:lots")
@@ -995,7 +1063,24 @@ def api_v1_runs():
     )
     total = query.count()
     runs = query.offset(offset).limit(limit).all()
-    return jsonify(envelope([serialize_run_summary(run) for run in runs], count=total, limit=limit, offset=offset))
+    return jsonify(
+        envelope(
+            [serialize_run_summary(run) for run in runs],
+            count=total,
+            limit=limit,
+            offset=offset,
+            sort="run_date_desc",
+            filters={
+                "start_date": start_date.isoformat() if start_date else None,
+                "end_date": end_date.isoformat() if end_date else None,
+                "reactor_number": reactor_number,
+                "supplier_id": (request.args.get("supplier_id") or "").strip() or None,
+                "strain": (request.args.get("strain") or "").strip() or None,
+                "slack_linked": slack_linked,
+                "include_archived": request.args.get("include_archived") == "1",
+            },
+        )
+    )
 
 
 @require_api_scope("read:runs")
@@ -1115,7 +1200,19 @@ def api_v1_suppliers():
     q = q.order_by(Supplier.name.asc(), Supplier.id.asc())
     total = q.count()
     suppliers = q.offset(offset).limit(limit).all()
-    return jsonify(envelope([_supplier_performance_payload(root, supplier) for supplier in suppliers], count=total, limit=limit, offset=offset))
+    return jsonify(
+        envelope(
+            [_supplier_performance_payload(root, supplier) for supplier in suppliers],
+            count=total,
+            limit=limit,
+            offset=offset,
+            sort="name_ascending",
+            filters={
+                "active": active_param or None,
+                "q": (request.args.get("q") or "").strip() or None,
+            },
+        )
+    )
 
 
 @require_api_scope("read:suppliers")
@@ -1195,7 +1292,20 @@ def api_v1_strains():
         )
         for row in results
     ]
-    return jsonify(envelope(data, count=total, limit=limit, offset=offset))
+    return jsonify(
+        envelope(
+            data,
+            count=total,
+            limit=limit,
+            offset=offset,
+            sort="avg_yield_desc",
+            filters={
+                "view": view,
+                "supplier_id": (request.args.get("supplier_id") or "").strip() or None,
+                "strain": (request.args.get("strain") or "").strip() or None,
+            },
+        )
+    )
 
 
 @require_api_scope("read:inventory")
@@ -1207,7 +1317,19 @@ def api_v1_inventory_on_hand():
     )
     total = query.count()
     lots = query.offset(offset).limit(limit).all()
-    return jsonify(envelope([serialize_inventory_lot(lot) for lot in lots], count=total, limit=limit, offset=offset))
+    return jsonify(
+        envelope(
+            [serialize_inventory_lot(lot) for lot in lots],
+            count=total,
+            limit=limit,
+            offset=offset,
+            sort="purchase_date_desc",
+            filters={
+                "supplier_id": (request.args.get("supplier_id") or "").strip() or None,
+                "strain": (request.args.get("strain") or "").strip() or None,
+            },
+        )
+    )
 
 
 def _norm_promo(value):
@@ -1331,7 +1453,26 @@ def api_v1_slack_imports():
         return error
     items, _bucket_counts = built
     total = len(items)
-    return jsonify(envelope(items[offset : offset + limit], count=total, limit=limit, offset=offset))
+    return jsonify(
+        envelope(
+            items[offset : offset + limit],
+            count=total,
+            limit=limit,
+            offset=offset,
+            sort="message_ts_desc",
+            filters={
+                "start_date": request.args.get("start_date") or None,
+                "end_date": request.args.get("end_date") or None,
+                "promotion": _norm_promo(request.args.get("promotion")),
+                "coverage": _norm_cov(request.args.get("coverage")),
+                "kind_filter": (request.args.get("kind_filter") or "all").strip().lower(),
+                "text_filter": (request.args.get("text_filter") or "").strip() or None,
+                "text_op": (request.args.get("text_op") or "contains").strip().lower(),
+                "include_hidden": request.args.get("include_hidden") == "1",
+                "channel_id": (request.args.get("channel_id") or "").strip() or None,
+            },
+        )
+    )
 
 
 @require_api_scope("read:slack_imports")
@@ -1409,7 +1550,16 @@ def api_v1_exceptions():
                     )
                 )
     total = len(items)
-    return jsonify(envelope(items[offset : offset + limit], count=total, limit=limit, offset=offset))
+    return jsonify(
+        envelope(
+            items[offset : offset + limit],
+            count=total,
+            limit=limit,
+            offset=offset,
+            sort="category_then_label",
+            filters={"category": category},
+        )
+    )
 
 
 def _inventory_summary_payload(root, *, supplier_id: str | None, strain: str | None):

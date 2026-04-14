@@ -56,6 +56,7 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
   - revoke/reactivate
   - delete revoked clients
   - inspect last used timestamp, scope, and endpoint
+  - inspect the recent API request log (client, method, path, scope, status, timestamp)
 - These scripts now prepend the repo root to `sys.path`, so they work from the project root without manual `PYTHONPATH` setup.
 
 ## Internal API (`/api/v1`)
@@ -147,6 +148,14 @@ List responses also include:
 - `count`
 - `limit`
 - `offset`
+- `sort`
+- `filters`
+
+Contract notes:
+- `sort` is the canonical applied ordering for the endpoint.
+- `filters` echoes the normalized values the endpoint actually used after validation/defaulting.
+- Search responses use the same list metadata and currently report `sort = "relevance"`.
+- Internal consumers should depend on these `meta` fields rather than inferring order/filter behavior from request strings alone.
 
 ### Site identity
 
