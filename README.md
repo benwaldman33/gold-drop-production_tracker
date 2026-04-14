@@ -321,6 +321,60 @@ python scripts/seed_demo_data.py --yes
 sudo systemctl restart golddrop
 ```
 
+## Internal API
+
+This app now exposes a read-only internal API under `/api/v1` for trusted internal consumers.
+
+Current endpoints:
+- `/api/v1/site`
+- `/api/v1/purchases`
+- `/api/v1/purchases/<purchase_id>`
+- `/api/v1/purchases/<purchase_id>/journey`
+- `/api/v1/lots`
+- `/api/v1/lots/<lot_id>`
+- `/api/v1/runs`
+- `/api/v1/runs/<run_id>`
+- `/api/v1/inventory/on-hand`
+
+Authentication:
+- bearer token only
+- no session-cookie fallback
+- JSON `401` / `403` responses on auth failure
+
+Create an internal API token:
+
+```bash
+cd /opt/gold-drop
+source venv/bin/activate
+python scripts/create_api_client.py --name "internal-bi" --scopes read:site,read:lots,read:inventory,read:journey
+```
+
+Useful read scopes now include:
+- `read:site`
+- `read:purchases`
+- `read:journey`
+- `read:lots`
+- `read:runs`
+- `read:inventory`
+
+Example request:
+
+```bash
+curl -H "Authorization: Bearer YOUR_TOKEN_HERE" http://127.0.0.1:5050/api/v1/site
+```
+
+Every `/api/v1` response includes:
+- `site_code`
+- `site_name`
+- `site_timezone`
+- `generated_at`
+- `api_version`
+
+The site identity values come from `SystemSetting` defaults:
+- `site_code`
+- `site_name`
+- `site_timezone`
+
 ---
 
 ## Importing Historical Data from Google Sheets

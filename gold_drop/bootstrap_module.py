@@ -45,6 +45,9 @@ def init_db(root):
         root.db.session.add(viewer)
 
     defaults = {
+        "site_code": ("DEFAULT", "Site code for internal API and future rollup"),
+        "site_name": ("Gold Drop", "Site display name for internal API and reporting"),
+        "site_timezone": ("America/Los_Angeles", "IANA timezone for this site"),
         "potency_rate": ("1.50", "Potency Rate ($/lb/%pt)"),
         "num_reactors": ("2", "Number of Reactors"),
         "reactor_capacity": ("100", "Reactor Capacity (lbs)"),

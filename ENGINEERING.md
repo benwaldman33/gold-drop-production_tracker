@@ -28,6 +28,11 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
   - **`services/lot_allocation.py`** - lot tracking backfill, lot candidate ranking, and run allocation apply / release logic
   - **`services/lot_labels.py`** - lot label payload generation for print / future scan workflows
   - **`services/scale_ingest.py`** - future manual / device weight-capture service boundary
+  - **`gold_drop/api_v1_module.py`** - token-authenticated internal read-only API routes under `/api/v1`
+  - **`services/api_auth.py`** - bearer-token generation, hashing, lookup, and scope enforcement
+  - **`services/api_site.py`** - site identity + shared API response metadata
+  - **`services/api_serializers.py`** - JSON serializers and response envelopes for API resources
+  - **`services/api_queries.py`** - reusable filtered read queries for lots and on-hand inventory
 - `app.py` still re-exports some extracted helpers, but the active dashboard, field intake, runs, purchases, biomass, costs, inventory, batch edit, suppliers/photos, purchase import, strains, settings, and Slack surfaces are now registered from package modules with `add_url_rule`, and startup init delegates through `gold_drop/bootstrap_module.py`.
 - `tests/test_app_factory.py` provides a minimal factory + route-registration smoke check so future extractions are verified against a real app object, not just imports.
 
@@ -44,6 +49,73 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
   - keeps users/passwords, system settings, KPI targets, Slack sync config, scale devices, and cost entries
   - clears purchases/lots, runs/run inputs, Slack imports, field submissions/tokens, suppliers and related attachments/photos/tests, and audit/history rows
   - creates a SQLite backup automatically when a SQLite DB file is present
+- **API client creation:** `python scripts/create_api_client.py --name "internal-bi" --scopes read:site,read:lots,read:inventory`
+- These scripts now prepend the repo root to `sys.path`, so they work from the project root without manual `PYTHONPATH` setup.
+
+## Internal API (`/api/v1`)
+
+Phase 1 internal API is read-only and site-local.
+
+### Auth
+
+- Header: `Authorization: Bearer <token>`
+- Token auth is enforced only on `/api/v1/*`
+- No redirect-based login responses on API routes
+- JSON errors:
+  - `401` for missing/invalid token
+  - `403` for inactive client or missing scope
+
+### Scopes
+
+- `read:site`
+- `read:purchases`
+- `read:journey`
+- `read:lots`
+- `read:runs`
+- `read:inventory`
+
+### Current endpoints
+
+- `GET /api/v1/site`
+- `GET /api/v1/purchases`
+- `GET /api/v1/purchases/<purchase_id>`
+- `GET /api/v1/purchases/<purchase_id>/journey`
+- `GET /api/v1/lots`
+- `GET /api/v1/lots/<lot_id>`
+- `GET /api/v1/runs`
+- `GET /api/v1/runs/<run_id>`
+- `GET /api/v1/inventory/on-hand`
+
+### Response contract
+
+Every response uses a standard envelope:
+
+```json
+{
+  "meta": {
+    "api_version": "v1",
+    "site_code": "DEFAULT",
+    "site_name": "Gold Drop",
+    "site_timezone": "America/Los_Angeles",
+    "generated_at": "2026-04-14T12:00:00Z"
+  },
+  "data": {}
+}
+```
+
+List responses also include:
+- `count`
+- `limit`
+- `offset`
+
+### Site identity
+
+Site identity currently comes from `SystemSetting` defaults seeded by bootstrap:
+- `site_code`
+- `site_name`
+- `site_timezone`
+
+This keeps each deployed facility self-identifying for future aggregation without forcing row-level `site_id` yet.
 
 ## Resume checkpoint
 

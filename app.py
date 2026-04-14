@@ -28,6 +28,7 @@ import gold_drop.suppliers_module as suppliers_module
 import gold_drop.runs_module as runs_module
 import gold_drop.settings_module as settings_module
 import gold_drop.slack_integration_module as slack_integration_module
+import gold_drop.api_v1_module as api_v1_module
 import gold_drop.strains_module as strains_module
 from datetime import datetime, date, timedelta, timezone
 from functools import wraps
@@ -1225,6 +1226,8 @@ def _seed_historical_data():
 def _register_extracted_routes(flask_app):
     root = sys.modules[__name__]
     existing = set(flask_app.view_functions)
+    if "api_v1_site" not in existing:
+        api_v1_module.register_routes(flask_app, root)
     if "slack_events" not in existing:
         slack_integration_module.register_routes(flask_app, root)
     if "settings" not in existing:

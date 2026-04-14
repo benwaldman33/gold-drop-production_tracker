@@ -49,6 +49,7 @@ Operations needs a single system to answer:
 - **Allocation integrity**: every reactor input must resolve to a **specific source lot**; the product must never silently guess between multiple viable lots from the same supplier.
 - **Physical-state visibility**: operators must be able to see **weight, remaining weight, potency, testing state, clean/dirty, and cost** anywhere material is reviewed or matched.
 - **Automation readiness**: lots must be ready for future **barcode / QR scanning** and **connected scale** workflows without changing the core data model later.
+- **Internal data access**: each site deployment must expose a stable, read-only internal API so trusted internal consumers, future site rollups, and future read-only MCP / AI tools can access detailed operational data without querying the database directly.
 - **Accurate $/g**: include biomass $/lb inputs and allocated operational costs.
 - **Configurable allocation**: choose how total run dollars are distributed between THCA and HTE.
 - **Data quality controls**: clearly flag runs missing biomass pricing and optionally exclude them from analytics.
@@ -58,6 +59,7 @@ Operations needs a single system to answer:
 - Full accounting/ERP integration
 - Automated lab COAs ingestion (manual entry only)
 - Multi-facility support
+- External customer-facing API access
 - **Department UIs (initial scope):** replacing Slack as the authoritative capture layer for weights/production logs (see **Operational input authority** below); full barcode / Wi‑Fi or Bluetooth scale integration (roadmap)
 
 ---
@@ -165,6 +167,45 @@ Authorization should use **named capabilities per user** (flags or equivalent), 
   - scan-based allocation / movement confirmation
   - device-captured weights with audit trail
   - mixed manual + device-assisted workflows
+
+### Internal API & site-local deployment
+- Each facility deployment is its own **site-local system of record**.
+- Sites are intentionally **separate deployments first**, with the option to be **rolled up / aggregated later** through a separate reporting or integration layer.
+- The product should expose a **read-only internal API** for trusted internal consumers, future aggregation services, and future read-only MCP / AI tooling.
+- This internal API is **not** a customer-facing public API.
+- `/api/v1/*` uses **bearer-token auth** via internal API clients rather than web-login redirects.
+- Phase 1 of the internal API is **read-only**; future write access may be added later only after the read contract and audit requirements are stable.
+- AI / MCP access should also remain **read-only initially**.
+- **Suppliers** are **site-local first**; any cross-site supplier consolidation belongs in a later aggregation layer rather than the current operational app.
+- **Costs** are **site-scoped** and remain local to each site deployment.
+- Every internal API response should identify the site clearly enough for later aggregation.
+
+### Internal API phase 1 (current)
+The current first slice of the internal API includes:
+- `GET /api/v1/site`
+- `GET /api/v1/purchases`
+- `GET /api/v1/purchases/<purchase_id>`
+- `GET /api/v1/purchases/<purchase_id>/journey`
+- `GET /api/v1/lots`
+- `GET /api/v1/lots/<lot_id>`
+- `GET /api/v1/runs`
+- `GET /api/v1/runs/<run_id>`
+- `GET /api/v1/inventory/on-hand`
+
+These endpoints:
+- are token-authenticated
+- are read-only
+- return JSON envelopes with site metadata
+- are intended for internal consumers only
+
+### Internal API future direction
+Future phases should expand the internal API with:
+- exception / unresolved Slack import reads where useful
+
+Longer term, the architecture should support:
+- a separate rollup / aggregation service that pulls from multiple site APIs
+- read-only MCP / AI access through the same internal API or domain-tool layer
+- eventual controlled write access with explicit scopes and audit logging
 
 ---
 

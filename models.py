@@ -1,4 +1,5 @@
 """Database models for Gold Drop Biomass Tracking System."""
+import json
 import uuid
 from datetime import datetime, date, timezone
 from flask_sqlalchemy import SQLAlchemy
@@ -85,6 +86,31 @@ class User(UserMixin, db.Model):
     def can_approve_purchase(self):
         """Super Admin always; otherwise explicit is_purchase_approver flag (PRD: Super-Buyer, COO, etc.)."""
         return self.is_super_admin or bool(getattr(self, "is_purchase_approver", False))
+
+
+class ApiClient(db.Model):
+    __tablename__ = "api_clients"
+
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    name = db.Column(db.String(120), nullable=False)
+    token_hash = db.Column(db.String(128), nullable=False, unique=True, index=True)
+    scopes_json = db.Column(db.Text, nullable=False, default="[]")
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    last_used_at = db.Column(db.DateTime)
+
+    @property
+    def scopes(self):
+        try:
+            value = json.loads(self.scopes_json or "[]")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return []
+        return value if isinstance(value, list) else []
+
+    def set_scopes(self, scopes):
+        normalized = sorted({str(scope).strip() for scope in (scopes or []) if str(scope).strip()})
+        self.scopes_json = json.dumps(normalized)
 
 
 class Supplier(db.Model):

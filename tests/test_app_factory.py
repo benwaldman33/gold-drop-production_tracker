@@ -48,6 +48,11 @@ class AppFactorySmokeTest(unittest.TestCase):
         self.assertIn("/batch-edit/<entity>", rules)
         self.assertIn("/strains", rules)
         self.assertIn("/api/slack/events", rules)
+        self.assertIn("/api/v1/site", rules)
+        self.assertIn("/api/v1/purchases", rules)
+        self.assertIn("/api/v1/runs", rules)
+        self.assertIn("/api/v1/lots", rules)
+        self.assertIn("/api/v1/inventory/on-hand", rules)
         self.assertIn("/settings/slack-imports", rules)
         self.assertIn("/settings/slack-run-mappings", rules)
 
