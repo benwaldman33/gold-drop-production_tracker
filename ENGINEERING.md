@@ -87,6 +87,7 @@ Phase 1 internal API is read-only and site-local.
 - `read:slack_imports`
 - `read:exceptions`
 - `read:scanner`
+- `read:scales`
 - `read:suppliers`
 - `read:strains`
 
@@ -123,11 +124,14 @@ Phase 1 internal API is read-only and site-local.
 - `GET /api/v1/slack-imports`
 - `GET /api/v1/slack-imports/<msg_id>`
 - `GET /api/v1/exceptions`
+- `GET /api/v1/scale-devices`
+- `GET /api/v1/weight-captures`
 - `GET /api/v1/scan-events`
 - `GET /api/v1/lots/<lot_id>/scans`
 - `GET /api/v1/summary/inventory`
 - `GET /api/v1/summary/slack-imports`
 - `GET /api/v1/summary/exceptions`
+- `GET /api/v1/summary/scales`
 - `GET /api/v1/summary/scanner`
 - `GET /api/v1/inventory/on-hand`
 
@@ -220,6 +224,8 @@ This keeps each deployed facility self-identifying for future aggregation withou
 - `cross_site_strain_compare`
 - `scanner_summary`
 - `lot_scan_history`
+- `scale_devices`
+- `weight_capture_summary`
 
 ### MCP design notes
 
@@ -270,6 +276,10 @@ This keeps each deployed facility self-identifying for future aggregation withou
 - **Scanner observability**
   - `LotScanEvent` stores scan-open, start-run, movement, and testing actions with user/context/timestamp.
   - `GET /api/v1/scan-events`, `GET /api/v1/lots/<lot_id>/scans`, and `GET /api/v1/summary/scanner` expose scanner activity to internal consumers.
+- **Smart-scale live integration**
+  - `Settings -> Smart Scales` supports device registration, device updates, raw-payload test ingestion, and recent capture review.
+  - `POST /runs/scale-capture` creates a pending `WeightCapture`, prefills `bio_in_reactor_lbs`, and links the capture to the run on save.
+  - `GET /api/v1/scale-devices`, `GET /api/v1/weight-captures`, and `GET /api/v1/summary/scales` expose configured devices and recorded captures to internal consumers.
 - **Coverage**
   - `tests/test_lot_allocation.py` covers tracking-id generation, approval-time backfill, partial allocation / release, and over-allocation rejection.
 

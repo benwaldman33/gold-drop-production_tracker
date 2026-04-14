@@ -81,6 +81,7 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 - **Lot tracking IDs** — Purchase lots now receive machine-readable tracking fields (`tracking_id`, barcode payload, QR payload, label metadata) at creation or approval time so the inventory model is ready for future labels and scan workflows.
 - **Scanner workflows** — Scanned lot labels now open a dedicated lot workflow page with quick actions for **Start Run From This Lot**, **Confirm Movement**, **Confirm Testing**, and recent scan activity history.
 - **Scanner intelligence** — Scan activity is also exposed through internal API scanner endpoints and MCP tools (`scanner_summary`, `lot_scan_history`) for future floor analytics and AI workflows.
+- **Smart-scale live integration** — Admins can register scale devices, test raw payload ingestion in Settings, capture live allocation weights on the run form, and inspect scale data through internal API and MCP read layers.
 - **Field Photo Uploads** — Field users can attach multiple photos to biomass and purchase submissions (JPG/JPEG/PNG/WEBP/HEIC/HEIF, max 50 MB each)
 - **Field Purchase Intake Enhancements** — Harvest date, storage note, license info, queue placement, testing/COA status, and categorized photo uploads
 - **Soft Delete + Admin Hard Delete** — Runs and purchases support safe delete plus super-admin permanent cleanup

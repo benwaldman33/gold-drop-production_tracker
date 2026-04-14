@@ -215,3 +215,12 @@ Yes. The scanner workflow now opens a dedicated scanned-lot page at `/scan/lot/<
 - confirm the lot's physical storage location
 - confirm the purchase testing status
 - review recent scan activity for that lot
+
+## Can the app take live scale readings?
+
+Yes. The current smart-scale workflow supports:
+- registering scale devices in **Settings -> Smart Scales**
+- testing raw payload ingestion and storing `WeightCapture` records
+- capturing a live payload on the run form to prefill `Lbs in Reactor`
+
+The live parser currently supports generic ASCII payloads first, which is the safest starting point for serial/USB scale integrations.

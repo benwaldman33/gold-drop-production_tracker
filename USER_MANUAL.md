@@ -633,3 +633,10 @@ Use exports for reporting, reconciliation, or offline analysis.
   - use **Confirm Movement** to update the lot storage location
   - use **Confirm Testing** to update the purchase testing status
   - review **Recent Scan Activity** for that lot
+
+## Smart scales
+
+- Go to **Settings -> Smart Scales** to register a device.
+- Use **Test ingest** with a raw payload such as `ST,GS, 124.6 lb` to confirm the parser and save a capture.
+- On **Runs -> New Run**, use **Capture from Scale** to prefill **Lbs in Reactor** from a live payload before saving the run.
+- The saved run keeps the linked device capture for later audit and analytics.

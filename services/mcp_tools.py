@@ -6,16 +6,18 @@ import app as app_module
 from sqlalchemy import or_
 
 from gold_drop.suppliers_module import supplier_incomplete_profile_fields
-from models import LotScanEvent, Purchase, PurchaseLot, RemoteSite, Run, Supplier
+from models import LotScanEvent, Purchase, PurchaseLot, RemoteSite, Run, ScaleDevice, Supplier, WeightCapture
 from services.api_queries import build_inventory_on_hand_query, build_lots_query
 from services.api_site import get_site_identity
 from services.api_serializers import (
     serialize_inventory_lot,
     serialize_lot_summary,
     serialize_scan_event,
+    serialize_scale_device,
     serialize_search_result,
     serialize_strain_performance_row,
     serialize_supplier_performance_row,
+    serialize_weight_capture,
 )
 from services.purchases_journey import build_lot_journey_payload, build_purchase_journey_payload, build_run_journey_payload
 from services.site_aggregation import build_aggregation_summary, serialize_remote_site_cache
@@ -262,6 +264,33 @@ def _lot_scan_history(arguments: dict) -> dict:
     return {
         "filters": {"lot_id": lot_id or None, "tracking_id": tracking_id or None, "limit": limit},
         "results": [serialize_scan_event(event) for event in events],
+    }
+
+
+def _scale_devices(arguments: dict) -> dict:
+    limit = max(1, min(int(arguments.get("limit") or 50), 200))
+    devices = ScaleDevice.query.order_by(ScaleDevice.created_at.desc()).limit(limit).all()
+    return {
+        "count": len(devices),
+        "results": [serialize_scale_device(device) for device in devices],
+    }
+
+
+def _weight_capture_summary(arguments: dict) -> dict:
+    limit = max(1, min(int(arguments.get("limit") or 50), 200))
+    device_id = (arguments.get("device_id") or "").strip() or None
+    query = WeightCapture.query.order_by(WeightCapture.created_at.desc())
+    if device_id:
+        query = query.filter(WeightCapture.device_id == device_id)
+    captures = query.limit(limit).all()
+    return {
+        "filters": {"device_id": device_id, "limit": limit},
+        "count": len(captures),
+        "results": [serialize_weight_capture(capture) for capture in captures],
+        "summary": {
+            "device_capture_count": sum(1 for capture in captures if capture.source_mode == "device"),
+            "allocation_capture_count": sum(1 for capture in captures if capture.capture_type == "allocation"),
+        },
     }
 
 
@@ -629,6 +658,18 @@ MCP_TOOLS: list[dict[str, object]] = [
         "description": "Return recent scan events for one lot or tracking ID.",
         "inputSchema": {"type": "object", "properties": {"lot_id": {"type": "string"}, "tracking_id": {"type": "string"}, "limit": {"type": "integer"}}, "additionalProperties": False},
         "handler": _lot_scan_history,
+    },
+    {
+        "name": "scale_devices",
+        "description": "List configured smart-scale devices.",
+        "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer"}}, "additionalProperties": False},
+        "handler": _scale_devices,
+    },
+    {
+        "name": "weight_capture_summary",
+        "description": "Return recent weight captures with optional device filter.",
+        "inputSchema": {"type": "object", "properties": {"device_id": {"type": "string"}, "limit": {"type": "integer"}}, "additionalProperties": False},
+        "handler": _weight_capture_summary,
     },
     {
         "name": "dashboard_summary",

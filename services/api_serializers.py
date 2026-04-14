@@ -147,6 +147,46 @@ def serialize_scan_event(event):
     }
 
 
+def serialize_scale_device(device):
+    return {
+        "id": device.id,
+        "name": device.name,
+        "location": device.location,
+        "make_model": device.make_model,
+        "interface_type": device.interface_type,
+        "protocol_type": device.protocol_type,
+        "connection_target": device.connection_target,
+        "is_active": bool(device.is_active),
+        "notes": device.notes,
+        "created_at": iso_dt(device.created_at),
+        "updated_at": iso_dt(device.updated_at),
+    }
+
+
+def serialize_weight_capture(capture):
+    return {
+        "id": capture.id,
+        "capture_type": capture.capture_type,
+        "source_mode": capture.source_mode,
+        "measured_weight": float(capture.measured_weight or 0),
+        "unit": capture.unit,
+        "gross_weight": float(capture.gross_weight or 0) if capture.gross_weight is not None else None,
+        "tare_weight": float(capture.tare_weight or 0) if capture.tare_weight is not None else None,
+        "net_weight": float(capture.net_weight or 0) if capture.net_weight is not None else None,
+        "is_stable": capture.is_stable,
+        "accepted_at": iso_dt(capture.accepted_at),
+        "rejected_at": iso_dt(capture.rejected_at),
+        "device_id": capture.device_id,
+        "device_name": capture.device.name if capture.device else None,
+        "purchase_id": capture.purchase_id,
+        "purchase_lot_id": capture.purchase_lot_id,
+        "run_id": capture.run_id,
+        "notes": capture.notes,
+        "raw_payload": capture.raw_payload,
+        "created_at": iso_dt(capture.created_at),
+    }
+
+
 def serialize_run_summary(run):
     input_lots = []
     for inp in run.inputs.order_by(RunInput.id.asc()).all():

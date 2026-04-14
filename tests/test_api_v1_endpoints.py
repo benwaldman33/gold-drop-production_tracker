@@ -44,12 +44,15 @@ def test_api_v1_capabilities_requires_site_scope_and_returns_discovery_payload()
             assert "read:dashboard" in payload["scopes"]
             assert "read:aggregation" in payload["scopes"]
             assert "read:scanner" in payload["scopes"]
+            assert "read:scales" in payload["scopes"]
             paths = {item["path"] for item in payload["endpoints"]}
             assert "/api/v1/site" in paths
             assert "/api/v1/summary/dashboard" in paths
             assert "/api/v1/summary/exceptions" in paths
             assert "/api/v1/scan-events" in paths
             assert "/api/v1/summary/scanner" in paths
+            assert "/api/v1/scale-devices" in paths
+            assert "/api/v1/summary/scales" in paths
             assert "/api/v1/aggregation/summary" in paths
             assert "/api/v1/aggregation/suppliers" in paths
             assert "/api/v1/aggregation/strains" in paths
@@ -780,6 +783,73 @@ def test_api_v1_scanner_endpoints_return_scan_activity():
             supplier_obj = db.session.get(Supplier, supplier_id)
             if supplier_obj:
                 db.session.delete(supplier_obj)
+            db.session.commit()
+
+
+def test_api_v1_scale_endpoints_return_devices_and_captures():
+    app = app_module.app
+    with app.app_context():
+        device = app_module.ScaleDevice(
+            name=f"API Scale {gen_uuid()[:8]}",
+            location="Receiving",
+            interface_type="rs232",
+            protocol_type="ascii",
+            connection_target="COM7",
+            is_active=True,
+        )
+        db.session.add(device)
+        db.session.flush()
+        capture = app_module.WeightCapture(
+            capture_type="allocation",
+            source_mode="device",
+            measured_weight=111.4,
+            unit="lb",
+            net_weight=111.4,
+            device_id=device.id,
+            raw_payload="ST,GS, 111.4 lb",
+        )
+        db.session.add(capture)
+        db.session.commit()
+        device_id = device.id
+        capture_id = capture.id
+
+    bad_headers, bad_client_id = _make_api_headers("read:inventory")
+    good_headers, good_client_id = _make_api_headers("read:scales")
+    try:
+        with app.test_client() as client:
+            forbidden = client.get("/api/v1/scale-devices", headers=bad_headers)
+            assert forbidden.status_code == 403
+
+            devices_res = client.get("/api/v1/scale-devices", headers=good_headers)
+            assert devices_res.status_code == 200
+            devices_json = devices_res.get_json()
+            assert devices_json["meta"]["sort"] == "created_at_desc"
+            assert {item["id"] for item in devices_json["data"]} >= {device_id}
+
+            captures_res = client.get(f"/api/v1/weight-captures?device_id={device_id}", headers=good_headers)
+            assert captures_res.status_code == 200
+            captures_json = captures_res.get_json()
+            assert captures_json["meta"]["filters"]["device_id"] == device_id
+            assert {item["id"] for item in captures_json["data"]} >= {capture_id}
+
+            summary_res = client.get("/api/v1/summary/scales", headers=good_headers)
+            assert summary_res.status_code == 200
+            summary_payload = summary_res.get_json()["data"]
+            assert summary_payload["device_count"] >= 1
+            assert summary_payload["capture_count"] >= 1
+            assert summary_payload["capture_type_counts"]["allocation"] >= 1
+    finally:
+        with app.app_context():
+            for client_id in (bad_client_id, good_client_id):
+                api_client = db.session.get(ApiClient, client_id)
+                if api_client:
+                    db.session.delete(api_client)
+            capture_obj = db.session.get(app_module.WeightCapture, capture_id)
+            if capture_obj:
+                db.session.delete(capture_obj)
+            device_obj = db.session.get(app_module.ScaleDevice, device_id)
+            if device_obj:
+                db.session.delete(device_obj)
             db.session.commit()
 
 

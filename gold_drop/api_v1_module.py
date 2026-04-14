@@ -22,7 +22,7 @@ from gold_drop.slack import (
     _slack_message_needs_resolution_ui,
     _slack_ts_to_date_value,
 )
-from models import LotScanEvent, Purchase, PurchaseLot, RemoteSite, Run, RunInput, SlackIngestedMessage, Supplier, db
+from models import LotScanEvent, Purchase, PurchaseLot, RemoteSite, Run, RunInput, ScaleDevice, SlackIngestedMessage, Supplier, WeightCapture, db
 from services.api_auth import json_api_error, require_api_scope
 from services.api_queries import (
     build_inventory_on_hand_query,
@@ -41,11 +41,13 @@ from services.api_serializers import (
     serialize_run_detail,
     serialize_run_summary,
     serialize_scan_event,
+    serialize_scale_device,
     serialize_slack_import_detail,
     serialize_slack_import_summary,
     serialize_strain_performance_row,
     serialize_supplier_performance_row,
     serialize_search_result,
+    serialize_weight_capture,
 )
 from services.api_site import get_site_identity
 from services.lot_allocation import choose_default_lot_allocation, rank_lot_candidates
@@ -93,12 +95,15 @@ def register_routes(app, root):
     app.add_url_rule("/api/v1/slack-imports", endpoint="api_v1_slack_imports", view_func=api_v1_slack_imports)
     app.add_url_rule("/api/v1/slack-imports/<msg_id>", endpoint="api_v1_slack_import_detail", view_func=api_v1_slack_import_detail)
     app.add_url_rule("/api/v1/exceptions", endpoint="api_v1_exceptions", view_func=api_v1_exceptions)
+    app.add_url_rule("/api/v1/scale-devices", endpoint="api_v1_scale_devices", view_func=api_v1_scale_devices)
+    app.add_url_rule("/api/v1/weight-captures", endpoint="api_v1_weight_captures", view_func=api_v1_weight_captures)
     app.add_url_rule("/api/v1/scan-events", endpoint="api_v1_scan_events", view_func=api_v1_scan_events)
     app.add_url_rule("/api/v1/lots/<lot_id>/scans", endpoint="api_v1_lot_scans", view_func=api_v1_lot_scans)
     app.add_url_rule("/api/v1/summary/inventory", endpoint="api_v1_inventory_summary", view_func=api_v1_inventory_summary)
     app.add_url_rule("/api/v1/summary/slack-imports", endpoint="api_v1_slack_imports_summary", view_func=api_v1_slack_imports_summary)
     app.add_url_rule("/api/v1/summary/exceptions", endpoint="api_v1_exceptions_summary", view_func=api_v1_exceptions_summary)
     app.add_url_rule("/api/v1/summary/scanner", endpoint="api_v1_scanner_summary", view_func=api_v1_scanner_summary)
+    app.add_url_rule("/api/v1/summary/scales", endpoint="api_v1_scales_summary", view_func=api_v1_scales_summary)
     app.add_url_rule(
         "/api/v1/inventory/on-hand",
         endpoint="api_v1_inventory_on_hand",
@@ -176,6 +181,7 @@ def api_v1_capabilities():
             "read:slack_imports",
             "read:exceptions",
             "read:scanner",
+            "read:scales",
             "read:suppliers",
             "read:strains",
         ],
@@ -215,6 +221,9 @@ def api_v1_capabilities():
             {"path": "/api/v1/summary/slack-imports", "scope": "read:slack_imports", "kind": "summary"},
             {"path": "/api/v1/exceptions", "scope": "read:exceptions", "kind": "list"},
             {"path": "/api/v1/summary/exceptions", "scope": "read:exceptions", "kind": "summary"},
+            {"path": "/api/v1/scale-devices", "scope": "read:scales", "kind": "list"},
+            {"path": "/api/v1/weight-captures", "scope": "read:scales", "kind": "list"},
+            {"path": "/api/v1/summary/scales", "scope": "read:scales", "kind": "summary"},
             {"path": "/api/v1/scan-events", "scope": "read:scanner", "kind": "list"},
             {"path": "/api/v1/lots/<lot_id>/scans", "scope": "read:scanner", "kind": "list"},
             {"path": "/api/v1/summary/scanner", "scope": "read:scanner", "kind": "summary"},
@@ -1570,6 +1579,49 @@ def api_v1_exceptions():
     )
 
 
+@require_api_scope("read:scales")
+def api_v1_scale_devices():
+    limit, offset = parse_limit_offset(request)
+    devices = ScaleDevice.query.order_by(ScaleDevice.created_at.desc()).all()
+    total = len(devices)
+    return jsonify(
+        envelope(
+            [serialize_scale_device(device) for device in devices[offset : offset + limit]],
+            count=total,
+            limit=limit,
+            offset=offset,
+            sort="created_at_desc",
+        )
+    )
+
+
+@require_api_scope("read:scales")
+def api_v1_weight_captures():
+    limit, offset = parse_limit_offset(request)
+    capture_type = (request.args.get("capture_type") or "").strip().lower()
+    source_mode = (request.args.get("source_mode") or "").strip().lower()
+    device_id = (request.args.get("device_id") or "").strip()
+    query = WeightCapture.query
+    if capture_type:
+        query = query.filter(WeightCapture.capture_type == capture_type)
+    if source_mode:
+        query = query.filter(WeightCapture.source_mode == source_mode)
+    if device_id:
+        query = query.filter(WeightCapture.device_id == device_id)
+    captures = query.order_by(WeightCapture.created_at.desc()).all()
+    total = len(captures)
+    return jsonify(
+        envelope(
+            [serialize_weight_capture(capture) for capture in captures[offset : offset + limit]],
+            count=total,
+            limit=limit,
+            offset=offset,
+            sort="created_at_desc",
+            filters={"capture_type": capture_type or None, "source_mode": source_mode or None, "device_id": device_id or None},
+        )
+    )
+
+
 @require_api_scope("read:scanner")
 def api_v1_scan_events():
     limit, offset = parse_limit_offset(request)
@@ -1695,4 +1747,25 @@ def api_v1_scanner_summary():
             else None
         ),
     }
+    return jsonify(envelope(payload))
+
+
+@require_api_scope("read:scales")
+def api_v1_scales_summary():
+    devices = ScaleDevice.query.all()
+    captures = WeightCapture.query.order_by(WeightCapture.created_at.desc()).all()
+    payload = {
+        "device_count": len(devices),
+        "active_device_count": sum(1 for device in devices if device.is_active),
+        "capture_count": len(captures),
+        "device_capture_count": sum(1 for capture in captures if capture.source_mode == "device"),
+        "latest_capture_at": (
+            captures[0].created_at.isoformat().replace("+00:00", "Z")
+            if captures and captures[0].created_at
+            else None
+        ),
+        "capture_type_counts": {},
+    }
+    for capture in captures:
+        payload["capture_type_counts"][capture.capture_type] = payload["capture_type_counts"].get(capture.capture_type, 0) + 1
     return jsonify(envelope(payload))

@@ -214,11 +214,14 @@ The current first slice of the internal API includes:
 - `GET /api/v1/slack-imports`
 - `GET /api/v1/slack-imports/<msg_id>`
 - `GET /api/v1/exceptions`
+- `GET /api/v1/scale-devices`
+- `GET /api/v1/weight-captures`
 - `GET /api/v1/scan-events`
 - `GET /api/v1/lots/<lot_id>/scans`
 - `GET /api/v1/summary/inventory`
 - `GET /api/v1/summary/slack-imports`
 - `GET /api/v1/summary/exceptions`
+- `GET /api/v1/summary/scales`
 - `GET /api/v1/summary/scanner`
 - `GET /api/v1/inventory/on-hand`
 
@@ -241,6 +244,7 @@ These endpoints:
 - now include a read-only MCP server with semantic tool calls for journeys, inventory, reconciliation, analytics, and cached cross-site comparisons
 - now include scanner-aware MCP tools so internal AI workflows can inspect lot scan history and scanner activity summaries without custom query stitching
 - now include scan-activity read surfaces so future scanner analytics and AI tooling can inspect lot scan history and scanner usage patterns
+- now include live scale-device and weight-capture read surfaces, plus scale-aware MCP tools, so future scale analytics and AI tooling can inspect configured devices, captured weights, and scale usage patterns
 
 ### Internal API future direction
 Future phases should expand the internal API with:

@@ -17,6 +17,8 @@ def test_mcp_tools_registry_exposes_core_tools():
     assert "cross_site_summary" in names
     assert "scanner_summary" in names
     assert "lot_scan_history" in names
+    assert "scale_devices" in names
+    assert "weight_capture_summary" in names
 
 
 def test_mcp_server_handles_initialize_and_tools_list():
@@ -64,7 +66,27 @@ def test_mcp_tool_execution_returns_inventory_and_journey_payloads():
         run_input = RunInput(run_id=run.id, lot_id=lot.id, weight_lbs=40, allocation_source="manual")
         db.session.add(run_input)
         scan_event = LotScanEvent(lot_id=lot.id, tracking_id_snapshot=lot.tracking_id, action="scan_open")
+        scale_device = app_module.ScaleDevice(
+            name=f"MCP Scale {gen_uuid()[:8]}",
+            location="Lab",
+            interface_type="rs232",
+            protocol_type="ascii",
+            connection_target="COM11",
+            is_active=True,
+        )
+        db.session.add(scale_device)
+        db.session.flush()
+        weight_capture = app_module.WeightCapture(
+            capture_type="allocation",
+            source_mode="device",
+            measured_weight=40,
+            unit="lb",
+            net_weight=40,
+            device_id=scale_device.id,
+            raw_payload="ST,GS, 40.0 lb",
+        )
         db.session.add(scan_event)
+        db.session.add(weight_capture)
         db.session.commit()
         supplier_id = supplier.id
         purchase_id = purchase.id
@@ -72,6 +94,8 @@ def test_mcp_tool_execution_returns_inventory_and_journey_payloads():
         run_id = run.id
         run_input_id = run_input.id
         scan_event_id = scan_event.id
+        scale_device_id = scale_device.id
+        weight_capture_id = weight_capture.id
 
     try:
         inventory_payload = execute_mcp_tool("inventory_snapshot", {"supplier_id": supplier_id, "limit": 10})
@@ -94,6 +118,13 @@ def test_mcp_tool_execution_returns_inventory_and_journey_payloads():
         scan_history = execute_mcp_tool("lot_scan_history", {"lot_id": lot_id, "limit": 10})
         assert scan_history["results"][0]["lot_id"] == lot_id
         assert scan_history["results"][0]["action"] == "scan_open"
+
+        scales_payload = execute_mcp_tool("scale_devices", {"limit": 10})
+        assert any(item["id"] == scale_device_id for item in scales_payload["results"])
+
+        captures_payload = execute_mcp_tool("weight_capture_summary", {"device_id": scale_device_id, "limit": 10})
+        assert captures_payload["summary"]["device_capture_count"] >= 1
+        assert captures_payload["results"][0]["id"] == weight_capture_id
 
         call_response = handle_request(
             {
@@ -118,6 +149,12 @@ def test_mcp_tool_execution_returns_inventory_and_journey_payloads():
             scan_event = db.session.get(LotScanEvent, scan_event_id)
             if scan_event:
                 db.session.delete(scan_event)
+            weight_capture = db.session.get(app_module.WeightCapture, weight_capture_id)
+            if weight_capture:
+                db.session.delete(weight_capture)
+            scale_device = db.session.get(app_module.ScaleDevice, scale_device_id)
+            if scale_device:
+                db.session.delete(scale_device)
             lot_obj = db.session.get(PurchaseLot, lot_id)
             if lot_obj:
                 db.session.delete(lot_obj)
