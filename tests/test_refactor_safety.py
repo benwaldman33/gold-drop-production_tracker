@@ -405,6 +405,7 @@ def test_purchase_label_routes_and_scan_route_render_and_resolve():
             assert b"Scanned Lot" in scan.data
             assert tracking_id.encode() in scan.data
             assert b"Start Run From This Lot" in scan.data
+            assert b"Recent Scan Activity" in scan.data
 
             with app.app_context():
                 events = LotScanEvent.query.filter_by(lot_id=lot_id).order_by(LotScanEvent.created_at.asc()).all()

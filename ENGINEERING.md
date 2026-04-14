@@ -86,6 +86,7 @@ Phase 1 internal API is read-only and site-local.
 - `read:tools`
 - `read:slack_imports`
 - `read:exceptions`
+- `read:scanner`
 - `read:suppliers`
 - `read:strains`
 
@@ -122,9 +123,12 @@ Phase 1 internal API is read-only and site-local.
 - `GET /api/v1/slack-imports`
 - `GET /api/v1/slack-imports/<msg_id>`
 - `GET /api/v1/exceptions`
+- `GET /api/v1/scan-events`
+- `GET /api/v1/lots/<lot_id>/scans`
 - `GET /api/v1/summary/inventory`
 - `GET /api/v1/summary/slack-imports`
 - `GET /api/v1/summary/exceptions`
+- `GET /api/v1/summary/scanner`
 - `GET /api/v1/inventory/on-hand`
 
 ### Response contract
@@ -257,7 +261,13 @@ This keeps each deployed facility self-identifying for future aggregation withou
 - **Label / scan surfaces**
   - `GET /lots/<lot_id>/label`
   - `GET /purchases/<purchase_id>/labels`
-  - `GET /scan/lot/<tracking_id>` -> currently resolves into purchase journey with focused lot context
+  - `GET /scan/lot/<tracking_id>` -> dedicated scanned-lot workflow page
+  - `POST /scan/lot/<tracking_id>/start-run` -> creates a run-form prefill from the scanned lot
+  - `POST /scan/lot/<tracking_id>/confirm-movement` -> updates lot location and records a movement scan event
+  - `POST /scan/lot/<tracking_id>/confirm-testing` -> updates purchase testing status and records a testing scan event
+- **Scanner observability**
+  - `LotScanEvent` stores scan-open, start-run, movement, and testing actions with user/context/timestamp.
+  - `GET /api/v1/scan-events`, `GET /api/v1/lots/<lot_id>/scans`, and `GET /api/v1/summary/scanner` expose scanner activity to internal consumers.
 - **Coverage**
   - `tests/test_lot_allocation.py` covers tracking-id generation, approval-time backfill, partial allocation / release, and over-allocation rejection.
 

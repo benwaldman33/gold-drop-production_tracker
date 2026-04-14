@@ -208,3 +208,10 @@ Merge work into `main`, then on the server run `git pull` on `main` and restart 
 No. `git pull` only updates application files. Your database is separate and should be backed up on its own schedule.
 
 Add new questions here as operators raise them; keep answers brief and link to the manual where useful.
+## Can a lot label do anything besides open the journey?
+
+Yes. The scanner workflow now opens a dedicated scanned-lot page at `/scan/lot/<tracking_id>`. From there an operator can:
+- start a new run with that lot preselected
+- confirm the lot's physical storage location
+- confirm the purchase testing status
+- review recent scan activity for that lot

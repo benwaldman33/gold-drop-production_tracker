@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 
 import app as app_module
-from models import ApiClient, ApiClientRequestLog, Purchase, PurchaseLot, RemoteSite, Run, RunInput, SlackIngestedMessage, Supplier, SystemSetting, db, gen_uuid
+from models import ApiClient, ApiClientRequestLog, LotScanEvent, Purchase, PurchaseLot, RemoteSite, Run, RunInput, SlackIngestedMessage, Supplier, SystemSetting, db, gen_uuid
 from services.api_auth import hash_api_token
 
 
@@ -43,10 +43,13 @@ def test_api_v1_capabilities_requires_site_scope_and_returns_discovery_payload()
             assert payload["authentication"]["scheme"] == "bearer"
             assert "read:dashboard" in payload["scopes"]
             assert "read:aggregation" in payload["scopes"]
+            assert "read:scanner" in payload["scopes"]
             paths = {item["path"] for item in payload["endpoints"]}
             assert "/api/v1/site" in paths
             assert "/api/v1/summary/dashboard" in paths
             assert "/api/v1/summary/exceptions" in paths
+            assert "/api/v1/scan-events" in paths
+            assert "/api/v1/summary/scanner" in paths
             assert "/api/v1/aggregation/summary" in paths
             assert "/api/v1/aggregation/suppliers" in paths
             assert "/api/v1/aggregation/strains" in paths
@@ -681,6 +684,96 @@ def test_api_v1_purchase_journey_is_wrapped_in_envelope():
             api_client = db.session.get(ApiClient, client_id)
             if api_client:
                 db.session.delete(api_client)
+            purchase_obj = db.session.get(Purchase, purchase_id)
+            if purchase_obj:
+                db.session.delete(purchase_obj)
+            supplier_obj = db.session.get(Supplier, supplier_id)
+            if supplier_obj:
+                db.session.delete(supplier_obj)
+            db.session.commit()
+
+
+def test_api_v1_scanner_endpoints_return_scan_activity():
+    app = app_module.app
+    supplier = Supplier(name=f"API Scanner {gen_uuid()[:8]}", is_active=True)
+    purchase = Purchase(
+        supplier_id="",
+        purchase_date=date(2026, 4, 12),
+        delivery_date=date(2026, 4, 13),
+        status="delivered",
+        stated_weight_lbs=35,
+        purchase_approved_at=datetime.now(timezone.utc),
+        batch_id=f"APISC-{gen_uuid()[:6]}",
+    )
+    lot = PurchaseLot(strain_name="Scanner Lot", weight_lbs=35, remaining_weight_lbs=20)
+    with app.app_context():
+        db.session.add(supplier)
+        db.session.flush()
+        purchase.supplier_id = supplier.id
+        db.session.add(purchase)
+        db.session.flush()
+        lot.purchase_id = purchase.id
+        db.session.add(lot)
+        db.session.flush()
+        open_event = LotScanEvent(
+            lot_id=lot.id,
+            tracking_id_snapshot=lot.tracking_id,
+            action="scan_open",
+        )
+        move_event = LotScanEvent(
+            lot_id=lot.id,
+            tracking_id_snapshot=lot.tracking_id,
+            action="confirm_movement",
+        )
+        db.session.add(open_event)
+        db.session.add(move_event)
+        db.session.commit()
+        supplier_id = supplier.id
+        purchase_id = purchase.id
+        lot_id = lot.id
+        tracking_id = lot.tracking_id
+        event_ids = [open_event.id, move_event.id]
+
+    bad_headers, bad_client_id = _make_api_headers("read:lots")
+    good_headers, good_client_id = _make_api_headers("read:scanner")
+    try:
+        with app.test_client() as client:
+            forbidden = client.get("/api/v1/scan-events", headers=bad_headers)
+            assert forbidden.status_code == 403
+
+            events_res = client.get(f"/api/v1/scan-events?tracking_id={tracking_id}", headers=good_headers)
+            assert events_res.status_code == 200
+            events_json = events_res.get_json()
+            assert events_json["meta"]["sort"] == "created_at_desc"
+            assert events_json["meta"]["filters"]["tracking_id"] == tracking_id
+            returned_ids = {item["id"] for item in events_json["data"]}
+            assert returned_ids == set(event_ids)
+
+            lot_res = client.get(f"/api/v1/lots/{lot_id}/scans", headers=good_headers)
+            assert lot_res.status_code == 200
+            lot_json = lot_res.get_json()
+            assert lot_json["meta"]["filters"]["lot_id"] == lot_id
+            assert len(lot_json["data"]) == 2
+
+            summary_res = client.get("/api/v1/summary/scanner", headers=good_headers)
+            assert summary_res.status_code == 200
+            summary_payload = summary_res.get_json()["data"]
+            assert summary_payload["total_events"] >= 2
+            assert summary_payload["action_counts"]["scan_open"] >= 1
+            assert summary_payload["action_counts"]["confirm_movement"] >= 1
+    finally:
+        with app.app_context():
+            for client_id in (bad_client_id, good_client_id):
+                api_client = db.session.get(ApiClient, client_id)
+                if api_client:
+                    db.session.delete(api_client)
+            for event_id in event_ids:
+                event = db.session.get(LotScanEvent, event_id)
+                if event:
+                    db.session.delete(event)
+            lot_obj = db.session.get(PurchaseLot, lot_id)
+            if lot_obj:
+                db.session.delete(lot_obj)
             purchase_obj = db.session.get(Purchase, purchase_id)
             if purchase_obj:
                 db.session.delete(purchase_obj)

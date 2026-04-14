@@ -526,7 +526,8 @@ def scan_lot_view(root, tracking_id):
         context={"purchase_id": lot.purchase.id},
     )
     root.db.session.commit()
-    return root.render_template("lot_scan.html", lot=lot, purchase=lot.purchase)
+    recent_events = lot.scan_events.order_by(root.LotScanEvent.created_at.desc()).limit(8).all()
+    return root.render_template("lot_scan.html", lot=lot, purchase=lot.purchase, recent_events=recent_events)
 
 
 def scan_lot_start_run_view(root, tracking_id):

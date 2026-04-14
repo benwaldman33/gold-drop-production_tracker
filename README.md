@@ -36,10 +36,13 @@ After logging in as **admin**:
 5. **Run form allocation summary**
    - Open: `http://localhost:5050/runs/new`
    - Validate the live allocation summary, projected remaining lot balances, and exact-match requirement against **Lbs in Reactor**.
-6. **Journey API (JSON)**
+6. **Scanner workflow**
+   - Open a lot label or copy any lot tracking ID, then open: `http://localhost:5050/scan/lot/<tracking_id>`
+   - Validate the scan landing page, **Start Run From This Lot**, **Confirm Movement**, **Confirm Testing**, and recent scan activity.
+7. **Journey API (JSON)**
    - Open: `http://localhost:5050/api/purchases/<purchase_id>/journey`
    - Optional admin-only archived mode: `?include_archived=1`
-7. **Journey exports**
+8. **Journey exports**
    - JSON export: `http://localhost:5050/purchases/<purchase_id>/journey/export?format=json`
    - CSV export: `http://localhost:5050/purchases/<purchase_id>/journey/export?format=csv`
 
@@ -76,6 +79,7 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 - **Biomass Pipeline** — Same **`Purchase`** rows as **Purchases**: early statuses **`declared`** / **`in_testing`** (UI label *Testing*), then **`committed`**, **`delivered`**, **`cancelled`**, with pipeline fields on the purchase (`availability_date`, declared weight/price, testing metadata, field photos). No separate `BiomassAvailability` sync—one record end-to-end. **Super Admin** or **`is_purchase_approver`** must approve when moving **to or from Committed** on the pipeline form (stamps `purchase_approved_at`). Unapproved rows now also expose an inline **Approve** button directly in the Biomass Pipeline list for eligible approvers.
 - **Purchase approval gate** — On-hand inventory, dashboard on-hand, run lot pickers, and saving runs that consume lots require **`purchase_approved_at`**. You cannot set on-hand statuses (**delivered**, **in_testing**, **available**, **processing**) on **Edit Purchase** until approved. Existing on-hand purchases are **backfilled** as approved on startup. Slack **biomass intake** creates purchases as **`ordered`** until reviewed/approved per your process. Eligible approvers can now approve directly from the **Purchases** list or **Biomass Pipeline** list without opening the record first.
 - **Lot tracking IDs** — Purchase lots now receive machine-readable tracking fields (`tracking_id`, barcode payload, QR payload, label metadata) at creation or approval time so the inventory model is ready for future labels and scan workflows.
+- **Scanner workflows** — Scanned lot labels now open a dedicated lot workflow page with quick actions for **Start Run From This Lot**, **Confirm Movement**, **Confirm Testing**, and recent scan activity history.
 - **Field Photo Uploads** — Field users can attach multiple photos to biomass and purchase submissions (JPG/JPEG/PNG/WEBP/HEIC/HEIF, max 50 MB each)
 - **Field Purchase Intake Enhancements** — Harvest date, storage note, license info, queue placement, testing/COA status, and categorized photo uploads
 - **Soft Delete + Admin Hard Delete** — Runs and purchases support safe delete plus super-admin permanent cleanup

@@ -624,3 +624,12 @@ Use exports for reporting, reconciliation, or offline analysis.
 - **Slack says this message is already linked to a run**: expected after a successful apply; confirm only if you intentionally need a second run from the same Slack message.
 - **Upload rejected (file too large or wrong type)**: field intake photos allow **images only** up to **50 MB** each; Photo Library uploads, purchase supporting docs, and supplier lab/attachment uploads allow **images or PDF** up to **50 MB** each. Compress or split large PDFs if needed.
 - **Field intake says too many photos in one section**: each category has a cap (default **30** images per supplier/biomass/COA bucket on the purchase form, and **30** on the biomass form). Remove extras in the list before submitting, or ask your administrator to raise `FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET` if policy allows.
+## Scanner workflow
+
+- Print or open a lot label from **Purchases**.
+- Scan the lot QR / tracking link or open `/scan/lot/<tracking_id>`.
+- On the scanned lot page you can:
+  - use **Start Run From This Lot** to preselect that lot on a new run
+  - use **Confirm Movement** to update the lot storage location
+  - use **Confirm Testing** to update the purchase testing status
+  - review **Recent Scan Activity** for that lot

@@ -650,7 +650,7 @@
       <div class="form-group" style="margin-top:6px;">
         <label>Scopes</label>
         <div class="form-row-3" style="gap:8px;">
-          {% for scope in ['read:site', 'read:purchases', 'read:journey', 'read:lots', 'read:runs', 'read:inventory', 'read:dashboard', 'read:aggregation', 'read:search', 'read:tools', 'read:slack_imports', 'read:exceptions', 'read:suppliers', 'read:strains'] %}
+          {% for scope in ['read:site', 'read:purchases', 'read:journey', 'read:lots', 'read:runs', 'read:inventory', 'read:dashboard', 'read:aggregation', 'read:search', 'read:tools', 'read:slack_imports', 'read:exceptions', 'read:scanner', 'read:suppliers', 'read:strains'] %}
           <label style="display:flex;align-items:center;gap:8px; text-transform:none; letter-spacing:0; font-size:0.85rem; color:var(--text-secondary);">
             <input type="checkbox" name="scopes" value="{{ scope }}">
             <code>{{ scope }}</code>

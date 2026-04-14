@@ -22,7 +22,7 @@ from gold_drop.slack import (
     _slack_message_needs_resolution_ui,
     _slack_ts_to_date_value,
 )
-from models import Purchase, PurchaseLot, RemoteSite, Run, RunInput, SlackIngestedMessage, Supplier, db
+from models import LotScanEvent, Purchase, PurchaseLot, RemoteSite, Run, RunInput, SlackIngestedMessage, Supplier, db
 from services.api_auth import json_api_error, require_api_scope
 from services.api_queries import (
     build_inventory_on_hand_query,
@@ -40,6 +40,7 @@ from services.api_serializers import (
     serialize_purchase_summary,
     serialize_run_detail,
     serialize_run_summary,
+    serialize_scan_event,
     serialize_slack_import_detail,
     serialize_slack_import_summary,
     serialize_strain_performance_row,
@@ -92,9 +93,12 @@ def register_routes(app, root):
     app.add_url_rule("/api/v1/slack-imports", endpoint="api_v1_slack_imports", view_func=api_v1_slack_imports)
     app.add_url_rule("/api/v1/slack-imports/<msg_id>", endpoint="api_v1_slack_import_detail", view_func=api_v1_slack_import_detail)
     app.add_url_rule("/api/v1/exceptions", endpoint="api_v1_exceptions", view_func=api_v1_exceptions)
+    app.add_url_rule("/api/v1/scan-events", endpoint="api_v1_scan_events", view_func=api_v1_scan_events)
+    app.add_url_rule("/api/v1/lots/<lot_id>/scans", endpoint="api_v1_lot_scans", view_func=api_v1_lot_scans)
     app.add_url_rule("/api/v1/summary/inventory", endpoint="api_v1_inventory_summary", view_func=api_v1_inventory_summary)
     app.add_url_rule("/api/v1/summary/slack-imports", endpoint="api_v1_slack_imports_summary", view_func=api_v1_slack_imports_summary)
     app.add_url_rule("/api/v1/summary/exceptions", endpoint="api_v1_exceptions_summary", view_func=api_v1_exceptions_summary)
+    app.add_url_rule("/api/v1/summary/scanner", endpoint="api_v1_scanner_summary", view_func=api_v1_scanner_summary)
     app.add_url_rule(
         "/api/v1/inventory/on-hand",
         endpoint="api_v1_inventory_on_hand",
@@ -171,6 +175,7 @@ def api_v1_capabilities():
             "read:tools",
             "read:slack_imports",
             "read:exceptions",
+            "read:scanner",
             "read:suppliers",
             "read:strains",
         ],
@@ -210,6 +215,9 @@ def api_v1_capabilities():
             {"path": "/api/v1/summary/slack-imports", "scope": "read:slack_imports", "kind": "summary"},
             {"path": "/api/v1/exceptions", "scope": "read:exceptions", "kind": "list"},
             {"path": "/api/v1/summary/exceptions", "scope": "read:exceptions", "kind": "summary"},
+            {"path": "/api/v1/scan-events", "scope": "read:scanner", "kind": "list"},
+            {"path": "/api/v1/lots/<lot_id>/scans", "scope": "read:scanner", "kind": "list"},
+            {"path": "/api/v1/summary/scanner", "scope": "read:scanner", "kind": "summary"},
         ],
     }
     return jsonify(envelope(payload))
@@ -1562,6 +1570,50 @@ def api_v1_exceptions():
     )
 
 
+@require_api_scope("read:scanner")
+def api_v1_scan_events():
+    limit, offset = parse_limit_offset(request)
+    action = (request.args.get("action") or "").strip().lower()
+    tracking_id = (request.args.get("tracking_id") or "").strip()
+    query = LotScanEvent.query
+    if action:
+        query = query.filter(LotScanEvent.action == action)
+    if tracking_id:
+        query = query.filter(LotScanEvent.tracking_id_snapshot == tracking_id)
+    events = query.order_by(LotScanEvent.created_at.desc()).all()
+    total = len(events)
+    return jsonify(
+        envelope(
+            [serialize_scan_event(event) for event in events[offset : offset + limit]],
+            count=total,
+            limit=limit,
+            offset=offset,
+            sort="created_at_desc",
+            filters={"action": action or None, "tracking_id": tracking_id or None},
+        )
+    )
+
+
+@require_api_scope("read:scanner")
+def api_v1_lot_scans(lot_id):
+    lot = db.session.get(PurchaseLot, lot_id)
+    if lot is None:
+        return json_api_error("Lot not found", status_code=404, code="not_found")
+    limit, offset = parse_limit_offset(request)
+    events = lot.scan_events.order_by(LotScanEvent.created_at.desc()).all()
+    total = len(events)
+    return jsonify(
+        envelope(
+            [serialize_scan_event(event) for event in events[offset : offset + limit]],
+            count=total,
+            limit=limit,
+            offset=offset,
+            sort="created_at_desc",
+            filters={"lot_id": lot_id},
+        )
+    )
+
+
 def _inventory_summary_payload(root, *, supplier_id: str | None, strain: str | None):
     lots = build_inventory_on_hand_query(supplier_id=supplier_id, strain=strain).all()
     annotated = [_annotate_inventory_lot(root, lot) for lot in lots]
@@ -1622,3 +1674,25 @@ def api_v1_slack_imports_summary():
 def api_v1_exceptions_summary():
     root = _require_root()
     return jsonify(envelope(_exceptions_summary_payload(root)))
+
+
+@require_api_scope("read:scanner")
+def api_v1_scanner_summary():
+    events = LotScanEvent.query.order_by(LotScanEvent.created_at.desc()).all()
+    action_counts: dict[str, int] = {}
+    tracking_ids = set()
+    for event in events:
+        action_counts[event.action] = action_counts.get(event.action, 0) + 1
+        if event.tracking_id_snapshot:
+            tracking_ids.add(event.tracking_id_snapshot)
+    payload = {
+        "total_events": len(events),
+        "distinct_tracked_lots": len(tracking_ids),
+        "action_counts": action_counts,
+        "latest_event_at": (
+            events[0].created_at.isoformat().replace("+00:00", "Z")
+            if events and events[0].created_at
+            else None
+        ),
+    }
+    return jsonify(envelope(payload))

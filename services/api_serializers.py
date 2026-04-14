@@ -133,6 +133,20 @@ def serialize_inventory_lot(lot):
     return payload
 
 
+def serialize_scan_event(event):
+    user = getattr(event, "user", None)
+    return {
+        "id": event.id,
+        "lot_id": event.lot_id,
+        "tracking_id": event.tracking_id_snapshot,
+        "action": event.action,
+        "user_id": event.user_id,
+        "user_display_name": getattr(user, "display_name", None),
+        "context": getattr(event, "context", {}),
+        "created_at": iso_dt(event.created_at),
+    }
+
+
 def serialize_run_summary(run):
     input_lots = []
     for inp in run.inputs.order_by(RunInput.id.asc()).all():
