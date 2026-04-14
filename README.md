@@ -332,6 +332,8 @@ Current endpoints:
 - `/api/v1/aggregation/sites`
 - `/api/v1/aggregation/sites/<site_id>`
 - `/api/v1/aggregation/summary`
+- `/api/v1/aggregation/suppliers`
+- `/api/v1/aggregation/strains`
 - `/api/v1/search`
 - `/api/v1/tools/inventory-snapshot`
 - `/api/v1/tools/open-lots`

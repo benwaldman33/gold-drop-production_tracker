@@ -499,6 +499,7 @@ Super Admin can manage bearer-token clients for the internal read-only API under
 Super Admin can manage cross-site cache registrations under **Settings -> Remote Sites**.
 - Register a remote site with its base URL, optional bearer token, and notes.
 - Pull an individual site on demand to cache its current site identity, manifest, and summary payloads locally.
+- Remote pulls now also cache supplier-performance and strain-performance payloads for cross-site comparison.
 - Disable a site without deleting it.
 - Delete only after it has been disabled.
 

@@ -188,6 +188,8 @@ The current first slice of the internal API includes:
 - `GET /api/v1/aggregation/sites`
 - `GET /api/v1/aggregation/sites/<site_id>`
 - `GET /api/v1/aggregation/summary`
+- `GET /api/v1/aggregation/suppliers`
+- `GET /api/v1/aggregation/strains`
 - `GET /api/v1/search`
 - `GET /api/v1/tools/inventory-snapshot`
 - `GET /api/v1/tools/open-lots`
@@ -224,6 +226,7 @@ These endpoints:
 - expose a machine-readable discovery surface so internal tools and future MCP clients can discover scopes and supported endpoints
 - expose a site sync manifest so future aggregation services can identify the site, dataset counts, and basic freshness markers before pulling deeper data
 - expose a cached rollup layer for registered remote sites so one site can summarize other site deployments without live fan-out on every read
+- expose cached cross-site supplier and strain comparison reads so internal analytics and future AI tooling can compare site performance without direct access to every remote instance
 - expose a cross-entity search / lookup surface so internal tools and future MCP clients can find suppliers, purchases, lots, and runs without hard-coding separate list queries first
 - expose semantic, tool-oriented read endpoints so future MCP / AI clients can ask for inventory snapshots, open-lot resolution, canonical journeys, and reconciliation posture without stitching together multiple low-level API calls themselves
 - now include summary-oriented read models for inventory posture, Slack-import triage posture, and reconciliation posture

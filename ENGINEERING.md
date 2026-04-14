@@ -96,6 +96,8 @@ Phase 1 internal API is read-only and site-local.
 - `GET /api/v1/aggregation/sites`
 - `GET /api/v1/aggregation/sites/<site_id>`
 - `GET /api/v1/aggregation/summary`
+- `GET /api/v1/aggregation/suppliers`
+- `GET /api/v1/aggregation/strains`
 - `GET /api/v1/search`
 - `GET /api/v1/tools/inventory-snapshot`
 - `GET /api/v1/tools/open-lots`
@@ -160,6 +162,7 @@ This keeps each deployed facility self-identifying for future aggregation withou
 ### Remote-site aggregation cache
 
 - `RemoteSite` stores trusted remote site registrations, bearer token, cached site identity, and the latest cached manifest/summary payloads.
+- Remote-site cache now also stores pulled supplier-analytics and strain-analytics payloads for cross-site comparisons.
 - `RemoteSitePull` stores pull history with status and cached payload snapshots.
 - `services/site_aggregation.py` owns:
   - base-URL normalization

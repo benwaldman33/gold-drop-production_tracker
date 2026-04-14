@@ -87,7 +87,7 @@ Use the server-side reset script, not a manual database wipe. `python scripts/re
 It is a machine-readable site summary for future internal rollups. It reports the site identity plus basic dataset counts and freshness markers so an aggregator can decide what to pull next.
 
 **What are the new `/api/v1/aggregation/*` endpoints for?**
-They expose the locally cached cross-site rollup layer. `/api/v1/aggregation/sites` shows registered remote sites and their latest cached payloads, and `/api/v1/aggregation/summary` combines the local site with cached remote summaries for higher-level internal reporting.
+They expose the locally cached cross-site rollup layer. `/api/v1/aggregation/sites` shows registered remote sites and their latest cached payloads, `/api/v1/aggregation/summary` combines the local site with cached remote summaries for higher-level internal reporting, and the supplier/strain aggregation endpoints compare performance across cached sites without live fan-out.
 
 **Why did a blank database come back with demo/history records?**
 That used to happen because startup bootstrap seeded historical/demo data automatically when no runs existed. The app now only seeds baseline users/settings/KPIs on startup. Demo/history loading is explicit via `python scripts/seed_demo_data.py --yes`.
