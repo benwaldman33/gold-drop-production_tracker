@@ -59,6 +59,10 @@ def register_routes(app, root):
     app.add_url_rule("/api/v1/site", endpoint="api_v1_site", view_func=api_v1_site)
     app.add_url_rule("/api/v1/capabilities", endpoint="api_v1_capabilities", view_func=api_v1_capabilities)
     app.add_url_rule("/api/v1/search", endpoint="api_v1_search", view_func=api_v1_search)
+    app.add_url_rule("/api/v1/tools/inventory-snapshot", endpoint="api_v1_tool_inventory_snapshot", view_func=api_v1_tool_inventory_snapshot)
+    app.add_url_rule("/api/v1/tools/open-lots", endpoint="api_v1_tool_open_lots", view_func=api_v1_tool_open_lots)
+    app.add_url_rule("/api/v1/tools/journey-resolve", endpoint="api_v1_tool_journey_resolve", view_func=api_v1_tool_journey_resolve)
+    app.add_url_rule("/api/v1/tools/reconciliation-overview", endpoint="api_v1_tool_reconciliation_overview", view_func=api_v1_tool_reconciliation_overview)
     app.add_url_rule("/api/v1/summary/dashboard", endpoint="api_v1_dashboard_summary", view_func=api_v1_dashboard_summary)
     app.add_url_rule("/api/v1/departments", endpoint="api_v1_departments", view_func=api_v1_departments)
     app.add_url_rule("/api/v1/departments/<slug>", endpoint="api_v1_department_detail", view_func=api_v1_department_detail)
@@ -112,6 +116,7 @@ def api_v1_capabilities():
             "read:inventory",
             "read:dashboard",
             "read:search",
+            "read:tools",
             "read:slack_imports",
             "read:exceptions",
             "read:suppliers",
@@ -121,6 +126,10 @@ def api_v1_capabilities():
             {"path": "/api/v1/site", "scope": "read:site", "kind": "identity"},
             {"path": "/api/v1/capabilities", "scope": "read:site", "kind": "discovery"},
             {"path": "/api/v1/search", "scope": "read:search", "kind": "search"},
+            {"path": "/api/v1/tools/inventory-snapshot", "scope": "read:tools", "kind": "tool"},
+            {"path": "/api/v1/tools/open-lots", "scope": "read:tools", "kind": "tool"},
+            {"path": "/api/v1/tools/journey-resolve", "scope": "read:tools", "kind": "tool"},
+            {"path": "/api/v1/tools/reconciliation-overview", "scope": "read:tools", "kind": "tool"},
             {"path": "/api/v1/summary/dashboard", "scope": "read:dashboard", "kind": "summary"},
             {"path": "/api/v1/departments", "scope": "read:dashboard", "kind": "list"},
             {"path": "/api/v1/departments/<slug>", "scope": "read:dashboard", "kind": "detail"},
@@ -267,6 +276,154 @@ def api_v1_search():
 
     results = results[:limit]
     return jsonify(envelope({"query": query_text, "results": results, "count": len(results)}))
+
+
+@require_api_scope("read:tools")
+def api_v1_tool_inventory_snapshot():
+    supplier_id = (request.args.get("supplier_id") or "").strip() or None
+    strain = (request.args.get("strain") or "").strip() or None
+    lots = build_inventory_on_hand_query(supplier_id=supplier_id, strain=strain).limit(25).all()
+    total_on_hand = float(sum(float(lot.remaining_weight_lbs or 0) for lot in lots))
+    supplier_names = sorted({lot.purchase.supplier.name for lot in lots if lot.purchase and lot.purchase.supplier})
+    strain_names = sorted({lot.strain_name for lot in lots if lot.strain_name})
+    payload = {
+        "filters": {
+            "supplier_id": supplier_id,
+            "strain": strain,
+        },
+        "summary": {
+            "open_lot_count": len(lots),
+            "total_on_hand_lbs": total_on_hand,
+            "supplier_count": len(supplier_names),
+            "strain_count": len(strain_names),
+        },
+        "lots": [serialize_inventory_lot(lot) for lot in lots],
+    }
+    return jsonify(envelope(payload))
+
+
+@require_api_scope("read:tools")
+def api_v1_tool_open_lots():
+    supplier_id = (request.args.get("supplier_id") or "").strip() or None
+    strain = (request.args.get("strain") or "").strip() or None
+    min_remaining_lbs = None
+    if (request.args.get("min_remaining_lbs") or "").strip():
+        try:
+            min_remaining_lbs = float(request.args.get("min_remaining_lbs"))
+        except ValueError:
+            return json_api_error("Invalid min_remaining_lbs", status_code=400, code="bad_request")
+    limit, offset = parse_limit_offset(request, default_limit=25, max_limit=100)
+    query = build_lots_query(
+        purchase_id=None,
+        supplier_id=supplier_id,
+        strain=strain,
+        tracking_id=None,
+        open_only=True,
+        include_archived=False,
+    )
+    if min_remaining_lbs is not None:
+        query = query.filter(PurchaseLot.remaining_weight_lbs >= min_remaining_lbs)
+    total = query.count()
+    lots = query.offset(offset).limit(limit).all()
+    payload = {
+        "filters": {
+            "supplier_id": supplier_id,
+            "strain": strain,
+            "min_remaining_lbs": min_remaining_lbs,
+        },
+        "results": [serialize_lot_summary(lot) for lot in lots],
+    }
+    return jsonify(envelope(payload, count=total, limit=limit, offset=offset))
+
+
+@require_api_scope("read:tools")
+def api_v1_tool_journey_resolve():
+    entity_type = (request.args.get("entity_type") or "").strip().lower()
+    entity_id = (request.args.get("entity_id") or "").strip()
+    if entity_type not in {"purchase", "lot", "run"} or not entity_id:
+        return json_api_error("entity_type must be purchase, lot, or run and entity_id is required", status_code=400, code="bad_request")
+
+    if entity_type == "purchase":
+        purchase = db.session.get(Purchase, entity_id)
+        if not purchase:
+            return json_api_error("Purchase not found", status_code=404, code="not_found")
+        payload = {
+            "entity_type": "purchase",
+            "entity_id": entity_id,
+            "journey_endpoint": f"/api/v1/purchases/{entity_id}/journey",
+            "journey": build_purchase_journey_payload(purchase),
+        }
+        return jsonify(envelope(payload))
+    if entity_type == "lot":
+        lot = db.session.get(PurchaseLot, entity_id)
+        if not lot:
+            return json_api_error("Lot not found", status_code=404, code="not_found")
+        payload = {
+            "entity_type": "lot",
+            "entity_id": entity_id,
+            "journey_endpoint": f"/api/v1/lots/{entity_id}/journey",
+            "journey": build_lot_journey_payload(lot),
+        }
+        return jsonify(envelope(payload))
+
+    run = db.session.get(Run, entity_id)
+    if not run:
+        return json_api_error("Run not found", status_code=404, code="not_found")
+    payload = {
+        "entity_type": "run",
+        "entity_id": entity_id,
+        "journey_endpoint": f"/api/v1/runs/{entity_id}/journey",
+        "journey": build_run_journey_payload(run),
+    }
+    return jsonify(envelope(payload))
+
+
+@require_api_scope("read:tools")
+def api_v1_tool_reconciliation_overview():
+    root = _require_root()
+    built, error = _build_slack_import_items(root)
+    if error:
+        return error
+    items, bucket_counts = built
+    exception_payload = _exceptions_summary_payload(root)
+    blocked_items = [item for item in items if item.get("triage_bucket") == "blocked"][:10]
+    manual_items = [item for item in items if item.get("triage_bucket") == "needs_manual_match"][:10]
+    payload = {
+        "slack_imports": {
+            "total_messages": len(items),
+            "bucket_counts": bucket_counts,
+            "blocked_items": blocked_items,
+            "needs_manual_match_items": manual_items,
+        },
+        "exceptions": exception_payload,
+    }
+    return jsonify(envelope(payload))
+
+
+def _exceptions_summary_payload(root):
+    purchases = Purchase.query.filter(Purchase.deleted_at.is_(None)).order_by(Purchase.purchase_date.desc(), Purchase.id.desc()).limit(500).all()
+    purchase_count = 0
+    inventory_count = 0
+    by_label: dict[str, int] = {}
+    for purchase in purchases:
+        _annotate_purchase_row(purchase)
+        for exc in getattr(purchase, "_exceptions", []):
+            purchase_count += 1
+            by_label[exc] = by_label.get(exc, 0) + 1
+    lots = build_inventory_on_hand_query().limit(500).all()
+    for lot in lots:
+        _annotate_inventory_lot(root, lot)
+        for exc in getattr(lot, "_exceptions", []):
+            inventory_count += 1
+            by_label[exc] = by_label.get(exc, 0) + 1
+    return {
+        "total_exceptions": purchase_count + inventory_count,
+        "category_counts": {
+            "purchases": purchase_count,
+            "inventory": inventory_count,
+        },
+        "label_counts": dict(sorted(by_label.items(), key=lambda item: (-item[1], item[0]))),
+    }
 
 
 def _parse_optional_date(raw_value: str | None):
@@ -1118,27 +1275,4 @@ def api_v1_slack_imports_summary():
 @require_api_scope("read:exceptions")
 def api_v1_exceptions_summary():
     root = _require_root()
-    purchases = Purchase.query.filter(Purchase.deleted_at.is_(None)).order_by(Purchase.purchase_date.desc(), Purchase.id.desc()).limit(500).all()
-    purchase_count = 0
-    inventory_count = 0
-    by_label: dict[str, int] = {}
-    for purchase in purchases:
-        _annotate_purchase_row(purchase)
-        for exc in getattr(purchase, "_exceptions", []):
-            purchase_count += 1
-            by_label[exc] = by_label.get(exc, 0) + 1
-    lots = build_inventory_on_hand_query().limit(500).all()
-    for lot in lots:
-        _annotate_inventory_lot(root, lot)
-        for exc in getattr(lot, "_exceptions", []):
-            inventory_count += 1
-            by_label[exc] = by_label.get(exc, 0) + 1
-    payload = {
-        "total_exceptions": purchase_count + inventory_count,
-        "category_counts": {
-            "purchases": purchase_count,
-            "inventory": inventory_count,
-        },
-        "label_counts": dict(sorted(by_label.items(), key=lambda item: (-item[1], item[0]))),
-    }
-    return jsonify(envelope(payload))
+    return jsonify(envelope(_exceptions_summary_payload(root)))

@@ -329,6 +329,10 @@ Current endpoints:
 - `/api/v1/site`
 - `/api/v1/capabilities`
 - `/api/v1/search`
+- `/api/v1/tools/inventory-snapshot`
+- `/api/v1/tools/open-lots`
+- `/api/v1/tools/journey-resolve`
+- `/api/v1/tools/reconciliation-overview`
 - `/api/v1/summary/dashboard`
 - `/api/v1/departments`
 - `/api/v1/departments/<slug>`
@@ -380,6 +384,7 @@ Useful read scopes now include:
 - `read:inventory`
 - `read:dashboard`
 - `read:search`
+- `read:tools`
 - `read:slack_imports`
 - `read:exceptions`
 - `read:suppliers`

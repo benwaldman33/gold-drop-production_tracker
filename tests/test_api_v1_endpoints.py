@@ -195,6 +195,123 @@ def test_api_v1_search_requires_scope_and_returns_entity_matches():
             db.session.commit()
 
 
+def test_api_v1_tools_scope_and_semantic_endpoints():
+    app = app_module.app
+    supplier = Supplier(name=f"Tool Supplier {gen_uuid()[:8]}", is_active=True)
+    purchase = Purchase(
+        supplier_id="",
+        purchase_date=date(2026, 4, 5),
+        delivery_date=date(2026, 4, 6),
+        status="delivered",
+        stated_weight_lbs=100,
+        purchase_approved_at=datetime.now(timezone.utc),
+        batch_id=f"TOOL-{gen_uuid()[:6]}",
+        notes="tool layer purchase",
+    )
+    lot = PurchaseLot(strain_name="Tool Dream", weight_lbs=100, remaining_weight_lbs=55)
+    run = Run(
+        run_date=date(2026, 4, 8),
+        reactor_number=8,
+        bio_in_reactor_lbs=45,
+        dry_hte_g=11,
+        dry_thca_g=22,
+        notes="tool layer run",
+    )
+    slack_row = SlackIngestedMessage(
+        channel_id="C-TOOLS",
+        message_ts="1710000200.000100",
+        raw_text="Reactor: 8\nStrain: Tool Dream\nSource: Tool Supplier\nBio wt: 45",
+        message_kind="production_log",
+        derived_json="{}",
+    )
+    with app.app_context():
+        db.session.add(supplier)
+        db.session.flush()
+        purchase.supplier_id = supplier.id
+        db.session.add(purchase)
+        db.session.flush()
+        lot.purchase_id = purchase.id
+        db.session.add(lot)
+        db.session.flush()
+        db.session.add(run)
+        db.session.flush()
+        run_input = RunInput(run_id=run.id, lot_id=lot.id, weight_lbs=45, allocation_source="manual")
+        db.session.add(run_input)
+        db.session.add(slack_row)
+        db.session.commit()
+        supplier_id = supplier.id
+        purchase_id = purchase.id
+        lot_id = lot.id
+        run_id = run.id
+        run_input_id = run_input.id
+        slack_row_id = slack_row.id
+
+    bad_headers, bad_client_id = _make_api_headers("read:search")
+    good_headers, good_client_id = _make_api_headers("read:tools")
+    try:
+        with app.test_client() as client:
+            forbidden = client.get("/api/v1/tools/inventory-snapshot", headers=bad_headers)
+            assert forbidden.status_code == 403
+
+            snapshot = client.get(f"/api/v1/tools/inventory-snapshot?supplier_id={supplier_id}", headers=good_headers)
+            assert snapshot.status_code == 200
+            snapshot_payload = snapshot.get_json()["data"]
+            assert snapshot_payload["summary"]["open_lot_count"] >= 1
+            assert snapshot_payload["lots"][0]["id"] == lot_id
+
+            open_lots = client.get(
+                f"/api/v1/tools/open-lots?supplier_id={supplier_id}&strain=Tool&min_remaining_lbs=50",
+                headers=good_headers,
+            )
+            assert open_lots.status_code == 200
+            open_payload = open_lots.get_json()["data"]
+            assert open_payload["results"][0]["id"] == lot_id
+
+            journey = client.get(
+                f"/api/v1/tools/journey-resolve?entity_type=run&entity_id={run_id}",
+                headers=good_headers,
+            )
+            assert journey.status_code == 200
+            journey_payload = journey.get_json()["data"]
+            assert journey_payload["journey_endpoint"] == f"/api/v1/runs/{run_id}/journey"
+            assert journey_payload["journey"]["run_id"] == run_id
+
+            overview = client.get("/api/v1/tools/reconciliation-overview", headers=good_headers)
+            assert overview.status_code == 200
+            overview_payload = overview.get_json()["data"]
+            assert "slack_imports" in overview_payload
+            assert "exceptions" in overview_payload
+            assert overview_payload["slack_imports"]["total_messages"] >= 1
+
+            bad_min = client.get("/api/v1/tools/open-lots?min_remaining_lbs=abc", headers=good_headers)
+            assert bad_min.status_code == 400
+    finally:
+        with app.app_context():
+            for client_id in (bad_client_id, good_client_id):
+                api_client = db.session.get(ApiClient, client_id)
+                if api_client:
+                    db.session.delete(api_client)
+            slack_obj = db.session.get(SlackIngestedMessage, slack_row_id)
+            if slack_obj:
+                db.session.delete(slack_obj)
+            run_input_obj = db.session.get(RunInput, run_input_id)
+            if run_input_obj:
+                db.session.delete(run_input_obj)
+            run_obj = db.session.get(Run, run_id)
+            if run_obj:
+                db.session.delete(run_obj)
+            lot_obj = db.session.get(PurchaseLot, lot_id)
+            if lot_obj:
+                db.session.delete(lot_obj)
+            purchase_obj = db.session.get(Purchase, purchase_id)
+            if purchase_obj:
+                db.session.delete(purchase_obj)
+            supplier_obj = db.session.get(Supplier, supplier_id)
+            if supplier_obj:
+                db.session.delete(supplier_obj)
+            db.session.commit()
+
+
 def test_api_v1_site_returns_site_meta_and_data():
     app = app_module.app
     headers, client_id = _make_api_headers("read:site")

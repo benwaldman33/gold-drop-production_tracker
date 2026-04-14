@@ -185,6 +185,10 @@ The current first slice of the internal API includes:
 - `GET /api/v1/site`
 - `GET /api/v1/capabilities`
 - `GET /api/v1/search`
+- `GET /api/v1/tools/inventory-snapshot`
+- `GET /api/v1/tools/open-lots`
+- `GET /api/v1/tools/journey-resolve`
+- `GET /api/v1/tools/reconciliation-overview`
 - `GET /api/v1/summary/dashboard`
 - `GET /api/v1/departments`
 - `GET /api/v1/departments/<slug>`
@@ -215,6 +219,7 @@ These endpoints:
 - are intended for internal consumers only
 - expose a machine-readable discovery surface so internal tools and future MCP clients can discover scopes and supported endpoints
 - expose a cross-entity search / lookup surface so internal tools and future MCP clients can find suppliers, purchases, lots, and runs without hard-coding separate list queries first
+- expose semantic, tool-oriented read endpoints so future MCP / AI clients can ask for inventory snapshots, open-lot resolution, canonical journeys, and reconciliation posture without stitching together multiple low-level API calls themselves
 - now include summary-oriented read models for inventory posture, Slack-import triage posture, and reconciliation posture
 - now include supplier- and strain-performance analytics reads for internal reporting and future MCP / AI use
 - now include a dashboard-style site operating summary for internal reporting and future MCP / AI use
