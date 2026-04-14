@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import app as app_module
 import gold_drop.bootstrap_module as bootstrap_module
-from models import ApiClient, FieldAccessToken, FieldPurchaseSubmission, Purchase, PurchaseLot, ScaleDevice, SlackIngestedMessage, Supplier, SystemSetting, User, WeightCapture, db
+from models import ApiClient, FieldAccessToken, FieldPurchaseSubmission, Purchase, PurchaseLot, RemoteSite, ScaleDevice, SlackIngestedMessage, Supplier, SystemSetting, User, WeightCapture, db
 from flask_login import login_user
 from services.scale_ingest import create_weight_capture
 
@@ -90,6 +90,13 @@ def test_settings_route_renders_api_clients_section():
     assert b"Create API Client" in page.data
 
 
+def test_settings_route_renders_remote_sites_section():
+    page = _call_view_as_user("/settings", "settings", "admin")
+    assert page.status_code == 200
+    assert b"Remote Sites" in page.data
+    assert b"Add Remote Site" in page.data
+
+
 def test_admin_can_create_and_revoke_api_client_from_settings():
     create = _call_view_as_user(
         "/settings/api_clients/create",
@@ -129,6 +136,52 @@ def test_admin_can_create_and_revoke_api_client_from_settings():
         assert client is not None
         assert client.is_active is False
         db.session.delete(client)
+        db.session.commit()
+
+
+def test_admin_can_create_and_pull_remote_site_from_settings():
+    create = _call_view_as_user(
+        "/settings/remote_sites/create",
+        "remote_site_create",
+        "admin",
+        method="POST",
+        data={
+            "name": "Remote Site Alpha",
+            "base_url": "https://alpha.example.com/",
+            "api_token": "remote-secret",
+            "notes": "created in test",
+            "return_to": "#settings-remote-sites",
+        },
+    )
+    assert create.status_code in (302, 303)
+    assert "#settings-remote-sites" in create.headers["Location"]
+
+    app = app_module.app
+    with app.app_context():
+        site = RemoteSite.query.filter_by(name="Remote Site Alpha").first()
+        assert site is not None
+        site_id = site.id
+        assert site.base_url == "https://alpha.example.com"
+
+    fake_pull = type("PullResult", (), {"status": "success", "error_message": None})()
+    with patch("gold_drop.settings_module.pull_remote_site", return_value=fake_pull) as pull_mock:
+        pull = _call_view_as_user(
+            f"/settings/remote_sites/{site_id}/pull",
+            "remote_site_pull",
+            "admin",
+            method="POST",
+            data={"return_to": "#settings-remote-sites"},
+            site_id=site_id,
+        )
+        assert pull.status_code in (302, 303)
+        pull_mock.assert_called_once()
+
+    with app.app_context():
+        site = db.session.get(RemoteSite, site_id)
+        assert site is not None
+        site.is_active = False
+        db.session.commit()
+        db.session.delete(site)
         db.session.commit()
 
 

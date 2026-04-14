@@ -731,6 +731,143 @@
   </div>
 </div>
 
+<!-- Remote Sites -->
+<div class="card" id="settings-remote-sites">
+  <div class="card-header"><h3>Remote Sites</h3></div>
+  <div style="padding:16px;">
+    <div class="text-sm" style="color:var(--text-muted); margin-bottom:12px;">
+      Register other site deployments here so this site can pull their internal API manifests and cached summaries for future rollup views.
+    </div>
+
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:0 0 12px;">Add Remote Site</h4>
+    <form method="POST" action="{{ url_for('remote_site_create') }}">
+      <input type="hidden" name="return_to" value="#settings-remote-sites">
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Name</label>
+          <input type="text" name="name" placeholder="e.g. Gold Drop Sacramento" required>
+        </div>
+        <div class="form-group" style="grid-column: span 2;">
+          <label>Base URL</label>
+          <input type="url" name="base_url" placeholder="https://site.example.com" required>
+        </div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Bearer token</label>
+          <input type="text" name="api_token" placeholder="Optional if remote site is public internally">
+        </div>
+        <div class="form-group" style="grid-column: span 2;">
+          <label>Notes</label>
+          <input type="text" name="notes" placeholder="Site owner, environment, or connectivity notes">
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary">Add Remote Site</button>
+    </form>
+
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:18px 0 12px;">Registered Remote Sites</h4>
+    <div class="table-wrap mb-2">
+      <table>
+        <thead>
+          <tr><th>Site</th><th>Connection</th><th>Cached Identity</th><th>Last Pull</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for site in remote_sites %}
+          <tr>
+            <td>
+              <strong>{{ site.name }}</strong>
+              {% if site.notes %}
+              <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">{{ site.notes }}</div>
+              {% endif %}
+            </td>
+            <td class="text-sm">
+              <div><code>{{ site.base_url }}</code></div>
+              <div class="cell-muted" style="margin-top:4px;">
+                Token: {% if site.api_token %}<code>{{ site.masked_token }}</code>{% else %}none{% endif %}
+              </div>
+              <div style="margin-top:4px;">
+                {% if site.is_active %}
+                <span class="badge badge-green">Active</span>
+                {% else %}
+                <span class="badge badge-gray">Disabled</span>
+                {% endif %}
+              </div>
+            </td>
+            <td class="text-sm">
+              {% if site.site_code or site.site_name %}
+                <div><strong>{{ site.site_name or 'Unknown site' }}</strong></div>
+                <div class="cell-muted" style="margin-top:4px;">
+                  {{ site.site_code or '—' }}
+                  {% if site.site_region %} · {{ site.site_region }}{% endif %}
+                  {% if site.site_environment %} · {{ site.site_environment }}{% endif %}
+                </div>
+              {% else %}
+                <span class="cell-muted">No cached payload yet</span>
+              {% endif %}
+            </td>
+            <td class="text-sm">
+              <div>
+                {% if site.last_pull_status == 'success' %}
+                <span class="badge badge-green">Success</span>
+                {% elif site.last_pull_status == 'failed' %}
+                <span class="badge badge-danger">Failed</span>
+                {% elif site.last_pull_status %}
+                <span class="badge badge-gray">{{ site.last_pull_status }}</span>
+                {% else %}
+                <span class="cell-muted">Never pulled</span>
+                {% endif %}
+              </div>
+              <div class="cell-muted" style="margin-top:4px;">
+                {{ site.last_pull_finished_at.strftime('%m/%d/%y %H:%M') if site.last_pull_finished_at else '—' }}
+              </div>
+              {% if site.last_pull_error %}
+              <div class="cell-muted" style="margin-top:4px;">{{ site.last_pull_error }}</div>
+              {% endif %}
+            </td>
+            <td style="min-width:300px;">
+              <form method="POST" action="{{ url_for('remote_site_update', site_id=site.id) }}">
+                <input type="hidden" name="return_to" value="#settings-remote-sites">
+                <div style="display:grid;grid-template-columns: 1fr 1.3fr; gap:8px;">
+                  <input type="text" name="name" value="{{ site.name }}" placeholder="Name">
+                  <input type="url" name="base_url" value="{{ site.base_url }}" placeholder="Base URL">
+                </div>
+                <div style="display:grid;grid-template-columns: 1fr 1fr; gap:8px; margin-top:8px;">
+                  <input type="text" name="api_token" value="" placeholder="New token (leave blank to keep current)">
+                  <input type="text" name="notes" value="{{ site.notes or '' }}" placeholder="Notes">
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
+                  <button type="submit" class="btn btn-secondary btn-sm">Save</button>
+                </div>
+              </form>
+              <form method="POST" action="{{ url_for('remote_site_pull', site_id=site.id) }}" style="display:inline;">
+                <input type="hidden" name="return_to" value="#settings-remote-sites">
+                <button type="submit" class="btn btn-secondary btn-sm">Pull now</button>
+              </form>
+              <form method="POST" action="{{ url_for('remote_site_toggle_active', site_id=site.id) }}" style="display:inline;" onsubmit="return confirm('{{ 'Disable' if site.is_active else 'Activate' }} this remote site?');">
+                <input type="hidden" name="return_to" value="#settings-remote-sites">
+                {% if site.is_active %}
+                <button type="submit" class="btn btn-danger btn-sm">Disable</button>
+                {% else %}
+                <button type="submit" class="btn btn-secondary btn-sm">Activate</button>
+                {% endif %}
+              </form>
+              {% if not site.is_active %}
+              <form method="POST" action="{{ url_for('remote_site_delete', site_id=site.id) }}" style="display:inline;" onsubmit="return confirm('Delete this remote site registration?');">
+                <input type="hidden" name="return_to" value="#settings-remote-sites">
+                <button type="submit" class="btn btn-secondary btn-sm">Delete</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-center cell-muted" style="padding:20px;">No remote sites registered yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <!-- Maintenance -->
 <div class="card" id="settings-maintenance">
   <div class="card-header"><h3>Maintenance</h3></div>

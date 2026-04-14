@@ -9,7 +9,7 @@ from gold_drop.purchases import (
     biomass_budget_snapshot_for_purchase,
     enforce_weekly_biomass_purchase_limits,
 )
-from models import ApiClient, coerce_utc
+from models import ApiClient, RemoteSite, coerce_utc
 from services.field_submissions import (
     decorate_submission_rows,
     field_approval_return_redirect,
@@ -19,6 +19,7 @@ from services.field_submissions import (
     submission_total_weight,
 )
 from services.api_auth import generate_api_token, hash_api_token
+from services.site_aggregation import normalize_remote_base_url, pull_remote_site
 
 
 def register_routes(app, root):
@@ -86,6 +87,26 @@ def register_routes(app, root):
     def api_client_delete(client_id):
         return api_client_delete_view(root, client_id)
 
+    @root.admin_required
+    def remote_site_create():
+        return remote_site_create_view(root)
+
+    @root.admin_required
+    def remote_site_update(site_id):
+        return remote_site_update_view(root, site_id)
+
+    @root.admin_required
+    def remote_site_toggle_active(site_id):
+        return remote_site_toggle_active_view(root, site_id)
+
+    @root.admin_required
+    def remote_site_delete(site_id):
+        return remote_site_delete_view(root, site_id)
+
+    @root.admin_required
+    def remote_site_pull(site_id):
+        return remote_site_pull_view(root, site_id)
+
     app.add_url_rule("/settings", endpoint="settings", view_func=settings, methods=["GET", "POST"])
     app.add_url_rule("/field-approvals", endpoint="field_approvals", view_func=field_approvals)
     app.add_url_rule(
@@ -117,6 +138,11 @@ def register_routes(app, root):
     app.add_url_rule("/settings/api_clients/create", endpoint="api_client_create", view_func=api_client_create, methods=["POST"])
     app.add_url_rule("/settings/api_clients/<client_id>/toggle_active", endpoint="api_client_toggle_active", view_func=api_client_toggle_active, methods=["POST"])
     app.add_url_rule("/settings/api_clients/<client_id>/delete", endpoint="api_client_delete", view_func=api_client_delete, methods=["POST"])
+    app.add_url_rule("/settings/remote_sites/create", endpoint="remote_site_create", view_func=remote_site_create, methods=["POST"])
+    app.add_url_rule("/settings/remote_sites/<site_id>/update", endpoint="remote_site_update", view_func=remote_site_update, methods=["POST"])
+    app.add_url_rule("/settings/remote_sites/<site_id>/toggle_active", endpoint="remote_site_toggle_active", view_func=remote_site_toggle_active, methods=["POST"])
+    app.add_url_rule("/settings/remote_sites/<site_id>/delete", endpoint="remote_site_delete", view_func=remote_site_delete, methods=["POST"])
+    app.add_url_rule("/settings/remote_sites/<site_id>/pull", endpoint="remote_site_pull", view_func=remote_site_pull, methods=["POST"])
 
 
 def settings_redirect(root):
@@ -463,6 +489,12 @@ def settings_view(root):
     for client in api_clients:
         client.created_at = coerce_utc(client.created_at)
         client.last_used_at = coerce_utc(client.last_used_at)
+    remote_sites = RemoteSite.query.order_by(RemoteSite.created_at.desc()).all()
+    for site in remote_sites:
+        site.created_at = coerce_utc(site.created_at)
+        site.updated_at = coerce_utc(site.updated_at)
+        site.last_pull_started_at = coerce_utc(site.last_pull_started_at)
+        site.last_pull_finished_at = coerce_utc(site.last_pull_finished_at)
     pending_field_submissions = root.FieldPurchaseSubmission.query.filter_by(status="pending").order_by(
         root.FieldPurchaseSubmission.submitted_at.desc()
     ).all()
@@ -502,6 +534,7 @@ def settings_view(root):
         users=users,
         field_tokens=field_tokens,
         api_clients=api_clients,
+        remote_sites=remote_sites,
         field_submissions=pending_field_submissions,
         reviewed_field_submissions=reviewed_field_submissions,
         submission_return_to="#settings-field-intake",
@@ -919,4 +952,88 @@ def api_client_delete_view(root, client_id):
     root.db.session.delete(client)
     root.db.session.commit()
     root.flash(f"API client '{client.name}' deleted.", "success")
+    return settings_redirect(root)
+
+
+def remote_site_create_view(root):
+    name = (root.request.form.get("name") or "").strip()
+    base_url = normalize_remote_base_url(root.request.form.get("base_url") or "")
+    api_token = (root.request.form.get("api_token") or "").strip() or None
+    notes = (root.request.form.get("notes") or "").strip() or None
+    if not name or not base_url:
+        root.flash("Remote site name and base URL are required.", "error")
+        return settings_redirect(root)
+    if RemoteSite.query.filter_by(base_url=base_url).first():
+        root.flash("A remote site with that base URL already exists.", "error")
+        return settings_redirect(root)
+    site = RemoteSite(name=name, base_url=base_url, api_token=api_token, notes=notes)
+    root.db.session.add(site)
+    root.db.session.commit()
+    root.flash(f"Remote site '{site.name}' added.", "success")
+    return settings_redirect(root)
+
+
+def remote_site_update_view(root, site_id):
+    site = root.db.session.get(RemoteSite, site_id)
+    if not site:
+        root.flash("Remote site not found.", "error")
+        return settings_redirect(root)
+    name = (root.request.form.get("name") or "").strip()
+    base_url = normalize_remote_base_url(root.request.form.get("base_url") or "")
+    notes = (root.request.form.get("notes") or "").strip() or None
+    api_token_raw = root.request.form.get("api_token")
+    if not name or not base_url:
+        root.flash("Remote site name and base URL are required.", "error")
+        return settings_redirect(root)
+    existing = RemoteSite.query.filter(RemoteSite.base_url == base_url, RemoteSite.id != site.id).first()
+    if existing:
+        root.flash("Another remote site already uses that base URL.", "error")
+        return settings_redirect(root)
+    site.name = name
+    site.base_url = base_url
+    site.notes = notes
+    if api_token_raw is not None:
+        api_token = api_token_raw.strip()
+        if api_token:
+            site.api_token = api_token
+    root.db.session.commit()
+    root.flash(f"Remote site '{site.name}' updated.", "success")
+    return settings_redirect(root)
+
+
+def remote_site_toggle_active_view(root, site_id):
+    site = root.db.session.get(RemoteSite, site_id)
+    if not site:
+        root.flash("Remote site not found.", "error")
+        return settings_redirect(root)
+    site.is_active = not bool(site.is_active)
+    root.db.session.commit()
+    root.flash(f"Remote site '{site.name}' {'activated' if site.is_active else 'disabled'}.", "success")
+    return settings_redirect(root)
+
+
+def remote_site_delete_view(root, site_id):
+    site = root.db.session.get(RemoteSite, site_id)
+    if not site:
+        root.flash("Remote site not found.", "error")
+        return settings_redirect(root)
+    if site.is_active:
+        root.flash("Disable the remote site before deleting it.", "error")
+        return settings_redirect(root)
+    root.db.session.delete(site)
+    root.db.session.commit()
+    root.flash(f"Remote site '{site.name}' deleted.", "success")
+    return settings_redirect(root)
+
+
+def remote_site_pull_view(root, site_id):
+    site = root.db.session.get(RemoteSite, site_id)
+    if not site:
+        root.flash("Remote site not found.", "error")
+        return settings_redirect(root)
+    pull = pull_remote_site(site)
+    if pull.status == "success":
+        root.flash(f"Pulled remote site '{site.name}' successfully.", "success")
+    else:
+        root.flash(f"Remote site pull failed for '{site.name}': {pull.error_message or 'unknown error'}", "error")
     return settings_redirect(root)
