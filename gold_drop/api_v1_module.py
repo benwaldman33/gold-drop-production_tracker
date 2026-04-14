@@ -55,6 +55,7 @@ def register_routes(app, root):
     global API_ROOT
     API_ROOT = root
     app.add_url_rule("/api/v1/site", endpoint="api_v1_site", view_func=api_v1_site)
+    app.add_url_rule("/api/v1/capabilities", endpoint="api_v1_capabilities", view_func=api_v1_capabilities)
     app.add_url_rule("/api/v1/summary/dashboard", endpoint="api_v1_dashboard_summary", view_func=api_v1_dashboard_summary)
     app.add_url_rule("/api/v1/purchases", endpoint="api_v1_purchases", view_func=api_v1_purchases)
     app.add_url_rule("/api/v1/purchases/<purchase_id>", endpoint="api_v1_purchase_detail", view_func=api_v1_purchase_detail)
@@ -86,6 +87,52 @@ def register_routes(app, root):
 @require_api_scope("read:site")
 def api_v1_site():
     return jsonify(envelope(get_site_identity()))
+
+
+@require_api_scope("read:site")
+def api_v1_capabilities():
+    payload = {
+        "authentication": {
+            "scheme": "bearer",
+            "scope_model": "read_only_v1",
+        },
+        "scopes": [
+            "read:site",
+            "read:purchases",
+            "read:journey",
+            "read:lots",
+            "read:runs",
+            "read:inventory",
+            "read:dashboard",
+            "read:slack_imports",
+            "read:exceptions",
+            "read:suppliers",
+            "read:strains",
+        ],
+        "endpoints": [
+            {"path": "/api/v1/site", "scope": "read:site", "kind": "identity"},
+            {"path": "/api/v1/capabilities", "scope": "read:site", "kind": "discovery"},
+            {"path": "/api/v1/summary/dashboard", "scope": "read:dashboard", "kind": "summary"},
+            {"path": "/api/v1/purchases", "scope": "read:purchases", "kind": "list"},
+            {"path": "/api/v1/purchases/<purchase_id>", "scope": "read:purchases", "kind": "detail"},
+            {"path": "/api/v1/purchases/<purchase_id>/journey", "scope": "read:journey", "kind": "detail"},
+            {"path": "/api/v1/lots", "scope": "read:lots", "kind": "list"},
+            {"path": "/api/v1/lots/<lot_id>", "scope": "read:lots", "kind": "detail"},
+            {"path": "/api/v1/inventory/on-hand", "scope": "read:inventory", "kind": "list"},
+            {"path": "/api/v1/summary/inventory", "scope": "read:inventory", "kind": "summary"},
+            {"path": "/api/v1/runs", "scope": "read:runs", "kind": "list"},
+            {"path": "/api/v1/runs/<run_id>", "scope": "read:runs", "kind": "detail"},
+            {"path": "/api/v1/suppliers", "scope": "read:suppliers", "kind": "list"},
+            {"path": "/api/v1/suppliers/<supplier_id>", "scope": "read:suppliers", "kind": "detail"},
+            {"path": "/api/v1/strains", "scope": "read:strains", "kind": "list"},
+            {"path": "/api/v1/slack-imports", "scope": "read:slack_imports", "kind": "list"},
+            {"path": "/api/v1/slack-imports/<msg_id>", "scope": "read:slack_imports", "kind": "detail"},
+            {"path": "/api/v1/summary/slack-imports", "scope": "read:slack_imports", "kind": "summary"},
+            {"path": "/api/v1/exceptions", "scope": "read:exceptions", "kind": "list"},
+            {"path": "/api/v1/summary/exceptions", "scope": "read:exceptions", "kind": "summary"},
+        ],
+    }
+    return jsonify(envelope(payload))
 
 
 def _parse_optional_date(raw_value: str | None):

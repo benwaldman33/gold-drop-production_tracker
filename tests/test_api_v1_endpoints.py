@@ -28,6 +28,33 @@ def test_api_v1_site_requires_token():
     assert payload["error"]["code"] == "unauthorized"
 
 
+def test_api_v1_capabilities_requires_site_scope_and_returns_discovery_payload():
+    app = app_module.app
+    bad_headers, bad_client_id = _make_api_headers("read:lots")
+    good_headers, good_client_id = _make_api_headers("read:site")
+    try:
+        with app.test_client() as client:
+            forbidden = client.get("/api/v1/capabilities", headers=bad_headers)
+            assert forbidden.status_code == 403
+
+            response = client.get("/api/v1/capabilities", headers=good_headers)
+            assert response.status_code == 200
+            payload = response.get_json()["data"]
+            assert payload["authentication"]["scheme"] == "bearer"
+            assert "read:dashboard" in payload["scopes"]
+            paths = {item["path"] for item in payload["endpoints"]}
+            assert "/api/v1/site" in paths
+            assert "/api/v1/summary/dashboard" in paths
+            assert "/api/v1/summary/exceptions" in paths
+    finally:
+        with app.app_context():
+            for client_id in (bad_client_id, good_client_id):
+                api_client = db.session.get(ApiClient, client_id)
+                if api_client:
+                    db.session.delete(api_client)
+            db.session.commit()
+
+
 def test_api_v1_dashboard_summary_requires_scope_and_returns_payload():
     app = app_module.app
     bad_headers, bad_client_id = _make_api_headers("read:site")

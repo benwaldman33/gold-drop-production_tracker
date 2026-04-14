@@ -327,6 +327,7 @@ This app now exposes a read-only internal API under `/api/v1` for trusted intern
 
 Current endpoints:
 - `/api/v1/site`
+- `/api/v1/capabilities`
 - `/api/v1/summary/dashboard`
 - `/api/v1/purchases`
 - `/api/v1/purchases/<purchase_id>`
