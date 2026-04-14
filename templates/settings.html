@@ -895,6 +895,17 @@
     </form>
   </div>
   <div style="background:var(--dark);border:1px solid var(--dark-border);border-radius:var(--radius);padding:16px;margin-top:12px;">
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Pull Remote Site Caches</h4>
+    <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:12px;">
+      Fetches the configured manifest and summary payloads from every active remote site and refreshes the local cache used by aggregation endpoints.
+    </p>
+    <form method="POST" action="{{ url_for('settings_pull_remote_sites') }}"
+          onsubmit="return confirm('Pull cached summaries from all active remote sites now?');">
+      <input type="hidden" name="return_to" value="#settings-maintenance">
+      <button type="submit" class="btn btn-secondary btn-sm">Pull all remote sites</button>
+    </form>
+  </div>
+  <div style="background:var(--dark);border:1px solid var(--dark-border);border-radius:var(--radius);padding:16px;margin-top:12px;">
     <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Sync Slack channel history</h4>
     <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:12px;">
       Fetches messages via Slack <code>conversations.history</code> for each channel listed under

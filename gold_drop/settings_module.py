@@ -19,7 +19,7 @@ from services.field_submissions import (
     submission_total_weight,
 )
 from services.api_auth import generate_api_token, hash_api_token
-from services.site_aggregation import normalize_remote_base_url, pull_remote_site
+from services.site_aggregation import normalize_remote_base_url, pull_all_remote_sites, pull_remote_site
 
 
 def register_routes(app, root):
@@ -74,6 +74,10 @@ def register_routes(app, root):
     @root.admin_required
     def settings_recalculate_costs():
         return settings_recalculate_costs_view(root)
+
+    @root.admin_required
+    def settings_pull_remote_sites():
+        return settings_pull_remote_sites_view(root)
 
     @root.admin_required
     def api_client_create():
@@ -135,6 +139,7 @@ def register_routes(app, root):
     app.add_url_rule("/settings/field_tokens/<token_id>/revoke", endpoint="field_token_revoke", view_func=field_token_revoke, methods=["POST"])
     app.add_url_rule("/settings/field_tokens/<token_id>/delete", endpoint="field_token_delete", view_func=field_token_delete, methods=["POST"])
     app.add_url_rule("/settings/recalculate_costs", endpoint="settings_recalculate_costs", view_func=settings_recalculate_costs, methods=["POST"])
+    app.add_url_rule("/settings/pull_remote_sites", endpoint="settings_pull_remote_sites", view_func=settings_pull_remote_sites, methods=["POST"])
     app.add_url_rule("/settings/api_clients/create", endpoint="api_client_create", view_func=api_client_create, methods=["POST"])
     app.add_url_rule("/settings/api_clients/<client_id>/toggle_active", endpoint="api_client_toggle_active", view_func=api_client_toggle_active, methods=["POST"])
     app.add_url_rule("/settings/api_clients/<client_id>/delete", endpoint="api_client_delete", view_func=api_client_delete, methods=["POST"])
@@ -901,6 +906,22 @@ def settings_recalculate_costs_view(root):
     root.log_audit("recalculate", "run_costs", root.gen_uuid(), details=json.dumps({"run_count": len(runs)}))
     root.db.session.commit()
     root.flash(f"Recalculated costs for {len(runs)} run(s).", "success")
+    return settings_redirect(root)
+
+
+def settings_pull_remote_sites_view(root):
+    pulls = pull_all_remote_sites()
+    success_count = sum(1 for pull in pulls if pull.status == "success")
+    failure_count = sum(1 for pull in pulls if pull.status != "success")
+    if not pulls:
+        root.flash("No remote sites are active.", "info")
+    elif failure_count:
+        root.flash(
+            f"Pulled {len(pulls)} remote site(s): {success_count} succeeded, {failure_count} failed.",
+            "error" if success_count == 0 else "info",
+        )
+    else:
+        root.flash(f"Pulled {success_count} remote site(s) successfully.", "success")
     return settings_redirect(root)
 
 

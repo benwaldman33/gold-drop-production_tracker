@@ -211,6 +211,20 @@ def test_slack_sync_channel_route_redirects_cleanly_when_bot_token_missing():
     assert "/settings" in page.headers["Location"]
 
 
+def test_pull_remote_sites_route_redirects_cleanly():
+    fake_pull = type("PullResult", (), {"status": "success", "error_message": None})()
+    with patch("gold_drop.settings_module.pull_all_remote_sites", return_value=[fake_pull]):
+        page = _call_view_as_user(
+            "/settings/pull_remote_sites",
+            "settings_pull_remote_sites",
+            "admin",
+            method="POST",
+            data={"return_to": "#settings-maintenance"},
+        )
+    assert page.status_code in (302, 303)
+    assert "#settings-maintenance" in page.headers["Location"]
+
+
 def test_slack_run_mappings_save_json_persists_rules():
     app = app_module.app
     with app.app_context():

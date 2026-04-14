@@ -76,6 +76,16 @@ def pull_remote_site(remote_site: RemoteSite, *, fetcher=None, timeout_seconds: 
     return pull
 
 
+def pull_all_remote_sites(*, fetcher=None, timeout_seconds: int = 10, active_only: bool = True):
+    query = RemoteSite.query.order_by(RemoteSite.name.asc())
+    if active_only:
+        query = query.filter(RemoteSite.is_active.is_(True))
+    pulls = []
+    for remote_site in query.all():
+        pulls.append(pull_remote_site(remote_site, fetcher=fetcher, timeout_seconds=timeout_seconds))
+    return pulls
+
+
 def serialize_remote_site_cache(remote_site: RemoteSite) -> dict:
     return {
         "id": remote_site.id,
