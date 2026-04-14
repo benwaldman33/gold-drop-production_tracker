@@ -28,6 +28,34 @@ def test_api_v1_site_requires_token():
     assert payload["error"]["code"] == "unauthorized"
 
 
+def test_api_v1_dashboard_summary_requires_scope_and_returns_payload():
+    app = app_module.app
+    bad_headers, bad_client_id = _make_api_headers("read:site")
+    good_headers, good_client_id = _make_api_headers("read:dashboard")
+    try:
+        with app.test_client() as client:
+            forbidden = client.get("/api/v1/summary/dashboard?period=30", headers=bad_headers)
+            assert forbidden.status_code == 403
+
+            response = client.get("/api/v1/summary/dashboard?period=30", headers=good_headers)
+            assert response.status_code == 200
+            payload = response.get_json()["data"]
+            assert payload["period"] == "30"
+            assert "totals" in payload
+            assert "kpis" in payload
+            assert "weekly_finance" in payload
+
+            bad_period = client.get("/api/v1/summary/dashboard?period=bad", headers=good_headers)
+            assert bad_period.status_code == 400
+    finally:
+        with app.app_context():
+            for client_id in (bad_client_id, good_client_id):
+                api_client = db.session.get(ApiClient, client_id)
+                if api_client:
+                    db.session.delete(api_client)
+            db.session.commit()
+
+
 def test_api_v1_site_returns_site_meta_and_data():
     app = app_module.app
     headers, client_id = _make_api_headers("read:site")

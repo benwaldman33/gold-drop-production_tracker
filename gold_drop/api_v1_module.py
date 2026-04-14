@@ -7,6 +7,7 @@ from flask import jsonify, request
 from gold_drop.inventory_module import _annotate_inventory_lot
 from gold_drop.purchases_module import _annotate_purchase_row
 from gold_drop.suppliers_module import supplier_incomplete_profile_fields
+from gold_drop.dashboard_module import _weekly_finance_snapshot
 from gold_drop.slack_integration_module import (
     slack_linked_run_ids_index,
     slack_supplier_candidates_for_source,
@@ -54,6 +55,7 @@ def register_routes(app, root):
     global API_ROOT
     API_ROOT = root
     app.add_url_rule("/api/v1/site", endpoint="api_v1_site", view_func=api_v1_site)
+    app.add_url_rule("/api/v1/summary/dashboard", endpoint="api_v1_dashboard_summary", view_func=api_v1_dashboard_summary)
     app.add_url_rule("/api/v1/purchases", endpoint="api_v1_purchases", view_func=api_v1_purchases)
     app.add_url_rule("/api/v1/purchases/<purchase_id>", endpoint="api_v1_purchase_detail", view_func=api_v1_purchase_detail)
     app.add_url_rule(
@@ -100,6 +102,206 @@ def _require_root():
     if API_ROOT is None:
         raise RuntimeError("API root not registered")
     return API_ROOT
+
+
+def _dashboard_period_start(root, period: str):
+    if period == "today":
+        return root.date.today()
+    if period == "7":
+        return root.date.today() - root.timedelta(days=7)
+    if period == "90":
+        return root.date.today() - root.timedelta(days=90)
+    if period == "all":
+        return root.date(2020, 1, 1)
+    return root.date.today() - root.timedelta(days=30)
+
+
+def _dashboard_summary_payload(root, period: str):
+    start_date = _dashboard_period_start(root, period)
+    exclude_unpriced = root._exclude_unpriced_batches_enabled()
+    runs_q = root.Run.query.filter(root.Run.deleted_at.is_(None), root.Run.run_date >= start_date)
+    if exclude_unpriced:
+        runs_q = runs_q.filter(root._priced_run_filter())
+    runs = runs_q.all()
+
+    kpi_actuals = {}
+    if runs:
+        yields = [r.overall_yield_pct for r in runs if r.overall_yield_pct]
+        thca_yields = [r.thca_yield_pct for r in runs if r.thca_yield_pct]
+        hte_yields = [r.hte_yield_pct for r in runs if r.hte_yield_pct]
+        costs = [r.cost_per_gram_combined for r in runs if r.cost_per_gram_combined]
+        costs_thca = [r.cost_per_gram_thca for r in runs if r.cost_per_gram_thca is not None]
+        costs_hte = [r.cost_per_gram_hte for r in runs if r.cost_per_gram_hte is not None]
+        total_lbs = sum(r.bio_in_reactor_lbs or 0 for r in runs)
+        kpi_actuals["thca_yield_pct"] = sum(thca_yields) / len(thca_yields) if thca_yields else None
+        kpi_actuals["hte_yield_pct"] = sum(hte_yields) / len(hte_yields) if hte_yields else None
+        kpi_actuals["overall_yield_pct"] = sum(yields) / len(yields) if yields else None
+        kpi_actuals["cost_per_gram_combined"] = sum(costs) / len(costs) if costs else None
+        kpi_actuals["cost_per_gram_thca"] = sum(costs_thca) / len(costs_thca) if costs_thca else None
+        kpi_actuals["cost_per_gram_hte"] = sum(costs_hte) / len(costs_hte) if costs_hte else None
+        days_in_period = max((root.date.today() - start_date).days, 1)
+        weeks = max(days_in_period / 7, 1)
+        kpi_actuals["weekly_throughput"] = total_lbs / weeks
+        daily_target = root.SystemSetting.get_float("daily_throughput_target", 500)
+        on_hand = root.db.session.query(root.func.sum(root.PurchaseLot.remaining_weight_lbs)).join(root.Purchase).filter(
+            root.PurchaseLot.remaining_weight_lbs > 0,
+            root.PurchaseLot.deleted_at.is_(None),
+            root.Purchase.deleted_at.is_(None),
+            root.Purchase.status.in_(root.INVENTORY_ON_HAND_PURCHASE_STATUSES),
+            root.Purchase.purchase_approved_at.isnot(None),
+        ).scalar() or 0
+        kpi_actuals["days_of_supply"] = on_hand / daily_target if daily_target > 0 else 0
+        purchase_ids = root.db.session.query(root.Purchase.id).join(
+            root.PurchaseLot, root.PurchaseLot.purchase_id == root.Purchase.id
+        ).join(
+            RunInput, RunInput.lot_id == root.PurchaseLot.id
+        ).join(
+            root.Run, root.Run.id == RunInput.run_id
+        ).filter(
+            root.Run.deleted_at.is_(None),
+            root.Purchase.deleted_at.is_(None),
+            root.PurchaseLot.deleted_at.is_(None),
+            root.Run.run_date >= start_date,
+        ).distinct().all()
+        purchase_ids = [pid for (pid,) in purchase_ids]
+        purchases_in_period = root.Purchase.query.filter(root.Purchase.id.in_(purchase_ids)).all() if purchase_ids else []
+        potency_costs = []
+        for purchase in purchases_in_period:
+            potency = purchase.tested_potency_pct or purchase.stated_potency_pct
+            if purchase.price_per_lb and potency and potency > 0:
+                potency_costs.append(purchase.price_per_lb / potency)
+        kpi_actuals["cost_per_potency_point"] = sum(potency_costs) / len(potency_costs) if potency_costs else None
+
+    kpis = root.KpiTarget.query.all()
+    kpi_cards = []
+    for kpi in kpis:
+        actual = kpi_actuals.get(kpi.kpi_name)
+        kpi_cards.append({
+            "name": kpi.display_name,
+            "kpi_name": kpi.kpi_name,
+            "target": float(kpi.target_value or 0),
+            "actual": float(actual or 0) if actual is not None else None,
+            "color": kpi.evaluate(actual),
+            "unit": kpi.unit or "",
+            "direction": kpi.direction,
+        })
+
+    total_runs = len(runs)
+    total_lbs = float(sum(r.bio_in_reactor_lbs or 0 for r in runs))
+    total_dry_output = float(sum((r.dry_hte_g or 0) + (r.dry_thca_g or 0) for r in runs))
+    on_hand = root.db.session.query(root.func.sum(root.PurchaseLot.remaining_weight_lbs)).join(root.Purchase).filter(
+        root.PurchaseLot.remaining_weight_lbs > 0,
+        root.PurchaseLot.deleted_at.is_(None),
+        root.Purchase.deleted_at.is_(None),
+        root.Purchase.status.in_(root.INVENTORY_ON_HAND_PURCHASE_STATUSES),
+        root.Purchase.purchase_approved_at.isnot(None),
+    ).scalar() or 0
+
+    week_start = root.date.today() - root.timedelta(days=root.date.today().weekday())
+    wtd_runs_q = root.Run.query.filter(
+        root.Run.deleted_at.is_(None),
+        root.Run.run_date >= week_start,
+        root.Run.run_date <= root.date.today(),
+    )
+    if exclude_unpriced:
+        wtd_runs_q = wtd_runs_q.filter(root._priced_run_filter())
+    wtd_runs = wtd_runs_q.all()
+    wtd_lbs = float(sum(r.bio_in_reactor_lbs or 0 for r in wtd_runs))
+    wtd_dry_thca = float(sum(r.dry_thca_g or 0 for r in wtd_runs))
+    wtd_dry_hte = float(sum(r.dry_hte_g or 0 for r in wtd_runs))
+
+    current_month_start = root.date.today().replace(day=1)
+    prev_month_end = current_month_start - root.timedelta(days=1)
+    prev_month_start = prev_month_end.replace(day=1)
+    mom_query = root.db.session.query(
+        root.Supplier.id.label("supplier_id"),
+        root.Supplier.name.label("supplier_name"),
+        root.func.avg(root.Run.overall_yield_pct).label("avg_yield"),
+    ).join(
+        root.Purchase, root.Purchase.supplier_id == root.Supplier.id
+    ).join(
+        root.PurchaseLot, root.PurchaseLot.purchase_id == root.Purchase.id
+    ).join(
+        root.RunInput, root.RunInput.lot_id == root.PurchaseLot.id
+    ).join(
+        root.Run, root.Run.id == root.RunInput.run_id
+    ).filter(
+        root.Run.deleted_at.is_(None),
+        root.Purchase.deleted_at.is_(None),
+        root.PurchaseLot.deleted_at.is_(None),
+        root.Run.is_rollover == False,
+        root.Run.run_date >= current_month_start,
+        root.Run.overall_yield_pct.isnot(None),
+    )
+    if exclude_unpriced:
+        mom_query = mom_query.filter(root._priced_run_filter())
+    mom_rows = mom_query.group_by(root.Supplier.id, root.Supplier.name).all()
+    best_supplier_mom = None
+    if mom_rows:
+        best = max(mom_rows, key=lambda row: float(row.avg_yield or 0))
+        prev = root.db.session.query(root.func.avg(root.Run.overall_yield_pct)).join(
+            root.RunInput, root.Run.id == root.RunInput.run_id
+        ).join(
+            root.PurchaseLot, root.RunInput.lot_id == root.PurchaseLot.id
+        ).join(
+            root.Purchase, root.PurchaseLot.purchase_id == root.Purchase.id
+        ).filter(
+            root.Run.deleted_at.is_(None),
+            root.Purchase.deleted_at.is_(None),
+            root.PurchaseLot.deleted_at.is_(None),
+            root.Run.is_rollover == False,
+            root.Purchase.supplier_id == best.supplier_id,
+            root.Run.run_date >= prev_month_start,
+            root.Run.run_date <= prev_month_end,
+        )
+        if exclude_unpriced:
+            prev = prev.filter(root._priced_run_filter())
+        prev_avg = prev.scalar()
+        best_supplier_mom = {
+            "name": best.supplier_name,
+            "current": float(best.avg_yield or 0),
+            "previous": float(prev_avg or 0) if prev_avg is not None else None,
+            "pct_change": (((float(best.avg_yield or 0) - float(prev_avg or 0)) / float(prev_avg or 0)) * 100.0)
+            if prev_avg not in (None, 0)
+            else None,
+        }
+
+    fin = _weekly_finance_snapshot(root)
+    return {
+        "period": period,
+        "exclude_unpriced": bool(exclude_unpriced),
+        "totals": {
+            "total_runs": total_runs,
+            "total_lbs": total_lbs,
+            "total_dry_output_g": total_dry_output,
+            "on_hand_lbs": float(on_hand or 0),
+        },
+        "week_to_date": {
+            "week_start": week_start.isoformat(),
+            "week_end": root.date.today().isoformat(),
+            "lbs_processed": wtd_lbs,
+            "dry_thca_g": wtd_dry_thca,
+            "dry_hte_g": wtd_dry_hte,
+        },
+        "weekly_finance": {
+            "week_start": fin["week_start"].isoformat(),
+            "week_end": fin["week_end"].isoformat(),
+            "weekly_dollar_budget": fin["weekly_dollar_budget"],
+            "week_commitment_dollars": fin["week_commitment_dollars"],
+            "week_purchase_dollars": fin["week_purchase_dollars"],
+        },
+        "best_supplier_mom": best_supplier_mom,
+        "kpis": kpi_cards,
+    }
+
+
+@require_api_scope("read:dashboard")
+def api_v1_dashboard_summary():
+    root = _require_root()
+    period = (request.args.get("period") or "30").strip()
+    if period not in {"today", "7", "30", "90", "all"}:
+        return json_api_error("Invalid period", status_code=400, code="bad_request")
+    return jsonify(envelope(_dashboard_summary_payload(root, period)))
 
 
 @require_api_scope("read:purchases")

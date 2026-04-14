@@ -78,6 +78,7 @@ Phase 1 internal API is read-only and site-local.
 - `read:lots`
 - `read:runs`
 - `read:inventory`
+- `read:dashboard`
 - `read:slack_imports`
 - `read:exceptions`
 - `read:suppliers`
@@ -86,6 +87,7 @@ Phase 1 internal API is read-only and site-local.
 ### Current endpoints
 
 - `GET /api/v1/site`
+- `GET /api/v1/summary/dashboard`
 - `GET /api/v1/purchases`
 - `GET /api/v1/purchases/<purchase_id>`
 - `GET /api/v1/purchases/<purchase_id>/journey`

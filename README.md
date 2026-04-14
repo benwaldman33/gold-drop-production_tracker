@@ -327,6 +327,7 @@ This app now exposes a read-only internal API under `/api/v1` for trusted intern
 
 Current endpoints:
 - `/api/v1/site`
+- `/api/v1/summary/dashboard`
 - `/api/v1/purchases`
 - `/api/v1/purchases/<purchase_id>`
 - `/api/v1/purchases/<purchase_id>/journey`
@@ -371,6 +372,7 @@ Useful read scopes now include:
 - `read:lots`
 - `read:runs`
 - `read:inventory`
+- `read:dashboard`
 - `read:slack_imports`
 - `read:exceptions`
 - `read:suppliers`
