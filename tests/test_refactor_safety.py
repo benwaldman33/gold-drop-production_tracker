@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import app as app_module
 import gold_drop.bootstrap_module as bootstrap_module
-from models import ApiClient, FieldAccessToken, FieldPurchaseSubmission, Purchase, PurchaseLot, RemoteSite, ScaleDevice, SlackIngestedMessage, Supplier, SystemSetting, User, WeightCapture, db, gen_uuid
+from models import ApiClient, FieldAccessToken, FieldPurchaseSubmission, LotScanEvent, Purchase, PurchaseLot, RemoteSite, ScaleDevice, SlackIngestedMessage, Supplier, SystemSetting, User, WeightCapture, db, gen_uuid
 from flask_login import login_user
 from services.scale_ingest import create_weight_capture
 
@@ -400,12 +400,169 @@ def test_purchase_label_routes_and_scan_route_render_and_resolve():
             assert b"Print" in multi.data
             assert b"Barcode payload" in multi.data
 
-            scan = client.get(f"/scan/lot/{tracking_id}", follow_redirects=False)
-            assert scan.status_code in (302, 303)
-            assert f"/purchases/{purchase_id}/journey" in scan.headers["Location"]
-            assert f"lot={tracking_id}" in scan.headers["Location"]
+            scan = client.get(f"/scan/lot/{tracking_id}")
+            assert scan.status_code == 200
+            assert b"Scanned Lot" in scan.data
+            assert tracking_id.encode() in scan.data
+            assert b"Start Run From This Lot" in scan.data
+
+            with app.app_context():
+                events = LotScanEvent.query.filter_by(lot_id=lot_id).order_by(LotScanEvent.created_at.asc()).all()
+                assert len(events) == 1
+                assert events[0].action == "scan_open"
     finally:
         with app.app_context():
+            LotScanEvent.query.filter_by(lot_id=lot_id).delete()
+            lot_obj = db.session.get(PurchaseLot, lot_id)
+            if lot_obj:
+                db.session.delete(lot_obj)
+            purchase_obj = db.session.get(Purchase, purchase_id)
+            if purchase_obj:
+                db.session.delete(purchase_obj)
+            supplier_obj = db.session.get(Supplier, supplier_id)
+            if supplier_obj:
+                db.session.delete(supplier_obj)
+            db.session.commit()
+
+
+def test_scanned_lot_can_prefill_new_run():
+    app = app_module.app
+    with app.app_context():
+        supplier = Supplier(name="Scan Flow Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = Purchase(
+            supplier_id=supplier.id,
+            purchase_date=date(2026, 4, 12),
+            delivery_date=date(2026, 4, 12),
+            status="delivered",
+            stated_weight_lbs=80,
+            purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            clean_or_dirty="clean",
+            testing_status="completed",
+            batch_id=f"SCAN-{app_module.gen_uuid()[:6]}",
+        )
+        db.session.add(purchase)
+        db.session.flush()
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Scan Dream",
+            weight_lbs=80,
+            remaining_weight_lbs=80,
+        )
+        db.session.add(lot)
+        db.session.commit()
+        tracking_id = lot.tracking_id
+        lot_id = lot.id
+        purchase_id = purchase.id
+        supplier_id = supplier.id
+
+    try:
+        with app.test_client() as client:
+            _login(client, "admin")
+            resp = client.post(f"/scan/lot/{tracking_id}/start-run", follow_redirects=False)
+            assert resp.status_code in (302, 303)
+            assert resp.headers["Location"].endswith("/runs/new")
+            with client.session_transaction() as sess:
+                prefill = sess.get(app_module.SCAN_RUN_PREFILL_SESSION_KEY)
+                assert prefill is not None
+                assert prefill["tracking_id"] == tracking_id
+                assert prefill["suggested_allocations"] == [{"lot_id": lot_id, "weight_lbs": ""}]
+
+            run_new = client.get("/runs/new")
+            assert run_new.status_code == 200
+            assert b"Scanner prefill:" in run_new.data
+            assert tracking_id.encode() in run_new.data
+
+            with app.app_context():
+                actions = [
+                    event.action
+                    for event in LotScanEvent.query.filter_by(lot_id=lot_id).order_by(LotScanEvent.created_at.asc()).all()
+                ]
+                assert actions == ["start_run"]
+    finally:
+        with app.app_context():
+            LotScanEvent.query.filter_by(lot_id=lot_id).delete()
+            lot_obj = db.session.get(PurchaseLot, lot_id)
+            if lot_obj:
+                db.session.delete(lot_obj)
+            purchase_obj = db.session.get(Purchase, purchase_id)
+            if purchase_obj:
+                db.session.delete(purchase_obj)
+            supplier_obj = db.session.get(Supplier, supplier_id)
+            if supplier_obj:
+                db.session.delete(supplier_obj)
+            db.session.commit()
+
+
+def test_scanned_lot_can_confirm_movement_and_testing():
+    app = app_module.app
+    with app.app_context():
+        supplier = Supplier(name="Scan Update Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = Purchase(
+            supplier_id=supplier.id,
+            purchase_date=date(2026, 4, 12),
+            delivery_date=date(2026, 4, 12),
+            status="delivered",
+            stated_weight_lbs=60,
+            purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            clean_or_dirty="clean",
+            testing_status="pending",
+            batch_id=f"SCNUP-{app_module.gen_uuid()[:6]}",
+        )
+        db.session.add(purchase)
+        db.session.flush()
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Scanner Kush",
+            weight_lbs=60,
+            remaining_weight_lbs=60,
+            location="Staging",
+        )
+        db.session.add(lot)
+        db.session.commit()
+        tracking_id = lot.tracking_id
+        lot_id = lot.id
+        purchase_id = purchase.id
+        supplier_id = supplier.id
+
+    try:
+        with app.test_client() as client:
+            _login(client, "admin")
+            movement = client.post(
+                f"/scan/lot/{tracking_id}/confirm-movement",
+                data={"location": "Vault A / Shelf 2"},
+                follow_redirects=False,
+            )
+            assert movement.status_code in (302, 303)
+            assert movement.headers["Location"].endswith(f"/scan/lot/{tracking_id}")
+
+            testing = client.post(
+                f"/scan/lot/{tracking_id}/confirm-testing",
+                data={"testing_status": "completed"},
+                follow_redirects=False,
+            )
+            assert testing.status_code in (302, 303)
+            assert movement.headers["Location"].endswith(f"/scan/lot/{tracking_id}")
+
+            with app.app_context():
+                lot = db.session.get(PurchaseLot, lot_id)
+                purchase = db.session.get(Purchase, purchase_id)
+                assert lot is not None
+                assert purchase is not None
+                assert lot.location == "Vault A / Shelf 2"
+                assert purchase.testing_status == "completed"
+                assert purchase.testing_date == app_module.date.today()
+                actions = [
+                    event.action
+                    for event in LotScanEvent.query.filter_by(lot_id=lot_id).order_by(LotScanEvent.created_at.asc()).all()
+                ]
+                assert actions == ["confirm_movement", "confirm_testing"]
+    finally:
+        with app.app_context():
+            LotScanEvent.query.filter_by(lot_id=lot_id).delete()
             lot_obj = db.session.get(PurchaseLot, lot_id)
             if lot_obj:
                 db.session.delete(lot_obj)

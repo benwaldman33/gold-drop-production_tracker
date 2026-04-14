@@ -31,6 +31,19 @@
       {% endif %}
     </div>
     {% endif %}
+    {% if scan_meta and scan_meta.tracking_id %}
+    <div class="flash flash-success" style="margin-bottom:16px;">
+      <strong>Scanner prefill:</strong> lot <strong>{{ scan_meta.tracking_id }}</strong> was selected from a scan.
+      <span class="text-sm" style="display:block;margin-top:6px;">
+        {{ scan_meta.strain_name or 'Unknown strain' }}{% if scan_meta.supplier_name %} / {{ scan_meta.supplier_name }}{% endif %}
+        {% if scan_meta.batch_id %} · batch {{ scan_meta.batch_id }}{% endif %}
+        · {{ "{:,.1f}".format(scan_meta.remaining_weight_lbs or 0) }} lbs remaining
+      </span>
+      <span class="text-sm" style="display:block;margin-top:6px;color:var(--text-muted);">
+        Enter the reactor weight and save the run when the extraction is ready to be logged.
+      </span>
+    </div>
+    {% endif %}
     {% if slack_meta and slack_meta.ingested_message_id and not can_save_run %}
     <div class="flash flash-error" style="margin-bottom:16px;">
       Your account can review this prefilled run but only <strong>User</strong> or <strong>Super Admin</strong> can save runs. Ask an admin to upgrade your role or copy values into a run under an editor account.

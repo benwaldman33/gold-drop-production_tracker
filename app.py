@@ -42,7 +42,7 @@ from sqlalchemy import func, desc, and_, or_, text, select, exists
 from models import (db, User, Supplier, Purchase, PurchaseLot, Run, RunInput,
                     KpiTarget, SystemSetting, AuditLog, BiomassAvailability, CostEntry,
                     FieldAccessToken, FieldPurchaseSubmission, LabTest, SupplierAttachment, PhotoAsset,
-                    SlackIngestedMessage, SlackChannelSyncConfig, gen_uuid)
+                    SlackIngestedMessage, SlackChannelSyncConfig, LotScanEvent, gen_uuid)
 from purchase_import import parse_purchase_spreadsheet_upload
 from blueprints import register_blueprints
 from policies.purchase_status import (
@@ -416,6 +416,7 @@ def export_csv(entity: str):
 
 
 SLACK_RUN_PREFILL_SESSION_KEY = "slack_run_prefill"
+SCAN_RUN_PREFILL_SESSION_KEY = "scan_run_prefill"
 
 
 def _slack_apply_form_passthrough(form) -> dict[str, str]:

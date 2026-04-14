@@ -393,6 +393,7 @@ class PurchaseLot(db.Model):
     deleted_by = db.Column(db.String(36), db.ForeignKey("users.id"))
 
     run_inputs = db.relationship("RunInput", backref="lot", lazy="dynamic")
+    scan_events = db.relationship("LotScanEvent", backref="lot", lazy="dynamic", cascade="all, delete-orphan")
 
     @property
     def supplier_name(self):
@@ -584,6 +585,30 @@ class RunInput(db.Model):
     allocation_confidence = db.Column(db.Float)
     allocation_notes = db.Column(db.Text)
     slack_ingested_message_id = db.Column(db.String(36))
+
+
+class LotScanEvent(db.Model):
+    __tablename__ = "lot_scan_events"
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    lot_id = db.Column(db.String(36), db.ForeignKey("purchase_lots.id"), nullable=False, index=True)
+    tracking_id_snapshot = db.Column(db.String(24), nullable=False)
+    action = db.Column(db.String(40), nullable=False, default="scan_open")
+    context_json = db.Column(db.Text)
+    user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+
+    user = db.relationship("User")
+
+    @property
+    def context(self):
+        try:
+            value = json.loads(self.context_json or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return {}
+        return value if isinstance(value, dict) else {}
+
+    def set_context(self, context):
+        self.context_json = json.dumps(context or {})
 
 
 class ScaleDevice(db.Model):

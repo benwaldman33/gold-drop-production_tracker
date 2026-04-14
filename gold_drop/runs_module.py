@@ -145,6 +145,7 @@ def run_new_view(root):
         return save_run(root, None)
 
     slack_prefill = root.session.get(root.SLACK_RUN_PREFILL_SESSION_KEY)
+    scan_prefill = None if slack_prefill else root.session.get(root.SCAN_RUN_PREFILL_SESSION_KEY)
     if not root.current_user.can_edit and not (slack_prefill and root.current_user.can_slack_import):
         root.flash("Edit access required.", "error")
         return root.redirect(root.url_for("dashboard"))
@@ -175,8 +176,21 @@ def run_new_view(root):
         display_run = None
         slack_meta = None
 
+    scan_meta = None
+    if scan_prefill:
+        display_run = display_run or root.Run()
+        scan_meta = {
+            "tracking_id": (scan_prefill.get("tracking_id") or "").strip(),
+            "purchase_id": (scan_prefill.get("purchase_id") or "").strip(),
+            "batch_id": (scan_prefill.get("batch_id") or "").strip(),
+            "supplier_name": (scan_prefill.get("supplier_name") or "").strip(),
+            "strain_name": (scan_prefill.get("strain_name") or "").strip(),
+            "remaining_weight_lbs": float(scan_prefill.get("remaining_weight_lbs") or 0),
+            "suggested_allocations": list(scan_prefill.get("suggested_allocations") or []),
+        }
+
     lots = _available_lots_query(root).all()
-    lot_rows = list(slack_meta.get("suggested_allocations") or []) if slack_meta else []
+    lot_rows = list(slack_meta.get("suggested_allocations") or []) if slack_meta else list(scan_meta.get("suggested_allocations") or []) if scan_meta else []
     return root.render_template(
         "run_form.html",
         run=display_run,
@@ -184,6 +198,7 @@ def run_new_view(root):
         lot_rows=lot_rows,
         today=today,
         slack_meta=slack_meta,
+        scan_meta=scan_meta,
         can_save_run=bool(root.current_user.can_edit),
         **root._run_form_extras(display_run),
     )
@@ -213,6 +228,7 @@ def run_edit_view(root, run_id):
         lot_rows=lot_rows,
         today=root.date.today(),
         slack_meta=None,
+        scan_meta=None,
         can_save_run=True,
         **root._run_form_extras(run),
     )
@@ -221,6 +237,7 @@ def run_edit_view(root, run_id):
 def save_run(root, existing_run):
     today = root.date.today()
     slack_meta = None
+    scan_meta = None
     if root.request.form.get("slack_ingested_message_id"):
         slack_meta = {
             "ingested_message_id": (root.request.form.get("slack_ingested_message_id") or "").strip(),
@@ -228,6 +245,18 @@ def save_run(root, existing_run):
             "message_ts": (root.request.form.get("slack_message_ts") or "").strip(),
             "allow_duplicate": root.request.form.get("slack_apply_allow_duplicate") == "1",
         }
+    elif not existing_run:
+        scan_prefill = root.session.get(root.SCAN_RUN_PREFILL_SESSION_KEY) or {}
+        if scan_prefill:
+            scan_meta = {
+                "tracking_id": (scan_prefill.get("tracking_id") or "").strip(),
+                "purchase_id": (scan_prefill.get("purchase_id") or "").strip(),
+                "batch_id": (scan_prefill.get("batch_id") or "").strip(),
+                "supplier_name": (scan_prefill.get("supplier_name") or "").strip(),
+                "strain_name": (scan_prefill.get("strain_name") or "").strip(),
+                "remaining_weight_lbs": float(scan_prefill.get("remaining_weight_lbs") or 0),
+                "suggested_allocations": list(scan_prefill.get("suggested_allocations") or []),
+            }
 
     try:
         if existing_run:
@@ -352,6 +381,8 @@ def save_run(root, existing_run):
         root.db.session.commit()
         if not existing_run and slack_meta and slack_meta.get("channel_id") and slack_meta.get("message_ts"):
             root.session.pop(root.SLACK_RUN_PREFILL_SESSION_KEY, None)
+        if not existing_run and scan_meta:
+            root.session.pop(root.SCAN_RUN_PREFILL_SESSION_KEY, None)
         root.flash("Run saved successfully.", "success")
         return root.redirect(root.url_for("runs_list"))
     except Exception as exc:
@@ -364,6 +395,7 @@ def save_run(root, existing_run):
             lots=_available_lots_query(root).all(),
             today=today,
             slack_meta=slack_meta,
+            scan_meta=scan_meta,
             can_save_run=True,
             **root._run_form_extras(current),
         )

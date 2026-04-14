@@ -174,6 +174,19 @@ def ensure_sqlite_schema(root) -> None:
         if "deleted_by" not in cols:
             root.db.session.execute(text("ALTER TABLE purchase_lots ADD COLUMN deleted_by VARCHAR(36)"))
 
+    if not has_table("lot_scan_events"):
+        root.db.session.execute(text(
+            "CREATE TABLE lot_scan_events ("
+            "id VARCHAR(36) PRIMARY KEY, "
+            "lot_id VARCHAR(36) NOT NULL, "
+            "tracking_id_snapshot VARCHAR(24) NOT NULL, "
+            "action VARCHAR(40) NOT NULL DEFAULT 'scan_open', "
+            "context_json TEXT, "
+            "user_id VARCHAR(36), "
+            "created_at DATETIME NOT NULL"
+            ")"
+        ))
+
     if has_table("run_inputs"):
         cols = column_names("run_inputs")
         if "allocation_source" not in cols:
