@@ -115,6 +115,90 @@ class ApiClient(db.Model):
         self.scopes_json = json.dumps(normalized)
 
 
+class RemoteSite(db.Model):
+    __tablename__ = "remote_sites"
+
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    name = db.Column(db.String(120), nullable=False)
+    base_url = db.Column(db.String(255), nullable=False, unique=True)
+    api_token = db.Column(db.Text)
+    site_code = db.Column(db.String(24))
+    site_name = db.Column(db.String(120))
+    site_region = db.Column(db.String(80))
+    site_environment = db.Column(db.String(32))
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    notes = db.Column(db.Text)
+    last_pull_started_at = db.Column(db.DateTime)
+    last_pull_finished_at = db.Column(db.DateTime)
+    last_pull_status = db.Column(db.String(32))
+    last_pull_error = db.Column(db.Text)
+    last_site_payload_json = db.Column(db.Text)
+    last_manifest_payload_json = db.Column(db.Text)
+    last_dashboard_payload_json = db.Column(db.Text)
+    last_inventory_payload_json = db.Column(db.Text)
+    last_exceptions_payload_json = db.Column(db.Text)
+    last_slack_payload_json = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+    pulls = db.relationship(
+        "RemoteSitePull",
+        backref="remote_site",
+        lazy="dynamic",
+        cascade="all, delete-orphan",
+    )
+
+    def payload(self, attr_name: str):
+        raw_value = getattr(self, attr_name, None)
+        if not raw_value:
+            return None
+        try:
+            return json.loads(raw_value)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return None
+
+    def set_payload(self, attr_name: str, value):
+        setattr(self, attr_name, json.dumps(value or {}))
+
+    @property
+    def masked_token(self) -> str:
+        token = (self.api_token or "").strip()
+        if not token:
+            return ""
+        if len(token) <= 8:
+            return "*" * len(token)
+        return f"{token[:4]}...{token[-4:]}"
+
+
+class RemoteSitePull(db.Model):
+    __tablename__ = "remote_site_pulls"
+
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    remote_site_id = db.Column(db.String(36), db.ForeignKey("remote_sites.id"), nullable=False, index=True)
+    started_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    finished_at = db.Column(db.DateTime)
+    status = db.Column(db.String(32), nullable=False, default="started")
+    error_message = db.Column(db.Text)
+    site_payload_json = db.Column(db.Text)
+    manifest_payload_json = db.Column(db.Text)
+    dashboard_payload_json = db.Column(db.Text)
+    inventory_payload_json = db.Column(db.Text)
+    exceptions_payload_json = db.Column(db.Text)
+    slack_payload_json = db.Column(db.Text)
+
+    def payload(self, attr_name: str):
+        raw_value = getattr(self, attr_name, None)
+        if not raw_value:
+            return None
+        try:
+            return json.loads(raw_value)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return None
+
+    def set_payload(self, attr_name: str, value):
+        setattr(self, attr_name, json.dumps(value or {}))
+
+
 class Supplier(db.Model):
     __tablename__ = "suppliers"
     id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
