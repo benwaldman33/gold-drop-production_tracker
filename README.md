@@ -352,6 +352,12 @@ source venv/bin/activate
 python scripts/create_api_client.py --name "internal-bi" --scopes read:site,read:lots,read:inventory,read:journey
 ```
 
+Super Admins can also create, revoke, reactivate, and delete internal API clients directly in:
+
+- `Settings -> Internal API Clients`
+
+New bearer tokens are shown only once at creation time.
+
 Useful read scopes now include:
 - `read:site`
 - `read:purchases`

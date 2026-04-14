@@ -50,6 +50,11 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
   - clears purchases/lots, runs/run inputs, Slack imports, field submissions/tokens, suppliers and related attachments/photos/tests, and audit/history rows
   - creates a SQLite backup automatically when a SQLite DB file is present
 - **API client creation:** `python scripts/create_api_client.py --name "internal-bi" --scopes read:site,read:lots,read:inventory`
+- **Settings UI:** Super Admin can also manage internal API clients in `Settings -> Internal API Clients`
+  - create client + scoped token
+  - token displayed once at creation
+  - revoke/reactivate
+  - delete revoked clients
 - These scripts now prepend the repo root to `sys.path`, so they work from the project root without manual `PYTHONPATH` setup.
 
 ## Internal API (`/api/v1`)

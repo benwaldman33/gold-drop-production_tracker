@@ -9,7 +9,7 @@ from gold_drop.purchases import (
     biomass_budget_snapshot_for_purchase,
     enforce_weekly_biomass_purchase_limits,
 )
-from models import coerce_utc
+from models import ApiClient, coerce_utc
 from services.field_submissions import (
     decorate_submission_rows,
     field_approval_return_redirect,
@@ -18,6 +18,7 @@ from services.field_submissions import (
     promote_submission_photos,
     submission_total_weight,
 )
+from services.api_auth import generate_api_token, hash_api_token
 
 
 def register_routes(app, root):
@@ -73,6 +74,18 @@ def register_routes(app, root):
     def settings_recalculate_costs():
         return settings_recalculate_costs_view(root)
 
+    @root.admin_required
+    def api_client_create():
+        return api_client_create_view(root)
+
+    @root.admin_required
+    def api_client_toggle_active(client_id):
+        return api_client_toggle_active_view(root, client_id)
+
+    @root.admin_required
+    def api_client_delete(client_id):
+        return api_client_delete_view(root, client_id)
+
     app.add_url_rule("/settings", endpoint="settings", view_func=settings, methods=["GET", "POST"])
     app.add_url_rule("/field-approvals", endpoint="field_approvals", view_func=field_approvals)
     app.add_url_rule(
@@ -101,6 +114,9 @@ def register_routes(app, root):
     app.add_url_rule("/settings/field_tokens/<token_id>/revoke", endpoint="field_token_revoke", view_func=field_token_revoke, methods=["POST"])
     app.add_url_rule("/settings/field_tokens/<token_id>/delete", endpoint="field_token_delete", view_func=field_token_delete, methods=["POST"])
     app.add_url_rule("/settings/recalculate_costs", endpoint="settings_recalculate_costs", view_func=settings_recalculate_costs, methods=["POST"])
+    app.add_url_rule("/settings/api_clients/create", endpoint="api_client_create", view_func=api_client_create, methods=["POST"])
+    app.add_url_rule("/settings/api_clients/<client_id>/toggle_active", endpoint="api_client_toggle_active", view_func=api_client_toggle_active, methods=["POST"])
+    app.add_url_rule("/settings/api_clients/<client_id>/delete", endpoint="api_client_delete", view_func=api_client_delete, methods=["POST"])
 
 
 def settings_redirect(root):
@@ -125,6 +141,21 @@ def _token_share_texts(link: str) -> tuple[str, str, str]:
         f"{link}\n"
     )
     return sms, subject, body
+
+
+def _parse_api_client_scopes(form) -> list[str]:
+    allowed_scopes = {
+        "read:site",
+        "read:purchases",
+        "read:journey",
+        "read:lots",
+        "read:runs",
+        "read:inventory",
+        "read:slack_imports",
+        "read:exceptions",
+    }
+    selected = [scope.strip() for scope in form.getlist("scopes") if scope.strip() in allowed_scopes]
+    return sorted(set(selected))
 
 
 def settings_view(root):
@@ -377,6 +408,10 @@ def settings_view(root):
         token.expires_at = coerce_utc(token.expires_at)
         token.last_used_at = coerce_utc(token.last_used_at)
         token.revoked_at = coerce_utc(token.revoked_at)
+    api_clients = ApiClient.query.order_by(ApiClient.created_at.desc()).all()
+    for client in api_clients:
+        client.created_at = coerce_utc(client.created_at)
+        client.last_used_at = coerce_utc(client.last_used_at)
     pending_field_submissions = root.FieldPurchaseSubmission.query.filter_by(status="pending").order_by(
         root.FieldPurchaseSubmission.submitted_at.desc()
     ).all()
@@ -389,6 +424,9 @@ def settings_view(root):
     last_field_sms = root.session.pop("last_field_sms", None)
     last_field_email_subject = root.session.pop("last_field_email_subject", None)
     last_field_email_body = root.session.pop("last_field_email_body", None)
+    last_api_client_token = root.session.pop("last_api_client_token", None)
+    last_api_client_name = root.session.pop("last_api_client_name", None)
+    last_api_client_scopes = root.session.pop("last_api_client_scopes", None)
 
     slack_sync_days_pref = root.session.get("slack_sync_days", 90)
     try:
@@ -412,6 +450,7 @@ def settings_view(root):
         kpis=kpis,
         users=users,
         field_tokens=field_tokens,
+        api_clients=api_clients,
         field_submissions=pending_field_submissions,
         reviewed_field_submissions=reviewed_field_submissions,
         submission_return_to="#settings-field-intake",
@@ -424,6 +463,9 @@ def settings_view(root):
         last_field_sms=last_field_sms,
         last_field_email_subject=last_field_email_subject,
         last_field_email_body=last_field_email_body,
+        last_api_client_token=last_api_client_token,
+        last_api_client_name=last_api_client_name,
+        last_api_client_scopes=last_api_client_scopes,
     )
 
 
@@ -774,4 +816,56 @@ def settings_recalculate_costs_view(root):
     root.log_audit("recalculate", "run_costs", root.gen_uuid(), details=json.dumps({"run_count": len(runs)}))
     root.db.session.commit()
     root.flash(f"Recalculated costs for {len(runs)} run(s).", "success")
+    return settings_redirect(root)
+
+
+def api_client_create_view(root):
+    name = (root.request.form.get("name") or "").strip()
+    notes = (root.request.form.get("notes") or "").strip() or None
+    scopes = _parse_api_client_scopes(root.request.form)
+    if not name:
+        root.flash("API client name is required.", "error")
+        return settings_redirect(root)
+    if not scopes:
+        root.flash("Select at least one API scope.", "error")
+        return settings_redirect(root)
+
+    raw_token = generate_api_token()
+    client = ApiClient(name=name, token_hash=hash_api_token(raw_token), notes=notes)
+    client.set_scopes(scopes)
+    root.db.session.add(client)
+    root.db.session.commit()
+
+    root.session["last_api_client_token"] = raw_token
+    root.session["last_api_client_name"] = client.name
+    root.session["last_api_client_scopes"] = ", ".join(client.scopes)
+    root.flash(f"API client '{client.name}' created.", "success")
+    return settings_redirect(root)
+
+
+def api_client_toggle_active_view(root, client_id):
+    client = root.db.session.get(ApiClient, client_id)
+    if not client:
+        root.flash("API client not found.", "error")
+        return settings_redirect(root)
+    client.is_active = not bool(client.is_active)
+    root.db.session.commit()
+    root.flash(
+        f"API client '{client.name}' {'activated' if client.is_active else 'revoked'}.",
+        "success",
+    )
+    return settings_redirect(root)
+
+
+def api_client_delete_view(root, client_id):
+    client = root.db.session.get(ApiClient, client_id)
+    if not client:
+        root.flash("API client not found.", "error")
+        return settings_redirect(root)
+    if client.is_active:
+        root.flash("Revoke the API client before deleting it.", "error")
+        return settings_redirect(root)
+    root.db.session.delete(client)
+    root.db.session.commit()
+    root.flash(f"API client '{client.name}' deleted.", "success")
     return settings_redirect(root)

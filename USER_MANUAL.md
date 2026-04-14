@@ -482,6 +482,12 @@ Set KPI targets and green/yellow thresholds to match operational goals.
 Admins can create users and assign roles. (This manual does not include any credentials.)
 - Disabled users can be reactivated.
 
+### Internal API Clients
+Super Admin can manage bearer-token clients for the internal read-only API under **Settings -> Internal API Clients**.
+- Create a named client and choose its read scopes.
+- The raw bearer token is shown only once when the client is created.
+- Clients can be revoked, reactivated, and deleted later from the same table.
+
 ### Fresh start / operational reset
 
 If you want to start over with a clean operating database but still keep login access and financial settings, use the server-side reset script instead of deleting the database file manually.

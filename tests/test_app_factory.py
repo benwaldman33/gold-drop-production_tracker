@@ -57,6 +57,7 @@ class AppFactorySmokeTest(unittest.TestCase):
         self.assertIn("/api/v1/inventory/on-hand", rules)
         self.assertIn("/settings/slack-imports", rules)
         self.assertIn("/settings/slack-run-mappings", rules)
+        self.assertIn("/settings/api_clients/create", rules)
 
     def test_extracted_route_modules_import(self) -> None:
         self.assertTrue(hasattr(settings_module, "settings_view"))

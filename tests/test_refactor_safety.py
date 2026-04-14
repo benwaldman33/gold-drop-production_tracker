@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import app as app_module
 import gold_drop.bootstrap_module as bootstrap_module
-from models import FieldAccessToken, FieldPurchaseSubmission, Purchase, PurchaseLot, ScaleDevice, SlackIngestedMessage, Supplier, SystemSetting, User, WeightCapture, db
+from models import ApiClient, FieldAccessToken, FieldPurchaseSubmission, Purchase, PurchaseLot, ScaleDevice, SlackIngestedMessage, Supplier, SystemSetting, User, WeightCapture, db
 from flask_login import login_user
 from services.scale_ingest import create_weight_capture
 
@@ -81,6 +81,55 @@ def test_settings_route_renders_with_legacy_naive_field_token_expiry():
             if token is not None:
                 db.session.delete(token)
                 db.session.commit()
+
+
+def test_settings_route_renders_api_clients_section():
+    page = _call_view_as_user("/settings", "settings", "admin")
+    assert page.status_code == 200
+    assert b"Internal API Clients" in page.data
+    assert b"Create API Client" in page.data
+
+
+def test_admin_can_create_and_revoke_api_client_from_settings():
+    create = _call_view_as_user(
+        "/settings/api_clients/create",
+        "api_client_create",
+        "admin",
+        method="POST",
+        data={
+            "name": "settings test client",
+            "notes": "created in test",
+            "scopes": ["read:site", "read:lots"],
+            "return_to": "#settings-api-clients",
+        },
+    )
+    assert create.status_code in (302, 303)
+    assert "#settings-api-clients" in create.headers["Location"]
+
+    app = app_module.app
+    with app.app_context():
+        client = ApiClient.query.filter_by(name="settings test client").first()
+        assert client is not None
+        client_id = client.id
+        assert client.is_active is True
+        assert client.scopes == ["read:lots", "read:site"]
+
+    revoke = _call_view_as_user(
+        f"/settings/api_clients/{client_id}/toggle_active",
+        "api_client_toggle_active",
+        "admin",
+        method="POST",
+        data={"return_to": "#settings-api-clients"},
+        client_id=client_id,
+    )
+    assert revoke.status_code in (302, 303)
+
+    with app.app_context():
+        client = db.session.get(ApiClient, client_id)
+        assert client is not None
+        assert client.is_active is False
+        db.session.delete(client)
+        db.session.commit()
 
 
 def test_slack_imports_route_is_registered_for_admin():
@@ -328,7 +377,7 @@ def test_slack_apply_run_carries_manual_lot_selection_into_prefill_session():
         db.session.add(lot)
         row = SlackIngestedMessage(
             channel_id="C124",
-            message_ts=f"1743200001.{app_module.gen_uuid().replace('-', '')[:6]}",
+            message_ts="1743200001.123456",
             raw_text="reactor: A\nsource: Farmlane\nstrain: Blue Dream\nbio lbs: 100",
             message_kind="production_log",
         )

@@ -553,6 +553,121 @@
   </form>
 </div>
 
+<!-- Internal API -->
+<div class="card" id="settings-api-clients">
+  <div class="card-header"><h3>Internal API Clients</h3></div>
+  <div style="padding:16px;">
+    {% if last_api_client_token %}
+    <div class="card" style="padding:14px 16px; margin-bottom:14px; border-color: rgba(34, 197, 94, 0.25);">
+      <div style="font-weight:600;">New API token ready to copy</div>
+      <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">
+        This token is only shown once. Store it securely before leaving this page.
+      </div>
+      <div class="form-group" style="margin-top:10px;">
+        <label>Client</label>
+        <input type="text" value="{{ last_api_client_name }}" readonly>
+      </div>
+      <div class="form-group" style="margin-top:10px;">
+        <label>Scopes</label>
+        <input type="text" value="{{ last_api_client_scopes }}" readonly>
+      </div>
+      <div class="form-group" style="margin-top:10px;">
+        <label>Bearer token</label>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input id="api-client-token" type="text" value="{{ last_api_client_token }}" readonly class="text-mono" style="flex:1;">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="copyText('api-client-token')">Copy token</button>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:0 0 12px;">Create API Client</h4>
+    <form method="POST" action="{{ url_for('api_client_create') }}">
+      <input type="hidden" name="return_to" value="#settings-api-clients">
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Name</label>
+          <input type="text" name="name" placeholder="e.g. internal-bi" required>
+        </div>
+        <div class="form-group" style="grid-column: span 2;">
+          <label>Notes</label>
+          <input type="text" name="notes" placeholder="Who uses this token and why">
+        </div>
+      </div>
+      <div class="form-group" style="margin-top:6px;">
+        <label>Scopes</label>
+        <div class="form-row-3" style="gap:8px;">
+          {% for scope in ['read:site', 'read:purchases', 'read:journey', 'read:lots', 'read:runs', 'read:inventory', 'read:slack_imports', 'read:exceptions'] %}
+          <label style="display:flex;align-items:center;gap:8px; text-transform:none; letter-spacing:0; font-size:0.85rem; color:var(--text-secondary);">
+            <input type="checkbox" name="scopes" value="{{ scope }}">
+            <code>{{ scope }}</code>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="text-sm" style="color:var(--text-muted); margin:8px 0 12px;">
+        Internal API clients use bearer-token auth against <code>/api/v1/*</code>. Tokens are hashed in storage and shown only once at creation.
+      </div>
+      <button type="submit" class="btn btn-primary">Create API Client</button>
+    </form>
+
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:18px 0 12px;">Active / Recent API Clients</h4>
+    <div class="table-wrap mb-2">
+      <table>
+        <thead>
+          <tr><th>Name</th><th>Scopes</th><th>Status</th><th>Created</th><th>Last Used</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for client in api_clients %}
+          <tr>
+            <td>
+              <strong>{{ client.name }}</strong>
+              {% if client.notes %}
+              <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">{{ client.notes }}</div>
+              {% endif %}
+            </td>
+            <td class="text-sm">
+              {% if client.scopes %}
+                {{ client.scopes|join(', ') }}
+              {% else %}
+                <span class="cell-muted">No scopes</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if client.is_active %}
+                <span class="badge badge-green">Active</span>
+              {% else %}
+                <span class="badge badge-gray">Revoked</span>
+              {% endif %}
+            </td>
+            <td>{{ client.created_at.strftime('%m/%d/%y %H:%M') if client.created_at else '—' }}</td>
+            <td>{{ client.last_used_at.strftime('%m/%d/%y %H:%M') if client.last_used_at else '—' }}</td>
+            <td style="white-space:nowrap;">
+              <form method="POST" action="{{ url_for('api_client_toggle_active', client_id=client.id) }}" style="display:inline;" onsubmit="return confirm('{{ 'Revoke' if client.is_active else 'Activate' }} this API client?');">
+                <input type="hidden" name="return_to" value="#settings-api-clients">
+                {% if client.is_active %}
+                <button type="submit" class="btn btn-danger btn-sm">Revoke</button>
+                {% else %}
+                <button type="submit" class="btn btn-secondary btn-sm">Activate</button>
+                {% endif %}
+              </form>
+              {% if not client.is_active %}
+              <form method="POST" action="{{ url_for('api_client_delete', client_id=client.id) }}" style="display:inline;" onsubmit="return confirm('Delete this revoked API client?');">
+                <input type="hidden" name="return_to" value="#settings-api-clients">
+                <button type="submit" class="btn btn-secondary btn-sm">Delete</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-center cell-muted" style="padding:20px;">No API clients created yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <!-- Maintenance -->
 <div class="card" id="settings-maintenance">
   <div class="card-header"><h3>Maintenance</h3></div>
