@@ -6,6 +6,10 @@ from flask import jsonify, request
 
 from gold_drop.inventory_module import _annotate_inventory_lot
 from gold_drop.purchases_module import _annotate_purchase_row
+from gold_drop.slack_integration_module import (
+    slack_linked_run_ids_index,
+    slack_supplier_candidates_for_source,
+)
 from gold_drop.slack import (
     _derive_slack_production_message,
     _load_slack_run_field_rules,
@@ -24,7 +28,6 @@ from services.api_queries import (
     build_runs_query,
     parse_limit_offset,
 )
-from services.api_auth import json_api_error, require_api_scope
 from services.api_serializers import (
     envelope,
     serialize_inventory_lot,
@@ -38,6 +41,7 @@ from services.api_serializers import (
     serialize_slack_import_summary,
 )
 from services.api_site import get_site_identity
+from services.lot_allocation import choose_default_lot_allocation, rank_lot_candidates
 from services.purchases_journey import build_purchase_journey_payload
 
 API_ROOT = None
@@ -61,6 +65,9 @@ def register_routes(app, root):
     app.add_url_rule("/api/v1/slack-imports", endpoint="api_v1_slack_imports", view_func=api_v1_slack_imports)
     app.add_url_rule("/api/v1/slack-imports/<msg_id>", endpoint="api_v1_slack_import_detail", view_func=api_v1_slack_import_detail)
     app.add_url_rule("/api/v1/exceptions", endpoint="api_v1_exceptions", view_func=api_v1_exceptions)
+    app.add_url_rule("/api/v1/summary/inventory", endpoint="api_v1_inventory_summary", view_func=api_v1_inventory_summary)
+    app.add_url_rule("/api/v1/summary/slack-imports", endpoint="api_v1_slack_imports_summary", view_func=api_v1_slack_imports_summary)
+    app.add_url_rule("/api/v1/summary/exceptions", endpoint="api_v1_exceptions_summary", view_func=api_v1_exceptions_summary)
     app.add_url_rule(
         "/api/v1/inventory/on-hand",
         endpoint="api_v1_inventory_on_hand",
@@ -240,16 +247,13 @@ def _norm_cov(value):
     return value if value in ("all", "full", "partial", "none") else "all"
 
 
-@require_api_scope("read:slack_imports")
-def api_v1_slack_imports():
-    root = _require_root()
-    limit, offset = parse_limit_offset(request)
+def _build_slack_import_items(root):
     start_date, error = _parse_optional_date(request.args.get("start_date"))
     if error:
-        return error
+        return None, error
     end_date, error = _parse_optional_date(request.args.get("end_date"))
     if error:
-        return error
+        return None, error
     promotion = _norm_promo(request.args.get("promotion"))
     coverage_filter = _norm_cov(request.args.get("coverage"))
     kind_filter = (request.args.get("kind_filter") or "all").strip().lower()
@@ -262,10 +266,17 @@ def api_v1_slack_imports():
     if text_op not in root.SLACK_IMPORT_TEXT_OPS_ALLOWED:
         text_op = "contains"
 
-    link_index = root.slack_integration_module.slack_linked_run_ids_index(root)
+    link_index = slack_linked_run_ids_index(root)
     rules = _load_slack_run_field_rules()
     pool = SlackIngestedMessage.query.order_by(root.desc(SlackIngestedMessage.message_ts)).limit(2500).all()
     items = []
+    bucket_counts = {
+        "auto_ready": 0,
+        "needs_confirmation": 0,
+        "needs_manual_match": 0,
+        "blocked": 0,
+        "processed": 0,
+    }
     for row in pool:
         if not include_hidden and bool(getattr(row, "hidden_from_imports", False)):
             continue
@@ -290,6 +301,42 @@ def api_v1_slack_imports():
             continue
         if promotion == "linked" and not linked_run_ids:
             continue
+
+        requested_run_lbs = preview.get("filled", {}).get("bio_in_reactor_lbs")
+        try:
+            requested_run_lbs = float(requested_run_lbs) if requested_run_lbs not in (None, "") else None
+        except (TypeError, ValueError):
+            requested_run_lbs = None
+
+        if linked_run_ids:
+            triage_bucket = "processed"
+        elif (derived.get("message_kind") or row.message_kind or "").strip() == "production_log" and requested_run_lbs:
+            source_raw = (derived.get("source") or "").strip()
+            supplier_candidates = slack_supplier_candidates_for_source(root, source_raw) if source_raw else []
+            supplier_ids = [str(candidate["id"]) for candidate in supplier_candidates[:3]]
+            lot_candidates = rank_lot_candidates(
+                root,
+                supplier_ids=supplier_ids,
+                strain_name=(derived.get("strain") or "").strip(),
+                requested_weight_lbs=requested_run_lbs,
+            ) if supplier_ids else []
+            auto_pick = choose_default_lot_allocation(lot_candidates, requested_run_lbs)
+            if auto_pick:
+                triage_bucket = "auto_ready"
+            elif lot_candidates:
+                triage_bucket = "needs_confirmation" if len(lot_candidates) == 1 else "needs_manual_match"
+            else:
+                triage_bucket = "blocked"
+        elif _slack_message_needs_resolution_ui(derived):
+            triage_bucket = "needs_confirmation"
+        elif coverage == "full":
+            triage_bucket = "needs_confirmation"
+        elif coverage == "partial":
+            triage_bucket = "needs_manual_match"
+        else:
+            triage_bucket = "blocked"
+
+        bucket_counts[triage_bucket] += 1
         items.append(
             serialize_slack_import_summary(
                 row,
@@ -298,6 +345,18 @@ def api_v1_slack_imports():
                 linked_run_ids=linked_run_ids,
             )
         )
+        items[-1]["triage_bucket"] = triage_bucket
+    return (items, bucket_counts), None
+
+
+@require_api_scope("read:slack_imports")
+def api_v1_slack_imports():
+    root = _require_root()
+    limit, offset = parse_limit_offset(request)
+    built, error = _build_slack_import_items(root)
+    if error:
+        return error
+    items, _bucket_counts = built
     total = len(items)
     return jsonify(envelope(items[offset : offset + limit], count=total, limit=limit, offset=offset))
 
@@ -378,3 +437,78 @@ def api_v1_exceptions():
                 )
     total = len(items)
     return jsonify(envelope(items[offset : offset + limit], count=total, limit=limit, offset=offset))
+
+
+@require_api_scope("read:inventory")
+def api_v1_inventory_summary():
+    root = _require_root()
+    supplier_id = (request.args.get("supplier_id") or "").strip() or None
+    strain = (request.args.get("strain") or "").strip() or None
+    lots = build_inventory_on_hand_query(supplier_id=supplier_id, strain=strain).all()
+    annotated = [_annotate_inventory_lot(root, lot) for lot in lots]
+    total_on_hand = float(sum(float(lot.remaining_weight_lbs or 0) for lot in annotated))
+    daily_target = root.SystemSetting.get_float("daily_throughput_target", 500)
+    days_supply = total_on_hand / daily_target if daily_target > 0 else 0.0
+    payload = {
+        "supplier_id": supplier_id,
+        "strain": strain,
+        "open_lot_count": len(annotated),
+        "total_on_hand_lbs": total_on_hand,
+        "days_of_supply": float(days_supply),
+        "partially_allocated_count": sum(1 for lot in annotated if getattr(lot, "_allocation_state_key", "") == "partially_allocated"),
+        "fully_allocated_count": sum(1 for lot in annotated if getattr(lot, "_allocation_state_key", "") == "fully_allocated"),
+        "low_remaining_count": sum(1 for lot in annotated if "Low remaining" in getattr(lot, "_exceptions", [])),
+        "missing_tracking_count": sum(1 for lot in annotated if "Missing tracking ID" in getattr(lot, "_exceptions", [])),
+        "approval_required_count": sum(1 for lot in annotated if "Approval required" in getattr(lot, "_exceptions", [])),
+    }
+    return jsonify(envelope(payload))
+
+
+@require_api_scope("read:slack_imports")
+def api_v1_slack_imports_summary():
+    root = _require_root()
+    built, error = _build_slack_import_items(root)
+    if error:
+        return error
+    items, bucket_counts = built
+    payload = {
+        "total_messages": len(items),
+        "bucket_counts": bucket_counts,
+        "linked_count": sum(1 for item in items if item.get("promotion_status") == "linked"),
+        "unlinked_count": sum(1 for item in items if item.get("promotion_status") == "not_linked"),
+        "coverage_counts": {
+            "full": sum(1 for item in items if item.get("coverage") == "full"),
+            "partial": sum(1 for item in items if item.get("coverage") == "partial"),
+            "none": sum(1 for item in items if item.get("coverage") == "none"),
+        },
+    }
+    return jsonify(envelope(payload))
+
+
+@require_api_scope("read:exceptions")
+def api_v1_exceptions_summary():
+    root = _require_root()
+    purchases = Purchase.query.filter(Purchase.deleted_at.is_(None)).order_by(Purchase.purchase_date.desc(), Purchase.id.desc()).limit(500).all()
+    purchase_count = 0
+    inventory_count = 0
+    by_label: dict[str, int] = {}
+    for purchase in purchases:
+        _annotate_purchase_row(purchase)
+        for exc in getattr(purchase, "_exceptions", []):
+            purchase_count += 1
+            by_label[exc] = by_label.get(exc, 0) + 1
+    lots = build_inventory_on_hand_query().limit(500).all()
+    for lot in lots:
+        _annotate_inventory_lot(root, lot)
+        for exc in getattr(lot, "_exceptions", []):
+            inventory_count += 1
+            by_label[exc] = by_label.get(exc, 0) + 1
+    payload = {
+        "total_exceptions": purchase_count + inventory_count,
+        "category_counts": {
+            "purchases": purchase_count,
+            "inventory": inventory_count,
+        },
+        "label_counts": dict(sorted(by_label.items(), key=lambda item: (-item[1], item[0]))),
+    }
+    return jsonify(envelope(payload))

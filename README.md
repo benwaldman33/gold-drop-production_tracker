@@ -337,6 +337,9 @@ Current endpoints:
 - `/api/v1/slack-imports`
 - `/api/v1/slack-imports/<msg_id>`
 - `/api/v1/exceptions`
+- `/api/v1/summary/inventory`
+- `/api/v1/summary/slack-imports`
+- `/api/v1/summary/exceptions`
 - `/api/v1/inventory/on-hand`
 
 Authentication:

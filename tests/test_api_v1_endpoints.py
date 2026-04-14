@@ -119,6 +119,13 @@ def test_api_v1_lots_and_inventory_match_operational_rules():
             inv_payload = inv_res.get_json()
             inv_ids = {item["id"] for item in inv_payload["data"]}
             assert inv_ids == {open_lot_id}
+
+            summary_res = client.get(f"/api/v1/summary/inventory?supplier_id={supplier_id}", headers=headers)
+            assert summary_res.status_code == 200
+            summary_payload = summary_res.get_json()["data"]
+            assert summary_payload["open_lot_count"] == 1
+            assert summary_payload["total_on_hand_lbs"] == 40.0
+            assert summary_payload["partially_allocated_count"] == 1
     finally:
         with app.app_context():
             api_client = db.session.get(ApiClient, client_id)
@@ -350,6 +357,12 @@ def test_api_v1_slack_imports_list_and_detail():
             row_ids = {item["id"] for item in list_payload["data"]}
             assert row_id in row_ids
 
+            summary_res = client.get("/api/v1/summary/slack-imports?channel_id=C-SLACK-API", headers=headers)
+            assert summary_res.status_code == 200
+            summary_payload = summary_res.get_json()["data"]
+            assert summary_payload["total_messages"] >= 1
+            assert sum(summary_payload["bucket_counts"].values()) == summary_payload["total_messages"]
+
             detail_res = client.get(f"/api/v1/slack-imports/{row_id}", headers=headers)
             assert detail_res.status_code == 200
             detail_payload = detail_res.get_json()["data"]
@@ -399,14 +412,20 @@ def test_api_v1_exceptions_returns_purchase_and_inventory_signals():
         with app.test_client() as client:
             purchase_response = client.get("/api/v1/exceptions?category=purchases&limit=200", headers=headers)
             inventory_response = client.get("/api/v1/exceptions?category=inventory&limit=200", headers=headers)
+            summary_response = client.get("/api/v1/summary/exceptions", headers=headers)
         assert purchase_response.status_code == 200
         assert inventory_response.status_code == 200
+        assert summary_response.status_code == 200
         purchase_payload = purchase_response.get_json()
         inventory_payload = inventory_response.get_json()
+        summary_payload = summary_response.get_json()["data"]
         purchase_categories = {(item["category"], item["entity_type"], item["entity_id"]) for item in purchase_payload["data"]}
         inventory_categories = {(item["category"], item["entity_type"], item["entity_id"]) for item in inventory_payload["data"]}
         assert ("purchases", "purchase", purchase_id) in purchase_categories
         assert ("inventory", "purchase_lot", lot_id) in inventory_categories
+        assert summary_payload["total_exceptions"] >= 2
+        assert summary_payload["category_counts"]["purchases"] >= 1
+        assert summary_payload["category_counts"]["inventory"] >= 1
     finally:
         with app.app_context():
             api_client = db.session.get(ApiClient, client_id)

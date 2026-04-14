@@ -94,6 +94,9 @@ Phase 1 internal API is read-only and site-local.
 - `GET /api/v1/slack-imports`
 - `GET /api/v1/slack-imports/<msg_id>`
 - `GET /api/v1/exceptions`
+- `GET /api/v1/summary/inventory`
+- `GET /api/v1/summary/slack-imports`
+- `GET /api/v1/summary/exceptions`
 - `GET /api/v1/inventory/on-hand`
 
 ### Response contract

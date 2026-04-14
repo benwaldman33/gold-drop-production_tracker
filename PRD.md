@@ -193,6 +193,9 @@ The current first slice of the internal API includes:
 - `GET /api/v1/slack-imports`
 - `GET /api/v1/slack-imports/<msg_id>`
 - `GET /api/v1/exceptions`
+- `GET /api/v1/summary/inventory`
+- `GET /api/v1/summary/slack-imports`
+- `GET /api/v1/summary/exceptions`
 - `GET /api/v1/inventory/on-hand`
 
 These endpoints:
@@ -200,6 +203,7 @@ These endpoints:
 - are read-only
 - return JSON envelopes with site metadata
 - are intended for internal consumers only
+- now include summary-oriented read models for inventory posture, Slack-import triage posture, and reconciliation posture
 
 ### Internal API future direction
 Future phases should expand the internal API with:
