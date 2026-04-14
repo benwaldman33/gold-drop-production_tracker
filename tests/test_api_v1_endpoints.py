@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 
 import app as app_module
-from models import ApiClient, Purchase, PurchaseLot, Run, RunInput, SlackIngestedMessage, Supplier, db, gen_uuid
+from models import ApiClient, Purchase, PurchaseLot, Run, RunInput, SlackIngestedMessage, Supplier, SystemSetting, db, gen_uuid
 from services.api_auth import hash_api_token
 
 
@@ -31,20 +31,35 @@ def test_api_v1_site_requires_token():
 def test_api_v1_site_returns_site_meta_and_data():
     app = app_module.app
     headers, client_id = _make_api_headers("read:site")
+    with app.app_context():
+        original_code = SystemSetting.get("site_code")
+        original_name = SystemSetting.get("site_name")
+        original_timezone = SystemSetting.get("site_timezone")
+        db.session.get(SystemSetting, "site_code").value = "SAC"
+        db.session.get(SystemSetting, "site_name").value = "Gold Drop Sacramento"
+        db.session.get(SystemSetting, "site_timezone").value = "America/New_York"
+        db.session.commit()
     try:
         with app.test_client() as client:
             response = client.get("/api/v1/site", headers=headers)
         assert response.status_code == 200
         payload = response.get_json()
         assert payload["meta"]["api_version"] == "v1"
-        assert payload["data"]["site_code"]
-        assert payload["data"]["site_name"]
+        assert payload["meta"]["site_code"] == "SAC"
+        assert payload["meta"]["site_name"] == "Gold Drop Sacramento"
+        assert payload["meta"]["site_timezone"] == "America/New_York"
+        assert payload["data"]["site_code"] == "SAC"
+        assert payload["data"]["site_name"] == "Gold Drop Sacramento"
+        assert payload["data"]["site_timezone"] == "America/New_York"
     finally:
         with app.app_context():
+            db.session.get(SystemSetting, "site_code").value = original_code
+            db.session.get(SystemSetting, "site_name").value = original_name
+            db.session.get(SystemSetting, "site_timezone").value = original_timezone
             api_client = db.session.get(ApiClient, client_id)
             if api_client:
                 db.session.delete(api_client)
-                db.session.commit()
+            db.session.commit()
 
 
 def test_api_v1_lots_and_inventory_match_operational_rules():

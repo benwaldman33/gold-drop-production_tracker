@@ -120,7 +120,7 @@ List responses also include:
 
 ### Site identity
 
-Site identity currently comes from `SystemSetting` defaults seeded by bootstrap:
+Site identity comes from `SystemSetting` values seeded by bootstrap and editable in `Settings -> Operational Parameters`:
 - `site_code`
 - `site_name`
 - `site_timezone`

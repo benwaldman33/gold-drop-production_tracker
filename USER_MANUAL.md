@@ -474,6 +474,10 @@ Includes:
 - Throughput targets
 - Optional analytics filter: **Exclude runs missing biomass pricing ($/lb)**
 - Cost allocation method: **Uniform**, **Split 50/50**, or **Custom split**
+- Site identity for internal API consumers:
+  - `site_code`
+  - `site_name`
+  - `site_timezone`
 
 ### KPI Targets
 Set KPI targets and green/yellow thresholds to match operational goals.

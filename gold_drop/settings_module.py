@@ -280,8 +280,48 @@ def settings_view(root):
                     root.flash(f"Unknown timezone {tz_raw!r}; timezone was not changed.", "error")
                     tz_ok = False
 
+            site_code_raw = (root.request.form.get("site_code") or "").strip().upper()
+            site_name_raw = (root.request.form.get("site_name") or "").strip()
+            site_timezone_raw = (root.request.form.get("site_timezone") or "").strip()
+
+            site_code = site_code_raw[:24] if site_code_raw else "DEFAULT"
+            site_name = site_name_raw[:120] if site_name_raw else "Gold Drop"
+            site_timezone_ok = True
+            if site_timezone_raw:
+                try:
+                    ZoneInfo(site_timezone_raw)
+                except ZoneInfoNotFoundError:
+                    root.flash(f"Unknown site timezone {site_timezone_raw!r}; site timezone was not changed.", "error")
+                    site_timezone_ok = False
+            else:
+                site_timezone_raw = "America/Los_Angeles"
+
+            for key, val, desc in (
+                ("site_code", site_code, "Short site code used in internal API metadata"),
+                ("site_name", site_name, "Facility/site name used in internal API metadata"),
+            ):
+                existing = root.db.session.get(root.SystemSetting, key)
+                if existing:
+                    existing.value = val
+                else:
+                    root.db.session.add(root.SystemSetting(key=key, value=val, description=desc))
+
+            if site_timezone_ok:
+                existing = root.db.session.get(root.SystemSetting, "site_timezone")
+                if existing:
+                    existing.value = site_timezone_raw
+                else:
+                    root.db.session.add(root.SystemSetting(
+                        key="site_timezone",
+                        value=site_timezone_raw,
+                        description="Facility/site timezone exposed through internal API metadata",
+                    ))
+
             root.db.session.commit()
-            root.flash("System settings updated." if tz_ok else "System settings saved; fix the timezone name and save again.", "success" if tz_ok else "info")
+            if tz_ok and site_timezone_ok:
+                root.flash("System settings updated.", "success")
+            else:
+                root.flash("System settings saved; fix the timezone name(s) and save again.", "info")
 
         elif form_type == "kpi":
             kpi_ids = root.request.form.getlist("kpi_ids[]")

@@ -67,6 +67,37 @@
       </div>
     </div>
     <div class="form-group" style="margin-top:12px;">
+      <div class="form-row-3" style="margin-bottom:12px;">
+        <div class="form-group">
+          <label>Site Code</label>
+          <input type="text" name="site_code" value="{{ system_settings.get('site_code', 'DEFAULT') }}" maxlength="24" placeholder="e.g. SAC">
+          <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">
+            Short identifier included in internal API responses for future aggregation.
+          </div>
+        </div>
+        <div class="form-group" style="grid-column: span 2;">
+          <label>Site Name</label>
+          <input type="text" name="site_name" value="{{ system_settings.get('site_name', 'Gold Drop') }}" maxlength="120" placeholder="e.g. Gold Drop Sacramento">
+          <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">
+            Human-readable facility name surfaced in internal API metadata and future cross-site tooling.
+          </div>
+        </div>
+      </div>
+      {% set cur_site_tz = system_settings.get('site_timezone', 'America/Los_Angeles') %}
+      <label>Site timezone (internal API / site identity)</label>
+      <select name="site_timezone" style="max-width:100%;">
+        {% for val, lab in app_timezone_choices %}
+        <option value="{{ val }}" {% if cur_site_tz == val %}selected{% endif %}>{{ lab }} — {{ val }}</option>
+        {% endfor %}
+        {% if cur_site_tz not in app_timezone_choice_values %}
+        <option value="{{ cur_site_tz }}" selected>{{ cur_site_tz }} (current)</option>
+        {% endif %}
+      </select>
+      <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">
+        Used by the internal API as site metadata. Keep this aligned with the facility actually running this deployment.
+      </div>
+    </div>
+    <div class="form-group" style="margin-top:12px;">
       {% set cur_tz = system_settings.get('app_display_timezone', 'America/Los_Angeles') %}
       <label>App display timezone (Slack times &amp; import date filters)</label>
       <select name="app_display_timezone" style="max-width:100%;">

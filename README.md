@@ -381,7 +381,11 @@ Every `/api/v1` response includes:
 - `generated_at`
 - `api_version`
 
-The site identity values come from `SystemSetting` defaults:
+The site identity values come from `SystemSetting` and can be edited in:
+
+- `Settings -> Operational Parameters`
+
+The API-facing site identity fields are:
 - `site_code`
 - `site_name`
 - `site_timezone`
