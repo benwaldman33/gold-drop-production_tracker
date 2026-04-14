@@ -4,7 +4,7 @@ import json
 from datetime import date, datetime, timezone
 
 import app as app_module
-from models import Purchase, PurchaseLot, RemoteSite, Run, RunInput, Supplier, db, gen_uuid
+from models import LotScanEvent, Purchase, PurchaseLot, RemoteSite, Run, RunInput, Supplier, db, gen_uuid
 from scripts.mcp_server import handle_request
 from services.mcp_tools import execute_mcp_tool, list_mcp_tools
 
@@ -15,6 +15,8 @@ def test_mcp_tools_registry_exposes_core_tools():
     assert "journey_resolve" in names
     assert "search_entities" in names
     assert "cross_site_summary" in names
+    assert "scanner_summary" in names
+    assert "lot_scan_history" in names
 
 
 def test_mcp_server_handles_initialize_and_tools_list():
@@ -61,12 +63,15 @@ def test_mcp_tool_execution_returns_inventory_and_journey_payloads():
         db.session.flush()
         run_input = RunInput(run_id=run.id, lot_id=lot.id, weight_lbs=40, allocation_source="manual")
         db.session.add(run_input)
+        scan_event = LotScanEvent(lot_id=lot.id, tracking_id_snapshot=lot.tracking_id, action="scan_open")
+        db.session.add(scan_event)
         db.session.commit()
         supplier_id = supplier.id
         purchase_id = purchase.id
         lot_id = lot.id
         run_id = run.id
         run_input_id = run_input.id
+        scan_event_id = scan_event.id
 
     try:
         inventory_payload = execute_mcp_tool("inventory_snapshot", {"supplier_id": supplier_id, "limit": 10})
@@ -81,6 +86,14 @@ def test_mcp_tool_execution_returns_inventory_and_journey_payloads():
         entity_types = {item["entity_type"] for item in search_payload["results"]}
         assert "purchase" in entity_types
         assert "run" in entity_types
+
+        scanner_summary = execute_mcp_tool("scanner_summary", {})
+        assert scanner_summary["total_events"] >= 1
+        assert scanner_summary["action_counts"]["scan_open"] >= 1
+
+        scan_history = execute_mcp_tool("lot_scan_history", {"lot_id": lot_id, "limit": 10})
+        assert scan_history["results"][0]["lot_id"] == lot_id
+        assert scan_history["results"][0]["action"] == "scan_open"
 
         call_response = handle_request(
             {
@@ -102,6 +115,9 @@ def test_mcp_tool_execution_returns_inventory_and_journey_payloads():
             run_obj = db.session.get(Run, run_id)
             if run_obj:
                 db.session.delete(run_obj)
+            scan_event = db.session.get(LotScanEvent, scan_event_id)
+            if scan_event:
+                db.session.delete(scan_event)
             lot_obj = db.session.get(PurchaseLot, lot_id)
             if lot_obj:
                 db.session.delete(lot_obj)

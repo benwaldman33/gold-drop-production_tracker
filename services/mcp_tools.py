@@ -6,12 +6,13 @@ import app as app_module
 from sqlalchemy import or_
 
 from gold_drop.suppliers_module import supplier_incomplete_profile_fields
-from models import Purchase, PurchaseLot, RemoteSite, Run, Supplier
+from models import LotScanEvent, Purchase, PurchaseLot, RemoteSite, Run, Supplier
 from services.api_queries import build_inventory_on_hand_query, build_lots_query
 from services.api_site import get_site_identity
 from services.api_serializers import (
     serialize_inventory_lot,
     serialize_lot_summary,
+    serialize_scan_event,
     serialize_search_result,
     serialize_strain_performance_row,
     serialize_supplier_performance_row,
@@ -230,6 +231,37 @@ def _reconciliation_overview(arguments: dict) -> dict:
             "needs_manual_match_items": [item for item in items if item.get("triage_bucket") == "needs_manual_match"][:10],
         },
         "exceptions": exception_payload,
+    }
+
+
+def _scanner_summary(arguments: dict) -> dict:
+    events = LotScanEvent.query.order_by(LotScanEvent.created_at.desc()).all()
+    action_counts: dict[str, int] = {}
+    for event in events:
+        action_counts[event.action] = action_counts.get(event.action, 0) + 1
+    return {
+        "total_events": len(events),
+        "distinct_tracked_lots": len({event.tracking_id_snapshot for event in events if event.tracking_id_snapshot}),
+        "action_counts": action_counts,
+        "latest_event_at": events[0].created_at.isoformat().replace("+00:00", "Z") if events and events[0].created_at else None,
+    }
+
+
+def _lot_scan_history(arguments: dict) -> dict:
+    lot_id = (arguments.get("lot_id") or "").strip()
+    tracking_id = (arguments.get("tracking_id") or "").strip()
+    limit = max(1, min(int(arguments.get("limit") or 25), 100))
+    if not lot_id and not tracking_id:
+        raise McpToolError("lot_id or tracking_id is required")
+    query = LotScanEvent.query.order_by(LotScanEvent.created_at.desc())
+    if lot_id:
+        query = query.filter(LotScanEvent.lot_id == lot_id)
+    if tracking_id:
+        query = query.filter(LotScanEvent.tracking_id_snapshot == tracking_id)
+    events = query.limit(limit).all()
+    return {
+        "filters": {"lot_id": lot_id or None, "tracking_id": tracking_id or None, "limit": limit},
+        "results": [serialize_scan_event(event) for event in events],
     }
 
 
@@ -585,6 +617,18 @@ MCP_TOOLS: list[dict[str, object]] = [
         "description": "Return Slack-import triage posture plus current exception summaries.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
         "handler": _reconciliation_overview,
+    },
+    {
+        "name": "scanner_summary",
+        "description": "Return scanner activity totals and action counts for the local site.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "handler": _scanner_summary,
+    },
+    {
+        "name": "lot_scan_history",
+        "description": "Return recent scan events for one lot or tracking ID.",
+        "inputSchema": {"type": "object", "properties": {"lot_id": {"type": "string"}, "tracking_id": {"type": "string"}, "limit": {"type": "integer"}}, "additionalProperties": False},
+        "handler": _lot_scan_history,
     },
     {
         "name": "dashboard_summary",

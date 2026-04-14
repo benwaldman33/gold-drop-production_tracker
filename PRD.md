@@ -239,6 +239,7 @@ These endpoints:
 - now include a dashboard-style site operating summary for internal reporting and future MCP / AI use
 - now include department-focused summary reads for operations, purchasing, and quality views
 - now include a read-only MCP server with semantic tool calls for journeys, inventory, reconciliation, analytics, and cached cross-site comparisons
+- now include scanner-aware MCP tools so internal AI workflows can inspect lot scan history and scanner activity summaries without custom query stitching
 - now include scan-activity read surfaces so future scanner analytics and AI tooling can inspect lot scan history and scanner usage patterns
 
 ### Internal API future direction

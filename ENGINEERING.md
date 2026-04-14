@@ -218,6 +218,8 @@ This keeps each deployed facility self-identifying for future aggregation withou
 - `cross_site_summary`
 - `cross_site_supplier_compare`
 - `cross_site_strain_compare`
+- `scanner_summary`
+- `lot_scan_history`
 
 ### MCP design notes
 
