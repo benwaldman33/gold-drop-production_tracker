@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 
 import app as app_module
-from models import ApiClient, Purchase, PurchaseLot, Run, RunInput, SlackIngestedMessage, Supplier, SystemSetting, db, gen_uuid
+from models import ApiClient, Purchase, PurchaseLot, RemoteSite, Run, RunInput, SlackIngestedMessage, Supplier, SystemSetting, db, gen_uuid
 from services.api_auth import hash_api_token
 
 
@@ -42,10 +42,12 @@ def test_api_v1_capabilities_requires_site_scope_and_returns_discovery_payload()
             payload = response.get_json()["data"]
             assert payload["authentication"]["scheme"] == "bearer"
             assert "read:dashboard" in payload["scopes"]
+            assert "read:aggregation" in payload["scopes"]
             paths = {item["path"] for item in payload["endpoints"]}
             assert "/api/v1/site" in paths
             assert "/api/v1/summary/dashboard" in paths
             assert "/api/v1/summary/exceptions" in paths
+            assert "/api/v1/aggregation/summary" in paths
     finally:
         with app.app_context():
             for client_id in (bad_client_id, good_client_id):
@@ -219,7 +221,7 @@ def test_api_v1_tools_scope_and_semantic_endpoints():
     )
     slack_row = SlackIngestedMessage(
         channel_id="C-TOOLS",
-        message_ts="1710000200.000100",
+        message_ts=f"1710000200.{gen_uuid().replace('-', '')[:6]}",
         raw_text="Reactor: 8\nStrain: Tool Dream\nSource: Tool Supplier\nBio wt: 45",
         message_kind="production_log",
         derived_json="{}",
@@ -375,6 +377,60 @@ def test_api_v1_sync_manifest_returns_dataset_metadata():
         assert payload["capabilities_endpoint"] == "/api/v1/capabilities"
     finally:
         with app.app_context():
+            api_client = db.session.get(ApiClient, client_id)
+            if api_client:
+                db.session.delete(api_client)
+            db.session.commit()
+
+
+def test_api_v1_aggregation_sites_and_summary_use_cached_remote_payloads():
+    app = app_module.app
+    headers, client_id = _make_api_headers("read:aggregation")
+    with app.app_context():
+        remote_host = f"https://gamma-{gen_uuid()[:8]}.example.com"
+        site = RemoteSite(
+            name="Remote Gamma",
+            base_url=remote_host,
+            site_code="GAM",
+            site_name="Gamma Site",
+            site_region="Nevada",
+            site_environment="production",
+            is_active=True,
+            last_pull_status="success",
+        )
+        site.set_payload("last_dashboard_payload_json", {"totals": {"total_runs": 4, "total_lbs": 220.0, "total_dry_output_g": 33.0}})
+        site.set_payload("last_inventory_payload_json", {"total_on_hand_lbs": 150.0})
+        site.set_payload("last_exceptions_payload_json", {"total_exceptions": 2})
+        site.set_payload("last_slack_payload_json", {"total_messages": 9})
+        db.session.add(site)
+        db.session.commit()
+        site_id = site.id
+    try:
+        with app.test_client() as client:
+            list_res = client.get("/api/v1/aggregation/sites", headers=headers)
+            assert list_res.status_code == 200
+            items = list_res.get_json()["data"]
+            assert any(item["id"] == site_id for item in items)
+
+            detail_res = client.get(f"/api/v1/aggregation/sites/{site_id}", headers=headers)
+            assert detail_res.status_code == 200
+            detail = detail_res.get_json()["data"]
+            assert detail["cached_payloads"]["dashboard"]["totals"]["total_runs"] == 4
+
+            summary_res = client.get("/api/v1/aggregation/summary?period=30", headers=headers)
+            assert summary_res.status_code == 200
+            summary = summary_res.get_json()["data"]
+            assert summary["sites_total"] >= 2
+            assert summary["remote_sites_active"] >= 1
+            assert summary["totals"]["total_runs"] >= 4
+
+            bad_period = client.get("/api/v1/aggregation/summary?period=bad", headers=headers)
+            assert bad_period.status_code == 400
+    finally:
+        with app.app_context():
+            site = db.session.get(RemoteSite, site_id)
+            if site:
+                db.session.delete(site)
             api_client = db.session.get(ApiClient, client_id)
             if api_client:
                 db.session.delete(api_client)

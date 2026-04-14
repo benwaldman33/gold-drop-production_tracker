@@ -22,7 +22,7 @@ from gold_drop.slack import (
     _slack_message_needs_resolution_ui,
     _slack_ts_to_date_value,
 )
-from models import Purchase, PurchaseLot, Run, RunInput, SlackIngestedMessage, Supplier, db
+from models import Purchase, PurchaseLot, RemoteSite, Run, RunInput, SlackIngestedMessage, Supplier, db
 from services.api_auth import json_api_error, require_api_scope
 from services.api_queries import (
     build_inventory_on_hand_query,
@@ -49,6 +49,7 @@ from services.api_serializers import (
 from services.api_site import get_site_identity
 from services.lot_allocation import choose_default_lot_allocation, rank_lot_candidates
 from services.purchases_journey import build_lot_journey_payload, build_purchase_journey_payload, build_run_journey_payload
+from services.site_aggregation import build_aggregation_summary, serialize_remote_site_cache
 
 API_ROOT = None
 
@@ -59,6 +60,9 @@ def register_routes(app, root):
     app.add_url_rule("/api/v1/site", endpoint="api_v1_site", view_func=api_v1_site)
     app.add_url_rule("/api/v1/capabilities", endpoint="api_v1_capabilities", view_func=api_v1_capabilities)
     app.add_url_rule("/api/v1/sync/manifest", endpoint="api_v1_sync_manifest", view_func=api_v1_sync_manifest)
+    app.add_url_rule("/api/v1/aggregation/sites", endpoint="api_v1_aggregation_sites", view_func=api_v1_aggregation_sites)
+    app.add_url_rule("/api/v1/aggregation/sites/<site_id>", endpoint="api_v1_aggregation_site_detail", view_func=api_v1_aggregation_site_detail)
+    app.add_url_rule("/api/v1/aggregation/summary", endpoint="api_v1_aggregation_summary", view_func=api_v1_aggregation_summary)
     app.add_url_rule("/api/v1/search", endpoint="api_v1_search", view_func=api_v1_search)
     app.add_url_rule("/api/v1/tools/inventory-snapshot", endpoint="api_v1_tool_inventory_snapshot", view_func=api_v1_tool_inventory_snapshot)
     app.add_url_rule("/api/v1/tools/open-lots", endpoint="api_v1_tool_open_lots", view_func=api_v1_tool_open_lots)
@@ -160,6 +164,7 @@ def api_v1_capabilities():
             "read:runs",
             "read:inventory",
             "read:dashboard",
+            "read:aggregation",
             "read:search",
             "read:tools",
             "read:slack_imports",
@@ -171,6 +176,9 @@ def api_v1_capabilities():
             {"path": "/api/v1/site", "scope": "read:site", "kind": "identity"},
             {"path": "/api/v1/capabilities", "scope": "read:site", "kind": "discovery"},
             {"path": "/api/v1/sync/manifest", "scope": "read:site", "kind": "manifest"},
+            {"path": "/api/v1/aggregation/sites", "scope": "read:aggregation", "kind": "list"},
+            {"path": "/api/v1/aggregation/sites/<site_id>", "scope": "read:aggregation", "kind": "detail"},
+            {"path": "/api/v1/aggregation/summary", "scope": "read:aggregation", "kind": "summary"},
             {"path": "/api/v1/search", "scope": "read:search", "kind": "search"},
             {"path": "/api/v1/tools/inventory-snapshot", "scope": "read:tools", "kind": "tool"},
             {"path": "/api/v1/tools/open-lots", "scope": "read:tools", "kind": "tool"},
@@ -201,6 +209,23 @@ def api_v1_capabilities():
         ],
     }
     return jsonify(envelope(payload))
+
+
+@require_api_scope("read:aggregation")
+def api_v1_aggregation_sites():
+    limit, offset = parse_limit_offset(request, default_limit=50, max_limit=200)
+    sites = RemoteSite.query.order_by(RemoteSite.name.asc()).all()
+    payload = [serialize_remote_site_cache(site) for site in sites]
+    total = len(payload)
+    return jsonify(envelope(payload[offset : offset + limit], count=total, limit=limit, offset=offset))
+
+
+@require_api_scope("read:aggregation")
+def api_v1_aggregation_site_detail(site_id):
+    site = db.session.get(RemoteSite, site_id)
+    if site is None:
+        return json_api_error("Remote site not found", status_code=404, code="not_found")
+    return jsonify(envelope(serialize_remote_site_cache(site)))
 
 
 @require_api_scope("read:search")
@@ -686,6 +711,26 @@ def api_v1_dashboard_summary():
     if period not in {"today", "7", "30", "90", "all"}:
         return json_api_error("Invalid period", status_code=400, code="bad_request")
     return jsonify(envelope(_dashboard_summary_payload(root, period)))
+
+
+@require_api_scope("read:aggregation")
+def api_v1_aggregation_summary():
+    root = _require_root()
+    period = (request.args.get("period") or "30").strip()
+    if period not in {"today", "7", "30", "90", "all"}:
+        return json_api_error("Invalid period", status_code=400, code="bad_request")
+    slack_payload, error = _slack_imports_summary_payload(root)
+    if error:
+        return error
+    payload = build_aggregation_summary(
+        get_site_identity(),
+        local_dashboard=_dashboard_summary_payload(root, period),
+        local_inventory=_inventory_summary_payload(root, supplier_id=None, strain=None),
+        local_exceptions=_exceptions_summary_payload(root),
+        local_slack=slack_payload,
+    )
+    payload["period"] = period
+    return jsonify(envelope(payload))
 
 
 @require_api_scope("read:dashboard")
@@ -1272,17 +1317,13 @@ def api_v1_exceptions():
     return jsonify(envelope(items[offset : offset + limit], count=total, limit=limit, offset=offset))
 
 
-@require_api_scope("read:inventory")
-def api_v1_inventory_summary():
-    root = _require_root()
-    supplier_id = (request.args.get("supplier_id") or "").strip() or None
-    strain = (request.args.get("strain") or "").strip() or None
+def _inventory_summary_payload(root, *, supplier_id: str | None, strain: str | None):
     lots = build_inventory_on_hand_query(supplier_id=supplier_id, strain=strain).all()
     annotated = [_annotate_inventory_lot(root, lot) for lot in lots]
     total_on_hand = float(sum(float(lot.remaining_weight_lbs or 0) for lot in annotated))
     daily_target = root.SystemSetting.get_float("daily_throughput_target", 500)
     days_supply = total_on_hand / daily_target if daily_target > 0 else 0.0
-    payload = {
+    return {
         "supplier_id": supplier_id,
         "strain": strain,
         "open_lot_count": len(annotated),
@@ -1294,15 +1335,20 @@ def api_v1_inventory_summary():
         "missing_tracking_count": sum(1 for lot in annotated if "Missing tracking ID" in getattr(lot, "_exceptions", [])),
         "approval_required_count": sum(1 for lot in annotated if "Approval required" in getattr(lot, "_exceptions", [])),
     }
-    return jsonify(envelope(payload))
 
 
-@require_api_scope("read:slack_imports")
-def api_v1_slack_imports_summary():
+@require_api_scope("read:inventory")
+def api_v1_inventory_summary():
     root = _require_root()
+    supplier_id = (request.args.get("supplier_id") or "").strip() or None
+    strain = (request.args.get("strain") or "").strip() or None
+    return jsonify(envelope(_inventory_summary_payload(root, supplier_id=supplier_id, strain=strain)))
+
+
+def _slack_imports_summary_payload(root):
     built, error = _build_slack_import_items(root)
     if error:
-        return error
+        return None, error
     items, bucket_counts = built
     payload = {
         "total_messages": len(items),
@@ -1315,6 +1361,15 @@ def api_v1_slack_imports_summary():
             "none": sum(1 for item in items if item.get("coverage") == "none"),
         },
     }
+    return payload, None
+
+
+@require_api_scope("read:slack_imports")
+def api_v1_slack_imports_summary():
+    root = _require_root()
+    payload, error = _slack_imports_summary_payload(root)
+    if error:
+        return error
     return jsonify(envelope(payload))
 
 

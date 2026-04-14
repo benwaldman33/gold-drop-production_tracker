@@ -74,3 +74,103 @@ def pull_remote_site(remote_site: RemoteSite, *, fetcher=None, timeout_seconds: 
         db.session.commit()
 
     return pull
+
+
+def serialize_remote_site_cache(remote_site: RemoteSite) -> dict:
+    return {
+        "id": remote_site.id,
+        "name": remote_site.name,
+        "base_url": remote_site.base_url,
+        "site_code": remote_site.site_code,
+        "site_name": remote_site.site_name,
+        "site_region": remote_site.site_region,
+        "site_environment": remote_site.site_environment,
+        "is_active": bool(remote_site.is_active),
+        "notes": remote_site.notes,
+        "last_pull_status": remote_site.last_pull_status,
+        "last_pull_error": remote_site.last_pull_error,
+        "last_pull_started_at": _iso(remote_site.last_pull_started_at),
+        "last_pull_finished_at": _iso(remote_site.last_pull_finished_at),
+        "cached_payloads": {
+            "site": remote_site.payload("last_site_payload_json"),
+            "manifest": remote_site.payload("last_manifest_payload_json"),
+            "dashboard": remote_site.payload("last_dashboard_payload_json"),
+            "inventory": remote_site.payload("last_inventory_payload_json"),
+            "exceptions": remote_site.payload("last_exceptions_payload_json"),
+            "slack_imports": remote_site.payload("last_slack_payload_json"),
+        },
+    }
+
+
+def build_aggregation_summary(local_site: dict, *, local_dashboard: dict, local_inventory: dict, local_exceptions: dict, local_slack: dict) -> dict:
+    remote_sites = RemoteSite.query.order_by(RemoteSite.name.asc()).all()
+    active_sites = [site for site in remote_sites if site.is_active]
+
+    total_sites = 1 + len(active_sites)
+    successful_remote_pulls = sum(1 for site in active_sites if site.last_pull_status == "success")
+
+    total_runs = int((local_dashboard.get("totals") or {}).get("total_runs") or 0)
+    total_lbs = float((local_dashboard.get("totals") or {}).get("total_lbs") or 0)
+    total_output = float((local_dashboard.get("totals") or {}).get("total_dry_output_g") or 0)
+    total_on_hand = float(local_inventory.get("total_on_hand_lbs") or 0)
+    total_exceptions = int(local_exceptions.get("total_exceptions") or 0)
+    total_slack = int(local_slack.get("total_messages") or 0)
+
+    site_summaries = [{
+        "site_code": local_site.get("site_code"),
+        "site_name": local_site.get("site_name"),
+        "site_region": local_site.get("site_region"),
+        "site_environment": local_site.get("site_environment"),
+        "source": "local",
+        "status": "local",
+        "totals": local_dashboard.get("totals") or {},
+        "inventory": local_inventory,
+        "exceptions": local_exceptions,
+        "slack_imports": local_slack,
+    }]
+
+    for site in active_sites:
+        dashboard = site.payload("last_dashboard_payload_json") or {}
+        inventory = site.payload("last_inventory_payload_json") or {}
+        exceptions = site.payload("last_exceptions_payload_json") or {}
+        slack_imports = site.payload("last_slack_payload_json") or {}
+        total_runs += int((dashboard.get("totals") or {}).get("total_runs") or 0)
+        total_lbs += float((dashboard.get("totals") or {}).get("total_lbs") or 0)
+        total_output += float((dashboard.get("totals") or {}).get("total_dry_output_g") or 0)
+        total_on_hand += float(inventory.get("total_on_hand_lbs") or 0)
+        total_exceptions += int(exceptions.get("total_exceptions") or 0)
+        total_slack += int(slack_imports.get("total_messages") or 0)
+        site_summaries.append({
+            "site_code": site.site_code,
+            "site_name": site.site_name or site.name,
+            "site_region": site.site_region,
+            "site_environment": site.site_environment,
+            "source": "remote_cache",
+            "status": site.last_pull_status or "never_pulled",
+            "last_pull_finished_at": _iso(site.last_pull_finished_at),
+            "totals": dashboard.get("totals") or {},
+            "inventory": inventory,
+            "exceptions": exceptions,
+            "slack_imports": slack_imports,
+        })
+
+    return {
+        "sites_total": total_sites,
+        "remote_sites_active": len(active_sites),
+        "remote_sites_successful": successful_remote_pulls,
+        "totals": {
+            "total_runs": total_runs,
+            "total_lbs": float(total_lbs),
+            "total_dry_output_g": float(total_output),
+            "total_on_hand_lbs": float(total_on_hand),
+            "total_exceptions": total_exceptions,
+            "total_slack_messages": total_slack,
+        },
+        "sites": site_summaries,
+    }
+
+
+def _iso(value):
+    if value is None:
+        return None
+    return value.isoformat().replace("+00:00", "Z") if hasattr(value, "isoformat") else value
