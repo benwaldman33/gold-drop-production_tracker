@@ -447,6 +447,42 @@ The API-facing site identity fields are:
 - `site_region`
 - `site_environment`
 
+## MCP server
+
+This repo now also includes a read-only stdio MCP server that wraps the internal domain logic directly for local/internal AI and automation workflows.
+
+Run it from the project root:
+
+```bash
+cd /opt/gold-drop
+source venv/bin/activate
+python scripts/mcp_server.py
+```
+
+Current MCP tools include:
+- `site_identity`
+- `inventory_snapshot`
+- `open_lots`
+- `journey_resolve`
+- `purchase_journey`
+- `lot_journey`
+- `run_journey`
+- `reconciliation_overview`
+- `search_entities`
+- `dashboard_summary`
+- `supplier_performance`
+- `strain_performance`
+- `remote_sites`
+- `cross_site_summary`
+- `cross_site_supplier_compare`
+- `cross_site_strain_compare`
+
+The MCP layer is intentionally:
+- read-only
+- local/site-scoped by default
+- built on the same business logic as the internal API
+- aggregation-aware through cached remote-site payloads
+
 ---
 
 ## Importing Historical Data from Google Sheets

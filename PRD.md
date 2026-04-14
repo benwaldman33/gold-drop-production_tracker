@@ -176,6 +176,7 @@ Authorization should use **named capabilities per user** (flags or equivalent), 
 - `/api/v1/*` uses **bearer-token auth** via internal API clients rather than web-login redirects.
 - Phase 1 of the internal API is **read-only**; future write access may be added later only after the read contract and audit requirements are stable.
 - AI / MCP access should also remain **read-only initially**.
+- The product should also expose a **read-only MCP tool layer** for internal/local AI workflows, built on the same domain logic and aggregation cache rather than direct database access.
 - **Suppliers** are **site-local first**; any cross-site supplier consolidation belongs in a later aggregation layer rather than the current operational app.
 - **Costs** are **site-scoped** and remain local to each site deployment.
 - Every internal API response should identify the site clearly enough for later aggregation.
@@ -234,6 +235,7 @@ These endpoints:
 - now include supplier- and strain-performance analytics reads for internal reporting and future MCP / AI use
 - now include a dashboard-style site operating summary for internal reporting and future MCP / AI use
 - now include department-focused summary reads for operations, purchasing, and quality views
+- now include a read-only MCP server with semantic tool calls for journeys, inventory, reconciliation, analytics, and cached cross-site comparisons
 
 ### Internal API future direction
 Future phases should expand the internal API with:

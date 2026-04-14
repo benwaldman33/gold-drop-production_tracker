@@ -151,6 +151,12 @@ Yes. Label pages are available from Purchases, Inventory, and Journey surfaces. 
 **What are the new `/api/v1/tools/*` endpoints for?**
 They are read-only semantic endpoints for internal automation and future MCP / AI tooling. They provide higher-level answers like inventory snapshots, open-lot lookup, canonical journey resolution, and reconciliation overview without stitching together several low-level API calls first.
 
+**Is there an MCP server now, or only the internal API?**
+There is now a read-only stdio MCP server in `scripts/mcp_server.py`. It exposes semantic tools over the same domain logic as the internal API, including journeys, inventory snapshots, reconciliation reads, supplier/strain analytics, and cached cross-site comparison tools.
+
+**Does the MCP server write data or bypass permissions?**
+No. The current MCP layer is read-only. It is meant for internal intelligence and automation workflows, not record creation or mutation.
+
 **How do I refresh remote-site cache data?**
 Super Admin can do it in **Settings -> Maintenance -> Pull all remote sites**, or from the server shell with `python scripts/pull_remote_sites.py`.
 

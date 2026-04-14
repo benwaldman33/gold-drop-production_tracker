@@ -183,7 +183,43 @@ This keeps each deployed facility self-identifying for future aggregation withou
   - `Settings -> Remote Sites` for per-site create/update/pull/toggle/delete
   - `Settings -> Maintenance -> Pull all remote sites` for one-shot refresh of all active registrations
 - CLI control surface:
-  - `python scripts/pull_remote_sites.py`
+- `python scripts/pull_remote_sites.py`
+
+## MCP server
+
+- `scripts/mcp_server.py` implements a minimal stdio JSON-RPC MCP server.
+- `services/mcp_tools.py` is the read-only MCP tool registry and execution layer.
+- The server currently supports:
+  - `initialize`
+  - `ping`
+  - `tools/list`
+  - `tools/call`
+- Tool execution runs inside Flask app + request context so existing journey builders and serializers can be reused without a second business-rules path.
+
+### Current MCP tools
+
+- `site_identity`
+- `inventory_snapshot`
+- `open_lots`
+- `journey_resolve`
+- `purchase_journey`
+- `lot_journey`
+- `run_journey`
+- `reconciliation_overview`
+- `search_entities`
+- `dashboard_summary`
+- `supplier_performance`
+- `strain_performance`
+- `remote_sites`
+- `cross_site_summary`
+- `cross_site_supplier_compare`
+- `cross_site_strain_compare`
+
+### MCP design notes
+
+- The MCP layer is read-only.
+- It intentionally reuses the existing domain logic and aggregation cache rather than proxying through HTTP.
+- It is suitable for local/internal AI tooling first; broader deployment can later point MCP clients at the same repo script on each site instance.
 
 ## Resume checkpoint
 
