@@ -495,6 +495,23 @@ Super Admin can manage bearer-token clients for the internal read-only API under
 - Clients can be revoked, reactivated, and deleted later from the same table.
 - The table also shows **Last Used** plus the last endpoint/scope the token touched, which helps with internal audit and troubleshooting.
 
+### Remote Sites
+Super Admin can manage cross-site cache registrations under **Settings -> Remote Sites**.
+- Register a remote site with its base URL, optional bearer token, and notes.
+- Pull an individual site on demand to cache its current site identity, manifest, and summary payloads locally.
+- Disable a site without deleting it.
+- Delete only after it has been disabled.
+
+### Maintenance: Pull all remote sites
+Use **Pull all remote sites** in **Settings -> Maintenance** to refresh the local cache from every active remote-site registration at once.
+
+Server-side equivalent:
+
+```bash
+source venv/bin/activate
+python scripts/pull_remote_sites.py
+```
+
 ### Fresh start / operational reset
 
 If you want to start over with a clean operating database but still keep login access and financial settings, use the server-side reset script instead of deleting the database file manually.

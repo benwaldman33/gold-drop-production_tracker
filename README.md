@@ -329,6 +329,9 @@ Current endpoints:
 - `/api/v1/site`
 - `/api/v1/capabilities`
 - `/api/v1/sync/manifest`
+- `/api/v1/aggregation/sites`
+- `/api/v1/aggregation/sites/<site_id>`
+- `/api/v1/aggregation/summary`
 - `/api/v1/search`
 - `/api/v1/tools/inventory-snapshot`
 - `/api/v1/tools/open-lots`
@@ -373,6 +376,7 @@ python scripts/create_api_client.py --name "internal-bi" --scopes read:site,read
 Super Admins can also create, revoke, reactivate, and delete internal API clients directly in:
 
 - `Settings -> Internal API Clients`
+- `Settings -> Remote Sites`
 
 New bearer tokens are shown only once at creation time.
 
@@ -384,6 +388,7 @@ Useful read scopes now include:
 - `read:runs`
 - `read:inventory`
 - `read:dashboard`
+- `read:aggregation`
 - `read:search`
 - `read:tools`
 - `read:slack_imports`
@@ -401,6 +406,14 @@ Search example:
 
 ```bash
 curl -H "Authorization: Bearer YOUR_TOKEN_HERE" "http://127.0.0.1:5050/api/v1/search?q=farmlane&types=suppliers,purchases,lots"
+```
+
+Aggregation cache refresh:
+
+```bash
+cd /opt/gold-drop
+source venv/bin/activate
+python scripts/pull_remote_sites.py
 ```
 
 Every `/api/v1` response includes:

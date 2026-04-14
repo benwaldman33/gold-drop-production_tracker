@@ -80,6 +80,7 @@ Phase 1 internal API is read-only and site-local.
 - `read:runs`
 - `read:inventory`
 - `read:dashboard`
+- `read:aggregation`
 - `read:search`
 - `read:tools`
 - `read:slack_imports`
@@ -92,6 +93,9 @@ Phase 1 internal API is read-only and site-local.
 - `GET /api/v1/site`
 - `GET /api/v1/capabilities`
 - `GET /api/v1/sync/manifest`
+- `GET /api/v1/aggregation/sites`
+- `GET /api/v1/aggregation/sites/<site_id>`
+- `GET /api/v1/aggregation/summary`
 - `GET /api/v1/search`
 - `GET /api/v1/tools/inventory-snapshot`
 - `GET /api/v1/tools/open-lots`
@@ -152,6 +156,22 @@ Site identity comes from `SystemSetting` values seeded by bootstrap and editable
 - `site_environment`
 
 This keeps each deployed facility self-identifying for future aggregation without forcing row-level `site_id` yet.
+
+### Remote-site aggregation cache
+
+- `RemoteSite` stores trusted remote site registrations, bearer token, cached site identity, and the latest cached manifest/summary payloads.
+- `RemoteSitePull` stores pull history with status and cached payload snapshots.
+- `services/site_aggregation.py` owns:
+  - base-URL normalization
+  - remote JSON fetch
+  - single-site pull + cache write
+  - batch pull across all active remote sites
+  - rollup serialization / cached summary helpers
+- Admin control surfaces:
+  - `Settings -> Remote Sites` for per-site create/update/pull/toggle/delete
+  - `Settings -> Maintenance -> Pull all remote sites` for one-shot refresh of all active registrations
+- CLI control surface:
+  - `python scripts/pull_remote_sites.py`
 
 ## Resume checkpoint
 

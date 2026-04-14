@@ -86,6 +86,9 @@ Use the server-side reset script, not a manual database wipe. `python scripts/re
 **What is `/api/v1/sync/manifest` for?**
 It is a machine-readable site summary for future internal rollups. It reports the site identity plus basic dataset counts and freshness markers so an aggregator can decide what to pull next.
 
+**What are the new `/api/v1/aggregation/*` endpoints for?**
+They expose the locally cached cross-site rollup layer. `/api/v1/aggregation/sites` shows registered remote sites and their latest cached payloads, and `/api/v1/aggregation/summary` combines the local site with cached remote summaries for higher-level internal reporting.
+
 **Why did a blank database come back with demo/history records?**
 That used to happen because startup bootstrap seeded historical/demo data automatically when no runs existed. The app now only seeds baseline users/settings/KPIs on startup. Demo/history loading is explicit via `python scripts/seed_demo_data.py --yes`.
 
@@ -144,6 +147,9 @@ Yes. Label pages are available from Purchases, Inventory, and Journey surfaces. 
 
 **What are the new `/api/v1/tools/*` endpoints for?**
 They are read-only semantic endpoints for internal automation and future MCP / AI tooling. They provide higher-level answers like inventory snapshots, open-lot lookup, canonical journey resolution, and reconciliation overview without stitching together several low-level API calls first.
+
+**How do I refresh remote-site cache data?**
+Super Admin can do it in **Settings -> Maintenance -> Pull all remote sites**, or from the server shell with `python scripts/pull_remote_sites.py`.
 
 **Is the app ready for smart scales?**  
 At the data-model level, yes. The system now has `ScaleDevice` and `WeightCapture` so future device-captured weights can attach to intake, lot, or run workflows without redesigning the material model.
