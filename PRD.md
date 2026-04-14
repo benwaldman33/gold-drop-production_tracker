@@ -184,6 +184,7 @@ Authorization should use **named capabilities per user** (flags or equivalent), 
 The current first slice of the internal API includes:
 - `GET /api/v1/site`
 - `GET /api/v1/capabilities`
+- `GET /api/v1/sync/manifest`
 - `GET /api/v1/search`
 - `GET /api/v1/tools/inventory-snapshot`
 - `GET /api/v1/tools/open-lots`
@@ -218,6 +219,7 @@ These endpoints:
 - return JSON envelopes with site metadata
 - are intended for internal consumers only
 - expose a machine-readable discovery surface so internal tools and future MCP clients can discover scopes and supported endpoints
+- expose a site sync manifest so future aggregation services can identify the site, dataset counts, and basic freshness markers before pulling deeper data
 - expose a cross-entity search / lookup surface so internal tools and future MCP clients can find suppliers, purchases, lots, and runs without hard-coding separate list queries first
 - expose semantic, tool-oriented read endpoints so future MCP / AI clients can ask for inventory snapshots, open-lot resolution, canonical journeys, and reconciliation posture without stitching together multiple low-level API calls themselves
 - now include summary-oriented read models for inventory posture, Slack-import triage posture, and reconciliation posture

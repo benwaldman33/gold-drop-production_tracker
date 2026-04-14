@@ -328,6 +328,7 @@ This app now exposes a read-only internal API under `/api/v1` for trusted intern
 Current endpoints:
 - `/api/v1/site`
 - `/api/v1/capabilities`
+- `/api/v1/sync/manifest`
 - `/api/v1/search`
 - `/api/v1/tools/inventory-snapshot`
 - `/api/v1/tools/open-lots`
@@ -406,6 +407,8 @@ Every `/api/v1` response includes:
 - `site_code`
 - `site_name`
 - `site_timezone`
+- `site_region`
+- `site_environment`
 - `generated_at`
 - `api_version`
 
@@ -417,6 +420,8 @@ The API-facing site identity fields are:
 - `site_code`
 - `site_name`
 - `site_timezone`
+- `site_region`
+- `site_environment`
 
 ---
 

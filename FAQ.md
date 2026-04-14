@@ -83,6 +83,9 @@ No. If your account has purchase-approval permission, unapproved rows now show a
 **How do I start fresh without losing login access?**
 Use the server-side reset script, not a manual database wipe. `python scripts/reset_operational_data.py --yes` clears operational data but keeps users/passwords, system settings, KPI targets, Slack sync config, scale-device config, and cost entries. It also creates a SQLite backup automatically when applicable.
 
+**What is `/api/v1/sync/manifest` for?**
+It is a machine-readable site summary for future internal rollups. It reports the site identity plus basic dataset counts and freshness markers so an aggregator can decide what to pull next.
+
 **Why did a blank database come back with demo/history records?**
 That used to happen because startup bootstrap seeded historical/demo data automatically when no runs existed. The app now only seeds baseline users/settings/KPIs on startup. Demo/history loading is explicit via `python scripts/seed_demo_data.py --yes`.
 
@@ -138,6 +141,9 @@ It is the permanent machine-readable identity for that physical lot. The app now
 
 **Can I print a lot label already?**  
 Yes. Label pages are available from Purchases, Inventory, and Journey surfaces. They currently print the lot identity, payloads, and scan path even before full barcode / QR image rendering is added.
+
+**What are the new `/api/v1/tools/*` endpoints for?**
+They are read-only semantic endpoints for internal automation and future MCP / AI tooling. They provide higher-level answers like inventory snapshots, open-lot lookup, canonical journey resolution, and reconciliation overview without stitching together several low-level API calls first.
 
 **Is the app ready for smart scales?**  
 At the data-model level, yes. The system now has `ScaleDevice` and `WeightCapture` so future device-captured weights can attach to intake, lot, or run workflows without redesigning the material model.

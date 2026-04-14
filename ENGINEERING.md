@@ -55,6 +55,7 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
   - token displayed once at creation
   - revoke/reactivate
   - delete revoked clients
+  - inspect last used timestamp, scope, and endpoint
 - These scripts now prepend the repo root to `sys.path`, so they work from the project root without manual `PYTHONPATH` setup.
 
 ## Internal API (`/api/v1`)
@@ -90,6 +91,7 @@ Phase 1 internal API is read-only and site-local.
 
 - `GET /api/v1/site`
 - `GET /api/v1/capabilities`
+- `GET /api/v1/sync/manifest`
 - `GET /api/v1/search`
 - `GET /api/v1/tools/inventory-snapshot`
 - `GET /api/v1/tools/open-lots`
@@ -146,6 +148,8 @@ Site identity comes from `SystemSetting` values seeded by bootstrap and editable
 - `site_code`
 - `site_name`
 - `site_timezone`
+- `site_region`
+- `site_environment`
 
 This keeps each deployed facility self-identifying for future aggregation without forcing row-level `site_id` yet.
 

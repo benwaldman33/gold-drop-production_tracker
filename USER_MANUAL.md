@@ -478,6 +478,8 @@ Includes:
   - `site_code`
   - `site_name`
   - `site_timezone`
+  - `site_region`
+  - `site_environment`
 
 ### KPI Targets
 Set KPI targets and green/yellow thresholds to match operational goals.
@@ -491,6 +493,7 @@ Super Admin can manage bearer-token clients for the internal read-only API under
 - Create a named client and choose its read scopes.
 - The raw bearer token is shown only once when the client is created.
 - Clients can be revoked, reactivated, and deleted later from the same table.
+- The table also shows **Last Used** plus the last endpoint/scope the token touched, which helps with internal audit and troubleshooting.
 
 ### Fresh start / operational reset
 
