@@ -190,6 +190,9 @@ The current first slice of the internal API includes:
 - `GET /api/v1/lots/<lot_id>`
 - `GET /api/v1/runs`
 - `GET /api/v1/runs/<run_id>`
+- `GET /api/v1/suppliers`
+- `GET /api/v1/suppliers/<supplier_id>`
+- `GET /api/v1/strains`
 - `GET /api/v1/slack-imports`
 - `GET /api/v1/slack-imports/<msg_id>`
 - `GET /api/v1/exceptions`
@@ -204,6 +207,7 @@ These endpoints:
 - return JSON envelopes with site metadata
 - are intended for internal consumers only
 - now include summary-oriented read models for inventory posture, Slack-import triage posture, and reconciliation posture
+- now include supplier- and strain-performance analytics reads for internal reporting and future MCP / AI use
 
 ### Internal API future direction
 Future phases should expand the internal API with:

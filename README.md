@@ -334,6 +334,9 @@ Current endpoints:
 - `/api/v1/lots/<lot_id>`
 - `/api/v1/runs`
 - `/api/v1/runs/<run_id>`
+- `/api/v1/suppliers`
+- `/api/v1/suppliers/<supplier_id>`
+- `/api/v1/strains`
 - `/api/v1/slack-imports`
 - `/api/v1/slack-imports/<msg_id>`
 - `/api/v1/exceptions`
@@ -370,6 +373,8 @@ Useful read scopes now include:
 - `read:inventory`
 - `read:slack_imports`
 - `read:exceptions`
+- `read:suppliers`
+- `read:strains`
 
 Example request:
 

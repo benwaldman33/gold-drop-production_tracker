@@ -153,6 +153,8 @@ def _parse_api_client_scopes(form) -> list[str]:
         "read:inventory",
         "read:slack_imports",
         "read:exceptions",
+        "read:suppliers",
+        "read:strains",
     }
     selected = [scope.strip() for scope in form.getlist("scopes") if scope.strip() in allowed_scopes]
     return sorted(set(selected))

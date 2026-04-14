@@ -238,3 +238,42 @@ def serialize_exception_item(*, category, entity_type, entity_id, label, detail,
         "detail": detail,
         "context": context or {},
     }
+
+
+def serialize_supplier_performance_row(*, supplier, profile_incomplete, all_time, ninety_day, last_batch):
+    return {
+        "supplier": serialize_supplier_stub(supplier),
+        "profile_incomplete": bool(profile_incomplete),
+        "all_time": all_time,
+        "ninety_day": ninety_day,
+        "last_batch": last_batch,
+    }
+
+
+def serialize_strain_performance_row(
+    *,
+    strain_name,
+    supplier_name,
+    avg_yield,
+    avg_thca,
+    avg_hte,
+    avg_cpg,
+    run_count,
+    total_lbs,
+    total_thca_g,
+    total_hte_g,
+    view,
+):
+    return {
+        "strain_name": strain_name,
+        "supplier_name": supplier_name,
+        "view": view,
+        "avg_yield": float(avg_yield or 0) if avg_yield is not None else None,
+        "avg_thca": float(avg_thca or 0) if avg_thca is not None else None,
+        "avg_hte": float(avg_hte or 0) if avg_hte is not None else None,
+        "avg_cpg": float(avg_cpg or 0) if avg_cpg is not None else None,
+        "run_count": int(run_count or 0),
+        "total_lbs": float(total_lbs or 0),
+        "total_thca_g": float(total_thca_g or 0),
+        "total_hte_g": float(total_hte_g or 0),
+    }

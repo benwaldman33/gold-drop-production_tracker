@@ -334,6 +334,170 @@ def test_api_v1_runs_list_and_detail():
             db.session.commit()
 
 
+def test_api_v1_suppliers_list_and_detail():
+    app = app_module.app
+    supplier = Supplier(
+        name=f"API Supplier Perf {gen_uuid()[:8]}",
+        contact_name="Pat Grower",
+        contact_email="pat@example.com",
+        location="Salinas",
+        is_active=True,
+    )
+    purchase = Purchase(
+        supplier_id="",
+        purchase_date=date(2026, 4, 6),
+        delivery_date=date(2026, 4, 7),
+        status="delivered",
+        stated_weight_lbs=100,
+        purchase_approved_at=datetime.now(timezone.utc),
+        batch_id=f"SUP-{gen_uuid()[:6]}",
+    )
+    lot = PurchaseLot(strain_name="GMO", weight_lbs=100, remaining_weight_lbs=60)
+    run = Run(
+        run_date=date(2026, 4, 9),
+        reactor_number=1,
+        bio_in_reactor_lbs=40,
+        dry_hte_g=8,
+        dry_thca_g=22,
+        overall_yield_pct=7.5,
+        thca_yield_pct=5.5,
+        hte_yield_pct=2.0,
+        cost_per_gram_combined=4.0,
+    )
+    with app.app_context():
+        db.session.add(supplier)
+        db.session.flush()
+        purchase.supplier_id = supplier.id
+        db.session.add(purchase)
+        db.session.flush()
+        lot.purchase_id = purchase.id
+        db.session.add(lot)
+        db.session.flush()
+        db.session.add(run)
+        db.session.flush()
+        db.session.add(RunInput(run_id=run.id, lot_id=lot.id, weight_lbs=40))
+        db.session.commit()
+        supplier_id = supplier.id
+        purchase_id = purchase.id
+        lot_id = lot.id
+        run_id = run.id
+
+    headers, client_id = _make_api_headers("read:suppliers")
+    try:
+        with app.test_client() as client:
+            list_res = client.get(f"/api/v1/suppliers?q={supplier.name}", headers=headers)
+            assert list_res.status_code == 200
+            list_payload = list_res.get_json()
+            supplier_ids = {item["supplier"]["id"] for item in list_payload["data"]}
+            assert supplier_id in supplier_ids
+
+            detail_res = client.get(f"/api/v1/suppliers/{supplier_id}", headers=headers)
+            assert detail_res.status_code == 200
+            detail_payload = detail_res.get_json()["data"]
+            assert detail_payload["supplier"]["id"] == supplier_id
+            assert detail_payload["all_time"]["runs"] >= 1
+            assert detail_payload["last_batch"]["date"] == "2026-04-09"
+            assert detail_payload["contact_name"] == "Pat Grower"
+    finally:
+        with app.app_context():
+            api_client = db.session.get(ApiClient, client_id)
+            if api_client:
+                db.session.delete(api_client)
+            run_input = RunInput.query.filter_by(run_id=run_id, lot_id=lot_id).first()
+            if run_input:
+                db.session.delete(run_input)
+            run_obj = db.session.get(Run, run_id)
+            if run_obj:
+                db.session.delete(run_obj)
+            lot_obj = db.session.get(PurchaseLot, lot_id)
+            if lot_obj:
+                db.session.delete(lot_obj)
+            purchase_obj = db.session.get(Purchase, purchase_id)
+            if purchase_obj:
+                db.session.delete(purchase_obj)
+            supplier_obj = db.session.get(Supplier, supplier_id)
+            if supplier_obj:
+                db.session.delete(supplier_obj)
+            db.session.commit()
+
+
+def test_api_v1_strains_list():
+    app = app_module.app
+    supplier = Supplier(name=f"API Strain Perf {gen_uuid()[:8]}", is_active=True)
+    purchase = Purchase(
+        supplier_id="",
+        purchase_date=date(2026, 4, 5),
+        delivery_date=date(2026, 4, 6),
+        status="delivered",
+        stated_weight_lbs=80,
+        purchase_approved_at=datetime.now(timezone.utc),
+        batch_id=f"STR-{gen_uuid()[:6]}",
+    )
+    lot = PurchaseLot(strain_name="Blue Dream", weight_lbs=80, remaining_weight_lbs=40)
+    run = Run(
+        run_date=date(2026, 4, 8),
+        reactor_number=2,
+        bio_in_reactor_lbs=40,
+        dry_hte_g=10,
+        dry_thca_g=20,
+        overall_yield_pct=7.5,
+        thca_yield_pct=5.0,
+        hte_yield_pct=2.5,
+        cost_per_gram_combined=4.4,
+    )
+    with app.app_context():
+        db.session.add(supplier)
+        db.session.flush()
+        purchase.supplier_id = supplier.id
+        db.session.add(purchase)
+        db.session.flush()
+        lot.purchase_id = purchase.id
+        db.session.add(lot)
+        db.session.flush()
+        db.session.add(run)
+        db.session.flush()
+        db.session.add(RunInput(run_id=run.id, lot_id=lot.id, weight_lbs=40))
+        db.session.commit()
+        supplier_id = supplier.id
+        purchase_id = purchase.id
+        lot_id = lot.id
+        run_id = run.id
+
+    headers, client_id = _make_api_headers("read:strains")
+    try:
+        with app.test_client() as client:
+            list_res = client.get(f"/api/v1/strains?view=all&supplier_id={supplier_id}&strain=Blue", headers=headers)
+            assert list_res.status_code == 200
+            payload = list_res.get_json()
+            assert payload["meta"]["count"] >= 1
+            first = payload["data"][0]
+            assert first["strain_name"] == "Blue Dream"
+            assert first["supplier_name"] == supplier.name
+            assert first["view"] == "all"
+            assert first["run_count"] >= 1
+    finally:
+        with app.app_context():
+            api_client = db.session.get(ApiClient, client_id)
+            if api_client:
+                db.session.delete(api_client)
+            run_input = RunInput.query.filter_by(run_id=run_id, lot_id=lot_id).first()
+            if run_input:
+                db.session.delete(run_input)
+            run_obj = db.session.get(Run, run_id)
+            if run_obj:
+                db.session.delete(run_obj)
+            lot_obj = db.session.get(PurchaseLot, lot_id)
+            if lot_obj:
+                db.session.delete(lot_obj)
+            purchase_obj = db.session.get(Purchase, purchase_id)
+            if purchase_obj:
+                db.session.delete(purchase_obj)
+            supplier_obj = db.session.get(Supplier, supplier_id)
+            if supplier_obj:
+                db.session.delete(supplier_obj)
+            db.session.commit()
+
+
 def test_api_v1_slack_imports_list_and_detail():
     app = app_module.app
     row = SlackIngestedMessage(

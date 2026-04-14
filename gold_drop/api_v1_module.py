@@ -6,6 +6,7 @@ from flask import jsonify, request
 
 from gold_drop.inventory_module import _annotate_inventory_lot
 from gold_drop.purchases_module import _annotate_purchase_row
+from gold_drop.suppliers_module import supplier_incomplete_profile_fields
 from gold_drop.slack_integration_module import (
     slack_linked_run_ids_index,
     slack_supplier_candidates_for_source,
@@ -19,7 +20,7 @@ from gold_drop.slack import (
     _slack_message_needs_resolution_ui,
     _slack_ts_to_date_value,
 )
-from models import Purchase, PurchaseLot, Run, SlackIngestedMessage, db
+from models import Purchase, PurchaseLot, Run, RunInput, SlackIngestedMessage, Supplier, db
 from services.api_auth import json_api_error, require_api_scope
 from services.api_queries import (
     build_inventory_on_hand_query,
@@ -39,6 +40,8 @@ from services.api_serializers import (
     serialize_run_summary,
     serialize_slack_import_detail,
     serialize_slack_import_summary,
+    serialize_strain_performance_row,
+    serialize_supplier_performance_row,
 )
 from services.api_site import get_site_identity
 from services.lot_allocation import choose_default_lot_allocation, rank_lot_candidates
@@ -62,6 +65,9 @@ def register_routes(app, root):
     app.add_url_rule("/api/v1/lots/<lot_id>", endpoint="api_v1_lot_detail", view_func=api_v1_lot_detail)
     app.add_url_rule("/api/v1/runs", endpoint="api_v1_runs", view_func=api_v1_runs)
     app.add_url_rule("/api/v1/runs/<run_id>", endpoint="api_v1_run_detail", view_func=api_v1_run_detail)
+    app.add_url_rule("/api/v1/suppliers", endpoint="api_v1_suppliers", view_func=api_v1_suppliers)
+    app.add_url_rule("/api/v1/suppliers/<supplier_id>", endpoint="api_v1_supplier_detail", view_func=api_v1_supplier_detail)
+    app.add_url_rule("/api/v1/strains", endpoint="api_v1_strains", view_func=api_v1_strains)
     app.add_url_rule("/api/v1/slack-imports", endpoint="api_v1_slack_imports", view_func=api_v1_slack_imports)
     app.add_url_rule("/api/v1/slack-imports/<msg_id>", endpoint="api_v1_slack_import_detail", view_func=api_v1_slack_import_detail)
     app.add_url_rule("/api/v1/exceptions", endpoint="api_v1_exceptions", view_func=api_v1_exceptions)
@@ -223,6 +229,179 @@ def api_v1_run_detail(run_id):
     if run.deleted_at is not None and not include_archived:
         return json_api_error("Run not found", status_code=404, code="not_found")
     return jsonify(envelope(serialize_run_detail(run)))
+
+
+def _supplier_performance_payload(root, supplier):
+    exclude_unpriced = root._exclude_unpriced_batches_enabled()
+    runs_q = root.db.session.query(
+        root.func.avg(root.Run.overall_yield_pct),
+        root.func.avg(root.Run.thca_yield_pct),
+        root.func.avg(root.Run.hte_yield_pct),
+        root.func.avg(root.Run.cost_per_gram_combined),
+        root.func.count(root.Run.id),
+        root.func.sum(root.Run.bio_in_reactor_lbs),
+        root.func.sum(root.Run.dry_thca_g),
+        root.func.sum(root.Run.dry_hte_g),
+    ).join(
+        root.RunInput, root.Run.id == root.RunInput.run_id
+    ).join(
+        root.PurchaseLot, root.RunInput.lot_id == root.PurchaseLot.id
+    ).join(
+        root.Purchase, root.PurchaseLot.purchase_id == root.Purchase.id
+    ).filter(
+        root.Purchase.supplier_id == supplier.id,
+        root.Run.is_rollover == False,
+        root.Run.deleted_at.is_(None),
+        root.Purchase.deleted_at.is_(None),
+        root.PurchaseLot.deleted_at.is_(None),
+    )
+    if exclude_unpriced:
+        runs_q = runs_q.filter(root._priced_run_filter())
+    all_time = runs_q.first()
+    ninety = runs_q.filter(root.Run.run_date >= root.date.today() - root.timedelta(days=90)).first()
+    last_run_q = root.db.session.query(root.Run).join(
+        root.RunInput, root.Run.id == root.RunInput.run_id
+    ).join(
+        root.PurchaseLot, root.RunInput.lot_id == root.PurchaseLot.id
+    ).join(
+        root.Purchase, root.PurchaseLot.purchase_id == root.Purchase.id
+    ).filter(
+        root.Purchase.supplier_id == supplier.id,
+        root.Run.is_rollover == False,
+        root.Run.deleted_at.is_(None),
+        root.Purchase.deleted_at.is_(None),
+        root.PurchaseLot.deleted_at.is_(None),
+    )
+    if exclude_unpriced:
+        last_run_q = last_run_q.filter(root._priced_run_filter())
+    last_run = last_run_q.order_by(root.Run.run_date.desc()).first()
+    return serialize_supplier_performance_row(
+        supplier=supplier,
+        profile_incomplete=bool(supplier_incomplete_profile_fields(root, supplier)),
+        all_time={
+            "yield": float(all_time[0] or 0) if all_time[0] is not None else None,
+            "thca": float(all_time[1] or 0) if all_time[1] is not None else None,
+            "hte": float(all_time[2] or 0) if all_time[2] is not None else None,
+            "cpg": float(all_time[3] or 0) if all_time[3] is not None else None,
+            "runs": int(all_time[4] or 0),
+            "lbs": float(all_time[5] or 0),
+            "total_thca": float(all_time[6] or 0),
+            "total_hte": float(all_time[7] or 0),
+        },
+        ninety_day={
+            "yield": float(ninety[0] or 0) if ninety[0] is not None else None,
+            "thca": float(ninety[1] or 0) if ninety[1] is not None else None,
+            "hte": float(ninety[2] or 0) if ninety[2] is not None else None,
+            "cpg": float(ninety[3] or 0) if ninety[3] is not None else None,
+            "runs": int(ninety[4] or 0),
+        },
+        last_batch={
+            "yield": float(last_run.overall_yield_pct or 0) if last_run and last_run.overall_yield_pct is not None else None,
+            "thca": float(last_run.thca_yield_pct or 0) if last_run and last_run.thca_yield_pct is not None else None,
+            "hte": float(last_run.hte_yield_pct or 0) if last_run and last_run.hte_yield_pct is not None else None,
+            "cpg": float(last_run.cost_per_gram_combined or 0) if last_run and last_run.cost_per_gram_combined is not None else None,
+            "date": last_run.run_date.isoformat() if last_run and last_run.run_date else None,
+        },
+    )
+
+
+@require_api_scope("read:suppliers")
+def api_v1_suppliers():
+    root = _require_root()
+    limit, offset = parse_limit_offset(request)
+    q = Supplier.query
+    active_param = (request.args.get("active") or "").strip().lower()
+    if active_param in {"1", "true", "yes"}:
+        q = q.filter(Supplier.is_active.is_(True))
+    elif active_param in {"0", "false", "no"}:
+        q = q.filter(Supplier.is_active.is_(False))
+    if (request.args.get("q") or "").strip():
+        term = request.args.get("q").strip()
+        q = q.filter(Supplier.name.ilike(f"%{term}%"))
+    q = q.order_by(Supplier.name.asc(), Supplier.id.asc())
+    total = q.count()
+    suppliers = q.offset(offset).limit(limit).all()
+    return jsonify(envelope([_supplier_performance_payload(root, supplier) for supplier in suppliers], count=total, limit=limit, offset=offset))
+
+
+@require_api_scope("read:suppliers")
+def api_v1_supplier_detail(supplier_id):
+    root = _require_root()
+    supplier = db.session.get(Supplier, supplier_id)
+    if not supplier:
+        return json_api_error("Supplier not found", status_code=404, code="not_found")
+    payload = _supplier_performance_payload(root, supplier)
+    payload["contact_name"] = supplier.contact_name
+    payload["contact_phone"] = supplier.contact_phone
+    payload["contact_email"] = supplier.contact_email
+    payload["location"] = supplier.location
+    payload["notes"] = supplier.notes
+    payload["is_active"] = bool(supplier.is_active)
+    return jsonify(envelope(payload))
+
+
+@require_api_scope("read:strains")
+def api_v1_strains():
+    root = _require_root()
+    limit, offset = parse_limit_offset(request)
+    view = (request.args.get("view") or "all").strip().lower()
+    if view not in {"all", "90"}:
+        return json_api_error("Invalid view", status_code=400, code="bad_request")
+    query = root.db.session.query(
+        root.PurchaseLot.strain_name,
+        root.Supplier.name.label("supplier_name"),
+        root.func.avg(root.Run.overall_yield_pct).label("avg_yield"),
+        root.func.avg(root.Run.thca_yield_pct).label("avg_thca"),
+        root.func.avg(root.Run.hte_yield_pct).label("avg_hte"),
+        root.func.avg(root.Run.cost_per_gram_combined).label("avg_cpg"),
+        root.func.count(root.Run.id).label("run_count"),
+        root.func.sum(root.Run.bio_in_reactor_lbs).label("total_lbs"),
+        root.func.sum(root.Run.dry_thca_g).label("total_thca_g"),
+        root.func.sum(root.Run.dry_hte_g).label("total_hte_g"),
+    ).join(
+        root.RunInput, root.PurchaseLot.id == root.RunInput.lot_id
+    ).join(
+        root.Run, root.RunInput.run_id == root.Run.id
+    ).join(
+        root.Purchase, root.PurchaseLot.purchase_id == root.Purchase.id
+    ).join(
+        root.Supplier, root.Purchase.supplier_id == root.Supplier.id
+    ).filter(
+        root.Run.is_rollover == False,
+        root.Run.deleted_at.is_(None),
+        root.Purchase.deleted_at.is_(None),
+        root.PurchaseLot.deleted_at.is_(None),
+    )
+    if root._exclude_unpriced_batches_enabled():
+        query = query.filter(root._priced_run_filter())
+    if (request.args.get("supplier_id") or "").strip():
+        query = query.filter(root.Supplier.id == request.args.get("supplier_id").strip())
+    if (request.args.get("strain") or "").strip():
+        query = query.filter(root.PurchaseLot.strain_name.ilike(f"%{request.args.get('strain').strip()}%"))
+    if view == "90":
+        query = query.filter(root.Run.run_date >= root.date.today() - root.timedelta(days=90))
+    query = query.group_by(
+        root.PurchaseLot.strain_name, root.Supplier.name
+    ).order_by(root.desc("avg_yield"))
+    total = query.count()
+    results = query.offset(offset).limit(limit).all()
+    data = [
+        serialize_strain_performance_row(
+            strain_name=row.strain_name,
+            supplier_name=row.supplier_name,
+            avg_yield=row.avg_yield,
+            avg_thca=row.avg_thca,
+            avg_hte=row.avg_hte,
+            avg_cpg=row.avg_cpg,
+            run_count=row.run_count,
+            total_lbs=row.total_lbs,
+            total_thca_g=row.total_thca_g,
+            total_hte_g=row.total_hte_g,
+            view=view,
+        )
+        for row in results
+    ]
+    return jsonify(envelope(data, count=total, limit=limit, offset=offset))
 
 
 @require_api_scope("read:inventory")
