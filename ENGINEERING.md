@@ -98,6 +98,7 @@ Phase 1 internal API is read-only and site-local.
 - `GET /api/v1/purchases/<purchase_id>/journey`
 - `GET /api/v1/lots`
 - `GET /api/v1/lots/<lot_id>`
+- `GET /api/v1/lots/<lot_id>/journey`
 - `GET /api/v1/runs`
 - `GET /api/v1/runs/<run_id>`
 - `GET /api/v1/suppliers`

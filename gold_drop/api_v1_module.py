@@ -48,7 +48,7 @@ from services.api_serializers import (
 )
 from services.api_site import get_site_identity
 from services.lot_allocation import choose_default_lot_allocation, rank_lot_candidates
-from services.purchases_journey import build_purchase_journey_payload
+from services.purchases_journey import build_lot_journey_payload, build_purchase_journey_payload
 
 API_ROOT = None
 
@@ -71,6 +71,7 @@ def register_routes(app, root):
     )
     app.add_url_rule("/api/v1/lots", endpoint="api_v1_lots", view_func=api_v1_lots)
     app.add_url_rule("/api/v1/lots/<lot_id>", endpoint="api_v1_lot_detail", view_func=api_v1_lot_detail)
+    app.add_url_rule("/api/v1/lots/<lot_id>/journey", endpoint="api_v1_lot_journey", view_func=api_v1_lot_journey)
     app.add_url_rule("/api/v1/runs", endpoint="api_v1_runs", view_func=api_v1_runs)
     app.add_url_rule("/api/v1/runs/<run_id>", endpoint="api_v1_run_detail", view_func=api_v1_run_detail)
     app.add_url_rule("/api/v1/suppliers", endpoint="api_v1_suppliers", view_func=api_v1_suppliers)
@@ -127,6 +128,7 @@ def api_v1_capabilities():
             {"path": "/api/v1/purchases/<purchase_id>/journey", "scope": "read:journey", "kind": "detail"},
             {"path": "/api/v1/lots", "scope": "read:lots", "kind": "list"},
             {"path": "/api/v1/lots/<lot_id>", "scope": "read:lots", "kind": "detail"},
+            {"path": "/api/v1/lots/<lot_id>/journey", "scope": "read:journey", "kind": "detail"},
             {"path": "/api/v1/inventory/on-hand", "scope": "read:inventory", "kind": "list"},
             {"path": "/api/v1/summary/inventory", "scope": "read:inventory", "kind": "summary"},
             {"path": "/api/v1/runs", "scope": "read:runs", "kind": "list"},
@@ -597,6 +599,23 @@ def api_v1_lot_detail(lot_id):
         if lot.deleted_at is not None or lot.purchase is None or lot.purchase.deleted_at is not None:
             return json_api_error("Lot not found", status_code=404, code="not_found")
     return jsonify(envelope(serialize_lot_summary(lot)))
+
+
+@require_api_scope("read:journey")
+def api_v1_lot_journey(lot_id):
+    include_archived = request.args.get("include_archived") == "1"
+    lot = db.session.get(PurchaseLot, lot_id)
+    if not lot:
+        return json_api_error("Lot not found", status_code=404, code="not_found")
+    if not include_archived:
+        if lot.deleted_at is not None or lot.purchase is None or lot.purchase.deleted_at is not None:
+            return json_api_error(
+                "Lot is archived. Set include_archived=1 to view its journey.",
+                status_code=404,
+                code="not_found",
+            )
+    payload = build_lot_journey_payload(lot, include_archived=include_archived)
+    return jsonify(envelope(payload))
 
 
 @require_api_scope("read:runs")

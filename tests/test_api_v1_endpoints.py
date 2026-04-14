@@ -353,6 +353,81 @@ def test_api_v1_purchase_journey_is_wrapped_in_envelope():
             db.session.commit()
 
 
+def test_api_v1_lot_journey_is_wrapped_in_envelope():
+    app = app_module.app
+    supplier = Supplier(name=f"API Lot Journey {gen_uuid()[:8]}", is_active=True)
+    purchase = Purchase(
+        supplier_id="",
+        purchase_date=date(2026, 4, 12),
+        delivery_date=date(2026, 4, 13),
+        status="delivered",
+        stated_weight_lbs=25,
+        purchase_approved_at=datetime.now(timezone.utc),
+        batch_id=f"APIL-{gen_uuid()[:6]}",
+    )
+    lot = PurchaseLot(strain_name="Lot Journey", weight_lbs=25, remaining_weight_lbs=10)
+    run = Run(
+        run_date=date(2026, 4, 14),
+        reactor_number=5,
+        bio_in_reactor_lbs=15,
+        dry_hte_g=4,
+        dry_thca_g=6,
+    )
+    with app.app_context():
+        db.session.add(supplier)
+        db.session.flush()
+        purchase.supplier_id = supplier.id
+        db.session.add(purchase)
+        db.session.flush()
+        lot.purchase_id = purchase.id
+        db.session.add(lot)
+        db.session.flush()
+        db.session.add(run)
+        db.session.flush()
+        run_input = RunInput(run_id=run.id, lot_id=lot.id, weight_lbs=15)
+        db.session.add(run_input)
+        db.session.commit()
+        supplier_id = supplier.id
+        purchase_id = purchase.id
+        lot_id = lot.id
+        run_id = run.id
+        run_input_id = run_input.id
+
+    headers, client_id = _make_api_headers("read:journey")
+    try:
+        with app.test_client() as client:
+            response = client.get(f"/api/v1/lots/{lot_id}/journey", headers=headers)
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload["meta"]["api_version"] == "v1"
+        assert payload["data"]["lot_id"] == lot_id
+        assert payload["data"]["purchase_id"] == purchase_id
+        assert payload["data"]["summary"]["allocated_lbs"] == 15.0
+        assert payload["data"]["runs"][0]["run_id"] == run_id
+        assert payload["data"]["allocations"][0]["run_input_id"] == run_input_id
+    finally:
+        with app.app_context():
+            api_client = db.session.get(ApiClient, client_id)
+            if api_client:
+                db.session.delete(api_client)
+            run_input_obj = db.session.get(RunInput, run_input_id)
+            if run_input_obj:
+                db.session.delete(run_input_obj)
+            run_obj = db.session.get(Run, run_id)
+            if run_obj:
+                db.session.delete(run_obj)
+            lot_obj = db.session.get(PurchaseLot, lot_id)
+            if lot_obj:
+                db.session.delete(lot_obj)
+            purchase_obj = db.session.get(Purchase, purchase_id)
+            if purchase_obj:
+                db.session.delete(purchase_obj)
+            supplier_obj = db.session.get(Supplier, supplier_id)
+            if supplier_obj:
+                db.session.delete(supplier_obj)
+            db.session.commit()
+
+
 def test_api_v1_purchases_list_and_detail():
     app = app_module.app
     supplier = Supplier(name=f"API Purchases {gen_uuid()[:8]}", is_active=True)
