@@ -20,6 +20,7 @@ from services.field_submissions import (
 )
 from services.api_auth import generate_api_token, hash_api_token
 from services.site_aggregation import normalize_remote_base_url, pull_all_remote_sites, pull_remote_site
+from services.scale_ingest import SCALE_INTERFACE_TYPES, capture_weight_from_device_payload
 
 
 def register_routes(app, root):
@@ -111,6 +112,26 @@ def register_routes(app, root):
     def remote_site_pull(site_id):
         return remote_site_pull_view(root, site_id)
 
+    @root.admin_required
+    def scale_device_create():
+        return scale_device_create_view(root)
+
+    @root.admin_required
+    def scale_device_update(device_id):
+        return scale_device_update_view(root, device_id)
+
+    @root.admin_required
+    def scale_device_toggle_active(device_id):
+        return scale_device_toggle_active_view(root, device_id)
+
+    @root.admin_required
+    def scale_device_delete(device_id):
+        return scale_device_delete_view(root, device_id)
+
+    @root.admin_required
+    def scale_device_test_capture(device_id):
+        return scale_device_test_capture_view(root, device_id)
+
     app.add_url_rule("/settings", endpoint="settings", view_func=settings, methods=["GET", "POST"])
     app.add_url_rule("/field-approvals", endpoint="field_approvals", view_func=field_approvals)
     app.add_url_rule(
@@ -148,6 +169,11 @@ def register_routes(app, root):
     app.add_url_rule("/settings/remote_sites/<site_id>/toggle_active", endpoint="remote_site_toggle_active", view_func=remote_site_toggle_active, methods=["POST"])
     app.add_url_rule("/settings/remote_sites/<site_id>/delete", endpoint="remote_site_delete", view_func=remote_site_delete, methods=["POST"])
     app.add_url_rule("/settings/remote_sites/<site_id>/pull", endpoint="remote_site_pull", view_func=remote_site_pull, methods=["POST"])
+    app.add_url_rule("/settings/scale_devices/create", endpoint="scale_device_create", view_func=scale_device_create, methods=["POST"])
+    app.add_url_rule("/settings/scale_devices/<device_id>/update", endpoint="scale_device_update", view_func=scale_device_update, methods=["POST"])
+    app.add_url_rule("/settings/scale_devices/<device_id>/toggle_active", endpoint="scale_device_toggle_active", view_func=scale_device_toggle_active, methods=["POST"])
+    app.add_url_rule("/settings/scale_devices/<device_id>/delete", endpoint="scale_device_delete", view_func=scale_device_delete, methods=["POST"])
+    app.add_url_rule("/settings/scale_devices/<device_id>/test_capture", endpoint="scale_device_test_capture", view_func=scale_device_test_capture, methods=["POST"])
 
 
 def settings_redirect(root):
@@ -491,6 +517,8 @@ def settings_view(root):
     api_clients = ApiClient.query.order_by(ApiClient.created_at.desc()).all()
     api_request_logs = ApiClientRequestLog.query.order_by(ApiClientRequestLog.created_at.desc()).limit(25).all()
     remote_sites = RemoteSite.query.order_by(RemoteSite.created_at.desc()).all()
+    scale_devices = root.ScaleDevice.query.order_by(root.ScaleDevice.created_at.desc()).all()
+    recent_weight_captures = root.WeightCapture.query.order_by(root.WeightCapture.created_at.desc()).limit(25).all()
     for token in field_tokens:
         token._display_expires_at = coerce_utc(token.expires_at)
         token._display_last_used_at = coerce_utc(token.last_used_at)
@@ -505,6 +533,8 @@ def settings_view(root):
         site._display_updated_at = coerce_utc(site.updated_at)
         site._display_last_pull_started_at = coerce_utc(site.last_pull_started_at)
         site._display_last_pull_finished_at = coerce_utc(site.last_pull_finished_at)
+    for capture in recent_weight_captures:
+        capture._display_created_at = coerce_utc(capture.created_at)
     pending_field_submissions = root.FieldPurchaseSubmission.query.filter_by(status="pending").order_by(
         root.FieldPurchaseSubmission.submitted_at.desc()
     ).all()
@@ -546,6 +576,9 @@ def settings_view(root):
         api_clients=api_clients,
         api_request_logs=api_request_logs,
         remote_sites=remote_sites,
+        scale_devices=scale_devices,
+        recent_weight_captures=recent_weight_captures,
+        scale_interface_types=SCALE_INTERFACE_TYPES,
         field_submissions=pending_field_submissions,
         reviewed_field_submissions=reviewed_field_submissions,
         submission_return_to="#settings-field-intake",
@@ -562,6 +595,110 @@ def settings_view(root):
         last_api_client_name=last_api_client_name,
         last_api_client_scopes=last_api_client_scopes,
     )
+
+
+def scale_device_create_view(root):
+    name = (root.request.form.get("name") or "").strip()
+    if not name:
+        root.flash("Scale device name is required.", "error")
+        return settings_redirect(root)
+    interface_type = (root.request.form.get("interface_type") or "").strip().lower() or None
+    if interface_type and interface_type not in set(SCALE_INTERFACE_TYPES):
+        root.flash("Unsupported scale interface type.", "error")
+        return settings_redirect(root)
+    device = root.ScaleDevice(
+        name=name,
+        location=(root.request.form.get("location") or "").strip() or None,
+        make_model=(root.request.form.get("make_model") or "").strip() or None,
+        interface_type=interface_type,
+        protocol_type=(root.request.form.get("protocol_type") or "").strip() or "ascii",
+        connection_target=(root.request.form.get("connection_target") or "").strip() or None,
+        notes=(root.request.form.get("notes") or "").strip() or None,
+        is_active=True,
+    )
+    root.db.session.add(device)
+    root.db.session.commit()
+    root.flash("Scale device added.", "success")
+    return settings_redirect(root)
+
+
+def scale_device_update_view(root, device_id):
+    device = root.db.session.get(root.ScaleDevice, device_id)
+    if device is None:
+        root.flash("Scale device not found.", "error")
+        return settings_redirect(root)
+    interface_type = (root.request.form.get("interface_type") or "").strip().lower() or None
+    if interface_type and interface_type not in set(SCALE_INTERFACE_TYPES):
+        root.flash("Unsupported scale interface type.", "error")
+        return settings_redirect(root)
+    name = (root.request.form.get("name") or "").strip()
+    if not name:
+        root.flash("Scale device name is required.", "error")
+        return settings_redirect(root)
+    device.name = name
+    device.location = (root.request.form.get("location") or "").strip() or None
+    device.make_model = (root.request.form.get("make_model") or "").strip() or None
+    device.interface_type = interface_type
+    device.protocol_type = (root.request.form.get("protocol_type") or "").strip() or "ascii"
+    device.connection_target = (root.request.form.get("connection_target") or "").strip() or None
+    device.notes = (root.request.form.get("notes") or "").strip() or None
+    root.db.session.commit()
+    root.flash("Scale device updated.", "success")
+    return settings_redirect(root)
+
+
+def scale_device_toggle_active_view(root, device_id):
+    device = root.db.session.get(root.ScaleDevice, device_id)
+    if device is None:
+        root.flash("Scale device not found.", "error")
+        return settings_redirect(root)
+    device.is_active = not bool(device.is_active)
+    root.db.session.commit()
+    root.flash("Scale device activated." if device.is_active else "Scale device disabled.", "success")
+    return settings_redirect(root)
+
+
+def scale_device_delete_view(root, device_id):
+    device = root.db.session.get(root.ScaleDevice, device_id)
+    if device is None:
+        root.flash("Scale device not found.", "error")
+        return settings_redirect(root)
+    has_captures = root.WeightCapture.query.filter_by(device_id=device.id).first() is not None
+    if has_captures:
+        root.flash("Cannot delete a scale device with recorded captures. Disable it instead.", "error")
+        return settings_redirect(root)
+    root.db.session.delete(device)
+    root.db.session.commit()
+    root.flash("Scale device deleted.", "success")
+    return settings_redirect(root)
+
+
+def scale_device_test_capture_view(root, device_id):
+    device = root.db.session.get(root.ScaleDevice, device_id)
+    if device is None:
+        root.flash("Scale device not found.", "error")
+        return settings_redirect(root)
+    raw_payload = (root.request.form.get("raw_payload") or "").strip()
+    capture_type = (root.request.form.get("capture_type") or "").strip() or "adjustment"
+    notes = (root.request.form.get("notes") or "").strip() or None
+    try:
+        capture, parsed = capture_weight_from_device_payload(
+            root,
+            device=device,
+            capture_type=capture_type,
+            raw_payload=raw_payload,
+            notes=notes,
+        )
+        root.db.session.commit()
+    except Exception as exc:
+        root.db.session.rollback()
+        root.flash(f"Scale test capture failed: {exc}", "error")
+        return settings_redirect(root)
+    root.flash(
+        f"Captured {parsed['measured_weight']} {parsed.get('unit') or 'lb'} from {device.name}.",
+        "success",
+    )
+    return settings_redirect(root)
 
 
 def field_approvals_view(root):

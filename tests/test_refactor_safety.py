@@ -98,6 +98,14 @@ def test_settings_route_renders_remote_sites_section():
     assert b"Add Remote Site" in page.data
 
 
+def test_settings_route_renders_smart_scales_section():
+    page = _call_view_as_user("/settings", "settings", "admin")
+    assert page.status_code == 200
+    assert b"Smart Scales" in page.data
+    assert b"Add Scale Device" in page.data
+    assert b"Recent Weight Captures" in page.data
+
+
 def test_admin_can_create_and_revoke_api_client_from_settings():
     create = _call_view_as_user(
         "/settings/api_clients/create",
@@ -184,6 +192,61 @@ def test_admin_can_create_and_pull_remote_site_from_settings():
         site.is_active = False
         db.session.commit()
         db.session.delete(site)
+        db.session.commit()
+
+
+def test_admin_can_create_scale_device_and_test_capture_from_settings():
+    create = _call_view_as_user(
+        "/settings/scale_devices/create",
+        "scale_device_create",
+        "admin",
+        method="POST",
+        data={
+            "name": "Settings Scale Device",
+            "location": "Receiving",
+            "make_model": "Demo",
+            "interface_type": "rs232",
+            "protocol_type": "ascii",
+            "connection_target": "COM9",
+            "notes": "created in test",
+            "return_to": "#settings-scales",
+        },
+    )
+    assert create.status_code in (302, 303)
+    assert "#settings-scales" in create.headers["Location"]
+
+    app = app_module.app
+    with app.app_context():
+        device = ScaleDevice.query.filter_by(name="Settings Scale Device").first()
+        assert device is not None
+        device_id = device.id
+
+    capture = _call_view_as_user(
+        f"/settings/scale_devices/{device_id}/test_capture",
+        "scale_device_test_capture",
+        "admin",
+        method="POST",
+        data={
+            "capture_type": "adjustment",
+            "raw_payload": "ST,GS, 98.4 lb",
+            "notes": "settings test ingest",
+            "return_to": "#settings-scales",
+        },
+        device_id=device_id,
+    )
+    assert capture.status_code in (302, 303)
+
+    with app.app_context():
+        saved_device = db.session.get(ScaleDevice, device_id)
+        assert saved_device is not None
+        weight_capture = WeightCapture.query.filter_by(device_id=device_id).order_by(WeightCapture.created_at.desc()).first()
+        assert weight_capture is not None
+        capture_id = weight_capture.id
+        assert float(weight_capture.measured_weight or 0) == 98.4
+        assert weight_capture.source_mode == "device"
+        assert weight_capture.raw_payload == "ST,GS, 98.4 lb"
+        db.session.delete(weight_capture)
+        db.session.delete(saved_device)
         db.session.commit()
 
 

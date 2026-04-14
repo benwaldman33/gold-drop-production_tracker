@@ -753,6 +753,183 @@
   </div>
 </div>
 
+<!-- Smart Scales -->
+<div class="card" id="settings-scales">
+  <div class="card-header"><h3>Smart Scales</h3></div>
+  <div style="background:var(--dark);border:1px solid var(--dark-border);border-radius:var(--radius);padding:16px;">
+    <div class="text-sm" style="color:var(--text-secondary);margin-bottom:14px;">
+      Register live scale devices here and test raw payload ingestion before wiring them into receiving or run workflows.
+    </div>
+
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:0 0 12px;">Add Scale Device</h4>
+    <form method="POST" action="{{ url_for('scale_device_create') }}">
+      <input type="hidden" name="return_to" value="#settings-scales">
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Name</label>
+          <input type="text" name="name" placeholder="e.g. Receiving Scale A" required>
+        </div>
+        <div class="form-group">
+          <label>Location</label>
+          <input type="text" name="location" placeholder="Receiving / Lab / Vault">
+        </div>
+        <div class="form-group">
+          <label>Make / model</label>
+          <input type="text" name="make_model" placeholder="Vendor or hardware model">
+        </div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Interface type</label>
+          <select name="interface_type">
+            <option value="">Select interface...</option>
+            {% for interface_type in scale_interface_types %}
+            <option value="{{ interface_type }}">{{ interface_type }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Protocol type</label>
+          <input type="text" name="protocol_type" value="ascii" placeholder="ascii">
+        </div>
+        <div class="form-group">
+          <label>Connection target</label>
+          <input type="text" name="connection_target" placeholder="COM3 / /dev/ttyUSB0 / 10.0.0.25:4001">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <input type="text" name="notes" placeholder="Adapter notes, baud settings, or floor owner">
+      </div>
+      <button type="submit" class="btn btn-primary">Add Scale Device</button>
+    </form>
+
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:18px 0 12px;">Registered Scale Devices</h4>
+    <div class="table-wrap mb-2">
+      <table>
+        <thead>
+          <tr><th>Device</th><th>Connection</th><th>State</th><th>Test ingest</th></tr>
+        </thead>
+        <tbody>
+          {% for device in scale_devices %}
+          <tr>
+            <td>
+              <strong>{{ device.name }}</strong>
+              <div class="text-sm cell-muted" style="margin-top:4px;">
+                {{ device.location or 'No location' }}{% if device.make_model %} · {{ device.make_model }}{% endif %}
+              </div>
+              {% if device.notes %}
+              <div class="text-sm cell-muted" style="margin-top:4px;">{{ device.notes }}</div>
+              {% endif %}
+            </td>
+            <td class="text-sm">
+              <div><code>{{ device.interface_type or 'n/a' }}</code> · <code>{{ device.protocol_type or 'ascii' }}</code></div>
+              <div class="cell-muted" style="margin-top:4px;">{{ device.connection_target or 'No target' }}</div>
+            </td>
+            <td class="text-sm" style="min-width:260px;">
+              {% if device.is_active %}
+              <span class="badge badge-green">Active</span>
+              {% else %}
+              <span class="badge badge-gray">Disabled</span>
+              {% endif %}
+              <form method="POST" action="{{ url_for('scale_device_update', device_id=device.id) }}" style="margin-top:8px;">
+                <input type="hidden" name="return_to" value="#settings-scales">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                  <input type="text" name="name" value="{{ device.name }}" placeholder="Name">
+                  <input type="text" name="location" value="{{ device.location or '' }}" placeholder="Location">
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
+                  <input type="text" name="make_model" value="{{ device.make_model or '' }}" placeholder="Make / model">
+                  <input type="text" name="connection_target" value="{{ device.connection_target or '' }}" placeholder="Connection target">
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
+                  <select name="interface_type">
+                    <option value="">Select interface...</option>
+                    {% for interface_type in scale_interface_types %}
+                    <option value="{{ interface_type }}" {% if device.interface_type == interface_type %}selected{% endif %}>{{ interface_type }}</option>
+                    {% endfor %}
+                  </select>
+                  <input type="text" name="protocol_type" value="{{ device.protocol_type or 'ascii' }}" placeholder="Protocol">
+                </div>
+                <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;margin-top:8px;align-items:start;">
+                  <input type="text" name="notes" value="{{ device.notes or '' }}" placeholder="Notes">
+                  <button type="submit" class="btn btn-secondary btn-sm">Save</button>
+                </div>
+              </form>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+                <form method="POST" action="{{ url_for('scale_device_toggle_active', device_id=device.id) }}" style="display:inline;">
+                  <input type="hidden" name="return_to" value="#settings-scales">
+                  <button type="submit" class="btn btn-secondary btn-sm">{{ 'Disable' if device.is_active else 'Activate' }}</button>
+                </form>
+                <form method="POST" action="{{ url_for('scale_device_delete', device_id=device.id) }}" style="display:inline;" onsubmit="return confirm('Delete this scale device?');">
+                  <input type="hidden" name="return_to" value="#settings-scales">
+                  <button type="submit" class="btn btn-secondary btn-sm">Delete</button>
+                </form>
+              </div>
+            </td>
+            <td style="min-width:320px;">
+              <form method="POST" action="{{ url_for('scale_device_test_capture', device_id=device.id) }}">
+                <input type="hidden" name="return_to" value="#settings-scales">
+                <div class="form-group" style="margin-bottom:8px;">
+                  <label>Capture type</label>
+                  <select name="capture_type">
+                    <option value="adjustment">adjustment</option>
+                    <option value="intake">intake</option>
+                    <option value="allocation">allocation</option>
+                    <option value="output">output</option>
+                  </select>
+                </div>
+                <div class="form-group" style="margin-bottom:8px;">
+                  <label>Raw payload</label>
+                  <textarea name="raw_payload" rows="3" placeholder="e.g. ST,GS, 124.6 lb" required></textarea>
+                </div>
+                <div class="form-group" style="margin-bottom:8px;">
+                  <label>Notes</label>
+                  <input type="text" name="notes" placeholder="Optional test note">
+                </div>
+                <button type="submit" class="btn btn-secondary btn-sm">Test ingest</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="text-center cell-muted" style="padding:20px;">No scale devices configured yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:18px 0 12px;">Recent Weight Captures</h4>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>When</th><th>Device</th><th>Capture</th><th>Weight</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          {% for capture in recent_weight_captures %}
+          <tr>
+            <td class="text-sm">{{ capture._display_created_at.strftime('%m/%d/%y %H:%M') if capture._display_created_at else '—' }}</td>
+            <td class="text-sm">{{ capture.device.name if capture.device else 'Manual / unknown' }}</td>
+            <td class="text-sm"><code>{{ capture.capture_type }}</code> · <code>{{ capture.source_mode }}</code></td>
+            <td class="text-sm">
+              <strong>{{ "{:,.2f}".format(capture.measured_weight or 0) }}</strong> {{ capture.unit }}
+              {% if capture.is_stable is not none %}<span class="cell-muted"> · {{ 'stable' if capture.is_stable else 'unstable' }}</span>{% endif %}
+            </td>
+            <td class="text-sm">
+              {{ capture.notes or '—' }}
+              {% if capture.raw_payload %}
+              <div class="cell-muted" style="margin-top:4px;"><code>{{ capture.raw_payload }}</code></div>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-center cell-muted" style="padding:20px;">No weight captures recorded yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <!-- Remote Sites -->
 <div class="card" id="settings-remote-sites">
   <div class="card-header"><h3>Remote Sites</h3></div>

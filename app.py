@@ -42,7 +42,7 @@ from sqlalchemy import func, desc, and_, or_, text, select, exists
 from models import (db, User, Supplier, Purchase, PurchaseLot, Run, RunInput,
                     KpiTarget, SystemSetting, AuditLog, BiomassAvailability, CostEntry,
                     FieldAccessToken, FieldPurchaseSubmission, LabTest, SupplierAttachment, PhotoAsset,
-                    SlackIngestedMessage, SlackChannelSyncConfig, LotScanEvent, gen_uuid)
+                    SlackIngestedMessage, SlackChannelSyncConfig, LotScanEvent, ScaleDevice, WeightCapture, gen_uuid)
 from purchase_import import parse_purchase_spreadsheet_upload
 from blueprints import register_blueprints
 from policies.purchase_status import (

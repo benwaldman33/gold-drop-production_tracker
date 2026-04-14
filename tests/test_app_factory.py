@@ -88,6 +88,8 @@ class AppFactorySmokeTest(unittest.TestCase):
         self.assertIn("/settings/slack-run-mappings", rules)
         self.assertIn("/settings/api_clients/create", rules)
         self.assertIn("/settings/pull_remote_sites", rules)
+        self.assertIn("/settings/scale_devices/create", rules)
+        self.assertIn("/settings/scale_devices/<device_id>/test_capture", rules)
 
     def test_extracted_route_modules_import(self) -> None:
         self.assertTrue(hasattr(settings_module, "settings_view"))
