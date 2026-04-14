@@ -340,6 +340,7 @@ Current endpoints:
 - `/api/v1/lots/<lot_id>/journey`
 - `/api/v1/runs`
 - `/api/v1/runs/<run_id>`
+- `/api/v1/runs/<run_id>/journey`
 - `/api/v1/suppliers`
 - `/api/v1/suppliers/<supplier_id>`
 - `/api/v1/strains`

@@ -48,7 +48,7 @@ from services.api_serializers import (
 )
 from services.api_site import get_site_identity
 from services.lot_allocation import choose_default_lot_allocation, rank_lot_candidates
-from services.purchases_journey import build_lot_journey_payload, build_purchase_journey_payload
+from services.purchases_journey import build_lot_journey_payload, build_purchase_journey_payload, build_run_journey_payload
 
 API_ROOT = None
 
@@ -74,6 +74,7 @@ def register_routes(app, root):
     app.add_url_rule("/api/v1/lots/<lot_id>/journey", endpoint="api_v1_lot_journey", view_func=api_v1_lot_journey)
     app.add_url_rule("/api/v1/runs", endpoint="api_v1_runs", view_func=api_v1_runs)
     app.add_url_rule("/api/v1/runs/<run_id>", endpoint="api_v1_run_detail", view_func=api_v1_run_detail)
+    app.add_url_rule("/api/v1/runs/<run_id>/journey", endpoint="api_v1_run_journey", view_func=api_v1_run_journey)
     app.add_url_rule("/api/v1/suppliers", endpoint="api_v1_suppliers", view_func=api_v1_suppliers)
     app.add_url_rule("/api/v1/suppliers/<supplier_id>", endpoint="api_v1_supplier_detail", view_func=api_v1_supplier_detail)
     app.add_url_rule("/api/v1/strains", endpoint="api_v1_strains", view_func=api_v1_strains)
@@ -133,6 +134,7 @@ def api_v1_capabilities():
             {"path": "/api/v1/summary/inventory", "scope": "read:inventory", "kind": "summary"},
             {"path": "/api/v1/runs", "scope": "read:runs", "kind": "list"},
             {"path": "/api/v1/runs/<run_id>", "scope": "read:runs", "kind": "detail"},
+            {"path": "/api/v1/runs/<run_id>/journey", "scope": "read:journey", "kind": "detail"},
             {"path": "/api/v1/suppliers", "scope": "read:suppliers", "kind": "list"},
             {"path": "/api/v1/suppliers/<supplier_id>", "scope": "read:suppliers", "kind": "detail"},
             {"path": "/api/v1/strains", "scope": "read:strains", "kind": "list"},
@@ -662,6 +664,22 @@ def api_v1_run_detail(run_id):
     if run.deleted_at is not None and not include_archived:
         return json_api_error("Run not found", status_code=404, code="not_found")
     return jsonify(envelope(serialize_run_detail(run)))
+
+
+@require_api_scope("read:journey")
+def api_v1_run_journey(run_id):
+    include_archived = request.args.get("include_archived") == "1"
+    run = db.session.get(Run, run_id)
+    if not run:
+        return json_api_error("Run not found", status_code=404, code="not_found")
+    if run.deleted_at is not None and not include_archived:
+        return json_api_error(
+            "Run is archived. Set include_archived=1 to view its journey.",
+            status_code=404,
+            code="not_found",
+        )
+    payload = build_run_journey_payload(run, include_archived=include_archived)
+    return jsonify(envelope(payload))
 
 
 def _supplier_performance_payload(root, supplier):

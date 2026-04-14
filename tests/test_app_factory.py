@@ -61,6 +61,7 @@ class AppFactorySmokeTest(unittest.TestCase):
         self.assertIn("/api/v1/lots", rules)
         self.assertIn("/api/v1/lots/<lot_id>/journey", rules)
         self.assertIn("/api/v1/slack-imports", rules)
+        self.assertIn("/api/v1/runs/<run_id>/journey", rules)
         self.assertIn("/api/v1/exceptions", rules)
         self.assertIn("/api/v1/summary/inventory", rules)
         self.assertIn("/api/v1/summary/slack-imports", rules)
