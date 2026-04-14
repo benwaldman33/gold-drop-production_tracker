@@ -4,7 +4,7 @@ import json
 from datetime import date, datetime, timezone
 
 import app as app_module
-from models import Purchase, PurchaseLot, Run, RunInput, Supplier, db, gen_uuid
+from models import Purchase, PurchaseLot, RemoteSite, Run, RunInput, Supplier, db, gen_uuid
 from scripts.mcp_server import handle_request
 from services.mcp_tools import execute_mcp_tool, list_mcp_tools
 
@@ -14,6 +14,7 @@ def test_mcp_tools_registry_exposes_core_tools():
     assert "inventory_snapshot" in names
     assert "journey_resolve" in names
     assert "search_entities" in names
+    assert "cross_site_summary" in names
 
 
 def test_mcp_server_handles_initialize_and_tools_list():
@@ -110,4 +111,53 @@ def test_mcp_tool_execution_returns_inventory_and_journey_payloads():
             supplier_obj = db.session.get(Supplier, supplier_id)
             if supplier_obj:
                 db.session.delete(supplier_obj)
+            db.session.commit()
+
+
+def test_mcp_tool_execution_supports_dashboard_and_cross_site_reads():
+    app = app_module.app
+    with app.app_context():
+        remote_site = RemoteSite(
+            name=f"MCP Remote {gen_uuid()[:8]}",
+            base_url=f"https://mcp-{gen_uuid()[:8]}.example.com",
+            site_code="MCPR",
+            site_name="MCP Remote Site",
+            site_region="Nevada",
+            site_environment="production",
+            is_active=True,
+            last_pull_status="success",
+        )
+        remote_site.set_payload("last_dashboard_payload_json", {"totals": {"total_runs": 3, "total_lbs": 120.0, "total_dry_output_g": 21.0}})
+        remote_site.set_payload("last_inventory_payload_json", {"total_on_hand_lbs": 88.0})
+        remote_site.set_payload("last_exceptions_payload_json", {"total_exceptions": 1})
+        remote_site.set_payload("last_slack_payload_json", {"total_messages": 4})
+        remote_site.set_payload("last_suppliers_payload_json", [{"supplier": {"name": "Remote Farmlane"}, "all_time": {"runs": 2}}])
+        remote_site.set_payload("last_strains_payload_json", [{"strain_name": "Remote Dream", "supplier_name": "Remote Farmlane", "view": "all"}])
+        db.session.add(remote_site)
+        db.session.commit()
+        remote_site_id = remote_site.id
+
+    try:
+        site_payload = execute_mcp_tool("site_identity", {})
+        assert "site_code" in site_payload
+
+        dashboard_payload = execute_mcp_tool("dashboard_summary", {"period": "30"})
+        assert "totals" in dashboard_payload
+
+        remote_payload = execute_mcp_tool("remote_sites", {"limit": 10})
+        assert any(site["id"] == remote_site_id for site in remote_payload["sites"])
+
+        cross_site_payload = execute_mcp_tool("cross_site_summary", {"period": "30"})
+        assert cross_site_payload["sites_total"] >= 2
+
+        supplier_compare = execute_mcp_tool("cross_site_supplier_compare", {"q": "remote", "limit": 10})
+        assert any(row["site"]["source"] == "remote_cache" for row in supplier_compare["results"])
+
+        strain_compare = execute_mcp_tool("cross_site_strain_compare", {"q": "remote", "limit": 10})
+        assert any(row["site"]["source"] == "remote_cache" for row in strain_compare["results"])
+    finally:
+        with app.app_context():
+            remote_site = db.session.get(RemoteSite, remote_site_id)
+            if remote_site:
+                db.session.delete(remote_site)
             db.session.commit()

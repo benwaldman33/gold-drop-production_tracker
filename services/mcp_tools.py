@@ -3,8 +3,12 @@ from __future__ import annotations
 from collections.abc import Callable
 
 import app as app_module
-from models import Purchase, PurchaseLot, Run, Supplier
-from services.api_queries import build_inventory_on_hand_query, build_lots_query, parse_limit_offset
+from sqlalchemy import or_
+
+from gold_drop.suppliers_module import supplier_incomplete_profile_fields
+from models import Purchase, PurchaseLot, RemoteSite, Run, Supplier
+from services.api_queries import build_inventory_on_hand_query, build_lots_query
+from services.api_site import get_site_identity
 from services.api_serializers import (
     serialize_inventory_lot,
     serialize_lot_summary,
@@ -12,8 +16,8 @@ from services.api_serializers import (
     serialize_strain_performance_row,
     serialize_supplier_performance_row,
 )
-from services.lot_allocation import choose_default_lot_allocation, rank_lot_candidates
 from services.purchases_journey import build_lot_journey_payload, build_purchase_journey_payload, build_run_journey_payload
+from services.site_aggregation import build_aggregation_summary, serialize_remote_site_cache
 
 
 class McpToolError(ValueError):
@@ -70,7 +74,7 @@ def _supplier_performance_payload(root, supplier):
     last_run = last_run_q.order_by(root.Run.run_date.desc()).first()
     return serialize_supplier_performance_row(
         supplier=supplier,
-        profile_incomplete=bool(root.supplier_incomplete_profile_fields(root, supplier)),
+        profile_incomplete=bool(supplier_incomplete_profile_fields(root, supplier)),
         all_time={
             "yield": float(all_time[0] or 0) if all_time[0] is not None else None,
             "thca": float(all_time[1] or 0) if all_time[1] is not None else None,
@@ -211,11 +215,13 @@ def _run_journey(arguments: dict) -> dict:
 
 def _reconciliation_overview(arguments: dict) -> dict:
     root = _root()
-    built, error = root.api_v1_module._build_slack_import_items(root)
+    from gold_drop import api_v1_module
+
+    built, error = api_v1_module._build_slack_import_items(root)
     if error:
         raise McpToolError("Unable to build reconciliation overview")
     items, bucket_counts = built
-    exception_payload = root.api_v1_module._exceptions_summary_payload(root)
+    exception_payload = api_v1_module._exceptions_summary_payload(root)
     return {
         "slack_imports": {
             "total_messages": len(items),
@@ -224,6 +230,137 @@ def _reconciliation_overview(arguments: dict) -> dict:
             "needs_manual_match_items": [item for item in items if item.get("triage_bucket") == "needs_manual_match"][:10],
         },
         "exceptions": exception_payload,
+    }
+
+
+def _site_identity(arguments: dict) -> dict:
+    return get_site_identity()
+
+
+def _dashboard_summary(arguments: dict) -> dict:
+    from gold_drop import api_v1_module
+
+    period = str(arguments.get("period") or "30").strip()
+    if period not in {"7", "30", "90"}:
+        raise McpToolError("period must be one of 7, 30, or 90")
+    with app_module.app.test_request_context("/mcp/dashboard", query_string={"period": period}):
+        response = api_v1_module.api_v1_dashboard_summary.__wrapped__()
+        return response.get_json()["data"]
+
+
+def _cross_site_summary(arguments: dict) -> dict:
+    from gold_drop import api_v1_module
+
+    root = _root()
+    local_site = get_site_identity()
+    local_dashboard = _dashboard_summary({"period": str(arguments.get("period") or "30")})
+    local_inventory = api_v1_module._inventory_summary_payload(root, supplier_id=None, strain=None)
+    local_exceptions = api_v1_module._exceptions_summary_payload(root)
+    local_slack, error = api_v1_module._slack_imports_summary_payload(root)
+    if error:
+        raise McpToolError("Unable to build local Slack summary")
+    return build_aggregation_summary(
+        local_site,
+        local_dashboard=local_dashboard,
+        local_inventory=local_inventory,
+        local_exceptions=local_exceptions,
+        local_slack=local_slack,
+    )
+
+
+def _remote_sites(arguments: dict) -> dict:
+    limit = max(1, min(int(arguments.get("limit") or 50), 200))
+    sites = RemoteSite.query.order_by(RemoteSite.name.asc()).limit(limit).all()
+    return {
+        "count": len(sites),
+        "sites": [serialize_remote_site_cache(site) for site in sites],
+    }
+
+
+def _cross_site_supplier_compare(arguments: dict) -> dict:
+    query_text = (arguments.get("q") or "").strip().lower()
+    limit = max(1, min(int(arguments.get("limit") or 100), 200))
+    rows = []
+    local_site = get_site_identity()
+    root = _root()
+    for supplier in Supplier.query.order_by(Supplier.name.asc(), Supplier.id.asc()).all():
+        payload = _supplier_performance_payload(root, supplier)
+        if query_text and query_text not in ((payload.get("supplier") or {}).get("name") or "").lower():
+            continue
+        payload["site"] = {
+            "source": "local",
+            "site_code": local_site.get("site_code"),
+            "site_name": local_site.get("site_name"),
+            "site_region": local_site.get("site_region"),
+            "site_environment": local_site.get("site_environment"),
+        }
+        rows.append(payload)
+    for remote_site in RemoteSite.query.filter(RemoteSite.is_active.is_(True)).order_by(RemoteSite.name.asc()).all():
+        for payload in remote_site.payload("last_suppliers_payload_json") or []:
+            supplier_name = ((payload.get("supplier") or {}).get("name") or "").lower()
+            if query_text and query_text not in supplier_name:
+                continue
+            item = dict(payload)
+            item["site"] = {
+                "source": "remote_cache",
+                "site_code": remote_site.site_code,
+                "site_name": remote_site.site_name or remote_site.name,
+                "site_region": remote_site.site_region,
+                "site_environment": remote_site.site_environment,
+            }
+            rows.append(item)
+    return {"count": len(rows[:limit]), "results": rows[:limit], "query": query_text or None}
+
+
+def _cross_site_strain_compare(arguments: dict) -> dict:
+    from gold_drop import api_v1_module
+
+    root = _root()
+    query_text = (arguments.get("q") or "").strip().lower()
+    supplier_filter = (arguments.get("supplier_name") or "").strip().lower()
+    limit = max(1, min(int(arguments.get("limit") or 100), 200))
+    local_site = get_site_identity()
+    rows = []
+    with app_module.app.test_request_context(
+        "/mcp/aggregation/strains",
+        query_string={"view": "all", "supplier_id": "", "strain": query_text},
+    ):
+        local_payload = api_v1_module.api_v1_strains.__wrapped__().get_json()["data"]
+    for payload in local_payload:
+        supplier_name = (payload.get("supplier_name") or "").lower()
+        if supplier_filter and supplier_filter not in supplier_name:
+            continue
+        item = dict(payload)
+        item["site"] = {
+            "source": "local",
+            "site_code": local_site.get("site_code"),
+            "site_name": local_site.get("site_name"),
+            "site_region": local_site.get("site_region"),
+            "site_environment": local_site.get("site_environment"),
+        }
+        rows.append(item)
+    for remote_site in RemoteSite.query.filter(RemoteSite.is_active.is_(True)).order_by(RemoteSite.name.asc()).all():
+        for payload in remote_site.payload("last_strains_payload_json") or []:
+            strain_name = (payload.get("strain_name") or "").lower()
+            supplier_name = (payload.get("supplier_name") or "").lower()
+            if query_text and query_text not in strain_name:
+                continue
+            if supplier_filter and supplier_filter not in supplier_name:
+                continue
+            item = dict(payload)
+            item["site"] = {
+                "source": "remote_cache",
+                "site_code": remote_site.site_code,
+                "site_name": remote_site.site_name or remote_site.name,
+                "site_region": remote_site.site_region,
+                "site_environment": remote_site.site_environment,
+            }
+            rows.append(item)
+    return {
+        "count": len(rows[:limit]),
+        "results": rows[:limit],
+        "query": query_text or None,
+        "supplier_name": supplier_filter or None,
     }
 
 
@@ -256,7 +393,7 @@ def _search_entities(arguments: dict) -> dict:
     if "purchases" in requested_types:
         purchases = Purchase.query.filter(
             Purchase.deleted_at.is_(None),
-            app_module.or_(
+            or_(
                 Purchase.batch_id.ilike(f"%{query_text}%"),
                 Purchase.notes.ilike(f"%{query_text}%"),
             ),
@@ -280,7 +417,7 @@ def _search_entities(arguments: dict) -> dict:
         lots = PurchaseLot.query.join(Purchase).filter(
             Purchase.deleted_at.is_(None),
             PurchaseLot.deleted_at.is_(None),
-            app_module.or_(
+            or_(
                 PurchaseLot.tracking_id == query_text,
                 PurchaseLot.strain_name.ilike(f"%{query_text}%"),
                 Purchase.batch_id.ilike(f"%{query_text}%"),
@@ -402,6 +539,12 @@ def _strain_performance(arguments: dict) -> dict:
 
 MCP_TOOLS: list[dict[str, object]] = [
     {
+        "name": "site_identity",
+        "description": "Return the configured local site identity for this deployment.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "handler": _site_identity,
+    },
+    {
         "name": "inventory_snapshot",
         "description": "Summarize on-hand inventory and return matching lots.",
         "inputSchema": {"type": "object", "properties": {"supplier_id": {"type": "string"}, "strain": {"type": "string"}, "limit": {"type": "integer"}}, "additionalProperties": False},
@@ -444,6 +587,24 @@ MCP_TOOLS: list[dict[str, object]] = [
         "handler": _reconciliation_overview,
     },
     {
+        "name": "dashboard_summary",
+        "description": "Return the site dashboard summary for a 7, 30, or 90 day period.",
+        "inputSchema": {"type": "object", "properties": {"period": {"type": "string", "enum": ["7", "30", "90"]}}, "additionalProperties": False},
+        "handler": _dashboard_summary,
+    },
+    {
+        "name": "cross_site_summary",
+        "description": "Return the cached cross-site rollup summary using the local site and registered remote-site caches.",
+        "inputSchema": {"type": "object", "properties": {"period": {"type": "string", "enum": ["7", "30", "90"]}}, "additionalProperties": False},
+        "handler": _cross_site_summary,
+    },
+    {
+        "name": "remote_sites",
+        "description": "List registered remote sites and their cached payload status.",
+        "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer"}}, "additionalProperties": False},
+        "handler": _remote_sites,
+    },
+    {
         "name": "search_entities",
         "description": "Search suppliers, purchases, lots, and runs by text.",
         "inputSchema": {"type": "object", "properties": {"q": {"type": "string"}, "types": {"oneOf": [{"type": "string"}, {"type": "array", "items": {"type": "string"}}]}, "limit": {"type": "integer"}}, "required": ["q"], "additionalProperties": False},
@@ -460,6 +621,18 @@ MCP_TOOLS: list[dict[str, object]] = [
         "description": "Return strain-performance rows with optional supplier/strain filters.",
         "inputSchema": {"type": "object", "properties": {"view": {"type": "string", "enum": ["all", "90"]}, "supplier_id": {"type": "string"}, "strain": {"type": "string"}, "limit": {"type": "integer"}}, "additionalProperties": False},
         "handler": _strain_performance,
+    },
+    {
+        "name": "cross_site_supplier_compare",
+        "description": "Compare supplier performance across the local site and cached remote-site supplier payloads.",
+        "inputSchema": {"type": "object", "properties": {"q": {"type": "string"}, "limit": {"type": "integer"}}, "additionalProperties": False},
+        "handler": _cross_site_supplier_compare,
+    },
+    {
+        "name": "cross_site_strain_compare",
+        "description": "Compare strain performance across the local site and cached remote-site strain payloads.",
+        "inputSchema": {"type": "object", "properties": {"q": {"type": "string"}, "supplier_name": {"type": "string"}, "limit": {"type": "integer"}}, "additionalProperties": False},
+        "handler": _cross_site_strain_compare,
     },
 ]
 
