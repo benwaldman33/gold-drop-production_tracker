@@ -13,6 +13,8 @@ AGGREGATION_DATASETS = (
     ("inventory_payload_json", "/api/v1/summary/inventory"),
     ("exceptions_payload_json", "/api/v1/summary/exceptions"),
     ("slack_payload_json", "/api/v1/summary/slack-imports"),
+    ("suppliers_payload_json", "/api/v1/suppliers"),
+    ("strains_payload_json", "/api/v1/strains"),
 )
 
 
@@ -108,6 +110,8 @@ def serialize_remote_site_cache(remote_site: RemoteSite) -> dict:
             "inventory": remote_site.payload("last_inventory_payload_json"),
             "exceptions": remote_site.payload("last_exceptions_payload_json"),
             "slack_imports": remote_site.payload("last_slack_payload_json"),
+            "suppliers": remote_site.payload("last_suppliers_payload_json"),
+            "strains": remote_site.payload("last_strains_payload_json"),
         },
     }
 

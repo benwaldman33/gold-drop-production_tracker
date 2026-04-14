@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 
 from services.lot_allocation import ensure_lot_tracking_fields
 
@@ -85,6 +86,36 @@ def ensure_sqlite_schema(root) -> None:
             root.db.session.execute(text("ALTER TABLE api_clients ADD COLUMN last_used_scope VARCHAR(64)"))
         if "last_used_endpoint" not in cols:
             root.db.session.execute(text("ALTER TABLE api_clients ADD COLUMN last_used_endpoint VARCHAR(255)"))
+
+    if has_table("remote_sites"):
+        cols = column_names("remote_sites")
+        if "last_suppliers_payload_json" not in cols:
+            try:
+                root.db.session.execute(text("ALTER TABLE remote_sites ADD COLUMN last_suppliers_payload_json TEXT"))
+            except OperationalError as exc:
+                if "duplicate column name" not in str(getattr(exc, "orig", exc)).lower():
+                    raise
+        if "last_strains_payload_json" not in cols:
+            try:
+                root.db.session.execute(text("ALTER TABLE remote_sites ADD COLUMN last_strains_payload_json TEXT"))
+            except OperationalError as exc:
+                if "duplicate column name" not in str(getattr(exc, "orig", exc)).lower():
+                    raise
+
+    if has_table("remote_site_pulls"):
+        cols = column_names("remote_site_pulls")
+        if "suppliers_payload_json" not in cols:
+            try:
+                root.db.session.execute(text("ALTER TABLE remote_site_pulls ADD COLUMN suppliers_payload_json TEXT"))
+            except OperationalError as exc:
+                if "duplicate column name" not in str(getattr(exc, "orig", exc)).lower():
+                    raise
+        if "strains_payload_json" not in cols:
+            try:
+                root.db.session.execute(text("ALTER TABLE remote_site_pulls ADD COLUMN strains_payload_json TEXT"))
+            except OperationalError as exc:
+                if "duplicate column name" not in str(getattr(exc, "orig", exc)).lower():
+                    raise
 
     if has_table("runs"):
         cols = column_names("runs")

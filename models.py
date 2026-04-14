@@ -138,6 +138,8 @@ class RemoteSite(db.Model):
     last_inventory_payload_json = db.Column(db.Text)
     last_exceptions_payload_json = db.Column(db.Text)
     last_slack_payload_json = db.Column(db.Text)
+    last_suppliers_payload_json = db.Column(db.Text)
+    last_strains_payload_json = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
     updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, nullable=False)
 
@@ -185,6 +187,8 @@ class RemoteSitePull(db.Model):
     inventory_payload_json = db.Column(db.Text)
     exceptions_payload_json = db.Column(db.Text)
     slack_payload_json = db.Column(db.Text)
+    suppliers_payload_json = db.Column(db.Text)
+    strains_payload_json = db.Column(db.Text)
 
     def payload(self, attr_name: str):
         raw_value = getattr(self, attr_name, None)

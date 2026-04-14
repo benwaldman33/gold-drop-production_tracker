@@ -19,6 +19,8 @@ def test_pull_remote_site_caches_latest_payloads_and_records_pull():
         "https://alpha.example.com/api/v1/summary/inventory": {"data": {"open_lot_count": 4}},
         "https://alpha.example.com/api/v1/summary/exceptions": {"data": {"total": 1}},
         "https://alpha.example.com/api/v1/summary/slack-imports": {"data": {"total_messages": 7}},
+        "https://alpha.example.com/api/v1/suppliers": {"data": [{"id": "s1", "name": "Farmlane"}]},
+        "https://alpha.example.com/api/v1/strains": {"data": [{"strain_name": "Blue Dream"}]},
     }
     calls = []
 
@@ -45,7 +47,7 @@ def test_pull_remote_site_caches_latest_payloads_and_records_pull():
         assert stored_site.payload("last_dashboard_payload_json") == {"totals": {"runs": 3}}
         assert stored_pull.status == "success"
         assert stored_pull.payload("inventory_payload_json") == {"open_lot_count": 4}
-        assert len(calls) == 6
+        assert len(calls) == 8
         assert all(token == "secret-token" for _url, token, _timeout in calls)
 
         db.session.delete(stored_pull)
