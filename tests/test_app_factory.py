@@ -51,6 +51,8 @@ class AppFactorySmokeTest(unittest.TestCase):
         self.assertIn("/api/v1/site", rules)
         self.assertIn("/api/v1/capabilities", rules)
         self.assertIn("/api/v1/summary/dashboard", rules)
+        self.assertIn("/api/v1/departments", rules)
+        self.assertIn("/api/v1/departments/<slug>", rules)
         self.assertIn("/api/v1/purchases", rules)
         self.assertIn("/api/v1/runs", rules)
         self.assertIn("/api/v1/suppliers", rules)

@@ -7,7 +7,7 @@ from flask import jsonify, request
 from gold_drop.inventory_module import _annotate_inventory_lot
 from gold_drop.purchases_module import _annotate_purchase_row
 from gold_drop.suppliers_module import supplier_incomplete_profile_fields
-from gold_drop.dashboard_module import _weekly_finance_snapshot
+from gold_drop.dashboard_module import DEPARTMENT_PAGES, _department_stat_sections, _weekly_finance_snapshot
 from gold_drop.slack_integration_module import (
     slack_linked_run_ids_index,
     slack_supplier_candidates_for_source,
@@ -57,6 +57,8 @@ def register_routes(app, root):
     app.add_url_rule("/api/v1/site", endpoint="api_v1_site", view_func=api_v1_site)
     app.add_url_rule("/api/v1/capabilities", endpoint="api_v1_capabilities", view_func=api_v1_capabilities)
     app.add_url_rule("/api/v1/summary/dashboard", endpoint="api_v1_dashboard_summary", view_func=api_v1_dashboard_summary)
+    app.add_url_rule("/api/v1/departments", endpoint="api_v1_departments", view_func=api_v1_departments)
+    app.add_url_rule("/api/v1/departments/<slug>", endpoint="api_v1_department_detail", view_func=api_v1_department_detail)
     app.add_url_rule("/api/v1/purchases", endpoint="api_v1_purchases", view_func=api_v1_purchases)
     app.add_url_rule("/api/v1/purchases/<purchase_id>", endpoint="api_v1_purchase_detail", view_func=api_v1_purchase_detail)
     app.add_url_rule(
@@ -113,6 +115,8 @@ def api_v1_capabilities():
             {"path": "/api/v1/site", "scope": "read:site", "kind": "identity"},
             {"path": "/api/v1/capabilities", "scope": "read:site", "kind": "discovery"},
             {"path": "/api/v1/summary/dashboard", "scope": "read:dashboard", "kind": "summary"},
+            {"path": "/api/v1/departments", "scope": "read:dashboard", "kind": "list"},
+            {"path": "/api/v1/departments/<slug>", "scope": "read:dashboard", "kind": "detail"},
             {"path": "/api/v1/purchases", "scope": "read:purchases", "kind": "list"},
             {"path": "/api/v1/purchases/<purchase_id>", "scope": "read:purchases", "kind": "detail"},
             {"path": "/api/v1/purchases/<purchase_id>/journey", "scope": "read:journey", "kind": "detail"},
@@ -349,6 +353,41 @@ def api_v1_dashboard_summary():
     if period not in {"today", "7", "30", "90", "all"}:
         return json_api_error("Invalid period", status_code=400, code="bad_request")
     return jsonify(envelope(_dashboard_summary_payload(root, period)))
+
+
+@require_api_scope("read:dashboard")
+def api_v1_departments():
+    data = []
+    for slug, cfg in DEPARTMENT_PAGES.items():
+        data.append(
+            {
+                "slug": slug,
+                "title": cfg.get("title"),
+                "intro": cfg.get("intro"),
+                "link_count": len(cfg.get("links", [])),
+            }
+        )
+    return jsonify(envelope(data))
+
+
+@require_api_scope("read:dashboard")
+def api_v1_department_detail(slug):
+    root = _require_root()
+    cfg = DEPARTMENT_PAGES.get(slug)
+    if not cfg:
+        return json_api_error("Department not found", status_code=404, code="not_found")
+    sections = []
+    for section in _department_stat_sections(root, slug):
+        rows = [{"label": label, "value": value} for label, value in section.get("rows", [])]
+        sections.append({"title": section.get("title"), "rows": rows})
+    payload = {
+        "slug": slug,
+        "title": cfg.get("title"),
+        "intro": cfg.get("intro"),
+        "links": cfg.get("links", []),
+        "sections": sections,
+    }
+    return jsonify(envelope(payload))
 
 
 @require_api_scope("read:purchases")

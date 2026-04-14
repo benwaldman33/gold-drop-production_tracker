@@ -329,6 +329,8 @@ Current endpoints:
 - `/api/v1/site`
 - `/api/v1/capabilities`
 - `/api/v1/summary/dashboard`
+- `/api/v1/departments`
+- `/api/v1/departments/<slug>`
 - `/api/v1/purchases`
 - `/api/v1/purchases/<purchase_id>`
 - `/api/v1/purchases/<purchase_id>/journey`

@@ -83,6 +83,34 @@ def test_api_v1_dashboard_summary_requires_scope_and_returns_payload():
             db.session.commit()
 
 
+def test_api_v1_departments_list_and_detail():
+    app = app_module.app
+    headers, client_id = _make_api_headers("read:dashboard")
+    try:
+        with app.test_client() as client:
+            list_res = client.get("/api/v1/departments", headers=headers)
+            assert list_res.status_code == 200
+            list_payload = list_res.get_json()["data"]
+            slugs = {item["slug"] for item in list_payload}
+            assert {"operations", "purchasing", "quality"}.issubset(slugs)
+
+            detail_res = client.get("/api/v1/departments/operations", headers=headers)
+            assert detail_res.status_code == 200
+            detail_payload = detail_res.get_json()["data"]
+            assert detail_payload["slug"] == "operations"
+            assert detail_payload["title"] == "Operations"
+            assert detail_payload["sections"]
+
+            missing_res = client.get("/api/v1/departments/missing", headers=headers)
+            assert missing_res.status_code == 404
+    finally:
+        with app.app_context():
+            api_client = db.session.get(ApiClient, client_id)
+            if api_client:
+                db.session.delete(api_client)
+            db.session.commit()
+
+
 def test_api_v1_site_returns_site_meta_and_data():
     app = app_module.app
     headers, client_id = _make_api_headers("read:site")

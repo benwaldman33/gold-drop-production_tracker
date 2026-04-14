@@ -185,6 +185,8 @@ The current first slice of the internal API includes:
 - `GET /api/v1/site`
 - `GET /api/v1/capabilities`
 - `GET /api/v1/summary/dashboard`
+- `GET /api/v1/departments`
+- `GET /api/v1/departments/<slug>`
 - `GET /api/v1/purchases`
 - `GET /api/v1/purchases/<purchase_id>`
 - `GET /api/v1/purchases/<purchase_id>/journey`
@@ -212,6 +214,7 @@ These endpoints:
 - now include summary-oriented read models for inventory posture, Slack-import triage posture, and reconciliation posture
 - now include supplier- and strain-performance analytics reads for internal reporting and future MCP / AI use
 - now include a dashboard-style site operating summary for internal reporting and future MCP / AI use
+- now include department-focused summary reads for operations, purchasing, and quality views
 
 ### Internal API future direction
 Future phases should expand the internal API with:
