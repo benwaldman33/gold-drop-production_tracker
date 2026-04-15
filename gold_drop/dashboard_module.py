@@ -66,6 +66,10 @@ def register_routes(app, root):
     def cross_site_strains():
         return cross_site_strains_view(root)
 
+    @root.login_required
+    def cross_site_reconciliation():
+        return cross_site_reconciliation_view(root)
+
     app.add_url_rule("/", endpoint="dashboard", view_func=dashboard)
     app.add_url_rule("/dept", endpoint="dept_index", view_func=dept_index)
     app.add_url_rule("/dept/", endpoint="dept_index_slash", view_func=dept_index)
@@ -74,6 +78,7 @@ def register_routes(app, root):
     app.add_url_rule("/cross-site", endpoint="cross_site_ops", view_func=cross_site_ops)
     app.add_url_rule("/cross-site/suppliers", endpoint="cross_site_suppliers", view_func=cross_site_suppliers)
     app.add_url_rule("/cross-site/strains", endpoint="cross_site_strains", view_func=cross_site_strains)
+    app.add_url_rule("/cross-site/reconciliation", endpoint="cross_site_reconciliation", view_func=cross_site_reconciliation)
 
 
 def _cross_site_ops_enabled(root) -> bool:
@@ -527,4 +532,50 @@ def cross_site_strains_view(root):
         supplier_name=supplier_name,
         rows=rows,
         best_row=best_row,
+    )
+
+
+def cross_site_reconciliation_view(root):
+    if not _cross_site_ops_enabled(root):
+        root.abort(404)
+
+    from gold_drop import api_v1_module as api_module
+
+    slack_payload, slack_error = api_module._slack_imports_summary_payload(root)
+    if slack_error is not None:
+        slack_payload = {
+            "total_messages": 0,
+            "bucket_counts": {},
+            "linked_count": 0,
+            "unlinked_count": 0,
+            "coverage_counts": {},
+        }
+
+    payload = build_aggregation_summary(
+        get_site_identity(),
+        local_dashboard=api_module._dashboard_summary_payload(root, "30"),
+        local_inventory=api_module._inventory_summary_payload(root, supplier_id=None, strain=None),
+        local_exceptions=api_module._exceptions_summary_payload(root),
+        local_slack=slack_payload,
+    )
+    sites = payload.get("sites") or []
+    rows = []
+    for site in sites:
+        exceptions = site.get("exceptions") or {}
+        slack_imports = site.get("slack_imports") or {}
+        rows.append(
+            {
+                "site": site,
+                "total_exceptions": int(exceptions.get("total_exceptions") or 0),
+                "total_messages": int(slack_imports.get("total_messages") or 0),
+                "needs_manual_match": int((slack_imports.get("bucket_counts") or {}).get("needs_manual_match") or 0),
+                "blocked": int((slack_imports.get("bucket_counts") or {}).get("blocked") or 0),
+                "coverage_none": int((slack_imports.get("coverage_counts") or {}).get("none") or 0),
+            }
+        )
+    rows.sort(key=lambda row: (row["total_exceptions"], row["needs_manual_match"], row["blocked"]), reverse=True)
+    return root.render_template(
+        "cross_site_reconciliation.html",
+        page_title="Cross-Site Reconciliation",
+        rows=rows,
     )

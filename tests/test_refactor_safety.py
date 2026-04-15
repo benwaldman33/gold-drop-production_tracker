@@ -137,6 +137,9 @@ def test_cross_site_ops_is_hidden_until_enabled():
         strains = client.get("/cross-site/strains", follow_redirects=False)
         assert strains.status_code == 200
         assert b"Cross-Site Strain Comparison" in strains.data
+        reconciliation = client.get("/cross-site/reconciliation", follow_redirects=False)
+        assert reconciliation.status_code == 200
+        assert b"Cross-Site Reconciliation" in reconciliation.data
     finally:
         with app.app_context():
             db.session.get(SystemSetting, "cross_site_ops_enabled").value = original

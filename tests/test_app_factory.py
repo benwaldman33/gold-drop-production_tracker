@@ -44,6 +44,7 @@ class AppFactorySmokeTest(unittest.TestCase):
         self.assertIn("/cross-site", rules)
         self.assertIn("/cross-site/suppliers", rules)
         self.assertIn("/cross-site/strains", rules)
+        self.assertIn("/cross-site/reconciliation", rules)
         self.assertIn("/suppliers", rules)
         self.assertIn("/photos", rules)
         self.assertIn("/purchases/import", rules)
