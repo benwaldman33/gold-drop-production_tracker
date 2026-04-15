@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Cross-Site Ops{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>Cross-Site Ops</h2>
+    <p class="text-sm cell-muted" style="margin:6px 0 0 0;">Cached local + remote site rollup for multi-site reporting. This page stays hidden until a Super Admin enables cross-site visibility for the site.</p>
+  </div>
+  <div class="form-actions" style="gap:8px;">
+    {% for option in ['today', '7', '30', '90', 'all'] %}
+    <a href="{{ url_for('cross_site_ops', period=option) }}" class="btn {% if period == option %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">
+      {% if option == 'today' %}Today{% elif option == '7' %}7d{% elif option == '30' %}30d{% elif option == '90' %}90d{% else %}All{% endif %}
+    </a>
+    {% endfor %}
+  </div>
+</div>
+
+{% if stale_sites %}
+<div class="flash flash-error" style="margin-bottom:16px;">
+  <strong>Remote cache attention:</strong> {{ stale_sites|length }} remote site{% if stale_sites|length != 1 %}s{% endif %} currently report a failed or stale pull state.
+</div>
+{% endif %}
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-card-label">Sites</div>
+    <div class="stat-card-value">{{ payload.sites_total }}</div>
+    <div class="stat-card-detail">{{ payload.remote_sites_active }} remote active</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-label">Runs</div>
+    <div class="stat-card-value">{{ "{:,.0f}".format(payload.totals.total_runs or 0) }}</div>
+    <div class="stat-card-detail">Across visible local + cached remote sites</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-label">Processed lbs</div>
+    <div class="stat-card-value">{{ "{:,.1f}".format(payload.totals.total_lbs or 0) }}</div>
+    <div class="stat-card-detail">Selected period</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-label">Dry output (g)</div>
+    <div class="stat-card-value">{{ "{:,.1f}".format(payload.totals.total_dry_output_g or 0) }}</div>
+    <div class="stat-card-detail">Selected period</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-label">On hand lbs</div>
+    <div class="stat-card-value">{{ "{:,.1f}".format(payload.totals.total_on_hand_lbs or 0) }}</div>
+    <div class="stat-card-detail">Latest local + cached inventory snapshot</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-label">Exceptions</div>
+    <div class="stat-card-value">{{ "{:,.0f}".format(payload.totals.total_exceptions or 0) }}</div>
+    <div class="stat-card-detail">{{ "{:,.0f}".format(payload.totals.total_slack_messages or 0) }} Slack rows tracked</div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:16px;">
+  <div class="table-responsive">
+    <table>
+      <thead>
+        <tr>
+          <th>Site</th>
+          <th>Status</th>
+          <th>Runs</th>
+          <th>Lbs</th>
+          <th>Dry Output (g)</th>
+          <th>On Hand (lbs)</th>
+          <th>Exceptions</th>
+          <th>Slack Imports</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for site in sites %}
+        <tr>
+          <td>
+            <strong>{{ site.site_name or site.site_code or 'Unknown site' }}</strong>
+            <div class="text-sm cell-muted">
+              {{ site.site_code or '—' }}
+              {% if site.site_region %} &middot; {{ site.site_region }}{% endif %}
+              {% if site.site_environment %} &middot; {{ site.site_environment }}{% endif %}
+            </div>
+          </td>
+          <td>
+            {% if site.source == 'local' %}
+              <span class="status-badge status-good">Local</span>
+            {% elif site.status == 'success' %}
+              <span class="status-badge status-good">Cached OK</span>
+            {% elif site.status == 'failed' %}
+              <span class="status-badge status-bad">Pull failed</span>
+            {% else %}
+              <span class="status-badge status-warn">{{ site.status or 'Unknown' }}</span>
+            {% endif %}
+            {% if site.last_pull_finished_at %}
+            <div class="text-sm cell-muted" style="margin-top:4px;">{{ site.last_pull_finished_at }}</div>
+            {% endif %}
+          </td>
+          <td>{{ "{:,.0f}".format((site.totals or {}).get('total_runs') or 0) }}</td>
+          <td>{{ "{:,.1f}".format((site.totals or {}).get('total_lbs') or 0) }}</td>
+          <td>{{ "{:,.1f}".format((site.totals or {}).get('total_dry_output_g') or 0) }}</td>
+          <td>{{ "{:,.1f}".format((site.inventory or {}).get('total_on_hand_lbs') or 0) }}</td>
+          <td>{{ "{:,.0f}".format((site.exceptions or {}).get('total_exceptions') or 0) }}</td>
+          <td>{{ "{:,.0f}".format((site.slack_imports or {}).get('total_messages') or 0) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

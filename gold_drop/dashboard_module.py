@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from gold_drop.purchases import budget_week_purchase_metrics, purchase_week_start
+from services.api_site import get_site_identity
+from services.site_aggregation import build_aggregation_summary
 
 from services.field_submissions import decorate_submission_rows
 
@@ -52,11 +54,20 @@ def register_routes(app, root):
     def biomass_purchasing_dashboard():
         return biomass_purchasing_dashboard_view(root)
 
+    @root.login_required
+    def cross_site_ops():
+        return cross_site_ops_view(root)
+
     app.add_url_rule("/", endpoint="dashboard", view_func=dashboard)
     app.add_url_rule("/dept", endpoint="dept_index", view_func=dept_index)
     app.add_url_rule("/dept/", endpoint="dept_index_slash", view_func=dept_index)
     app.add_url_rule("/dept/<slug>", endpoint="dept_view", view_func=dept_view)
     app.add_url_rule("/biomass-purchasing", endpoint="biomass_purchasing_dashboard", view_func=biomass_purchasing_dashboard)
+    app.add_url_rule("/cross-site", endpoint="cross_site_ops", view_func=cross_site_ops)
+
+
+def _cross_site_ops_enabled(root) -> bool:
+    return (root.SystemSetting.get("cross_site_ops_enabled", "0") or "0").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _weekly_finance_snapshot(root):
@@ -404,4 +415,46 @@ def biomass_purchasing_dashboard_view(root):
         pending_submissions_total_lbs=sum(float(getattr(s, "total_weight_lbs", 0) or 0) for s in pending),
         reviewed_approved_total_lbs=sum(float(getattr(s, "total_weight_lbs", 0) or 0) for s in reviewed if s.status == "approved"),
         reviewed_rejected_total_lbs=sum(float(getattr(s, "total_weight_lbs", 0) or 0) for s in reviewed if s.status == "rejected"),
+    )
+
+
+def cross_site_ops_view(root):
+    if not _cross_site_ops_enabled(root):
+        root.abort(404)
+
+    from gold_drop import api_v1_module as api_module
+
+    period = (root.request.args.get("period") or "30").strip().lower()
+    if period not in {"today", "7", "30", "90", "all"}:
+        period = "30"
+
+    slack_payload, slack_error = api_module._slack_imports_summary_payload(root)
+    if slack_error is not None:
+        slack_payload = {
+            "total_messages": 0,
+            "bucket_counts": {},
+            "linked_count": 0,
+            "unlinked_count": 0,
+            "coverage_counts": {},
+        }
+
+    payload = build_aggregation_summary(
+        get_site_identity(),
+        local_dashboard=api_module._dashboard_summary_payload(root, period),
+        local_inventory=api_module._inventory_summary_payload(root, supplier_id=None, strain=None),
+        local_exceptions=api_module._exceptions_summary_payload(root),
+        local_slack=slack_payload,
+    )
+    sites = payload.get("sites") or []
+    stale_sites = [
+        site for site in sites
+        if site.get("source") == "remote_cache" and site.get("status") not in {"success", "local"}
+    ]
+    return root.render_template(
+        "cross_site_ops.html",
+        page_title="Cross-Site Ops",
+        period=period,
+        payload=payload,
+        sites=sites,
+        stale_sites=stale_sites,
     )

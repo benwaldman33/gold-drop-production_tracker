@@ -51,6 +51,7 @@ def init_db(root):
         "site_timezone": ("America/Los_Angeles", "IANA timezone for this site"),
         "site_region": ("", "Optional site region for future rollup and aggregation"),
         "site_environment": ("production", "Deployment environment label for internal API metadata"),
+        "cross_site_ops_enabled": ("0", "Enable cross-site operations UI surfaces for this site"),
         "potency_rate": ("1.50", "Potency Rate ($/lb/%pt)"),
         "num_reactors": ("2", "Number of Reactors"),
         "reactor_capacity": ("100", "Reactor Capacity (lbs)"),

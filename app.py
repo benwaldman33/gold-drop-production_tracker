@@ -231,6 +231,12 @@ def inject_biomass_budget():
     }
 
 
+@app.context_processor
+def inject_cross_site_visibility():
+    enabled = (SystemSetting.get("cross_site_ops_enabled", "0") or "0").strip().lower() in ("1", "true", "yes", "on")
+    return {"cross_site_ops_enabled": enabled}
+
+
 def slack_importer_required(f):
     """Super Admin always allowed; others need Settings → Slack Importer flag."""
     @wraps(f)

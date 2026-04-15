@@ -355,6 +355,7 @@ def settings_view(root):
             site_name = site_name_raw[:120] if site_name_raw else "Gold Drop"
             site_region = site_region_raw[:80]
             site_environment = site_environment_raw if site_environment_raw in {"production", "staging", "development", "test"} else "production"
+            cross_site_ops_enabled = "1" if root.request.form.get("cross_site_ops_enabled") else "0"
             site_timezone_ok = True
             if site_timezone_raw:
                 try:
@@ -370,6 +371,7 @@ def settings_view(root):
                 ("site_name", site_name, "Facility/site name used in internal API metadata"),
                 ("site_region", site_region, "Optional site region used in internal API metadata"),
                 ("site_environment", site_environment, "Deployment environment label used in internal API metadata"),
+                ("cross_site_ops_enabled", cross_site_ops_enabled, "Enable cross-site operations UI surfaces for this site"),
             ):
                 existing = root.db.session.get(root.SystemSetting, key)
                 if existing:

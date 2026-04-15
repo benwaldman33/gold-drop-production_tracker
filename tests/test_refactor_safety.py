@@ -106,6 +106,37 @@ def test_settings_route_renders_smart_scales_section():
     assert b"Recent Weight Captures" in page.data
 
 
+def test_cross_site_ops_is_hidden_until_enabled():
+    app = app_module.app
+    with app.app_context():
+        original = SystemSetting.get("cross_site_ops_enabled", "0")
+        setting = db.session.get(SystemSetting, "cross_site_ops_enabled")
+        if setting is None:
+            setting = SystemSetting(key="cross_site_ops_enabled", value="0", description="Enable cross-site operations UI surfaces for this site")
+            db.session.add(setting)
+        setting.value = "0"
+        db.session.commit()
+
+    client = app.test_client()
+    _login(client, "admin")
+    hidden = client.get("/cross-site", follow_redirects=False)
+    assert hidden.status_code == 404
+
+    try:
+        with app.app_context():
+            db.session.get(SystemSetting, "cross_site_ops_enabled").value = "1"
+            db.session.commit()
+        visible = client.get("/", follow_redirects=True)
+        assert b"Cross-Site Ops" in visible.data
+        page = client.get("/cross-site", follow_redirects=False)
+        assert page.status_code == 200
+        assert b"Cross-Site Ops" in page.data
+    finally:
+        with app.app_context():
+            db.session.get(SystemSetting, "cross_site_ops_enabled").value = original
+            db.session.commit()
+
+
 def test_admin_can_create_and_revoke_api_client_from_settings():
     create = _call_view_as_user(
         "/settings/api_clients/create",
