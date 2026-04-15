@@ -43,6 +43,10 @@
         {% else %}In inventory{% endif %}
       </div>
     </div>
+    <div class="floor-scan-metric">
+      <div class="text-sm cell-muted">Prep</div>
+      <div class="floor-scan-metric-value">{% if lot.milled %}Milled{% else %}Not milled{% endif %}</div>
+    </div>
   </div>
 
   <div class="floor-action-grid">
@@ -128,6 +132,27 @@
 
   <div class="card">
     <div class="form-section" style="padding-top:0;">
+      <h4>Confirm Prep</h4>
+      <p class="text-sm cell-muted">Record whether this lot has been milled and is physically ready for the next extraction step.</p>
+      <form method="POST" action="{{ url_for('scan_lot_confirm_milled', tracking_id=lot.tracking_id) }}">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Prep state</label>
+            <select name="milled_state">
+              <option value="not_milled" {% if not lot.milled %}selected{% endif %}>Not milled</option>
+              <option value="milled" {% if lot.milled %}selected{% endif %}>Milled</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-actions" style="justify-content:flex-start;">
+          <button type="submit" class="btn btn-secondary">Confirm Prep</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="form-section" style="padding-top:0;">
       <h4>Confirm Testing</h4>
       <p class="text-sm cell-muted">Update the testing state directly from the scanned lot without opening the purchase form.</p>
       <form method="POST" action="{{ url_for('scan_lot_confirm_testing', tracking_id=lot.tracking_id) }}">
@@ -176,6 +201,7 @@
         <div class="text-sm cell-muted" style="margin-top:4px;">
           {% if event.user and event.user.display_name %}{{ event.user.display_name }}{% else %}System{% endif %}
           {% if context.floor_state %} &middot; state={{ context.floor_state.replace('_', ' ') }}{% endif %}
+          {% if context.milled is not none %} &middot; prep={{ 'milled' if context.milled else 'not milled' }}{% endif %}
           {% if context.location %} &middot; location={{ context.location }}{% endif %}
           {% if context.testing_status %} &middot; testing={{ context.testing_status }}{% endif %}
           {% if context.scale_device_id %} &middot; scale selected{% endif %}

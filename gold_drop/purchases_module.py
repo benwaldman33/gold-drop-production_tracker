@@ -70,6 +70,10 @@ def register_routes(app, root):
     def scan_lot_confirm_testing(tracking_id):
         return scan_lot_confirm_testing_view(root, tracking_id)
 
+    @root.editor_required
+    def scan_lot_confirm_milled(tracking_id):
+        return scan_lot_confirm_milled_view(root, tracking_id)
+
     @root.purchase_editor_required
     def purchase_delete(purchase_id):
         return purchase_delete_view(root, purchase_id)
@@ -97,6 +101,12 @@ def register_routes(app, root):
         "/scan/lot/<tracking_id>/confirm-testing",
         endpoint="scan_lot_confirm_testing",
         view_func=scan_lot_confirm_testing,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/scan/lot/<tracking_id>/confirm-milled",
+        endpoint="scan_lot_confirm_milled",
+        view_func=scan_lot_confirm_milled,
         methods=["POST"],
     )
     app.add_url_rule("/purchases/<purchase_id>/delete", endpoint="purchase_delete", view_func=purchase_delete, methods=["POST"])
@@ -674,6 +684,30 @@ def scan_lot_confirm_testing_view(root, tracking_id):
     )
     root.db.session.commit()
     root.flash(f"Testing status updated to {testing_status.replace('_', ' ')}.", "success")
+    return root.redirect(root.url_for("scan_lot", tracking_id=tracking_id))
+
+
+def scan_lot_confirm_milled_view(root, tracking_id):
+    lot = _get_scannable_lot(root, tracking_id)
+    if not lot:
+        root.flash("Tracked lot not found.", "error")
+        return root.redirect(root.url_for("inventory"))
+    milled_state = (root.request.form.get("milled_state") or "").strip().lower()
+    if milled_state not in {"milled", "not_milled"}:
+        root.flash("Choose a valid prep state.", "error")
+        return root.redirect(root.url_for("scan_lot", tracking_id=tracking_id))
+    lot.milled = milled_state == "milled"
+    _record_lot_scan_event(
+        root,
+        lot,
+        "confirm_milled",
+        context={
+            "purchase_id": lot.purchase.id,
+            "milled": bool(lot.milled),
+        },
+    )
+    root.db.session.commit()
+    root.flash(f"Lot prep updated to {'milled' if lot.milled else 'not milled'}.", "success")
     return root.redirect(root.url_for("scan_lot", tracking_id=tracking_id))
 
 

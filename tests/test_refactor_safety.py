@@ -739,6 +739,13 @@ def test_scanned_lot_can_confirm_movement_and_testing():
             assert testing.status_code in (302, 303)
             assert movement.headers["Location"].endswith(f"/scan/lot/{tracking_id}")
 
+            milled = client.post(
+                f"/scan/lot/{tracking_id}/confirm-milled",
+                data={"milled_state": "milled"},
+                follow_redirects=False,
+            )
+            assert milled.status_code in (302, 303)
+
             with app.app_context():
                 lot = db.session.get(PurchaseLot, lot_id)
                 purchase = db.session.get(Purchase, purchase_id)
@@ -746,15 +753,18 @@ def test_scanned_lot_can_confirm_movement_and_testing():
                 assert purchase is not None
                 assert lot.location == "Vault A / Shelf 2"
                 assert lot.floor_state == "vault"
+                assert lot.milled is True
                 assert purchase.testing_status == "completed"
                 assert purchase.testing_date == app_module.date.today()
                 events = LotScanEvent.query.filter_by(lot_id=lot_id).order_by(LotScanEvent.created_at.asc()).all()
                 actions = [event.action for event in events]
-                assert actions == ["confirm_movement", "confirm_testing"]
+                assert actions == ["confirm_movement", "confirm_testing", "confirm_milled"]
                 movement_context = events[0].context or {}
                 assert movement_context["movement_code"] == "vault"
                 assert movement_context["movement_label"] == "Move to vault"
                 assert movement_context["floor_state"] == "vault"
+                milled_context = events[2].context or {}
+                assert milled_context["milled"] is True
     finally:
         with app.app_context():
             LotScanEvent.query.filter_by(lot_id=lot_id).delete()
