@@ -21,6 +21,11 @@
     statusText.textContent = message;
   }
 
+  function canUseCameraWithoutHttps() {
+    const hostname = window.location.hostname || "";
+    return window.isSecureContext || hostname === "localhost" || hostname === "127.0.0.1";
+  }
+
   function lotUrlForValue(rawValue) {
     const value = (rawValue || "").trim();
     if (!value) return "";
@@ -72,16 +77,24 @@
   async function startCamera() {
     if (!("mediaDevices" in navigator) || !navigator.mediaDevices.getUserMedia) {
       setStatus("This browser does not expose camera access. Use the manual field instead.");
+      manualInput.focus();
+      return;
+    }
+    if (!canUseCameraWithoutHttps()) {
+      setStatus("Camera access requires HTTPS on this device. Use the manual field or a Bluetooth scanner until the app is served over HTTPS.");
+      manualInput.focus();
       return;
     }
     if (!("BarcodeDetector" in window)) {
       setStatus("Barcode scanning is not supported in this browser. Use the manual field or a Bluetooth scanner.");
+      manualInput.focus();
       return;
     }
     try {
       detector = new window.BarcodeDetector({ formats: ["code_39", "code_128", "qr_code"] });
     } catch (error) {
       setStatus("This browser cannot initialize barcode detection. Use the manual field instead.");
+      manualInput.focus();
       return;
     }
     try {
@@ -99,6 +112,7 @@
       scanFrame();
     } catch (error) {
       setStatus(`Unable to start camera: ${error.message || "permission denied"}`);
+      manualInput.focus();
       stopCamera();
     }
   }
@@ -122,5 +136,9 @@
     window.location.assign(lotUrlForValue(value));
   });
 
+  if (!("BarcodeDetector" in window)) {
+    setStatus("Camera barcode detection is not supported in this browser yet. Manual and Bluetooth-scanner entry are ready.");
+  }
+  manualInput.focus();
   window.addEventListener("beforeunload", stopCamera);
 })();

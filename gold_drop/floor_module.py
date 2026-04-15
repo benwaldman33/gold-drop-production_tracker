@@ -42,4 +42,5 @@ def floor_ops_view(root):
 
 
 def scan_center_view(root):
-    return root.render_template("scan_center.html")
+    recent_scans = root.LotScanEvent.query.order_by(root.LotScanEvent.created_at.desc()).limit(6).all()
+    return root.render_template("scan_center.html", recent_scans=recent_scans)

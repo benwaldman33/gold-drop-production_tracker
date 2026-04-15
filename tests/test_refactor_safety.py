@@ -464,6 +464,7 @@ def test_purchase_label_routes_and_scan_route_render_and_resolve():
             assert b"Barcode payload" in multi.data
             assert b"Format: CODE39" in multi.data
             assert b"<svg" in multi.data
+            assert b"api.qrserver.com" in multi.data
 
             scan = client.get(f"/scan/lot/{tracking_id}")
             assert scan.status_code == 200
@@ -734,6 +735,7 @@ def test_scan_center_page_renders_for_authenticated_user():
         assert b"Scan Center" in resp.data
         assert b"Start Camera Scan" in resp.data
         assert b"tracking_id" in resp.data
+        assert b"Recent Floor Scans" in resp.data or b"Bluetooth scanner" in resp.data
 
 
 def test_run_form_scale_capture_prefills_reactor_weight_and_links_capture():

@@ -11,12 +11,12 @@
 
 <div class="summary-row">
   <div class="summary-card">
-    <div class="summary-label">Scans · 24h</div>
+    <div class="summary-label">Scans &middot; 24h</div>
     <div class="summary-value">{{ scans_last_day }}</div>
     <div class="summary-footnote">Recent barcode execution activity</div>
   </div>
   <div class="summary-card">
-    <div class="summary-label">Scale Captures · 24h</div>
+    <div class="summary-label">Scale Captures &middot; 24h</div>
     <div class="summary-value">{{ captures_last_day }}</div>
     <div class="summary-footnote">Recent smart-scale reads</div>
   </div>
@@ -52,9 +52,9 @@
         <div class="text-sm cell-muted" style="margin-top:6px;">
           {% if event.user and event.user.display_name %}{{ event.user.display_name }}{% else %}System{% endif %}
           {% if event.context %}
-            ·
+            &middot;
             {% for key, value in event.context.items() %}
-              {{ key.replace('_', ' ') }}={{ value }}{% if not loop.last %} · {% endif %}
+              {{ key.replace('_', ' ') }}={{ value }}{% if not loop.last %} &middot; {% endif %}
             {% endfor %}
           {% endif %}
         </div>
@@ -82,18 +82,18 @@
       <div class="floor-event-row">
         <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">
           <div>
-            <div><strong>{{ "{:,.2f}".format(capture.value or 0) }} {{ capture.unit or '' }}</strong></div>
+            <div><strong>{{ "{:,.2f}".format(capture.measured_weight or 0) }} {{ capture.unit or '' }}</strong></div>
             <div class="text-sm cell-muted">
               {{ capture.device.name if capture.device else 'Manual / unknown device' }}
-              {% if capture.capture_type %} · {{ capture.capture_type.replace('_', ' ') }}{% endif %}
+              {% if capture.capture_type %} &middot; {{ capture.capture_type.replace('_', ' ') }}{% endif %}
             </div>
           </div>
           <div class="text-sm cell-muted">{{ capture.created_at.strftime('%Y-%m-%d %H:%M') if capture.created_at else '-' }}</div>
         </div>
         <div class="text-sm cell-muted" style="margin-top:6px;">
           source={{ capture.source_mode or 'unknown' }}
-          {% if capture.is_stable is not none %} · stable={{ 'yes' if capture.is_stable else 'no' }}{% endif %}
-          {% if capture.run_id %} · run linked{% endif %}
+          {% if capture.is_stable is not none %} &middot; stable={{ 'yes' if capture.is_stable else 'no' }}{% endif %}
+          {% if capture.run_id %} &middot; run linked{% endif %}
         </div>
         {% if capture.notes %}
         <div class="text-sm" style="margin-top:6px;">{{ capture.notes }}</div>
