@@ -33,6 +33,7 @@ Use the left sidebar:
 - **Photo Library**: searchable media across supplier/purchase/field contexts; editors can upload and remove certain attachment types here (see **Photo Library** section)
 - **Slack imports** (Slack Importer capability or Super Admin): triage synced Slack messages, preview mapped Run fields, review candidate source lots, optionally split a run across multiple lots, then **create run from Slack** (prefilled form)
 - **Settings** (Super Admin only): system parameters, KPIs, users, maintenance actions
+- **Cross-Site Ops** (only when enabled by Super Admin): cached local + remote-site rollups for multi-site reporting
 - **Fresh operational reset** (server-side admin task): clears operational business data while keeping users, passwords, settings, KPI targets, Slack sync config, and cost entries
 - **Import**: CSV import for **historical runs** (run-style exports)—not the same as **Purchases → Import spreadsheet**
 
@@ -90,6 +91,17 @@ The Dashboard shows:
 
 ### Analytics filter banner (optional)
 If you see a banner saying analytics are excluding runs missing biomass pricing ($/lb), your admin has enabled a data-quality filter in **Settings**. Supplier/strain KPIs will ignore runs with missing purchase pricing on any input lot.
+
+### Cross-Site Ops (optional)
+This area is hidden unless a **Super Admin** enables **Cross-Site Ops UI** in **Settings -> Operational Parameters**.
+
+When enabled, the sidebar exposes:
+- **Cross-Site Ops**: local + cached remote site rollup
+- **Supplier Comparison**: compare supplier performance across sites
+- **Strain Comparison**: compare strain performance across sites
+- **Reconciliation**: compare exception and Slack-import pressure across sites
+
+These pages use the cached remote-site data already managed under **Settings -> Remote Sites**. They do not push changes back to remote sites.
 
 ---
 

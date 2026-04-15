@@ -89,6 +89,16 @@ It is a machine-readable site summary for future internal rollups. It reports th
 **What are the new `/api/v1/aggregation/*` endpoints for?**
 They expose the locally cached cross-site rollup layer. `/api/v1/aggregation/sites` shows registered remote sites and their latest cached payloads, `/api/v1/aggregation/summary` combines the local site with cached remote summaries for higher-level internal reporting, and the supplier/strain aggregation endpoints compare performance across cached sites without live fan-out.
 
+**Why don't I see Cross-Site Ops in the sidebar?**
+Because the UI is site-gated. A **Super Admin** must enable **Cross-Site Ops UI** in **Settings -> Operational Parameters** before the cross-site pages appear.
+
+**What do the Cross-Site Ops pages show when enabled?**
+They expose cached multi-site reporting views:
+- `/cross-site` for overall site rollup
+- `/cross-site/suppliers` for supplier comparisons
+- `/cross-site/strains` for strain comparisons
+- `/cross-site/reconciliation` for exception and Slack-import pressure across sites
+
 **How do I know what sort order and filters an internal API list actually used?**
 Look at the response `meta`. List and search endpoints now return `count`, `limit`, `offset`, plus `sort` and `filters`. `sort` tells you the applied ordering, and `filters` echoes the normalized filter values the endpoint actually used after validation/defaulting.
 

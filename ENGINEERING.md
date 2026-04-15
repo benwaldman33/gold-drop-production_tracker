@@ -36,6 +36,11 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
   - **`services/api_serializers.py`** - JSON serializers and response envelopes for API resources
   - **`services/api_queries.py`** - reusable filtered read queries for lots and on-hand inventory
 - `app.py` still re-exports some extracted helpers, but the active dashboard, field intake, runs, purchases, biomass, costs, inventory, batch edit, suppliers/photos, purchase import, strains, settings, and Slack surfaces are now registered from package modules with `add_url_rule`, and startup init delegates through `gold_drop/bootstrap_module.py`.
+- `gold_drop/dashboard_module.py` now also owns the gated cross-site UI routes:
+  - `/cross-site`
+  - `/cross-site/suppliers`
+  - `/cross-site/strains`
+  - `/cross-site/reconciliation`
 - `tests/test_app_factory.py` provides a minimal factory + route-registration smoke check so future extractions are verified against a real app object, not just imports.
 
 ## Reset + seeding operations
@@ -60,6 +65,7 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
   - inspect last used timestamp, scope, and endpoint
   - inspect the recent API request log (client, method, path, scope, status, timestamp)
 - These scripts now prepend the repo root to `sys.path`, so they work from the project root without manual `PYTHONPATH` setup.
+- **Cross-site UI flag:** `SystemSetting.cross_site_ops_enabled` controls whether cross-site operator/admin pages are visible. The cached aggregation API and remote-site settings remain available even when the sidebar/UI is hidden.
 
 ## Internal API (`/api/v1`)
 
@@ -192,6 +198,7 @@ This keeps each deployed facility self-identifying for future aggregation withou
 - Admin control surfaces:
   - `Settings -> Remote Sites` for per-site create/update/pull/toggle/delete
   - `Settings -> Maintenance -> Pull all remote sites` for one-shot refresh of all active registrations
+  - `Settings -> Operational Parameters -> Enable Cross-Site Ops UI` for site-level visibility of the cross-site dashboards
 - CLI control surface:
 - `python scripts/pull_remote_sites.py`
 

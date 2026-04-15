@@ -172,6 +172,7 @@ Authorization should use **named capabilities per user** (flags or equivalent), 
 ### Internal API & site-local deployment
 - Each facility deployment is its own **site-local system of record**.
 - Sites are intentionally **separate deployments first**, with the option to be **rolled up / aggregated later** through a separate reporting or integration layer.
+- Cross-site operator/admin UI should remain **hidden by default** on a normal site. A **Super Admin** must explicitly enable cross-site visibility for that deployment before any cross-site pages appear in the web app.
 - The product should expose a **read-only internal API** for trusted internal consumers, future aggregation services, and future read-only MCP / AI tooling.
 - This internal API is **not** a customer-facing public API.
 - `/api/v1/*` uses **bearer-token auth** via internal API clients rather than web-login redirects.
@@ -236,6 +237,12 @@ These endpoints:
 - expose a site sync manifest so future aggregation services can identify the site, dataset counts, and basic freshness markers before pulling deeper data
 - expose a cached rollup layer for registered remote sites so one site can summarize other site deployments without live fan-out on every read
 - expose cached cross-site supplier and strain comparison reads so internal analytics and future AI tooling can compare site performance without direct access to every remote instance
+- expose a gated cross-site UI on top of that cached layer:
+  - `/cross-site`
+  - `/cross-site/suppliers`
+  - `/cross-site/strains`
+  - `/cross-site/reconciliation`
+  while keeping those pages invisible until the site-level visibility flag is enabled
 - expose a cross-entity search / lookup surface so internal tools and future MCP clients can find suppliers, purchases, lots, and runs without hard-coding separate list queries first
 - expose semantic, tool-oriented read endpoints so future MCP / AI clients can ask for inventory snapshots, open-lot resolution, canonical journeys, and reconciliation posture without stitching together multiple low-level API calls themselves
 - now include summary-oriented read models for inventory posture, Slack-import triage posture, and reconciliation posture

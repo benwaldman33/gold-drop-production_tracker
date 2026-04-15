@@ -85,6 +85,12 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 - **Tablet camera scanning** — `/scan` provides an in-browser camera scanning page for supported mobile browsers, with manual and Bluetooth-scanner fallback when camera barcode detection is unavailable.
 - **Scanner intelligence** — Scan activity is also exposed through internal API scanner endpoints and MCP tools (`scanner_summary`, `lot_scan_history`) for future floor analytics and AI workflows.
 - **Smart-scale live integration** — Admins can register scale devices, test raw payload ingestion in Settings, capture live allocation weights on the run form, and inspect scale data through internal API and MCP read layers.
+- **Gated cross-site ops UI** — Cross-site dashboards remain hidden until a Super Admin enables **Cross-Site Ops UI** for the site in Settings. When enabled, the app exposes:
+  - `/cross-site`
+  - `/cross-site/suppliers`
+  - `/cross-site/strains`
+  - `/cross-site/reconciliation`
+  backed by the existing cached aggregation layer rather than live multi-site fan-out.
 - **Field Photo Uploads** — Field users can attach multiple photos to biomass and purchase submissions (JPG/JPEG/PNG/WEBP/HEIC/HEIF, max 50 MB each)
 - **Field Purchase Intake Enhancements** — Harvest date, storage note, license info, queue placement, testing/COA status, and categorized photo uploads
 - **Soft Delete + Admin Hard Delete** — Runs and purchases support safe delete plus super-admin permanent cleanup
@@ -116,6 +122,7 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 - The scanned-lot page now records richer operator activity context, including guided run-start mode, planned partial weight, movement action, and location/testing confirmations.
 - Tablet/mobile operators can also open `/scan` to use the browser camera and route directly into `/scan/lot/<tracking_id>` when barcode detection is supported.
 - The data model now includes `ScaleDevice` and `WeightCapture` for future smart-scale integration work.
+- Cross-site operator/admin UI is now feature-gated by a site-level setting so non-multi-site deployments do not see those surfaces by default.
 
 The app still starts from `app.py`, but the active route surface now lives across focused package modules in `gold_drop/`. `app.py` remains the entrypoint, app-factory host, and compatibility layer while route registration and startup bootstrap delegate into extracted modules.
 
