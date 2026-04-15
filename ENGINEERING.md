@@ -26,8 +26,15 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
   - **`gold_drop/settings_module.py`** - extracted settings/admin view logic called by the `/settings` route; also normalizes legacy field-token datetimes before render so Settings can compare token expiry against aware UTC safely
   - **`gold_drop/uploads.py`** - upload validation, save helpers, and JSON path normalization
   - **`services/lot_allocation.py`** - lot tracking backfill, lot candidate ranking, and run allocation apply / release logic
-  - **`services/lot_labels.py`** - lot label payload generation for print / future scan workflows
+  - **`services/lot_labels.py`** - lot label payload generation plus offline Code 39 barcode SVG rendering for print workflows
   - **`services/scale_ingest.py`** - future manual / device weight-capture service boundary
+  - **`gold_drop/api_v1_module.py`** - token-authenticated internal read-only API routes under `/api/v1`
+  - **`gold_drop/floor_module.py`** - operator floor activity page for recent scans and recent scale captures
+  - **`static/js/scan_camera.js`** - in-browser camera scanning client for `/scan`, with `BarcodeDetector` support plus manual/scanner fallback
+  - **`services/api_auth.py`** - bearer-token generation, hashing, lookup, and scope enforcement
+  - **`services/api_site.py`** - site identity + shared API response metadata
+  - **`services/api_serializers.py`** - JSON serializers and response envelopes for API resources
+  - **`services/api_queries.py`** - reusable filtered read queries for lots and on-hand inventory
 - `app.py` still re-exports some extracted helpers, but the active dashboard, field intake, runs, purchases, biomass, costs, inventory, batch edit, suppliers/photos, purchase import, strains, settings, and Slack surfaces are now registered from package modules with `add_url_rule`, and startup init delegates through `gold_drop/bootstrap_module.py`.
 - `tests/test_app_factory.py` provides a minimal factory + route-registration smoke check so future extractions are verified against a real app object, not just imports.
 
@@ -44,6 +51,189 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
   - keeps users/passwords, system settings, KPI targets, Slack sync config, scale devices, and cost entries
   - clears purchases/lots, runs/run inputs, Slack imports, field submissions/tokens, suppliers and related attachments/photos/tests, and audit/history rows
   - creates a SQLite backup automatically when a SQLite DB file is present
+- **API client creation:** `python scripts/create_api_client.py --name "internal-bi" --scopes read:site,read:lots,read:inventory`
+- **Settings UI:** Super Admin can also manage internal API clients in `Settings -> Internal API Clients`
+  - create client + scoped token
+  - token displayed once at creation
+  - revoke/reactivate
+  - delete revoked clients
+  - inspect last used timestamp, scope, and endpoint
+  - inspect the recent API request log (client, method, path, scope, status, timestamp)
+- These scripts now prepend the repo root to `sys.path`, so they work from the project root without manual `PYTHONPATH` setup.
+
+## Internal API (`/api/v1`)
+
+Phase 1 internal API is read-only and site-local.
+
+### Auth
+
+- Header: `Authorization: Bearer <token>`
+- Token auth is enforced only on `/api/v1/*`
+- No redirect-based login responses on API routes
+- JSON errors:
+  - `401` for missing/invalid token
+  - `403` for inactive client or missing scope
+
+### Scopes
+
+- `read:site`
+- `read:purchases`
+- `read:journey`
+- `read:lots`
+- `read:runs`
+- `read:inventory`
+- `read:dashboard`
+- `read:aggregation`
+- `read:search`
+- `read:tools`
+- `read:slack_imports`
+- `read:exceptions`
+- `read:scanner`
+- `read:scales`
+- `read:suppliers`
+- `read:strains`
+
+### Current endpoints
+
+- `GET /api/v1/site`
+- `GET /api/v1/capabilities`
+- `GET /api/v1/sync/manifest`
+- `GET /api/v1/aggregation/sites`
+- `GET /api/v1/aggregation/sites/<site_id>`
+- `GET /api/v1/aggregation/summary`
+- `GET /api/v1/aggregation/suppliers`
+- `GET /api/v1/aggregation/strains`
+- `GET /api/v1/search`
+- `GET /api/v1/tools/inventory-snapshot`
+- `GET /api/v1/tools/open-lots`
+- `GET /api/v1/tools/journey-resolve`
+- `GET /api/v1/tools/reconciliation-overview`
+- `GET /api/v1/summary/dashboard`
+- `GET /api/v1/departments`
+- `GET /api/v1/departments/<slug>`
+- `GET /api/v1/purchases`
+- `GET /api/v1/purchases/<purchase_id>`
+- `GET /api/v1/purchases/<purchase_id>/journey`
+- `GET /api/v1/lots`
+- `GET /api/v1/lots/<lot_id>`
+- `GET /api/v1/lots/<lot_id>/journey`
+- `GET /api/v1/runs`
+- `GET /api/v1/runs/<run_id>`
+- `GET /api/v1/runs/<run_id>/journey`
+- `GET /api/v1/suppliers`
+- `GET /api/v1/suppliers/<supplier_id>`
+- `GET /api/v1/strains`
+- `GET /api/v1/slack-imports`
+- `GET /api/v1/slack-imports/<msg_id>`
+- `GET /api/v1/exceptions`
+- `GET /api/v1/scale-devices`
+- `GET /api/v1/weight-captures`
+- `GET /api/v1/scan-events`
+- `GET /api/v1/lots/<lot_id>/scans`
+- `GET /api/v1/summary/inventory`
+- `GET /api/v1/summary/slack-imports`
+- `GET /api/v1/summary/exceptions`
+- `GET /api/v1/summary/scales`
+- `GET /api/v1/summary/scanner`
+- `GET /api/v1/inventory/on-hand`
+
+### Response contract
+
+Every response uses a standard envelope:
+
+```json
+{
+  "meta": {
+    "api_version": "v1",
+    "site_code": "DEFAULT",
+    "site_name": "Gold Drop",
+    "site_timezone": "America/Los_Angeles",
+    "generated_at": "2026-04-14T12:00:00Z"
+  },
+  "data": {}
+}
+```
+
+List responses also include:
+- `count`
+- `limit`
+- `offset`
+- `sort`
+- `filters`
+
+Contract notes:
+- `sort` is the canonical applied ordering for the endpoint.
+- `filters` echoes the normalized values the endpoint actually used after validation/defaulting.
+- Search responses use the same list metadata and currently report `sort = "relevance"`.
+- Internal consumers should depend on these `meta` fields rather than inferring order/filter behavior from request strings alone.
+
+### Site identity
+
+Site identity comes from `SystemSetting` values seeded by bootstrap and editable in `Settings -> Operational Parameters`:
+- `site_code`
+- `site_name`
+- `site_timezone`
+- `site_region`
+- `site_environment`
+
+This keeps each deployed facility self-identifying for future aggregation without forcing row-level `site_id` yet.
+
+### Remote-site aggregation cache
+
+- `RemoteSite` stores trusted remote site registrations, bearer token, cached site identity, and the latest cached manifest/summary payloads.
+- Remote-site cache now also stores pulled supplier-analytics and strain-analytics payloads for cross-site comparisons.
+- `RemoteSitePull` stores pull history with status and cached payload snapshots.
+- `services/site_aggregation.py` owns:
+  - base-URL normalization
+  - remote JSON fetch
+  - single-site pull + cache write
+  - batch pull across all active remote sites
+  - rollup serialization / cached summary helpers
+- Admin control surfaces:
+  - `Settings -> Remote Sites` for per-site create/update/pull/toggle/delete
+  - `Settings -> Maintenance -> Pull all remote sites` for one-shot refresh of all active registrations
+- CLI control surface:
+- `python scripts/pull_remote_sites.py`
+
+## MCP server
+
+- `scripts/mcp_server.py` implements a minimal stdio JSON-RPC MCP server.
+- `services/mcp_tools.py` is the read-only MCP tool registry and execution layer.
+- The server currently supports:
+  - `initialize`
+  - `ping`
+  - `tools/list`
+  - `tools/call`
+- Tool execution runs inside Flask app + request context so existing journey builders and serializers can be reused without a second business-rules path.
+
+### Current MCP tools
+
+- `site_identity`
+- `inventory_snapshot`
+- `open_lots`
+- `journey_resolve`
+- `purchase_journey`
+- `lot_journey`
+- `run_journey`
+- `reconciliation_overview`
+- `search_entities`
+- `dashboard_summary`
+- `supplier_performance`
+- `strain_performance`
+- `remote_sites`
+- `cross_site_summary`
+- `cross_site_supplier_compare`
+- `cross_site_strain_compare`
+- `scanner_summary`
+- `lot_scan_history`
+- `scale_devices`
+- `weight_capture_summary`
+
+### MCP design notes
+
+- The MCP layer is read-only.
+- It intentionally reuses the existing domain logic and aggregation cache rather than proxying through HTTP.
+- It is suitable for local/internal AI tooling first; broader deployment can later point MCP clients at the same repo script on each site instance.
 
 ## Resume checkpoint
 
@@ -81,7 +271,17 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
 - **Label / scan surfaces**
   - `GET /lots/<lot_id>/label`
   - `GET /purchases/<purchase_id>/labels`
-  - `GET /scan/lot/<tracking_id>` -> currently resolves into purchase journey with focused lot context
+  - `GET /scan/lot/<tracking_id>` -> dedicated scanned-lot workflow page
+  - `POST /scan/lot/<tracking_id>/start-run` -> creates a run-form prefill from the scanned lot
+  - `POST /scan/lot/<tracking_id>/confirm-movement` -> updates lot location and records a movement scan event
+  - `POST /scan/lot/<tracking_id>/confirm-testing` -> updates purchase testing status and records a testing scan event
+- **Scanner observability**
+  - `LotScanEvent` stores scan-open, start-run, movement, and testing actions with user/context/timestamp.
+  - `GET /api/v1/scan-events`, `GET /api/v1/lots/<lot_id>/scans`, and `GET /api/v1/summary/scanner` expose scanner activity to internal consumers.
+- **Smart-scale live integration**
+  - `Settings -> Smart Scales` supports device registration, device updates, raw-payload test ingestion, and recent capture review.
+  - `POST /runs/scale-capture` creates a pending `WeightCapture`, prefills `bio_in_reactor_lbs`, and links the capture to the run on save.
+  - `GET /api/v1/scale-devices`, `GET /api/v1/weight-captures`, and `GET /api/v1/summary/scales` expose configured devices and recorded captures to internal consumers.
 - **Coverage**
   - `tests/test_lot_allocation.py` covers tracking-id generation, approval-time backfill, partial allocation / release, and over-allocation rejection.
 

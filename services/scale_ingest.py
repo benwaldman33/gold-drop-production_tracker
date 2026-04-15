@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from flask_login import current_user
-from models import WeightCapture
+from models import ScaleDevice, WeightCapture
 
 SCALE_INTERFACE_TYPES = ("rs232", "usb_serial", "tcp", "modbus_rtu", "modbus_tcp")
 SCALE_SOURCE_MODES = ("manual", "device")
@@ -66,6 +66,13 @@ def parse_ascii_scale_payload(raw_payload: str) -> dict:
     }
 
 
+def parse_scale_payload(*, protocol_type: str | None, raw_payload: str) -> dict:
+    protocol = (protocol_type or "ascii").strip().lower()
+    if protocol in {"ascii", "plain_text", "generic_ascii"}:
+        return parse_ascii_scale_payload(raw_payload)
+    raise ValueError(f"Unsupported scale protocol: {protocol}")
+
+
 def create_weight_capture(
     root,
     *,
@@ -104,3 +111,32 @@ def create_weight_capture(
     )
     root.db.session.add(capture)
     return capture
+
+
+def capture_weight_from_device_payload(
+    root,
+    *,
+    device: ScaleDevice,
+    capture_type: str,
+    raw_payload: str,
+    purchase=None,
+    purchase_lot=None,
+    run=None,
+    notes: str | None = None,
+):
+    parsed = parse_scale_payload(protocol_type=getattr(device, "protocol_type", None), raw_payload=raw_payload)
+    capture = create_weight_capture(
+        root,
+        capture_type=capture_type,
+        measured_weight=float(parsed["measured_weight"]),
+        unit=parsed.get("unit") or "lb",
+        source_mode="device",
+        device=device,
+        purchase=purchase,
+        purchase_lot=purchase_lot,
+        run=run,
+        raw_payload=parsed.get("raw_payload") or raw_payload,
+        is_stable=parsed.get("is_stable"),
+        notes=notes,
+    )
+    return capture, parsed

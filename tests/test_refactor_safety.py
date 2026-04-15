@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import app as app_module
 import gold_drop.bootstrap_module as bootstrap_module
-from models import FieldAccessToken, FieldPurchaseSubmission, Purchase, PurchaseLot, ScaleDevice, SlackIngestedMessage, Supplier, SystemSetting, User, WeightCapture, db
+from models import ApiClient, FieldAccessToken, FieldPurchaseSubmission, LotScanEvent, Purchase, PurchaseLot, RemoteSite, ScaleDevice, SlackIngestedMessage, Supplier, SystemSetting, User, WeightCapture, db, gen_uuid
 from flask_login import login_user
 from services.scale_ingest import create_weight_capture
 
@@ -83,6 +83,173 @@ def test_settings_route_renders_with_legacy_naive_field_token_expiry():
                 db.session.commit()
 
 
+def test_settings_route_renders_api_clients_section():
+    page = _call_view_as_user("/settings", "settings", "admin")
+    assert page.status_code == 200
+    assert b"Internal API Clients" in page.data
+    assert b"Create API Client" in page.data
+    assert b"Recent API Request Log" in page.data
+
+
+def test_settings_route_renders_remote_sites_section():
+    page = _call_view_as_user("/settings", "settings", "admin")
+    assert page.status_code == 200
+    assert b"Remote Sites" in page.data
+    assert b"Add Remote Site" in page.data
+
+
+def test_settings_route_renders_smart_scales_section():
+    page = _call_view_as_user("/settings", "settings", "admin")
+    assert page.status_code == 200
+    assert b"Smart Scales" in page.data
+    assert b"Add Scale Device" in page.data
+    assert b"Recent Weight Captures" in page.data
+
+
+def test_admin_can_create_and_revoke_api_client_from_settings():
+    create = _call_view_as_user(
+        "/settings/api_clients/create",
+        "api_client_create",
+        "admin",
+        method="POST",
+        data={
+            "name": "settings test client",
+            "notes": "created in test",
+            "scopes": ["read:site", "read:lots"],
+            "return_to": "#settings-api-clients",
+        },
+    )
+    assert create.status_code in (302, 303)
+    assert "#settings-api-clients" in create.headers["Location"]
+
+    app = app_module.app
+    with app.app_context():
+        client = ApiClient.query.filter_by(name="settings test client").first()
+        assert client is not None
+        client_id = client.id
+        assert client.is_active is True
+        assert client.scopes == ["read:lots", "read:site"]
+
+    revoke = _call_view_as_user(
+        f"/settings/api_clients/{client_id}/toggle_active",
+        "api_client_toggle_active",
+        "admin",
+        method="POST",
+        data={"return_to": "#settings-api-clients"},
+        client_id=client_id,
+    )
+    assert revoke.status_code in (302, 303)
+
+    with app.app_context():
+        client = db.session.get(ApiClient, client_id)
+        assert client is not None
+        assert client.is_active is False
+        db.session.delete(client)
+        db.session.commit()
+
+
+def test_admin_can_create_and_pull_remote_site_from_settings():
+    suffix = gen_uuid()[:8]
+    create = _call_view_as_user(
+        "/settings/remote_sites/create",
+        "remote_site_create",
+        "admin",
+        method="POST",
+        data={
+            "name": f"Remote Site Alpha {suffix}",
+            "base_url": f"https://alpha-{suffix}.example.com/",
+            "api_token": "remote-secret",
+            "notes": "created in test",
+            "return_to": "#settings-remote-sites",
+        },
+    )
+    assert create.status_code in (302, 303)
+    assert "#settings-remote-sites" in create.headers["Location"]
+
+    app = app_module.app
+    with app.app_context():
+        site = RemoteSite.query.filter_by(name=f"Remote Site Alpha {suffix}").first()
+        assert site is not None
+        site_id = site.id
+        assert site.base_url == f"https://alpha-{suffix}.example.com"
+
+    fake_pull = type("PullResult", (), {"status": "success", "error_message": None})()
+    with patch("gold_drop.settings_module.pull_remote_site", return_value=fake_pull) as pull_mock:
+        pull = _call_view_as_user(
+            f"/settings/remote_sites/{site_id}/pull",
+            "remote_site_pull",
+            "admin",
+            method="POST",
+            data={"return_to": "#settings-remote-sites"},
+            site_id=site_id,
+        )
+        assert pull.status_code in (302, 303)
+        pull_mock.assert_called_once()
+
+    with app.app_context():
+        site = db.session.get(RemoteSite, site_id)
+        assert site is not None
+        site.is_active = False
+        db.session.commit()
+        db.session.delete(site)
+        db.session.commit()
+
+
+def test_admin_can_create_scale_device_and_test_capture_from_settings():
+    create = _call_view_as_user(
+        "/settings/scale_devices/create",
+        "scale_device_create",
+        "admin",
+        method="POST",
+        data={
+            "name": "Settings Scale Device",
+            "location": "Receiving",
+            "make_model": "Demo",
+            "interface_type": "rs232",
+            "protocol_type": "ascii",
+            "connection_target": "COM9",
+            "notes": "created in test",
+            "return_to": "#settings-scales",
+        },
+    )
+    assert create.status_code in (302, 303)
+    assert "#settings-scales" in create.headers["Location"]
+
+    app = app_module.app
+    with app.app_context():
+        device = ScaleDevice.query.filter_by(name="Settings Scale Device").first()
+        assert device is not None
+        device_id = device.id
+
+    capture = _call_view_as_user(
+        f"/settings/scale_devices/{device_id}/test_capture",
+        "scale_device_test_capture",
+        "admin",
+        method="POST",
+        data={
+            "capture_type": "adjustment",
+            "raw_payload": "ST,GS, 98.4 lb",
+            "notes": "settings test ingest",
+            "return_to": "#settings-scales",
+        },
+        device_id=device_id,
+    )
+    assert capture.status_code in (302, 303)
+
+    with app.app_context():
+        saved_device = db.session.get(ScaleDevice, device_id)
+        assert saved_device is not None
+        weight_capture = WeightCapture.query.filter_by(device_id=device_id).order_by(WeightCapture.created_at.desc()).first()
+        assert weight_capture is not None
+        capture_id = weight_capture.id
+        assert float(weight_capture.measured_weight or 0) == 98.4
+        assert weight_capture.source_mode == "device"
+        assert weight_capture.raw_payload == "ST,GS, 98.4 lb"
+        db.session.delete(weight_capture)
+        db.session.delete(saved_device)
+        db.session.commit()
+
+
 def test_slack_imports_route_is_registered_for_admin():
     page = _call_view_as_user("/settings/slack-imports", "settings_slack_imports", "admin")
     assert page.status_code == 200
@@ -107,6 +274,20 @@ def test_slack_sync_channel_route_redirects_cleanly_when_bot_token_missing():
     )
     assert page.status_code in (302, 303)
     assert "/settings" in page.headers["Location"]
+
+
+def test_pull_remote_sites_route_redirects_cleanly():
+    fake_pull = type("PullResult", (), {"status": "success", "error_message": None})()
+    with patch("gold_drop.settings_module.pull_all_remote_sites", return_value=[fake_pull]):
+        page = _call_view_as_user(
+            "/settings/pull_remote_sites",
+            "settings_pull_remote_sites",
+            "admin",
+            method="POST",
+            data={"return_to": "#settings-maintenance"},
+        )
+    assert page.status_code in (302, 303)
+    assert "#settings-maintenance" in page.headers["Location"]
 
 
 def test_slack_run_mappings_save_json_persists_rules():
@@ -281,13 +462,25 @@ def test_purchase_label_routes_and_scan_route_render_and_resolve():
             assert multi.status_code == 200
             assert b"Print" in multi.data
             assert b"Barcode payload" in multi.data
+            assert b"Format: CODE39" in multi.data
+            assert b"<svg" in multi.data
 
-            scan = client.get(f"/scan/lot/{tracking_id}", follow_redirects=False)
-            assert scan.status_code in (302, 303)
-            assert f"/purchases/{purchase_id}/journey" in scan.headers["Location"]
-            assert f"lot={tracking_id}" in scan.headers["Location"]
+            scan = client.get(f"/scan/lot/{tracking_id}")
+            assert scan.status_code == 200
+            assert b"Scanned Lot" in scan.data
+            assert tracking_id.encode() in scan.data
+            assert b"Start Run From This Lot" in scan.data
+            assert b"Print Label" in scan.data
+            assert b"Trace Journey" in scan.data
+            assert b"Recent Scan Activity" in scan.data
+
+            with app.app_context():
+                events = LotScanEvent.query.filter_by(lot_id=lot_id).order_by(LotScanEvent.created_at.asc()).all()
+                assert len(events) == 1
+                assert events[0].action == "scan_open"
     finally:
         with app.app_context():
+            LotScanEvent.query.filter_by(lot_id=lot_id).delete()
             lot_obj = db.session.get(PurchaseLot, lot_id)
             if lot_obj:
                 db.session.delete(lot_obj)
@@ -297,6 +490,372 @@ def test_purchase_label_routes_and_scan_route_render_and_resolve():
             supplier_obj = db.session.get(Supplier, supplier_id)
             if supplier_obj:
                 db.session.delete(supplier_obj)
+            db.session.commit()
+
+
+def test_scanned_lot_can_prefill_new_run():
+    app = app_module.app
+    with app.app_context():
+        supplier = Supplier(name="Scan Flow Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = Purchase(
+            supplier_id=supplier.id,
+            purchase_date=date(2026, 4, 12),
+            delivery_date=date(2026, 4, 12),
+            status="delivered",
+            stated_weight_lbs=80,
+            purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            clean_or_dirty="clean",
+            testing_status="completed",
+            batch_id=f"SCAN-{app_module.gen_uuid()[:6]}",
+        )
+        db.session.add(purchase)
+        db.session.flush()
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Scan Dream",
+            weight_lbs=80,
+            remaining_weight_lbs=80,
+        )
+        db.session.add(lot)
+        db.session.commit()
+        tracking_id = lot.tracking_id
+        lot_id = lot.id
+        purchase_id = purchase.id
+        supplier_id = supplier.id
+
+    try:
+        with app.test_client() as client:
+            _login(client, "admin")
+            resp = client.post(f"/scan/lot/{tracking_id}/start-run", follow_redirects=False)
+            assert resp.status_code in (302, 303)
+            assert resp.headers["Location"].endswith("/runs/new")
+            with client.session_transaction() as sess:
+                prefill = sess.get(app_module.SCAN_RUN_PREFILL_SESSION_KEY)
+                assert prefill is not None
+                assert prefill["tracking_id"] == tracking_id
+                assert prefill["suggested_allocations"] == [{"lot_id": lot_id, "weight_lbs": ""}]
+
+            run_new = client.get("/runs/new")
+            assert run_new.status_code == 200
+            assert b"Scanner prefill:" in run_new.data
+            assert tracking_id.encode() in run_new.data
+
+            with app.app_context():
+                actions = [
+                    event.action
+                    for event in LotScanEvent.query.filter_by(lot_id=lot_id).order_by(LotScanEvent.created_at.asc()).all()
+                ]
+                assert actions == ["start_run"]
+    finally:
+        with app.app_context():
+            LotScanEvent.query.filter_by(lot_id=lot_id).delete()
+            lot_obj = db.session.get(PurchaseLot, lot_id)
+            if lot_obj:
+                db.session.delete(lot_obj)
+            purchase_obj = db.session.get(Purchase, purchase_id)
+            if purchase_obj:
+                db.session.delete(purchase_obj)
+            supplier_obj = db.session.get(Supplier, supplier_id)
+            if supplier_obj:
+                db.session.delete(supplier_obj)
+            db.session.commit()
+
+
+def test_scanned_lot_can_confirm_movement_and_testing():
+    app = app_module.app
+    with app.app_context():
+        supplier = Supplier(name="Scan Update Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = Purchase(
+            supplier_id=supplier.id,
+            purchase_date=date(2026, 4, 12),
+            delivery_date=date(2026, 4, 12),
+            status="delivered",
+            stated_weight_lbs=60,
+            purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            clean_or_dirty="clean",
+            testing_status="pending",
+            batch_id=f"SCNUP-{app_module.gen_uuid()[:6]}",
+        )
+        db.session.add(purchase)
+        db.session.flush()
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Scanner Kush",
+            weight_lbs=60,
+            remaining_weight_lbs=60,
+            location="Staging",
+        )
+        db.session.add(lot)
+        db.session.commit()
+        tracking_id = lot.tracking_id
+        lot_id = lot.id
+        purchase_id = purchase.id
+        supplier_id = supplier.id
+
+    try:
+        with app.test_client() as client:
+            _login(client, "admin")
+            movement = client.post(
+                f"/scan/lot/{tracking_id}/confirm-movement",
+                data={"location": "Vault A / Shelf 2"},
+                follow_redirects=False,
+            )
+            assert movement.status_code in (302, 303)
+            assert movement.headers["Location"].endswith(f"/scan/lot/{tracking_id}")
+
+            testing = client.post(
+                f"/scan/lot/{tracking_id}/confirm-testing",
+                data={"testing_status": "completed"},
+                follow_redirects=False,
+            )
+            assert testing.status_code in (302, 303)
+            assert movement.headers["Location"].endswith(f"/scan/lot/{tracking_id}")
+
+            with app.app_context():
+                lot = db.session.get(PurchaseLot, lot_id)
+                purchase = db.session.get(Purchase, purchase_id)
+                assert lot is not None
+                assert purchase is not None
+                assert lot.location == "Vault A / Shelf 2"
+                assert purchase.testing_status == "completed"
+                assert purchase.testing_date == app_module.date.today()
+                actions = [
+                    event.action
+                    for event in LotScanEvent.query.filter_by(lot_id=lot_id).order_by(LotScanEvent.created_at.asc()).all()
+                ]
+                assert actions == ["confirm_movement", "confirm_testing"]
+    finally:
+        with app.app_context():
+            LotScanEvent.query.filter_by(lot_id=lot_id).delete()
+            lot_obj = db.session.get(PurchaseLot, lot_id)
+            if lot_obj:
+                db.session.delete(lot_obj)
+            purchase_obj = db.session.get(Purchase, purchase_id)
+            if purchase_obj:
+                db.session.delete(purchase_obj)
+            supplier_obj = db.session.get(Supplier, supplier_id)
+            if supplier_obj:
+                db.session.delete(supplier_obj)
+            db.session.commit()
+
+
+def test_floor_ops_page_shows_recent_scans_and_scale_captures():
+    app = app_module.app
+    with app.app_context():
+        supplier = Supplier(name="Floor Ops Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = Purchase(
+            supplier_id=supplier.id,
+            purchase_date=date(2026, 4, 12),
+            delivery_date=date(2026, 4, 12),
+            status="delivered",
+            stated_weight_lbs=55,
+            purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            clean_or_dirty="clean",
+            testing_status="completed",
+            batch_id=f"FLOOR-{app_module.gen_uuid()[:6]}",
+        )
+        db.session.add(purchase)
+        db.session.flush()
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Floor Dream",
+            weight_lbs=55,
+            remaining_weight_lbs=40,
+        )
+        db.session.add(lot)
+        db.session.flush()
+        event = LotScanEvent(lot_id=lot.id, tracking_id_snapshot=lot.tracking_id, action="scan_open")
+        db.session.add(event)
+        device = ScaleDevice(name="Floor Scale", interface_type="usb", protocol_type="generic_ascii", location="Reactor A")
+        db.session.add(device)
+        db.session.flush()
+        capture = WeightCapture(
+            device_id=device.id,
+            capture_type="reactor_input",
+            source_mode="device",
+            measured_weight=101.5,
+            unit="lbs",
+            raw_payload="WT,101.5,lb",
+        )
+        db.session.add(capture)
+        db.session.commit()
+        supplier_id = supplier.id
+        purchase_id = purchase.id
+        lot_id = lot.id
+        event_id = event.id
+        device_id = device.id
+        capture_id = capture.id
+
+    try:
+        with app.test_client() as client:
+            _login(client, "admin")
+            resp = client.get("/floor-ops")
+            assert resp.status_code == 200
+            assert b"Floor Ops" in resp.data
+            assert b"Recent Scan Activity" in resp.data
+            assert b"Recent Scale Captures" in resp.data
+            assert b"Open Scan Page" in resp.data
+            assert b"Floor Scale" in resp.data
+    finally:
+        with app.app_context():
+            capture_obj = db.session.get(WeightCapture, capture_id)
+            if capture_obj:
+                db.session.delete(capture_obj)
+            device_obj = db.session.get(ScaleDevice, device_id)
+            if device_obj:
+                db.session.delete(device_obj)
+            event_obj = db.session.get(LotScanEvent, event_id)
+            if event_obj:
+                db.session.delete(event_obj)
+            lot_obj = db.session.get(PurchaseLot, lot_id)
+            if lot_obj:
+                db.session.delete(lot_obj)
+            purchase_obj = db.session.get(Purchase, purchase_id)
+            if purchase_obj:
+                db.session.delete(purchase_obj)
+            supplier_obj = db.session.get(Supplier, supplier_id)
+            if supplier_obj:
+                db.session.delete(supplier_obj)
+            db.session.commit()
+
+
+def test_scan_center_page_renders_for_authenticated_user():
+    app = app_module.app
+    with app.test_client() as client:
+        _login(client, "admin")
+        resp = client.get("/scan")
+        assert resp.status_code == 200
+        assert b"Scan Center" in resp.data
+        assert b"Start Camera Scan" in resp.data
+        assert b"tracking_id" in resp.data
+
+
+def test_run_form_scale_capture_prefills_reactor_weight_and_links_capture():
+    app = app_module.app
+    with app.app_context():
+        supplier = Supplier(name="Run Scale Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = Purchase(
+            supplier_id=supplier.id,
+            purchase_date=date(2026, 4, 12),
+            delivery_date=date(2026, 4, 12),
+            status="delivered",
+            stated_weight_lbs=100,
+            purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            clean_or_dirty="clean",
+            testing_status="completed",
+            batch_id=f"RUNSC-{app_module.gen_uuid()[:6]}",
+        )
+        db.session.add(purchase)
+        db.session.flush()
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Run Scale Strain",
+            weight_lbs=100,
+            remaining_weight_lbs=100,
+        )
+        device = ScaleDevice(
+            name="Run Scale Device",
+            location="Lab",
+            interface_type="rs232",
+            protocol_type="ascii",
+            connection_target="COM5",
+            is_active=True,
+        )
+        db.session.add(lot)
+        db.session.add(device)
+        db.session.commit()
+        supplier_id = supplier.id
+        purchase_id = purchase.id
+        lot_id = lot.id
+        device_id = device.id
+
+    run_id = None
+    capture_id = None
+    try:
+        with app.test_client() as client:
+            _login(client, "admin")
+            capture = client.post(
+                "/runs/scale-capture",
+                data={
+                    "scale_device_id": device_id,
+                    "scale_raw_payload": "ST,GS, 44.2 lb",
+                    "scale_notes": "run form capture",
+                },
+                follow_redirects=False,
+            )
+            assert capture.status_code in (302, 303)
+            assert capture.headers["Location"].endswith("/runs/new")
+
+            with client.session_transaction() as sess:
+                prefill = sess.get(app_module.RUN_SCALE_PREFILL_SESSION_KEY)
+                assert prefill is not None
+                assert float(prefill["measured_weight"]) == 44.2
+                capture_id = prefill["capture_id"]
+
+            run_new = client.get("/runs/new")
+            assert run_new.status_code == 200
+            assert b"Scale prefill:" in run_new.data
+            assert b"44.20" in run_new.data
+
+            save = client.post(
+                "/runs/new",
+                data={
+                    "run_date": "2026-04-14",
+                    "reactor_number": "1",
+                    "run_type": "standard",
+                    "bio_in_reactor_lbs": "44.2",
+                    "dry_hte_g": "10",
+                    "dry_thca_g": "20",
+                    "lot_ids[]": [lot_id],
+                    "lot_weights[]": ["44.2"],
+                    "scale_capture_id": capture_id,
+                },
+                follow_redirects=False,
+            )
+            assert save.status_code in (302, 303)
+            assert save.headers["Location"].endswith("/runs")
+
+            with app.app_context():
+                capture_obj = db.session.get(WeightCapture, capture_id)
+                assert capture_obj is not None
+                assert capture_obj.run_id is not None
+                run_id = capture_obj.run_id
+                run = db.session.get(app_module.Run, run_id)
+                assert run is not None
+                assert float(run.bio_in_reactor_lbs or 0) == 44.2
+    finally:
+        with app.app_context():
+            if run_id:
+                run_input = app_module.RunInput.query.filter_by(run_id=run_id, lot_id=lot_id).first()
+                if run_input:
+                    db.session.delete(run_input)
+                run_obj = db.session.get(app_module.Run, run_id)
+                if run_obj:
+                    db.session.delete(run_obj)
+            if capture_id:
+                capture_obj = db.session.get(WeightCapture, capture_id)
+                if capture_obj:
+                    db.session.delete(capture_obj)
+            lot_obj = db.session.get(PurchaseLot, lot_id)
+            if lot_obj:
+                db.session.delete(lot_obj)
+            purchase_obj = db.session.get(Purchase, purchase_id)
+            if purchase_obj:
+                db.session.delete(purchase_obj)
+            supplier_obj = db.session.get(Supplier, supplier_id)
+            if supplier_obj:
+                db.session.delete(supplier_obj)
+            device_obj = db.session.get(ScaleDevice, device_id)
+            if device_obj:
+                db.session.delete(device_obj)
             db.session.commit()
 
 
@@ -328,7 +887,7 @@ def test_slack_apply_run_carries_manual_lot_selection_into_prefill_session():
         db.session.add(lot)
         row = SlackIngestedMessage(
             channel_id="C124",
-            message_ts=f"1743200001.{app_module.gen_uuid().replace('-', '')[:6]}",
+            message_ts="1743200001.123456",
             raw_text="reactor: A\nsource: Farmlane\nstrain: Blue Dream\nbio lbs: 100",
             message_kind="production_log",
         )

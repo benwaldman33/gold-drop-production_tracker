@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 
 from services.lot_allocation import ensure_lot_tracking_fields
 
@@ -79,6 +80,56 @@ def ensure_sqlite_schema(root) -> None:
         if "is_purchase_approver" not in cols:
             root.db.session.execute(text("ALTER TABLE users ADD COLUMN is_purchase_approver BOOLEAN DEFAULT 0"))
 
+    if has_table("api_clients"):
+        cols = column_names("api_clients")
+        if "last_used_scope" not in cols:
+            root.db.session.execute(text("ALTER TABLE api_clients ADD COLUMN last_used_scope VARCHAR(64)"))
+        if "last_used_endpoint" not in cols:
+            root.db.session.execute(text("ALTER TABLE api_clients ADD COLUMN last_used_endpoint VARCHAR(255)"))
+
+    if not has_table("api_client_request_logs"):
+        root.db.session.execute(text(
+            "CREATE TABLE api_client_request_logs ("
+            "id VARCHAR(36) PRIMARY KEY, "
+            "api_client_id VARCHAR(36) NOT NULL, "
+            "request_path VARCHAR(255) NOT NULL, "
+            "request_method VARCHAR(16) NOT NULL DEFAULT 'GET', "
+            "scope_used VARCHAR(64) NOT NULL, "
+            "status_code INTEGER, "
+            "created_at DATETIME NOT NULL"
+            ")"
+        ))
+
+    if has_table("remote_sites"):
+        cols = column_names("remote_sites")
+        if "last_suppliers_payload_json" not in cols:
+            try:
+                root.db.session.execute(text("ALTER TABLE remote_sites ADD COLUMN last_suppliers_payload_json TEXT"))
+            except OperationalError as exc:
+                if "duplicate column name" not in str(getattr(exc, "orig", exc)).lower():
+                    raise
+        if "last_strains_payload_json" not in cols:
+            try:
+                root.db.session.execute(text("ALTER TABLE remote_sites ADD COLUMN last_strains_payload_json TEXT"))
+            except OperationalError as exc:
+                if "duplicate column name" not in str(getattr(exc, "orig", exc)).lower():
+                    raise
+
+    if has_table("remote_site_pulls"):
+        cols = column_names("remote_site_pulls")
+        if "suppliers_payload_json" not in cols:
+            try:
+                root.db.session.execute(text("ALTER TABLE remote_site_pulls ADD COLUMN suppliers_payload_json TEXT"))
+            except OperationalError as exc:
+                if "duplicate column name" not in str(getattr(exc, "orig", exc)).lower():
+                    raise
+        if "strains_payload_json" not in cols:
+            try:
+                root.db.session.execute(text("ALTER TABLE remote_site_pulls ADD COLUMN strains_payload_json TEXT"))
+            except OperationalError as exc:
+                if "duplicate column name" not in str(getattr(exc, "orig", exc)).lower():
+                    raise
+
     if has_table("runs"):
         cols = column_names("runs")
         if "cost_per_gram_thca" not in cols:
@@ -122,6 +173,19 @@ def ensure_sqlite_schema(root) -> None:
             root.db.session.execute(text("ALTER TABLE purchase_lots ADD COLUMN deleted_at DATETIME"))
         if "deleted_by" not in cols:
             root.db.session.execute(text("ALTER TABLE purchase_lots ADD COLUMN deleted_by VARCHAR(36)"))
+
+    if not has_table("lot_scan_events"):
+        root.db.session.execute(text(
+            "CREATE TABLE lot_scan_events ("
+            "id VARCHAR(36) PRIMARY KEY, "
+            "lot_id VARCHAR(36) NOT NULL, "
+            "tracking_id_snapshot VARCHAR(24) NOT NULL, "
+            "action VARCHAR(40) NOT NULL DEFAULT 'scan_open', "
+            "context_json TEXT, "
+            "user_id VARCHAR(36), "
+            "created_at DATETIME NOT NULL"
+            ")"
+        ))
 
     if has_table("run_inputs"):
         cols = column_names("run_inputs")

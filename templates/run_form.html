@@ -8,6 +8,9 @@
 
 <div class="card">
   <form method="POST" enctype="multipart/form-data">
+    {% if scale_meta and scale_meta.capture_id %}
+    <input type="hidden" name="scale_capture_id" value="{{ scale_meta.capture_id }}">
+    {% endif %}
     {% if slack_meta and slack_meta.ingested_message_id %}
     <input type="hidden" name="slack_ingested_message_id" value="{{ slack_meta.ingested_message_id }}">
     <input type="hidden" name="slack_channel_id" value="{{ slack_meta.channel_id or '' }}">
@@ -31,11 +34,67 @@
       {% endif %}
     </div>
     {% endif %}
+    {% if scan_meta and scan_meta.tracking_id %}
+    <div class="flash flash-success" style="margin-bottom:16px;">
+      <strong>Scanner prefill:</strong> lot <strong>{{ scan_meta.tracking_id }}</strong> was selected from a scan.
+      <span class="text-sm" style="display:block;margin-top:6px;">
+        {{ scan_meta.strain_name or 'Unknown strain' }}{% if scan_meta.supplier_name %} / {{ scan_meta.supplier_name }}{% endif %}
+        {% if scan_meta.batch_id %} · batch {{ scan_meta.batch_id }}{% endif %}
+        · {{ "{:,.1f}".format(scan_meta.remaining_weight_lbs or 0) }} lbs remaining
+      </span>
+      <span class="text-sm" style="display:block;margin-top:6px;color:var(--text-muted);">
+        Enter the reactor weight and save the run when the extraction is ready to be logged.
+      </span>
+    </div>
+    {% endif %}
+    {% if scale_meta and scale_meta.capture_id %}
+    <div class="flash flash-success" style="margin-bottom:16px;">
+      <strong>Scale prefill:</strong> {{ "{:,.2f}".format(scale_meta.measured_weight or 0) }} {{ scale_meta.unit or 'lb' }}
+      from <strong>{{ scale_meta.device_name or 'scale device' }}</strong>.
+      <span class="text-sm" style="display:block;margin-top:6px;">
+        This capture has been applied to <strong>Lbs in Reactor</strong>{% if scale_meta.is_stable is not none %} · {{ 'stable' if scale_meta.is_stable else 'unstable' }}{% endif %}.
+      </span>
+      {% if scale_meta.raw_payload %}
+      <span class="text-sm" style="display:block;margin-top:6px;color:var(--text-muted);">
+        Raw payload: <code>{{ scale_meta.raw_payload }}</code>
+      </span>
+      {% endif %}
+    </div>
+    {% endif %}
     {% if slack_meta and slack_meta.ingested_message_id and not can_save_run %}
     <div class="flash flash-error" style="margin-bottom:16px;">
       Your account can review this prefilled run but only <strong>User</strong> or <strong>Super Admin</strong> can save runs. Ask an admin to upgrade your role or copy values into a run under an editor account.
     </div>
     {% endif %}
+    <div class="form-section">
+      <h4>Live Scale Capture</h4>
+      <div class="card" style="margin-bottom:12px;background:rgba(255,255,255,0.02);">
+        <p class="text-sm cell-muted" style="margin-bottom:10px;">
+          Paste a live device payload to prefill <strong>Lbs in Reactor</strong> and attach the capture to this run when saved.
+        </p>
+        <div class="form-row-3">
+          <div class="form-group">
+            <label>Scale device</label>
+            <select name="scale_device_id">
+              <option value="">Select device...</option>
+              {% for device in scale_devices %}
+              <option value="{{ device.id }}" {% if scale_meta and scale_meta.device_id == device.id %}selected{% endif %}>{{ device.name }}{% if device.location %} · {{ device.location }}{% endif %}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group" style="grid-column: span 2;">
+            <label>Raw payload</label>
+            <input type="text" name="scale_raw_payload" placeholder="e.g. ST,GS, 124.6 lb">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <input type="text" name="scale_notes" placeholder="Optional operator note">
+        </div>
+        <button type="submit" class="btn btn-secondary btn-sm" formaction="{{ url_for('run_scale_capture') }}" formmethod="POST">Capture from Scale</button>
+      </div>
+    </div>
+
     <div class="form-section">
       <h4>Run Details</h4>
       <div class="form-row-3">

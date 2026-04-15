@@ -9,7 +9,7 @@ from gold_drop.purchases import (
     biomass_budget_snapshot_for_purchase,
     enforce_weekly_biomass_purchase_limits,
 )
-from models import coerce_utc
+from models import ApiClient, ApiClientRequestLog, RemoteSite, coerce_utc
 from services.field_submissions import (
     decorate_submission_rows,
     field_approval_return_redirect,
@@ -18,6 +18,9 @@ from services.field_submissions import (
     promote_submission_photos,
     submission_total_weight,
 )
+from services.api_auth import generate_api_token, hash_api_token
+from services.site_aggregation import normalize_remote_base_url, pull_all_remote_sites, pull_remote_site
+from services.scale_ingest import SCALE_INTERFACE_TYPES, capture_weight_from_device_payload
 
 
 def register_routes(app, root):
@@ -73,6 +76,62 @@ def register_routes(app, root):
     def settings_recalculate_costs():
         return settings_recalculate_costs_view(root)
 
+    @root.admin_required
+    def settings_pull_remote_sites():
+        return settings_pull_remote_sites_view(root)
+
+    @root.admin_required
+    def api_client_create():
+        return api_client_create_view(root)
+
+    @root.admin_required
+    def api_client_toggle_active(client_id):
+        return api_client_toggle_active_view(root, client_id)
+
+    @root.admin_required
+    def api_client_delete(client_id):
+        return api_client_delete_view(root, client_id)
+
+    @root.admin_required
+    def remote_site_create():
+        return remote_site_create_view(root)
+
+    @root.admin_required
+    def remote_site_update(site_id):
+        return remote_site_update_view(root, site_id)
+
+    @root.admin_required
+    def remote_site_toggle_active(site_id):
+        return remote_site_toggle_active_view(root, site_id)
+
+    @root.admin_required
+    def remote_site_delete(site_id):
+        return remote_site_delete_view(root, site_id)
+
+    @root.admin_required
+    def remote_site_pull(site_id):
+        return remote_site_pull_view(root, site_id)
+
+    @root.admin_required
+    def scale_device_create():
+        return scale_device_create_view(root)
+
+    @root.admin_required
+    def scale_device_update(device_id):
+        return scale_device_update_view(root, device_id)
+
+    @root.admin_required
+    def scale_device_toggle_active(device_id):
+        return scale_device_toggle_active_view(root, device_id)
+
+    @root.admin_required
+    def scale_device_delete(device_id):
+        return scale_device_delete_view(root, device_id)
+
+    @root.admin_required
+    def scale_device_test_capture(device_id):
+        return scale_device_test_capture_view(root, device_id)
+
     app.add_url_rule("/settings", endpoint="settings", view_func=settings, methods=["GET", "POST"])
     app.add_url_rule("/field-approvals", endpoint="field_approvals", view_func=field_approvals)
     app.add_url_rule(
@@ -101,6 +160,20 @@ def register_routes(app, root):
     app.add_url_rule("/settings/field_tokens/<token_id>/revoke", endpoint="field_token_revoke", view_func=field_token_revoke, methods=["POST"])
     app.add_url_rule("/settings/field_tokens/<token_id>/delete", endpoint="field_token_delete", view_func=field_token_delete, methods=["POST"])
     app.add_url_rule("/settings/recalculate_costs", endpoint="settings_recalculate_costs", view_func=settings_recalculate_costs, methods=["POST"])
+    app.add_url_rule("/settings/pull_remote_sites", endpoint="settings_pull_remote_sites", view_func=settings_pull_remote_sites, methods=["POST"])
+    app.add_url_rule("/settings/api_clients/create", endpoint="api_client_create", view_func=api_client_create, methods=["POST"])
+    app.add_url_rule("/settings/api_clients/<client_id>/toggle_active", endpoint="api_client_toggle_active", view_func=api_client_toggle_active, methods=["POST"])
+    app.add_url_rule("/settings/api_clients/<client_id>/delete", endpoint="api_client_delete", view_func=api_client_delete, methods=["POST"])
+    app.add_url_rule("/settings/remote_sites/create", endpoint="remote_site_create", view_func=remote_site_create, methods=["POST"])
+    app.add_url_rule("/settings/remote_sites/<site_id>/update", endpoint="remote_site_update", view_func=remote_site_update, methods=["POST"])
+    app.add_url_rule("/settings/remote_sites/<site_id>/toggle_active", endpoint="remote_site_toggle_active", view_func=remote_site_toggle_active, methods=["POST"])
+    app.add_url_rule("/settings/remote_sites/<site_id>/delete", endpoint="remote_site_delete", view_func=remote_site_delete, methods=["POST"])
+    app.add_url_rule("/settings/remote_sites/<site_id>/pull", endpoint="remote_site_pull", view_func=remote_site_pull, methods=["POST"])
+    app.add_url_rule("/settings/scale_devices/create", endpoint="scale_device_create", view_func=scale_device_create, methods=["POST"])
+    app.add_url_rule("/settings/scale_devices/<device_id>/update", endpoint="scale_device_update", view_func=scale_device_update, methods=["POST"])
+    app.add_url_rule("/settings/scale_devices/<device_id>/toggle_active", endpoint="scale_device_toggle_active", view_func=scale_device_toggle_active, methods=["POST"])
+    app.add_url_rule("/settings/scale_devices/<device_id>/delete", endpoint="scale_device_delete", view_func=scale_device_delete, methods=["POST"])
+    app.add_url_rule("/settings/scale_devices/<device_id>/test_capture", endpoint="scale_device_test_capture", view_func=scale_device_test_capture, methods=["POST"])
 
 
 def settings_redirect(root):
@@ -125,6 +198,29 @@ def _token_share_texts(link: str) -> tuple[str, str, str]:
         f"{link}\n"
     )
     return sms, subject, body
+
+
+def _parse_api_client_scopes(form) -> list[str]:
+    allowed_scopes = {
+        "read:site",
+        "read:purchases",
+        "read:journey",
+        "read:lots",
+        "read:runs",
+        "read:inventory",
+        "read:dashboard",
+        "read:aggregation",
+        "read:search",
+        "read:tools",
+        "read:slack_imports",
+        "read:exceptions",
+        "read:scanner",
+        "read:scales",
+        "read:suppliers",
+        "read:strains",
+    }
+    selected = [scope.strip() for scope in form.getlist("scopes") if scope.strip() in allowed_scopes]
+    return sorted(set(selected))
 
 
 def settings_view(root):
@@ -249,8 +345,54 @@ def settings_view(root):
                     root.flash(f"Unknown timezone {tz_raw!r}; timezone was not changed.", "error")
                     tz_ok = False
 
+            site_code_raw = (root.request.form.get("site_code") or "").strip().upper()
+            site_name_raw = (root.request.form.get("site_name") or "").strip()
+            site_timezone_raw = (root.request.form.get("site_timezone") or "").strip()
+            site_region_raw = (root.request.form.get("site_region") or "").strip()
+            site_environment_raw = (root.request.form.get("site_environment") or "").strip().lower()
+
+            site_code = site_code_raw[:24] if site_code_raw else "DEFAULT"
+            site_name = site_name_raw[:120] if site_name_raw else "Gold Drop"
+            site_region = site_region_raw[:80]
+            site_environment = site_environment_raw if site_environment_raw in {"production", "staging", "development", "test"} else "production"
+            site_timezone_ok = True
+            if site_timezone_raw:
+                try:
+                    ZoneInfo(site_timezone_raw)
+                except ZoneInfoNotFoundError:
+                    root.flash(f"Unknown site timezone {site_timezone_raw!r}; site timezone was not changed.", "error")
+                    site_timezone_ok = False
+            else:
+                site_timezone_raw = "America/Los_Angeles"
+
+            for key, val, desc in (
+                ("site_code", site_code, "Short site code used in internal API metadata"),
+                ("site_name", site_name, "Facility/site name used in internal API metadata"),
+                ("site_region", site_region, "Optional site region used in internal API metadata"),
+                ("site_environment", site_environment, "Deployment environment label used in internal API metadata"),
+            ):
+                existing = root.db.session.get(root.SystemSetting, key)
+                if existing:
+                    existing.value = val
+                else:
+                    root.db.session.add(root.SystemSetting(key=key, value=val, description=desc))
+
+            if site_timezone_ok:
+                existing = root.db.session.get(root.SystemSetting, "site_timezone")
+                if existing:
+                    existing.value = site_timezone_raw
+                else:
+                    root.db.session.add(root.SystemSetting(
+                        key="site_timezone",
+                        value=site_timezone_raw,
+                        description="Facility/site timezone exposed through internal API metadata",
+                    ))
+
             root.db.session.commit()
-            root.flash("System settings updated." if tz_ok else "System settings saved; fix the timezone name and save again.", "success" if tz_ok else "info")
+            if tz_ok and site_timezone_ok:
+                root.flash("System settings updated.", "success")
+            else:
+                root.flash("System settings saved; fix the timezone name(s) and save again.", "info")
 
         elif form_type == "kpi":
             kpi_ids = root.request.form.getlist("kpi_ids[]")
@@ -373,10 +515,27 @@ def settings_view(root):
     kpis = root.KpiTarget.query.all()
     users = root.User.query.order_by(root.User.created_at.asc()).all()
     field_tokens = root.FieldAccessToken.query.order_by(root.FieldAccessToken.created_at.desc()).all()
+    api_clients = ApiClient.query.order_by(ApiClient.created_at.desc()).all()
+    api_request_logs = ApiClientRequestLog.query.order_by(ApiClientRequestLog.created_at.desc()).limit(25).all()
+    remote_sites = RemoteSite.query.order_by(RemoteSite.created_at.desc()).all()
+    scale_devices = root.ScaleDevice.query.order_by(root.ScaleDevice.created_at.desc()).all()
+    recent_weight_captures = root.WeightCapture.query.order_by(root.WeightCapture.created_at.desc()).limit(25).all()
     for token in field_tokens:
-        token.expires_at = coerce_utc(token.expires_at)
-        token.last_used_at = coerce_utc(token.last_used_at)
-        token.revoked_at = coerce_utc(token.revoked_at)
+        token._display_expires_at = coerce_utc(token.expires_at)
+        token._display_last_used_at = coerce_utc(token.last_used_at)
+        token._display_revoked_at = coerce_utc(token.revoked_at)
+    for client in api_clients:
+        client._display_created_at = coerce_utc(client.created_at)
+        client._display_last_used_at = coerce_utc(client.last_used_at)
+    for log in api_request_logs:
+        log._display_created_at = coerce_utc(log.created_at)
+    for site in remote_sites:
+        site._display_created_at = coerce_utc(site.created_at)
+        site._display_updated_at = coerce_utc(site.updated_at)
+        site._display_last_pull_started_at = coerce_utc(site.last_pull_started_at)
+        site._display_last_pull_finished_at = coerce_utc(site.last_pull_finished_at)
+    for capture in recent_weight_captures:
+        capture._display_created_at = coerce_utc(capture.created_at)
     pending_field_submissions = root.FieldPurchaseSubmission.query.filter_by(status="pending").order_by(
         root.FieldPurchaseSubmission.submitted_at.desc()
     ).all()
@@ -389,6 +548,9 @@ def settings_view(root):
     last_field_sms = root.session.pop("last_field_sms", None)
     last_field_email_subject = root.session.pop("last_field_email_subject", None)
     last_field_email_body = root.session.pop("last_field_email_body", None)
+    last_api_client_token = root.session.pop("last_api_client_token", None)
+    last_api_client_name = root.session.pop("last_api_client_name", None)
+    last_api_client_scopes = root.session.pop("last_api_client_scopes", None)
 
     slack_sync_days_pref = root.session.get("slack_sync_days", 90)
     try:
@@ -412,6 +574,12 @@ def settings_view(root):
         kpis=kpis,
         users=users,
         field_tokens=field_tokens,
+        api_clients=api_clients,
+        api_request_logs=api_request_logs,
+        remote_sites=remote_sites,
+        scale_devices=scale_devices,
+        recent_weight_captures=recent_weight_captures,
+        scale_interface_types=SCALE_INTERFACE_TYPES,
         field_submissions=pending_field_submissions,
         reviewed_field_submissions=reviewed_field_submissions,
         submission_return_to="#settings-field-intake",
@@ -424,7 +592,114 @@ def settings_view(root):
         last_field_sms=last_field_sms,
         last_field_email_subject=last_field_email_subject,
         last_field_email_body=last_field_email_body,
+        last_api_client_token=last_api_client_token,
+        last_api_client_name=last_api_client_name,
+        last_api_client_scopes=last_api_client_scopes,
     )
+
+
+def scale_device_create_view(root):
+    name = (root.request.form.get("name") or "").strip()
+    if not name:
+        root.flash("Scale device name is required.", "error")
+        return settings_redirect(root)
+    interface_type = (root.request.form.get("interface_type") or "").strip().lower() or None
+    if interface_type and interface_type not in set(SCALE_INTERFACE_TYPES):
+        root.flash("Unsupported scale interface type.", "error")
+        return settings_redirect(root)
+    device = root.ScaleDevice(
+        name=name,
+        location=(root.request.form.get("location") or "").strip() or None,
+        make_model=(root.request.form.get("make_model") or "").strip() or None,
+        interface_type=interface_type,
+        protocol_type=(root.request.form.get("protocol_type") or "").strip() or "ascii",
+        connection_target=(root.request.form.get("connection_target") or "").strip() or None,
+        notes=(root.request.form.get("notes") or "").strip() or None,
+        is_active=True,
+    )
+    root.db.session.add(device)
+    root.db.session.commit()
+    root.flash("Scale device added.", "success")
+    return settings_redirect(root)
+
+
+def scale_device_update_view(root, device_id):
+    device = root.db.session.get(root.ScaleDevice, device_id)
+    if device is None:
+        root.flash("Scale device not found.", "error")
+        return settings_redirect(root)
+    interface_type = (root.request.form.get("interface_type") or "").strip().lower() or None
+    if interface_type and interface_type not in set(SCALE_INTERFACE_TYPES):
+        root.flash("Unsupported scale interface type.", "error")
+        return settings_redirect(root)
+    name = (root.request.form.get("name") or "").strip()
+    if not name:
+        root.flash("Scale device name is required.", "error")
+        return settings_redirect(root)
+    device.name = name
+    device.location = (root.request.form.get("location") or "").strip() or None
+    device.make_model = (root.request.form.get("make_model") or "").strip() or None
+    device.interface_type = interface_type
+    device.protocol_type = (root.request.form.get("protocol_type") or "").strip() or "ascii"
+    device.connection_target = (root.request.form.get("connection_target") or "").strip() or None
+    device.notes = (root.request.form.get("notes") or "").strip() or None
+    root.db.session.commit()
+    root.flash("Scale device updated.", "success")
+    return settings_redirect(root)
+
+
+def scale_device_toggle_active_view(root, device_id):
+    device = root.db.session.get(root.ScaleDevice, device_id)
+    if device is None:
+        root.flash("Scale device not found.", "error")
+        return settings_redirect(root)
+    device.is_active = not bool(device.is_active)
+    root.db.session.commit()
+    root.flash("Scale device activated." if device.is_active else "Scale device disabled.", "success")
+    return settings_redirect(root)
+
+
+def scale_device_delete_view(root, device_id):
+    device = root.db.session.get(root.ScaleDevice, device_id)
+    if device is None:
+        root.flash("Scale device not found.", "error")
+        return settings_redirect(root)
+    has_captures = root.WeightCapture.query.filter_by(device_id=device.id).first() is not None
+    if has_captures:
+        root.flash("Cannot delete a scale device with recorded captures. Disable it instead.", "error")
+        return settings_redirect(root)
+    root.db.session.delete(device)
+    root.db.session.commit()
+    root.flash("Scale device deleted.", "success")
+    return settings_redirect(root)
+
+
+def scale_device_test_capture_view(root, device_id):
+    device = root.db.session.get(root.ScaleDevice, device_id)
+    if device is None:
+        root.flash("Scale device not found.", "error")
+        return settings_redirect(root)
+    raw_payload = (root.request.form.get("raw_payload") or "").strip()
+    capture_type = (root.request.form.get("capture_type") or "").strip() or "adjustment"
+    notes = (root.request.form.get("notes") or "").strip() or None
+    try:
+        capture, parsed = capture_weight_from_device_payload(
+            root,
+            device=device,
+            capture_type=capture_type,
+            raw_payload=raw_payload,
+            notes=notes,
+        )
+        root.db.session.commit()
+    except Exception as exc:
+        root.db.session.rollback()
+        root.flash(f"Scale test capture failed: {exc}", "error")
+        return settings_redirect(root)
+    root.flash(
+        f"Captured {parsed['measured_weight']} {parsed.get('unit') or 'lb'} from {device.name}.",
+        "success",
+    )
+    return settings_redirect(root)
 
 
 def field_approvals_view(root):
@@ -774,4 +1049,156 @@ def settings_recalculate_costs_view(root):
     root.log_audit("recalculate", "run_costs", root.gen_uuid(), details=json.dumps({"run_count": len(runs)}))
     root.db.session.commit()
     root.flash(f"Recalculated costs for {len(runs)} run(s).", "success")
+    return settings_redirect(root)
+
+
+def settings_pull_remote_sites_view(root):
+    pulls = pull_all_remote_sites()
+    success_count = sum(1 for pull in pulls if pull.status == "success")
+    failure_count = sum(1 for pull in pulls if pull.status != "success")
+    if not pulls:
+        root.flash("No remote sites are active.", "info")
+    elif failure_count:
+        root.flash(
+            f"Pulled {len(pulls)} remote site(s): {success_count} succeeded, {failure_count} failed.",
+            "error" if success_count == 0 else "info",
+        )
+    else:
+        root.flash(f"Pulled {success_count} remote site(s) successfully.", "success")
+    return settings_redirect(root)
+
+
+def api_client_create_view(root):
+    name = (root.request.form.get("name") or "").strip()
+    notes = (root.request.form.get("notes") or "").strip() or None
+    scopes = _parse_api_client_scopes(root.request.form)
+    if not name:
+        root.flash("API client name is required.", "error")
+        return settings_redirect(root)
+    if not scopes:
+        root.flash("Select at least one API scope.", "error")
+        return settings_redirect(root)
+
+    raw_token = generate_api_token()
+    client = ApiClient(name=name, token_hash=hash_api_token(raw_token), notes=notes)
+    client.set_scopes(scopes)
+    root.db.session.add(client)
+    root.db.session.commit()
+
+    root.session["last_api_client_token"] = raw_token
+    root.session["last_api_client_name"] = client.name
+    root.session["last_api_client_scopes"] = ", ".join(client.scopes)
+    root.flash(f"API client '{client.name}' created.", "success")
+    return settings_redirect(root)
+
+
+def api_client_toggle_active_view(root, client_id):
+    client = root.db.session.get(ApiClient, client_id)
+    if not client:
+        root.flash("API client not found.", "error")
+        return settings_redirect(root)
+    client.is_active = not bool(client.is_active)
+    root.db.session.commit()
+    root.flash(
+        f"API client '{client.name}' {'activated' if client.is_active else 'revoked'}.",
+        "success",
+    )
+    return settings_redirect(root)
+
+
+def api_client_delete_view(root, client_id):
+    client = root.db.session.get(ApiClient, client_id)
+    if not client:
+        root.flash("API client not found.", "error")
+        return settings_redirect(root)
+    if client.is_active:
+        root.flash("Revoke the API client before deleting it.", "error")
+        return settings_redirect(root)
+    root.db.session.delete(client)
+    root.db.session.commit()
+    root.flash(f"API client '{client.name}' deleted.", "success")
+    return settings_redirect(root)
+
+
+def remote_site_create_view(root):
+    name = (root.request.form.get("name") or "").strip()
+    base_url = normalize_remote_base_url(root.request.form.get("base_url") or "")
+    api_token = (root.request.form.get("api_token") or "").strip() or None
+    notes = (root.request.form.get("notes") or "").strip() or None
+    if not name or not base_url:
+        root.flash("Remote site name and base URL are required.", "error")
+        return settings_redirect(root)
+    if RemoteSite.query.filter_by(base_url=base_url).first():
+        root.flash("A remote site with that base URL already exists.", "error")
+        return settings_redirect(root)
+    site = RemoteSite(name=name, base_url=base_url, api_token=api_token, notes=notes)
+    root.db.session.add(site)
+    root.db.session.commit()
+    root.flash(f"Remote site '{site.name}' added.", "success")
+    return settings_redirect(root)
+
+
+def remote_site_update_view(root, site_id):
+    site = root.db.session.get(RemoteSite, site_id)
+    if not site:
+        root.flash("Remote site not found.", "error")
+        return settings_redirect(root)
+    name = (root.request.form.get("name") or "").strip()
+    base_url = normalize_remote_base_url(root.request.form.get("base_url") or "")
+    notes = (root.request.form.get("notes") or "").strip() or None
+    api_token_raw = root.request.form.get("api_token")
+    if not name or not base_url:
+        root.flash("Remote site name and base URL are required.", "error")
+        return settings_redirect(root)
+    existing = RemoteSite.query.filter(RemoteSite.base_url == base_url, RemoteSite.id != site.id).first()
+    if existing:
+        root.flash("Another remote site already uses that base URL.", "error")
+        return settings_redirect(root)
+    site.name = name
+    site.base_url = base_url
+    site.notes = notes
+    if api_token_raw is not None:
+        api_token = api_token_raw.strip()
+        if api_token:
+            site.api_token = api_token
+    root.db.session.commit()
+    root.flash(f"Remote site '{site.name}' updated.", "success")
+    return settings_redirect(root)
+
+
+def remote_site_toggle_active_view(root, site_id):
+    site = root.db.session.get(RemoteSite, site_id)
+    if not site:
+        root.flash("Remote site not found.", "error")
+        return settings_redirect(root)
+    site.is_active = not bool(site.is_active)
+    root.db.session.commit()
+    root.flash(f"Remote site '{site.name}' {'activated' if site.is_active else 'disabled'}.", "success")
+    return settings_redirect(root)
+
+
+def remote_site_delete_view(root, site_id):
+    site = root.db.session.get(RemoteSite, site_id)
+    if not site:
+        root.flash("Remote site not found.", "error")
+        return settings_redirect(root)
+    if site.is_active:
+        root.flash("Disable the remote site before deleting it.", "error")
+        return settings_redirect(root)
+    root.db.session.delete(site)
+    root.db.session.commit()
+    root.flash(f"Remote site '{site.name}' deleted.", "success")
+    return settings_redirect(root)
+
+
+def remote_site_pull_view(root, site_id):
+    site = root.db.session.get(RemoteSite, site_id)
+    if not site:
+        root.flash("Remote site not found.", "error")
+        return settings_redirect(root)
+    pull = pull_remote_site(site)
+    if pull.status == "success":
+        root.flash(f"Pulled remote site '{site.name}' successfully.", "success")
+    else:
+        root.flash(f"Remote site pull failed for '{site.name}': {pull.error_message or 'unknown error'}", "error")
     return settings_redirect(root)

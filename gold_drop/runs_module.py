@@ -6,6 +6,7 @@ from services.lot_allocation import (
     collect_run_allocations_from_form,
     release_run_allocations,
 )
+from services.scale_ingest import capture_weight_from_device_payload
 from services.slack_workflow import (
     hydrate_run_from_slack_prefill,
     slack_resolution_create_declared_biomass,
@@ -23,6 +24,10 @@ def register_routes(app, root):
         return run_new_view(root)
 
     @root.editor_required
+    def run_scale_capture():
+        return run_scale_capture_view(root)
+
+    @root.editor_required
     def run_edit(run_id):
         return run_edit_view(root, run_id)
 
@@ -36,6 +41,7 @@ def register_routes(app, root):
 
     app.add_url_rule("/runs", endpoint="runs_list", view_func=runs_list)
     app.add_url_rule("/runs/new", endpoint="run_new", view_func=run_new, methods=["GET", "POST"])
+    app.add_url_rule("/runs/scale-capture", endpoint="run_scale_capture", view_func=run_scale_capture, methods=["POST"])
     app.add_url_rule("/runs/<run_id>/edit", endpoint="run_edit", view_func=run_edit, methods=["GET", "POST"])
     app.add_url_rule("/runs/<run_id>/delete", endpoint="run_delete", view_func=run_delete, methods=["POST"])
     app.add_url_rule("/runs/<run_id>/hard_delete", endpoint="run_hard_delete", view_func=run_hard_delete, methods=["POST"])
@@ -145,6 +151,8 @@ def run_new_view(root):
         return save_run(root, None)
 
     slack_prefill = root.session.get(root.SLACK_RUN_PREFILL_SESSION_KEY)
+    scan_prefill = None if slack_prefill else root.session.get(root.SCAN_RUN_PREFILL_SESSION_KEY)
+    scale_prefill = None if slack_prefill else root.session.get(root.RUN_SCALE_PREFILL_SESSION_KEY)
     if not root.current_user.can_edit and not (slack_prefill and root.current_user.can_slack_import):
         root.flash("Edit access required.", "error")
         return root.redirect(root.url_for("dashboard"))
@@ -175,15 +183,35 @@ def run_new_view(root):
         display_run = None
         slack_meta = None
 
+    scan_meta = None
+    if scan_prefill:
+        display_run = display_run or root.Run()
+        scan_meta = {
+            "tracking_id": (scan_prefill.get("tracking_id") or "").strip(),
+            "purchase_id": (scan_prefill.get("purchase_id") or "").strip(),
+            "batch_id": (scan_prefill.get("batch_id") or "").strip(),
+            "supplier_name": (scan_prefill.get("supplier_name") or "").strip(),
+            "strain_name": (scan_prefill.get("strain_name") or "").strip(),
+            "remaining_weight_lbs": float(scan_prefill.get("remaining_weight_lbs") or 0),
+            "suggested_allocations": list(scan_prefill.get("suggested_allocations") or []),
+        }
+    if scale_prefill:
+        display_run = display_run or root.Run()
+        if not getattr(display_run, "bio_in_reactor_lbs", None):
+            display_run.bio_in_reactor_lbs = float(scale_prefill.get("measured_weight") or 0)
+
     lots = _available_lots_query(root).all()
-    lot_rows = list(slack_meta.get("suggested_allocations") or []) if slack_meta else []
+    lot_rows = list(slack_meta.get("suggested_allocations") or []) if slack_meta else list(scan_meta.get("suggested_allocations") or []) if scan_meta else []
     return root.render_template(
         "run_form.html",
         run=display_run,
         lots=lots,
+        scale_devices=root.ScaleDevice.query.filter_by(is_active=True).order_by(root.ScaleDevice.name.asc()).all(),
         lot_rows=lot_rows,
         today=today,
         slack_meta=slack_meta,
+        scan_meta=scan_meta,
+        scale_meta=scale_prefill,
         can_save_run=bool(root.current_user.can_edit),
         **root._run_form_extras(display_run),
     )
@@ -210,9 +238,12 @@ def run_edit_view(root, run_id):
         "run_form.html",
         run=run,
         lots=lots,
+        scale_devices=root.ScaleDevice.query.filter_by(is_active=True).order_by(root.ScaleDevice.name.asc()).all(),
         lot_rows=lot_rows,
         today=root.date.today(),
         slack_meta=None,
+        scan_meta=None,
+        scale_meta=None,
         can_save_run=True,
         **root._run_form_extras(run),
     )
@@ -221,6 +252,8 @@ def run_edit_view(root, run_id):
 def save_run(root, existing_run):
     today = root.date.today()
     slack_meta = None
+    scan_meta = None
+    scale_meta = None
     if root.request.form.get("slack_ingested_message_id"):
         slack_meta = {
             "ingested_message_id": (root.request.form.get("slack_ingested_message_id") or "").strip(),
@@ -228,6 +261,21 @@ def save_run(root, existing_run):
             "message_ts": (root.request.form.get("slack_message_ts") or "").strip(),
             "allow_duplicate": root.request.form.get("slack_apply_allow_duplicate") == "1",
         }
+    elif not existing_run:
+        scan_prefill = root.session.get(root.SCAN_RUN_PREFILL_SESSION_KEY) or {}
+        if scan_prefill:
+            scan_meta = {
+                "tracking_id": (scan_prefill.get("tracking_id") or "").strip(),
+                "purchase_id": (scan_prefill.get("purchase_id") or "").strip(),
+                "batch_id": (scan_prefill.get("batch_id") or "").strip(),
+                "supplier_name": (scan_prefill.get("supplier_name") or "").strip(),
+                "strain_name": (scan_prefill.get("strain_name") or "").strip(),
+                "remaining_weight_lbs": float(scan_prefill.get("remaining_weight_lbs") or 0),
+                "suggested_allocations": list(scan_prefill.get("suggested_allocations") or []),
+            }
+        scale_prefill = root.session.get(root.RUN_SCALE_PREFILL_SESSION_KEY) or {}
+        if scale_prefill:
+            scale_meta = dict(scale_prefill)
 
     try:
         if existing_run:
@@ -318,6 +366,12 @@ def save_run(root, existing_run):
 
         run.calculate_cost()
 
+        scale_capture_id = (root.request.form.get("scale_capture_id") or "").strip()
+        if scale_capture_id:
+            capture = root.db.session.get(root.WeightCapture, scale_capture_id)
+            if capture is not None:
+                capture.run_id = run.id
+
         slack_prefill_snapshot = (root.session.get(root.SLACK_RUN_PREFILL_SESSION_KEY) or {}) if not existing_run else {}
         resolution = slack_prefill_snapshot.get("resolution")
         if not existing_run and slack_meta and resolution:
@@ -352,6 +406,10 @@ def save_run(root, existing_run):
         root.db.session.commit()
         if not existing_run and slack_meta and slack_meta.get("channel_id") and slack_meta.get("message_ts"):
             root.session.pop(root.SLACK_RUN_PREFILL_SESSION_KEY, None)
+        if not existing_run and scan_meta:
+            root.session.pop(root.SCAN_RUN_PREFILL_SESSION_KEY, None)
+        if not existing_run and scale_meta:
+            root.session.pop(root.RUN_SCALE_PREFILL_SESSION_KEY, None)
         root.flash("Run saved successfully.", "success")
         return root.redirect(root.url_for("runs_list"))
     except Exception as exc:
@@ -362,11 +420,49 @@ def save_run(root, existing_run):
             "run_form.html",
             run=current,
             lots=_available_lots_query(root).all(),
+            scale_devices=root.ScaleDevice.query.filter_by(is_active=True).order_by(root.ScaleDevice.name.asc()).all(),
             today=today,
             slack_meta=slack_meta,
+            scan_meta=scan_meta,
+            scale_meta=scale_meta,
             can_save_run=True,
             **root._run_form_extras(current),
         )
+
+
+def run_scale_capture_view(root):
+    device_id = (root.request.form.get("scale_device_id") or "").strip()
+    raw_payload = (root.request.form.get("scale_raw_payload") or "").strip()
+    notes = (root.request.form.get("scale_notes") or "").strip() or None
+    device = root.db.session.get(root.ScaleDevice, device_id) if device_id else None
+    if device is None or not device.is_active:
+        root.flash("Choose an active scale device.", "error")
+        return root.redirect(root.url_for("run_new"))
+    try:
+        capture, parsed = capture_weight_from_device_payload(
+            root,
+            device=device,
+            capture_type="allocation",
+            raw_payload=raw_payload,
+            notes=notes,
+        )
+        root.db.session.commit()
+    except Exception as exc:
+        root.db.session.rollback()
+        root.flash(f"Scale capture failed: {exc}", "error")
+        return root.redirect(root.url_for("run_new"))
+    root.session[root.RUN_SCALE_PREFILL_SESSION_KEY] = {
+        "capture_id": capture.id,
+        "device_id": device.id,
+        "device_name": device.name,
+        "measured_weight": float(parsed["measured_weight"]),
+        "unit": parsed.get("unit") or "lb",
+        "is_stable": parsed.get("is_stable"),
+        "raw_payload": parsed.get("raw_payload") or raw_payload,
+        "notes": notes,
+    }
+    root.flash(f"Captured {parsed['measured_weight']} {parsed.get('unit') or 'lb'} from {device.name}.", "success")
+    return root.redirect(root.url_for("run_new"))
 
 
 def run_delete_view(root, run_id):

@@ -83,6 +83,15 @@ No. If your account has purchase-approval permission, unapproved rows now show a
 **How do I start fresh without losing login access?**
 Use the server-side reset script, not a manual database wipe. `python scripts/reset_operational_data.py --yes` clears operational data but keeps users/passwords, system settings, KPI targets, Slack sync config, scale-device config, and cost entries. It also creates a SQLite backup automatically when applicable.
 
+**What is `/api/v1/sync/manifest` for?**
+It is a machine-readable site summary for future internal rollups. It reports the site identity plus basic dataset counts and freshness markers so an aggregator can decide what to pull next.
+
+**What are the new `/api/v1/aggregation/*` endpoints for?**
+They expose the locally cached cross-site rollup layer. `/api/v1/aggregation/sites` shows registered remote sites and their latest cached payloads, `/api/v1/aggregation/summary` combines the local site with cached remote summaries for higher-level internal reporting, and the supplier/strain aggregation endpoints compare performance across cached sites without live fan-out.
+
+**How do I know what sort order and filters an internal API list actually used?**
+Look at the response `meta`. List and search endpoints now return `count`, `limit`, `offset`, plus `sort` and `filters`. `sort` tells you the applied ordering, and `filters` echoes the normalized filter values the endpoint actually used after validation/defaulting.
+
 **Why did a blank database come back with demo/history records?**
 That used to happen because startup bootstrap seeded historical/demo data automatically when no runs existed. The app now only seeds baseline users/settings/KPIs on startup. Demo/history loading is explicit via `python scripts/seed_demo_data.py --yes`.
 
@@ -134,10 +143,22 @@ Days of supply uses on-hand pounds only, divided by your **Daily Throughput Targ
 **On Hand** only lists lots from purchases that are both in an arrived status (**delivered**, **in_testing**, **available**, **processing**) and approved (`purchase_approved_at` set). Approve the purchase first, then set the right status.
 
 **What is a tracking ID on a lot?**  
-It is the permanent machine-readable identity for that physical lot. The app now stores it so future barcode / QR label workflows can use the same lot record.
+It is the permanent machine-readable identity for that physical lot. The app now uses it directly for printed lot barcodes and scan execution.
 
 **Can I print a lot label already?**  
-Yes. Label pages are available from Purchases, Inventory, and Journey surfaces. They currently print the lot identity, payloads, and scan path even before full barcode / QR image rendering is added.
+Yes. Label pages are available from Purchases, Inventory, and Journey surfaces. They now render a printable **Code 39 barcode**, the tracking ID, and the scan path for that lot.
+
+**What are the new `/api/v1/tools/*` endpoints for?**
+They are read-only semantic endpoints for internal automation and future MCP / AI tooling. They provide higher-level answers like inventory snapshots, open-lot lookup, canonical journey resolution, and reconciliation overview without stitching together several low-level API calls first.
+
+**Is there an MCP server now, or only the internal API?**
+There is now a read-only stdio MCP server in `scripts/mcp_server.py`. It exposes semantic tools over the same domain logic as the internal API, including journeys, inventory snapshots, reconciliation reads, supplier/strain analytics, and cached cross-site comparison tools.
+
+**Does the MCP server write data or bypass permissions?**
+No. The current MCP layer is read-only. It is meant for internal intelligence and automation workflows, not record creation or mutation.
+
+**How do I refresh remote-site cache data?**
+Super Admin can do it in **Settings -> Maintenance -> Pull all remote sites**, or from the server shell with `python scripts/pull_remote_sites.py`.
 
 **Is the app ready for smart scales?**  
 At the data-model level, yes. The system now has `ScaleDevice` and `WeightCapture` so future device-captured weights can attach to intake, lot, or run workflows without redesigning the material model.
@@ -187,3 +208,35 @@ Merge work into `main`, then on the server run `git pull` on `main` and restart 
 No. `git pull` only updates application files. Your database is separate and should be backed up on its own schedule.
 
 Add new questions here as operators raise them; keep answers brief and link to the manual where useful.
+## Can a lot label do anything besides open the journey?
+Yes. Scanning the lot barcode now opens a dedicated scanned-lot execution page where operators can:
+- start a new run with the lot preselected
+- confirm movement/location
+- confirm testing status
+- review recent scan activity
+
+There is also a top-level **Floor Ops** page that summarizes recent scan and scale activity for the floor team.
+
+**Can I use an iPad or Android tablet camera to scan labels?**
+Yes. Use the in-app **Scan Center** at `/scan` or open it from **Floor Ops**.
+
+On supported browsers, the page uses the device camera to detect a lot barcode and open the lot automatically. If the browser does not support camera barcode detection, the same page still works with:
+- manual tracking ID entry
+- a Bluetooth barcode scanner that types into the input field
+
+For local desktop testing, `http://localhost` works. On tablets, camera access usually requires HTTPS.
+
+Yes. The scanner workflow now opens a dedicated scanned-lot page at `/scan/lot/<tracking_id>`. From there an operator can:
+- start a new run with that lot preselected
+- confirm the lot's physical storage location
+- confirm the purchase testing status
+- review recent scan activity for that lot
+
+## Can the app take live scale readings?
+
+Yes. The current smart-scale workflow supports:
+- registering scale devices in **Settings -> Smart Scales**
+- testing raw payload ingestion and storing `WeightCapture` records
+- capturing a live payload on the run form to prefill `Lbs in Reactor`
+
+The live parser currently supports generic ASCII payloads first, which is the safest starting point for serial/USB scale integrations.

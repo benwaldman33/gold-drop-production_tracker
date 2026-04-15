@@ -48,7 +48,8 @@ Operations needs a single system to answer:
 - **One source of truth** for material usage: lots decrement as runs consume them.
 - **Allocation integrity**: every reactor input must resolve to a **specific source lot**; the product must never silently guess between multiple viable lots from the same supplier.
 - **Physical-state visibility**: operators must be able to see **weight, remaining weight, potency, testing state, clean/dirty, and cost** anywhere material is reviewed or matched.
-- **Automation readiness**: lots must be ready for future **barcode / QR scanning** and **connected scale** workflows without changing the core data model later.
+- **Automation readiness**: lots must support live **barcode execution**, scan-history capture, and **connected scale** workflows without changing the core data model later.
+- **Internal data access**: each site deployment must expose a stable, read-only internal API so trusted internal consumers, future site rollups, and future read-only MCP / AI tools can access detailed operational data without querying the database directly.
 - **Accurate $/g**: include biomass $/lb inputs and allocated operational costs.
 - **Configurable allocation**: choose how total run dollars are distributed between THCA and HTE.
 - **Data quality controls**: clearly flag runs missing biomass pricing and optionally exclude them from analytics.
@@ -58,6 +59,7 @@ Operations needs a single system to answer:
 - Full accounting/ERP integration
 - Automated lab COAs ingestion (manual entry only)
 - Multi-facility support
+- External customer-facing API access
 - **Department UIs (initial scope):** replacing Slack as the authoritative capture layer for weights/production logs (see **Operational input authority** below); full barcode / Wi‑Fi or Bluetooth scale integration (roadmap)
 
 ---
@@ -165,6 +167,94 @@ Authorization should use **named capabilities per user** (flags or equivalent), 
   - scan-based allocation / movement confirmation
   - device-captured weights with audit trail
   - mixed manual + device-assisted workflows
+
+### Internal API & site-local deployment
+- Each facility deployment is its own **site-local system of record**.
+- Sites are intentionally **separate deployments first**, with the option to be **rolled up / aggregated later** through a separate reporting or integration layer.
+- The product should expose a **read-only internal API** for trusted internal consumers, future aggregation services, and future read-only MCP / AI tooling.
+- This internal API is **not** a customer-facing public API.
+- `/api/v1/*` uses **bearer-token auth** via internal API clients rather than web-login redirects.
+- Phase 1 of the internal API is **read-only**; future write access may be added later only after the read contract and audit requirements are stable.
+- AI / MCP access should also remain **read-only initially**.
+- The product should also expose a **read-only MCP tool layer** for internal/local AI workflows, built on the same domain logic and aggregation cache rather than direct database access.
+- **Suppliers** are **site-local first**; any cross-site supplier consolidation belongs in a later aggregation layer rather than the current operational app.
+- **Costs** are **site-scoped** and remain local to each site deployment.
+- Every internal API response should identify the site clearly enough for later aggregation.
+
+### Internal API phase 1 (current)
+The current first slice of the internal API includes:
+- `GET /api/v1/site`
+- `GET /api/v1/capabilities`
+- `GET /api/v1/sync/manifest`
+- `GET /api/v1/aggregation/sites`
+- `GET /api/v1/aggregation/sites/<site_id>`
+- `GET /api/v1/aggregation/summary`
+- `GET /api/v1/aggregation/suppliers`
+- `GET /api/v1/aggregation/strains`
+- `GET /api/v1/search`
+- `GET /api/v1/tools/inventory-snapshot`
+- `GET /api/v1/tools/open-lots`
+- `GET /api/v1/tools/journey-resolve`
+- `GET /api/v1/tools/reconciliation-overview`
+- `GET /api/v1/summary/dashboard`
+- `GET /api/v1/departments`
+- `GET /api/v1/departments/<slug>`
+- `GET /api/v1/purchases`
+- `GET /api/v1/purchases/<purchase_id>`
+- `GET /api/v1/purchases/<purchase_id>/journey`
+- `GET /api/v1/lots`
+- `GET /api/v1/lots/<lot_id>`
+- `GET /api/v1/lots/<lot_id>/journey`
+- `GET /api/v1/runs`
+- `GET /api/v1/runs/<run_id>`
+- `GET /api/v1/runs/<run_id>/journey`
+- `GET /api/v1/suppliers`
+- `GET /api/v1/suppliers/<supplier_id>`
+- `GET /api/v1/strains`
+- `GET /api/v1/slack-imports`
+- `GET /api/v1/slack-imports/<msg_id>`
+- `GET /api/v1/exceptions`
+- `GET /api/v1/scale-devices`
+- `GET /api/v1/weight-captures`
+- `GET /api/v1/scan-events`
+- `GET /api/v1/lots/<lot_id>/scans`
+- `GET /api/v1/summary/inventory`
+- `GET /api/v1/summary/slack-imports`
+- `GET /api/v1/summary/exceptions`
+- `GET /api/v1/summary/scales`
+- `GET /api/v1/summary/scanner`
+- `GET /api/v1/inventory/on-hand`
+
+These endpoints:
+- are token-authenticated
+- are read-only
+- return JSON envelopes with site metadata
+- return explicit list/search contract metadata for paging and interpretation (`count`, `limit`, `offset`, `sort`, `filters`)
+- are intended for internal consumers only
+- expose a machine-readable discovery surface so internal tools and future MCP clients can discover scopes and supported endpoints
+- expose a site sync manifest so future aggregation services can identify the site, dataset counts, and basic freshness markers before pulling deeper data
+- expose a cached rollup layer for registered remote sites so one site can summarize other site deployments without live fan-out on every read
+- expose cached cross-site supplier and strain comparison reads so internal analytics and future AI tooling can compare site performance without direct access to every remote instance
+- expose a cross-entity search / lookup surface so internal tools and future MCP clients can find suppliers, purchases, lots, and runs without hard-coding separate list queries first
+- expose semantic, tool-oriented read endpoints so future MCP / AI clients can ask for inventory snapshots, open-lot resolution, canonical journeys, and reconciliation posture without stitching together multiple low-level API calls themselves
+- now include summary-oriented read models for inventory posture, Slack-import triage posture, and reconciliation posture
+- now include supplier- and strain-performance analytics reads for internal reporting and future MCP / AI use
+- now include a dashboard-style site operating summary for internal reporting and future MCP / AI use
+- now include department-focused summary reads for operations, purchasing, and quality views
+- now include a read-only MCP server with semantic tool calls for journeys, inventory, reconciliation, analytics, and cached cross-site comparisons
+- now include scanner-aware MCP tools so internal AI workflows can inspect lot scan history and scanner activity summaries without custom query stitching
+- now include scan-activity read surfaces so future scanner analytics and AI tooling can inspect lot scan history and scanner usage patterns
+- now include live scale-device and weight-capture read surfaces, plus scale-aware MCP tools, so future scale analytics and AI tooling can inspect configured devices, captured weights, and scale usage patterns
+
+### Internal API future direction
+Future phases should expand the internal API with:
+- higher-value derived reconciliation and analytics reads beyond the current Slack-import and exception surfaces
+
+Longer term, the architecture should support:
+- a separate rollup / aggregation service that pulls from multiple site APIs
+- site-local registration and batch pulling of trusted remote site caches as the bridge between isolated deployments and a fuller future rollup service
+- read-only MCP / AI access through the same internal API or domain-tool layer
+- eventual controlled write access with explicit scopes and audit logging
 
 ---
 
@@ -827,7 +917,9 @@ Some **potential** purchase / pipeline lines will never be approved. The product
 - **Lot allocation integrity + UX:** make `PurchaseLot` and `RunInput` the explicit `Purchase -> Lot -> Allocation -> Run -> Output` chain; add guided resolution when multiple same-supplier lots exist.
 - **Batch Journey upgrade:** evolve the current purchase timeline into a true graph/timeline view with lot nodes, allocation edges, physical descriptors, and exception states.
 - **Slack inbox redesign:** move from raw import review to confidence buckets, candidate-lot resolution, and simple manual allocation/split workflows.
-- **Lot identity + labels:** generate `tracking_id`, barcode, and QR for each lot at purchase authorization / lot creation; support printable labels and future `/scan/lot/<tracking_id>` resolution.
+- **Lot identity + labels:** generate `tracking_id`, barcode, and QR for each lot at purchase authorization / lot creation; support printable labels with live barcode rendering and `/scan/lot/<tracking_id>` execution.
+- **Operator floor UX:** expose a dedicated floor surface for recent scan activity, recent scale captures, and quick handoff back into lot execution workflows.
+- **Tablet scan center:** provide an in-browser `/scan` workflow for supported tablet/phone cameras, with manual and hardware-scanner fallback when camera barcode detection is unavailable.
 - **Connected scale readiness:** add device-backed weight capture as a future structured input channel without changing the operator-facing material model. The current delivery already includes `ScaleDevice` and `WeightCapture` as the persistence layer for that later workflow.
 - **Department UIs + governance:** **capabilities**, **purchase approval**, **Old Lots** + **soft delete**, and **`/dept` department hub + per-department pages** are implemented; continue to deepen per-department workflows (e.g. explicit “on stripper” stage, richer testing integrations) per **Operational departments & shared data model**.
 - **Explicit close-out reasons** for potential lines (declined, lost, withdrawn) — optional enhancement beyond aging; supports analytics such as win rate by supplier without relying on soft-delete alone.

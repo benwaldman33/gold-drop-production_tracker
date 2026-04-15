@@ -27,6 +27,9 @@
         <a href="{{ url_for('runs_list') }}" class="{% if request.endpoint in ('runs_list', 'run_new', 'run_edit') %}active{% endif %}">
           <span class="icon">⚗️</span><span>Runs</span>
         </a>
+        <a href="{{ url_for('floor_ops') }}" class="{% if request.endpoint in ('floor_ops', 'scan_center', 'scan_lot') %}active{% endif %}">
+          <span class="icon">ðŸ“±</span><span>Floor Ops</span>
+        </a>
         <a href="{{ url_for('inventory') }}" class="{% if request.endpoint == 'inventory' %}active{% endif %}">
           <span class="icon">📦</span><span>Inventory</span>
         </a>

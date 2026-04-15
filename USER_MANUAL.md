@@ -6,7 +6,7 @@ This guide explains how to use the Gold Drop web app day-to-day. It intentionall
 
 **Current release note:** the app has now been split internally across dedicated route modules for dashboard, field intake, runs, purchases, biomass, costs, inventory, batch edit, suppliers/photos, purchase import, strains, settings, and Slack integration. The workflows in this manual are still the ones you should test: routes, page names, approvals, list screens, and Slack import behavior are intended to work the same as before.
 
-**Operator-facing additions in the current release:** Purchases and Inventory are more status-first, the Journey page is richer, Slack imports now includes inbox buckets, lot labels can be printed, and the data model is prepared for future smart-scale capture.
+**Operator-facing additions in the current release:** Purchases and Inventory are more status-first, the Journey page is richer, Slack imports now includes inbox buckets, lot labels now print with scannable barcodes, `Floor Ops` gives operators a recent activity surface, and the data model supports live smart-scale capture.
 
 ---
 
@@ -212,9 +212,33 @@ This table lists lots with remaining weight, including:
 
 Purchase editors see **Select all**, **Select none**, and **Batch edit…** above this table to change strain name, location, milled, potency, or notes on **multiple lots** at once (see **Batch editing from list screens**).
 
-Lots may also show a **tracking ID**. This is the permanent machine-readable identity for that physical lot and is being added now so future barcode / QR label workflows can use the same lot record without changing your inventory process.
+Lots may also show a **tracking ID**. This is the permanent machine-readable identity for that physical lot and now drives the printed barcode and scan route for that lot.
 
-Where available, use the **Label** action from Inventory, Purchases, or Journey to print a lot-facing label page. The current label output prints the stable tracking and scan payloads even before dedicated barcode / QR graphics are added.
+Where available, use the **Label** action from Inventory, Purchases, or Journey to print a lot-facing label page. The label now renders a printable **Code 39 barcode** plus the scan route for that exact lot.
+
+### Floor Ops
+Use **Floor Ops** from the left navigation when you want a quick operator view of:
+- recent barcode scans
+- recent smart-scale captures
+- open lot count
+- active scale devices
+
+Each recent scan row includes an **Open Scan Page** shortcut back into the lot execution workflow.
+
+### Scan Center
+Use **Floor Ops -> Open Scan Center** when you want to scan with a tablet or phone camera.
+
+The scan center supports:
+- browser-camera scanning on supported devices and browsers
+- manual tracking ID entry
+- Bluetooth barcode scanners that type into the input field
+
+When the browser detects a supported barcode or QR code, it opens the scanned lot page automatically.
+
+Camera notes:
+- `http://localhost` works for local desktop testing
+- tablets usually require HTTPS for camera access
+- if camera scanning is not supported in the browser, use the manual field or a paired scanner
 
 ### In Transit / On Order
 This table lists purchases that are not yet fully received, including:
@@ -474,6 +498,12 @@ Includes:
 - Throughput targets
 - Optional analytics filter: **Exclude runs missing biomass pricing ($/lb)**
 - Cost allocation method: **Uniform**, **Split 50/50**, or **Custom split**
+- Site identity for internal API consumers:
+  - `site_code`
+  - `site_name`
+  - `site_timezone`
+  - `site_region`
+  - `site_environment`
 
 ### KPI Targets
 Set KPI targets and green/yellow thresholds to match operational goals.
@@ -481,6 +511,32 @@ Set KPI targets and green/yellow thresholds to match operational goals.
 ### Users
 Admins can create users and assign roles. (This manual does not include any credentials.)
 - Disabled users can be reactivated.
+
+### Internal API Clients
+Super Admin can manage bearer-token clients for the internal read-only API under **Settings -> Internal API Clients**.
+- Create a named client and choose its read scopes.
+- The raw bearer token is shown only once when the client is created.
+- Clients can be revoked, reactivated, and deleted later from the same table.
+- The table also shows **Last Used** plus the last endpoint/scope the token touched, which helps with internal audit and troubleshooting.
+- The same section now shows a **Recent API Request Log** so you can quickly see which client hit which endpoint, with method, scope, status, and timestamp.
+
+### Remote Sites
+Super Admin can manage cross-site cache registrations under **Settings -> Remote Sites**.
+- Register a remote site with its base URL, optional bearer token, and notes.
+- Pull an individual site on demand to cache its current site identity, manifest, and summary payloads locally.
+- Remote pulls now also cache supplier-performance and strain-performance payloads for cross-site comparison.
+- Disable a site without deleting it.
+- Delete only after it has been disabled.
+
+### Maintenance: Pull all remote sites
+Use **Pull all remote sites** in **Settings -> Maintenance** to refresh the local cache from every active remote-site registration at once.
+
+Server-side equivalent:
+
+```bash
+source venv/bin/activate
+python scripts/pull_remote_sites.py
+```
 
 ### Fresh start / operational reset
 
@@ -592,3 +648,19 @@ Use exports for reporting, reconciliation, or offline analysis.
 - **Slack says this message is already linked to a run**: expected after a successful apply; confirm only if you intentionally need a second run from the same Slack message.
 - **Upload rejected (file too large or wrong type)**: field intake photos allow **images only** up to **50 MB** each; Photo Library uploads, purchase supporting docs, and supplier lab/attachment uploads allow **images or PDF** up to **50 MB** each. Compress or split large PDFs if needed.
 - **Field intake says too many photos in one section**: each category has a cap (default **30** images per supplier/biomass/COA bucket on the purchase form, and **30** on the biomass form). Remove extras in the list before submitting, or ask your administrator to raise `FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET` if policy allows.
+## Scanner workflow
+
+- Print or open a lot label from **Purchases**.
+- Scan the lot QR / tracking link or open `/scan/lot/<tracking_id>`.
+- On the scanned lot page you can:
+  - use **Start Run From This Lot** to preselect that lot on a new run
+  - use **Confirm Movement** to update the lot storage location
+  - use **Confirm Testing** to update the purchase testing status
+  - review **Recent Scan Activity** for that lot
+
+## Smart scales
+
+- Go to **Settings -> Smart Scales** to register a device.
+- Use **Test ingest** with a raw payload such as `ST,GS, 124.6 lb` to confirm the parser and save a capture.
+- On **Runs -> New Run**, use **Capture from Scale** to prefill **Lbs in Reactor** from a live payload before saving the run.
+- The saved run keeps the linked device capture for later audit and analytics.

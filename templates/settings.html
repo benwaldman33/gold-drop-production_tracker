@@ -67,6 +67,59 @@
       </div>
     </div>
     <div class="form-group" style="margin-top:12px;">
+      <div class="form-row-3" style="margin-bottom:12px;">
+        <div class="form-group">
+          <label>Site Code</label>
+          <input type="text" name="site_code" value="{{ system_settings.get('site_code', 'DEFAULT') }}" maxlength="24" placeholder="e.g. SAC">
+          <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">
+            Short identifier included in internal API responses for future aggregation.
+          </div>
+        </div>
+        <div class="form-group" style="grid-column: span 2;">
+          <label>Site Name</label>
+          <input type="text" name="site_name" value="{{ system_settings.get('site_name', 'Gold Drop') }}" maxlength="120" placeholder="e.g. Gold Drop Sacramento">
+          <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">
+            Human-readable facility name surfaced in internal API metadata and future cross-site tooling.
+          </div>
+        </div>
+      </div>
+      <div class="form-row-3" style="margin-bottom:12px;">
+        <div class="form-group">
+          <label>Site Region</label>
+          <input type="text" name="site_region" value="{{ system_settings.get('site_region', '') }}" maxlength="80" placeholder="e.g. California">
+          <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">
+            Optional regional label for future multi-site rollups.
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Site Environment</label>
+          {% set cur_site_env = system_settings.get('site_environment', 'production') %}
+          <select name="site_environment">
+            {% for env in ['production', 'staging', 'development', 'test'] %}
+            <option value="{{ env }}" {% if cur_site_env == env %}selected{% endif %}>{{ env }}</option>
+            {% endfor %}
+          </select>
+          <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">
+            Included in internal API metadata and future aggregation manifests.
+          </div>
+        </div>
+        <div class="form-group"></div>
+      </div>
+      {% set cur_site_tz = system_settings.get('site_timezone', 'America/Los_Angeles') %}
+      <label>Site timezone (internal API / site identity)</label>
+      <select name="site_timezone" style="max-width:100%;">
+        {% for val, lab in app_timezone_choices %}
+        <option value="{{ val }}" {% if cur_site_tz == val %}selected{% endif %}>{{ lab }} — {{ val }}</option>
+        {% endfor %}
+        {% if cur_site_tz not in app_timezone_choice_values %}
+        <option value="{{ cur_site_tz }}" selected>{{ cur_site_tz }} (current)</option>
+        {% endif %}
+      </select>
+      <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">
+        Used by the internal API as site metadata. Keep this aligned with the facility actually running this deployment.
+      </div>
+    </div>
+    <div class="form-group" style="margin-top:12px;">
       {% set cur_tz = system_settings.get('app_display_timezone', 'America/Los_Angeles') %}
       <label>App display timezone (Slack times &amp; import date filters)</label>
       <select name="app_display_timezone" style="max-width:100%;">
@@ -451,14 +504,14 @@
             <td>
               {% if t.revoked_at %}
                 <span class="badge badge-gray">Revoked</span>
-              {% elif t.expires_at and t.expires_at < server_now %}
+              {% elif t._display_expires_at and t._display_expires_at < server_now %}
                 <span class="badge badge-gray">Expired</span>
               {% else %}
                 <span class="badge badge-green">Active</span>
               {% endif %}
             </td>
-            <td>{{ t.expires_at.strftime('%m/%d/%y') if t.expires_at else '—' }}</td>
-            <td>{{ t.last_used_at.strftime('%m/%d/%y %H:%M') if t.last_used_at else '—' }}</td>
+            <td>{{ t._display_expires_at.strftime('%m/%d/%y') if t._display_expires_at else '—' }}</td>
+            <td>{{ t._display_last_used_at.strftime('%m/%d/%y %H:%M') if t._display_last_used_at else '—' }}</td>
             <td>
               {% if not t.revoked_at %}
               <form method="POST" action="{{ url_for('field_token_revoke', token_id=t.id) }}" style="display:inline;" onsubmit="return confirm('Revoke this token? Existing links will stop working.');">
@@ -466,7 +519,7 @@
                 <button type="submit" class="btn btn-danger btn-sm">Revoke</button>
               </form>
               {% endif %}
-              {% if t.revoked_at or (t.expires_at and t.expires_at < server_now) %}
+              {% if t._display_revoked_at or (t._display_expires_at and t._display_expires_at < server_now) %}
               <form method="POST" action="{{ url_for('field_token_delete', token_id=t.id) }}" style="display:inline;" onsubmit="return confirm('Delete this revoked/expired token record?');">
                 <input type="hidden" name="return_to" value="#settings-field-intake">
                 <button type="submit" class="btn btn-secondary btn-sm">Delete</button>
@@ -553,6 +606,467 @@
   </form>
 </div>
 
+<!-- Internal API -->
+<div class="card" id="settings-api-clients">
+  <div class="card-header"><h3>Internal API Clients</h3></div>
+  <div style="padding:16px;">
+    {% if last_api_client_token %}
+    <div class="card" style="padding:14px 16px; margin-bottom:14px; border-color: rgba(34, 197, 94, 0.25);">
+      <div style="font-weight:600;">New API token ready to copy</div>
+      <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">
+        This token is only shown once. Store it securely before leaving this page.
+      </div>
+      <div class="form-group" style="margin-top:10px;">
+        <label>Client</label>
+        <input type="text" value="{{ last_api_client_name }}" readonly>
+      </div>
+      <div class="form-group" style="margin-top:10px;">
+        <label>Scopes</label>
+        <input type="text" value="{{ last_api_client_scopes }}" readonly>
+      </div>
+      <div class="form-group" style="margin-top:10px;">
+        <label>Bearer token</label>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input id="api-client-token" type="text" value="{{ last_api_client_token }}" readonly class="text-mono" style="flex:1;">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="copyText('api-client-token')">Copy token</button>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:0 0 12px;">Create API Client</h4>
+    <form method="POST" action="{{ url_for('api_client_create') }}">
+      <input type="hidden" name="return_to" value="#settings-api-clients">
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Name</label>
+          <input type="text" name="name" placeholder="e.g. internal-bi" required>
+        </div>
+        <div class="form-group" style="grid-column: span 2;">
+          <label>Notes</label>
+          <input type="text" name="notes" placeholder="Who uses this token and why">
+        </div>
+      </div>
+      <div class="form-group" style="margin-top:6px;">
+        <label>Scopes</label>
+        <div class="form-row-3" style="gap:8px;">
+          {% for scope in ['read:site', 'read:purchases', 'read:journey', 'read:lots', 'read:runs', 'read:inventory', 'read:dashboard', 'read:aggregation', 'read:search', 'read:tools', 'read:slack_imports', 'read:exceptions', 'read:scanner', 'read:scales', 'read:suppliers', 'read:strains'] %}
+          <label style="display:flex;align-items:center;gap:8px; text-transform:none; letter-spacing:0; font-size:0.85rem; color:var(--text-secondary);">
+            <input type="checkbox" name="scopes" value="{{ scope }}">
+            <code>{{ scope }}</code>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="text-sm" style="color:var(--text-muted); margin:8px 0 12px;">
+        Internal API clients use bearer-token auth against <code>/api/v1/*</code>. Tokens are hashed in storage and shown only once at creation.
+      </div>
+      <button type="submit" class="btn btn-primary">Create API Client</button>
+    </form>
+
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:18px 0 12px;">Active / Recent API Clients</h4>
+    <div class="table-wrap mb-2">
+      <table>
+        <thead>
+          <tr><th>Name</th><th>Scopes</th><th>Status</th><th>Created</th><th>Last Used</th><th>Last Endpoint</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for client in api_clients %}
+          <tr>
+            <td>
+              <strong>{{ client.name }}</strong>
+              {% if client.notes %}
+              <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">{{ client.notes }}</div>
+              {% endif %}
+            </td>
+            <td class="text-sm">
+              {% if client.scopes %}
+                {{ client.scopes|join(', ') }}
+              {% else %}
+                <span class="cell-muted">No scopes</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if client.is_active %}
+                <span class="badge badge-green">Active</span>
+              {% else %}
+                <span class="badge badge-gray">Revoked</span>
+              {% endif %}
+            </td>
+            <td>{{ client._display_created_at.strftime('%m/%d/%y %H:%M') if client._display_created_at else '—' }}</td>
+            <td>{{ client._display_last_used_at.strftime('%m/%d/%y %H:%M') if client._display_last_used_at else '—' }}</td>
+            <td class="text-sm">
+              {% if client.last_used_endpoint %}
+                <code>{{ client.last_used_endpoint }}</code>
+                {% if client.last_used_scope %}
+                <div class="cell-muted" style="margin-top:4px;"><code>{{ client.last_used_scope }}</code></div>
+                {% endif %}
+              {% else %}
+                <span class="cell-muted">—</span>
+              {% endif %}
+            </td>
+            <td style="white-space:nowrap;">
+              <form method="POST" action="{{ url_for('api_client_toggle_active', client_id=client.id) }}" style="display:inline;" onsubmit="return confirm('{{ 'Revoke' if client.is_active else 'Activate' }} this API client?');">
+                <input type="hidden" name="return_to" value="#settings-api-clients">
+                {% if client.is_active %}
+                <button type="submit" class="btn btn-danger btn-sm">Revoke</button>
+                {% else %}
+                <button type="submit" class="btn btn-secondary btn-sm">Activate</button>
+                {% endif %}
+              </form>
+              {% if not client.is_active %}
+              <form method="POST" action="{{ url_for('api_client_delete', client_id=client.id) }}" style="display:inline;" onsubmit="return confirm('Delete this revoked API client?');">
+                <input type="hidden" name="return_to" value="#settings-api-clients">
+                <button type="submit" class="btn btn-secondary btn-sm">Delete</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-center cell-muted" style="padding:20px;">No API clients created yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:18px 0 12px;">Recent API Request Log</h4>
+    <div class="table-wrap mb-2">
+      <table>
+        <thead>
+          <tr><th>When</th><th>Client</th><th>Method</th><th>Path</th><th>Scope</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          {% for log in api_request_logs %}
+          <tr>
+            <td>{{ log._display_created_at.strftime('%m/%d/%y %H:%M') if log._display_created_at else '—' }}</td>
+            <td>{{ log.api_client.name if log.api_client else 'Unknown client' }}</td>
+            <td><code>{{ log.request_method }}</code></td>
+            <td><code>{{ log.request_path }}</code></td>
+            <td><code>{{ log.scope_used }}</code></td>
+            <td>{{ log.status_code if log.status_code is not none else '—' }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-center cell-muted" style="padding:20px;">No API requests logged yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Smart Scales -->
+<div class="card" id="settings-scales">
+  <div class="card-header"><h3>Smart Scales</h3></div>
+  <div style="background:var(--dark);border:1px solid var(--dark-border);border-radius:var(--radius);padding:16px;">
+    <div class="text-sm" style="color:var(--text-secondary);margin-bottom:14px;">
+      Register live scale devices here and test raw payload ingestion before wiring them into receiving or run workflows.
+    </div>
+
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:0 0 12px;">Add Scale Device</h4>
+    <form method="POST" action="{{ url_for('scale_device_create') }}">
+      <input type="hidden" name="return_to" value="#settings-scales">
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Name</label>
+          <input type="text" name="name" placeholder="e.g. Receiving Scale A" required>
+        </div>
+        <div class="form-group">
+          <label>Location</label>
+          <input type="text" name="location" placeholder="Receiving / Lab / Vault">
+        </div>
+        <div class="form-group">
+          <label>Make / model</label>
+          <input type="text" name="make_model" placeholder="Vendor or hardware model">
+        </div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Interface type</label>
+          <select name="interface_type">
+            <option value="">Select interface...</option>
+            {% for interface_type in scale_interface_types %}
+            <option value="{{ interface_type }}">{{ interface_type }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Protocol type</label>
+          <input type="text" name="protocol_type" value="ascii" placeholder="ascii">
+        </div>
+        <div class="form-group">
+          <label>Connection target</label>
+          <input type="text" name="connection_target" placeholder="COM3 / /dev/ttyUSB0 / 10.0.0.25:4001">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <input type="text" name="notes" placeholder="Adapter notes, baud settings, or floor owner">
+      </div>
+      <button type="submit" class="btn btn-primary">Add Scale Device</button>
+    </form>
+
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:18px 0 12px;">Registered Scale Devices</h4>
+    <div class="table-wrap mb-2">
+      <table>
+        <thead>
+          <tr><th>Device</th><th>Connection</th><th>State</th><th>Test ingest</th></tr>
+        </thead>
+        <tbody>
+          {% for device in scale_devices %}
+          <tr>
+            <td>
+              <strong>{{ device.name }}</strong>
+              <div class="text-sm cell-muted" style="margin-top:4px;">
+                {{ device.location or 'No location' }}{% if device.make_model %} · {{ device.make_model }}{% endif %}
+              </div>
+              {% if device.notes %}
+              <div class="text-sm cell-muted" style="margin-top:4px;">{{ device.notes }}</div>
+              {% endif %}
+            </td>
+            <td class="text-sm">
+              <div><code>{{ device.interface_type or 'n/a' }}</code> · <code>{{ device.protocol_type or 'ascii' }}</code></div>
+              <div class="cell-muted" style="margin-top:4px;">{{ device.connection_target or 'No target' }}</div>
+            </td>
+            <td class="text-sm" style="min-width:260px;">
+              {% if device.is_active %}
+              <span class="badge badge-green">Active</span>
+              {% else %}
+              <span class="badge badge-gray">Disabled</span>
+              {% endif %}
+              <form method="POST" action="{{ url_for('scale_device_update', device_id=device.id) }}" style="margin-top:8px;">
+                <input type="hidden" name="return_to" value="#settings-scales">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                  <input type="text" name="name" value="{{ device.name }}" placeholder="Name">
+                  <input type="text" name="location" value="{{ device.location or '' }}" placeholder="Location">
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
+                  <input type="text" name="make_model" value="{{ device.make_model or '' }}" placeholder="Make / model">
+                  <input type="text" name="connection_target" value="{{ device.connection_target or '' }}" placeholder="Connection target">
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
+                  <select name="interface_type">
+                    <option value="">Select interface...</option>
+                    {% for interface_type in scale_interface_types %}
+                    <option value="{{ interface_type }}" {% if device.interface_type == interface_type %}selected{% endif %}>{{ interface_type }}</option>
+                    {% endfor %}
+                  </select>
+                  <input type="text" name="protocol_type" value="{{ device.protocol_type or 'ascii' }}" placeholder="Protocol">
+                </div>
+                <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;margin-top:8px;align-items:start;">
+                  <input type="text" name="notes" value="{{ device.notes or '' }}" placeholder="Notes">
+                  <button type="submit" class="btn btn-secondary btn-sm">Save</button>
+                </div>
+              </form>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+                <form method="POST" action="{{ url_for('scale_device_toggle_active', device_id=device.id) }}" style="display:inline;">
+                  <input type="hidden" name="return_to" value="#settings-scales">
+                  <button type="submit" class="btn btn-secondary btn-sm">{{ 'Disable' if device.is_active else 'Activate' }}</button>
+                </form>
+                <form method="POST" action="{{ url_for('scale_device_delete', device_id=device.id) }}" style="display:inline;" onsubmit="return confirm('Delete this scale device?');">
+                  <input type="hidden" name="return_to" value="#settings-scales">
+                  <button type="submit" class="btn btn-secondary btn-sm">Delete</button>
+                </form>
+              </div>
+            </td>
+            <td style="min-width:320px;">
+              <form method="POST" action="{{ url_for('scale_device_test_capture', device_id=device.id) }}">
+                <input type="hidden" name="return_to" value="#settings-scales">
+                <div class="form-group" style="margin-bottom:8px;">
+                  <label>Capture type</label>
+                  <select name="capture_type">
+                    <option value="adjustment">adjustment</option>
+                    <option value="intake">intake</option>
+                    <option value="allocation">allocation</option>
+                    <option value="output">output</option>
+                  </select>
+                </div>
+                <div class="form-group" style="margin-bottom:8px;">
+                  <label>Raw payload</label>
+                  <textarea name="raw_payload" rows="3" placeholder="e.g. ST,GS, 124.6 lb" required></textarea>
+                </div>
+                <div class="form-group" style="margin-bottom:8px;">
+                  <label>Notes</label>
+                  <input type="text" name="notes" placeholder="Optional test note">
+                </div>
+                <button type="submit" class="btn btn-secondary btn-sm">Test ingest</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="text-center cell-muted" style="padding:20px;">No scale devices configured yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:18px 0 12px;">Recent Weight Captures</h4>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>When</th><th>Device</th><th>Capture</th><th>Weight</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          {% for capture in recent_weight_captures %}
+          <tr>
+            <td class="text-sm">{{ capture._display_created_at.strftime('%m/%d/%y %H:%M') if capture._display_created_at else '—' }}</td>
+            <td class="text-sm">{{ capture.device.name if capture.device else 'Manual / unknown' }}</td>
+            <td class="text-sm"><code>{{ capture.capture_type }}</code> · <code>{{ capture.source_mode }}</code></td>
+            <td class="text-sm">
+              <strong>{{ "{:,.2f}".format(capture.measured_weight or 0) }}</strong> {{ capture.unit }}
+              {% if capture.is_stable is not none %}<span class="cell-muted"> · {{ 'stable' if capture.is_stable else 'unstable' }}</span>{% endif %}
+            </td>
+            <td class="text-sm">
+              {{ capture.notes or '—' }}
+              {% if capture.raw_payload %}
+              <div class="cell-muted" style="margin-top:4px;"><code>{{ capture.raw_payload }}</code></div>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-center cell-muted" style="padding:20px;">No weight captures recorded yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Remote Sites -->
+<div class="card" id="settings-remote-sites">
+  <div class="card-header"><h3>Remote Sites</h3></div>
+  <div style="padding:16px;">
+    <div class="text-sm" style="color:var(--text-muted); margin-bottom:12px;">
+      Register other site deployments here so this site can pull their internal API manifests and cached summaries for future rollup views.
+    </div>
+
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:0 0 12px;">Add Remote Site</h4>
+    <form method="POST" action="{{ url_for('remote_site_create') }}">
+      <input type="hidden" name="return_to" value="#settings-remote-sites">
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Name</label>
+          <input type="text" name="name" placeholder="e.g. Gold Drop Sacramento" required>
+        </div>
+        <div class="form-group" style="grid-column: span 2;">
+          <label>Base URL</label>
+          <input type="url" name="base_url" placeholder="https://site.example.com" required>
+        </div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Bearer token</label>
+          <input type="text" name="api_token" placeholder="Optional if remote site is public internally">
+        </div>
+        <div class="form-group" style="grid-column: span 2;">
+          <label>Notes</label>
+          <input type="text" name="notes" placeholder="Site owner, environment, or connectivity notes">
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary">Add Remote Site</button>
+    </form>
+
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin:18px 0 12px;">Registered Remote Sites</h4>
+    <div class="table-wrap mb-2">
+      <table>
+        <thead>
+          <tr><th>Site</th><th>Connection</th><th>Cached Identity</th><th>Last Pull</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for site in remote_sites %}
+          <tr>
+            <td>
+              <strong>{{ site.name }}</strong>
+              {% if site.notes %}
+              <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">{{ site.notes }}</div>
+              {% endif %}
+            </td>
+            <td class="text-sm">
+              <div><code>{{ site.base_url }}</code></div>
+              <div class="cell-muted" style="margin-top:4px;">
+                Token: {% if site.api_token %}<code>{{ site.masked_token }}</code>{% else %}none{% endif %}
+              </div>
+              <div style="margin-top:4px;">
+                {% if site.is_active %}
+                <span class="badge badge-green">Active</span>
+                {% else %}
+                <span class="badge badge-gray">Disabled</span>
+                {% endif %}
+              </div>
+            </td>
+            <td class="text-sm">
+              {% if site.site_code or site.site_name %}
+                <div><strong>{{ site.site_name or 'Unknown site' }}</strong></div>
+                <div class="cell-muted" style="margin-top:4px;">
+                  {{ site.site_code or '—' }}
+                  {% if site.site_region %} · {{ site.site_region }}{% endif %}
+                  {% if site.site_environment %} · {{ site.site_environment }}{% endif %}
+                </div>
+              {% else %}
+                <span class="cell-muted">No cached payload yet</span>
+              {% endif %}
+            </td>
+            <td class="text-sm">
+              <div>
+                {% if site.last_pull_status == 'success' %}
+                <span class="badge badge-green">Success</span>
+                {% elif site.last_pull_status == 'failed' %}
+                <span class="badge badge-danger">Failed</span>
+                {% elif site.last_pull_status %}
+                <span class="badge badge-gray">{{ site.last_pull_status }}</span>
+                {% else %}
+                <span class="cell-muted">Never pulled</span>
+                {% endif %}
+              </div>
+              <div class="cell-muted" style="margin-top:4px;">
+                {{ site._display_last_pull_finished_at.strftime('%m/%d/%y %H:%M') if site._display_last_pull_finished_at else '—' }}
+              </div>
+              {% if site.last_pull_error %}
+              <div class="cell-muted" style="margin-top:4px;">{{ site.last_pull_error }}</div>
+              {% endif %}
+            </td>
+            <td style="min-width:300px;">
+              <form method="POST" action="{{ url_for('remote_site_update', site_id=site.id) }}">
+                <input type="hidden" name="return_to" value="#settings-remote-sites">
+                <div style="display:grid;grid-template-columns: 1fr 1.3fr; gap:8px;">
+                  <input type="text" name="name" value="{{ site.name }}" placeholder="Name">
+                  <input type="url" name="base_url" value="{{ site.base_url }}" placeholder="Base URL">
+                </div>
+                <div style="display:grid;grid-template-columns: 1fr 1fr; gap:8px; margin-top:8px;">
+                  <input type="text" name="api_token" value="" placeholder="New token (leave blank to keep current)">
+                  <input type="text" name="notes" value="{{ site.notes or '' }}" placeholder="Notes">
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
+                  <button type="submit" class="btn btn-secondary btn-sm">Save</button>
+                </div>
+              </form>
+              <form method="POST" action="{{ url_for('remote_site_pull', site_id=site.id) }}" style="display:inline;">
+                <input type="hidden" name="return_to" value="#settings-remote-sites">
+                <button type="submit" class="btn btn-secondary btn-sm">Pull now</button>
+              </form>
+              <form method="POST" action="{{ url_for('remote_site_toggle_active', site_id=site.id) }}" style="display:inline;" onsubmit="return confirm('{{ 'Disable' if site.is_active else 'Activate' }} this remote site?');">
+                <input type="hidden" name="return_to" value="#settings-remote-sites">
+                {% if site.is_active %}
+                <button type="submit" class="btn btn-danger btn-sm">Disable</button>
+                {% else %}
+                <button type="submit" class="btn btn-secondary btn-sm">Activate</button>
+                {% endif %}
+              </form>
+              {% if not site.is_active %}
+              <form method="POST" action="{{ url_for('remote_site_delete', site_id=site.id) }}" style="display:inline;" onsubmit="return confirm('Delete this remote site registration?');">
+                <input type="hidden" name="return_to" value="#settings-remote-sites">
+                <button type="submit" class="btn btn-secondary btn-sm">Delete</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-center cell-muted" style="padding:20px;">No remote sites registered yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <!-- Maintenance -->
 <div class="card" id="settings-maintenance">
   <div class="card-header"><h3>Maintenance</h3></div>
@@ -577,6 +1091,17 @@
           onsubmit="return confirm('Run one-time photo backfill for historical approved submissions? This can be run again safely if needed.');">
       <input type="hidden" name="return_to" value="#settings-maintenance">
       <button type="submit" class="btn btn-secondary btn-sm">Run Photo Backfill</button>
+    </form>
+  </div>
+  <div style="background:var(--dark);border:1px solid var(--dark-border);border-radius:var(--radius);padding:16px;margin-top:12px;">
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Pull Remote Site Caches</h4>
+    <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:12px;">
+      Fetches the configured manifest and summary payloads from every active remote site and refreshes the local cache used by aggregation endpoints.
+    </p>
+    <form method="POST" action="{{ url_for('settings_pull_remote_sites') }}"
+          onsubmit="return confirm('Pull cached summaries from all active remote sites now?');">
+      <input type="hidden" name="return_to" value="#settings-maintenance">
+      <button type="submit" class="btn btn-secondary btn-sm">Pull all remote sites</button>
     </form>
   </div>
   <div style="background:var(--dark);border:1px solid var(--dark-border);border-radius:var(--radius);padding:16px;margin-top:12px;">

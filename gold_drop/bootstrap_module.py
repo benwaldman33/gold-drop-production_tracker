@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from gold_drop.slack import _default_slack_run_field_rules
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from services.bootstrap_helpers import (
     backfill_default_inventory_lots,
     backfill_purchase_approval,
@@ -18,7 +19,7 @@ def init_db(root):
     """Create tables and seed initial data."""
     try:
         root.db.create_all()
-    except (root.OperationalError, root.ProgrammingError) as exc:
+    except (OperationalError, ProgrammingError) as exc:
         root.db.session.rollback()
         err_txt = str(getattr(exc, "orig", None) or exc).lower()
         if "already exists" not in err_txt and "duplicate" not in err_txt:
@@ -45,6 +46,11 @@ def init_db(root):
         root.db.session.add(viewer)
 
     defaults = {
+        "site_code": ("DEFAULT", "Site code for internal API and future rollup"),
+        "site_name": ("Gold Drop", "Site display name for internal API and reporting"),
+        "site_timezone": ("America/Los_Angeles", "IANA timezone for this site"),
+        "site_region": ("", "Optional site region for future rollup and aggregation"),
+        "site_environment": ("production", "Deployment environment label for internal API metadata"),
         "potency_rate": ("1.50", "Potency Rate ($/lb/%pt)"),
         "num_reactors": ("2", "Number of Reactors"),
         "reactor_capacity": ("100", "Reactor Capacity (lbs)"),

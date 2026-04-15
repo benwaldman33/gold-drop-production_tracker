@@ -50,6 +50,18 @@ def register_routes(app, root):
     def scan_lot(tracking_id):
         return scan_lot_view(root, tracking_id)
 
+    @root.editor_required
+    def scan_lot_start_run(tracking_id):
+        return scan_lot_start_run_view(root, tracking_id)
+
+    @root.editor_required
+    def scan_lot_confirm_movement(tracking_id):
+        return scan_lot_confirm_movement_view(root, tracking_id)
+
+    @root.editor_required
+    def scan_lot_confirm_testing(tracking_id):
+        return scan_lot_confirm_testing_view(root, tracking_id)
+
     @root.purchase_editor_required
     def purchase_delete(purchase_id):
         return purchase_delete_view(root, purchase_id)
@@ -66,6 +78,19 @@ def register_routes(app, root):
     app.add_url_rule("/lots/<lot_id>/label", endpoint="lot_label", view_func=lot_label)
     app.add_url_rule("/purchases/<purchase_id>/labels", endpoint="purchase_labels", view_func=purchase_labels)
     app.add_url_rule("/scan/lot/<tracking_id>", endpoint="scan_lot", view_func=scan_lot)
+    app.add_url_rule("/scan/lot/<tracking_id>/start-run", endpoint="scan_lot_start_run", view_func=scan_lot_start_run, methods=["POST"])
+    app.add_url_rule(
+        "/scan/lot/<tracking_id>/confirm-movement",
+        endpoint="scan_lot_confirm_movement",
+        view_func=scan_lot_confirm_movement,
+        methods=["POST"],
+    )
+    app.add_url_rule(
+        "/scan/lot/<tracking_id>/confirm-testing",
+        endpoint="scan_lot_confirm_testing",
+        view_func=scan_lot_confirm_testing,
+        methods=["POST"],
+    )
     app.add_url_rule("/purchases/<purchase_id>/delete", endpoint="purchase_delete", view_func=purchase_delete, methods=["POST"])
     app.add_url_rule(
         "/purchases/<purchase_id>/hard_delete",
@@ -467,15 +492,115 @@ def purchase_labels_view(root, purchase_id):
     return root.render_template("lot_label_print.html", labels=labels, purchase=purchase)
 
 
-def scan_lot_view(root, tracking_id):
+def _get_scannable_lot(root, tracking_id):
     lot = root.PurchaseLot.query.filter(
         root.PurchaseLot.tracking_id == tracking_id,
         root.PurchaseLot.deleted_at.is_(None),
     ).first()
     if not lot or not lot.purchase or lot.purchase.deleted_at is not None:
+        return None
+    return lot
+
+
+def _record_lot_scan_event(root, lot, action: str, *, context: dict | None = None):
+    event = root.LotScanEvent(
+        lot_id=lot.id,
+        tracking_id_snapshot=lot.tracking_id or "",
+        action=action,
+        user_id=getattr(root.current_user, "id", None),
+    )
+    event.set_context(context or {})
+    root.db.session.add(event)
+    return event
+
+
+def scan_lot_view(root, tracking_id):
+    lot = _get_scannable_lot(root, tracking_id)
+    if not lot:
         root.flash("Tracked lot not found.", "error")
         return root.redirect(root.url_for("inventory"))
-    return root.redirect(root.url_for("purchases_bp.purchase_journey", purchase_id=lot.purchase.id, lot=tracking_id))
+    _record_lot_scan_event(
+        root,
+        lot,
+        "scan_open",
+        context={"purchase_id": lot.purchase.id},
+    )
+    root.db.session.commit()
+    recent_events = lot.scan_events.order_by(root.LotScanEvent.created_at.desc()).limit(8).all()
+    return root.render_template("lot_scan.html", lot=lot, purchase=lot.purchase, recent_events=recent_events)
+
+
+def scan_lot_start_run_view(root, tracking_id):
+    lot = _get_scannable_lot(root, tracking_id)
+    if not lot:
+        root.flash("Tracked lot not found.", "error")
+        return root.redirect(root.url_for("inventory"))
+    _record_lot_scan_event(
+        root,
+        lot,
+        "start_run",
+        context={"purchase_id": lot.purchase.id},
+    )
+    root.session[root.SCAN_RUN_PREFILL_SESSION_KEY] = {
+        "lot_id": lot.id,
+        "purchase_id": lot.purchase.id,
+        "tracking_id": lot.tracking_id,
+        "batch_id": lot.purchase.batch_id,
+        "supplier_name": lot.supplier_name,
+        "strain_name": lot.strain_name,
+        "remaining_weight_lbs": float(lot.remaining_weight_lbs or 0),
+        "suggested_allocations": [{"lot_id": lot.id, "weight_lbs": ""}],
+    }
+    root.db.session.commit()
+    root.flash(f"Scanned lot {lot.tracking_id or lot.id[:8]} preselected for a new run.", "success")
+    return root.redirect(root.url_for("run_new"))
+
+
+def scan_lot_confirm_movement_view(root, tracking_id):
+    lot = _get_scannable_lot(root, tracking_id)
+    if not lot:
+        root.flash("Tracked lot not found.", "error")
+        return root.redirect(root.url_for("inventory"))
+    new_location = (root.request.form.get("location") or "").strip()
+    if not new_location:
+        root.flash("Enter a storage location before confirming movement.", "error")
+        return root.redirect(root.url_for("scan_lot", tracking_id=tracking_id))
+    lot.location = new_location
+    _record_lot_scan_event(
+        root,
+        lot,
+        "confirm_movement",
+        context={"purchase_id": lot.purchase.id, "location": new_location},
+    )
+    root.db.session.commit()
+    root.flash(f"Location updated to {new_location}.", "success")
+    return root.redirect(root.url_for("scan_lot", tracking_id=tracking_id))
+
+
+def scan_lot_confirm_testing_view(root, tracking_id):
+    lot = _get_scannable_lot(root, tracking_id)
+    if not lot:
+        root.flash("Tracked lot not found.", "error")
+        return root.redirect(root.url_for("inventory"))
+    purchase = lot.purchase
+    testing_status = (root.request.form.get("testing_status") or "").strip()
+    if testing_status not in ("pending", "completed", "not_needed"):
+        root.flash("Choose a valid testing status.", "error")
+        return root.redirect(root.url_for("scan_lot", tracking_id=tracking_id))
+    purchase.testing_status = testing_status
+    if testing_status == "completed" and not purchase.testing_date:
+        purchase.testing_date = root.date.today()
+    elif testing_status != "completed":
+        purchase.testing_date = None
+    _record_lot_scan_event(
+        root,
+        lot,
+        "confirm_testing",
+        context={"purchase_id": lot.purchase.id, "testing_status": testing_status},
+    )
+    root.db.session.commit()
+    root.flash(f"Testing status updated to {testing_status.replace('_', ' ')}.", "success")
+    return root.redirect(root.url_for("scan_lot", tracking_id=tracking_id))
 
 
 def purchase_delete_view(root, purchase_id):

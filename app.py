@@ -19,6 +19,7 @@ import gold_drop.biomass_module as biomass_module
 import gold_drop.bootstrap_module as bootstrap_module
 import gold_drop.purchases_module as purchases_module
 import gold_drop.dashboard_module as dashboard_module
+import gold_drop.floor_module as floor_module
 import gold_drop.field_intake_module as field_intake_module
 import gold_drop.costs_module as costs_module
 import gold_drop.inventory_module as inventory_module
@@ -28,6 +29,7 @@ import gold_drop.suppliers_module as suppliers_module
 import gold_drop.runs_module as runs_module
 import gold_drop.settings_module as settings_module
 import gold_drop.slack_integration_module as slack_integration_module
+import gold_drop.api_v1_module as api_v1_module
 import gold_drop.strains_module as strains_module
 from datetime import datetime, date, timedelta, timezone
 from functools import wraps
@@ -41,7 +43,7 @@ from sqlalchemy import func, desc, and_, or_, text, select, exists
 from models import (db, User, Supplier, Purchase, PurchaseLot, Run, RunInput,
                     KpiTarget, SystemSetting, AuditLog, BiomassAvailability, CostEntry,
                     FieldAccessToken, FieldPurchaseSubmission, LabTest, SupplierAttachment, PhotoAsset,
-                    SlackIngestedMessage, SlackChannelSyncConfig, gen_uuid)
+                    SlackIngestedMessage, SlackChannelSyncConfig, LotScanEvent, ScaleDevice, WeightCapture, gen_uuid)
 from purchase_import import parse_purchase_spreadsheet_upload
 from blueprints import register_blueprints
 from policies.purchase_status import (
@@ -415,6 +417,8 @@ def export_csv(entity: str):
 
 
 SLACK_RUN_PREFILL_SESSION_KEY = "slack_run_prefill"
+SCAN_RUN_PREFILL_SESSION_KEY = "scan_run_prefill"
+RUN_SCALE_PREFILL_SESSION_KEY = "run_scale_prefill"
 
 
 def _slack_apply_form_passthrough(form) -> dict[str, str]:
@@ -1225,6 +1229,8 @@ def _seed_historical_data():
 def _register_extracted_routes(flask_app):
     root = sys.modules[__name__]
     existing = set(flask_app.view_functions)
+    if "api_v1_site" not in existing:
+        api_v1_module.register_routes(flask_app, root)
     if "slack_events" not in existing:
         slack_integration_module.register_routes(flask_app, root)
     if "settings" not in existing:
@@ -1237,6 +1243,8 @@ def _register_extracted_routes(flask_app):
         runs_module.register_routes(flask_app, root)
     if "dashboard" not in existing:
         dashboard_module.register_routes(flask_app, root)
+    if "floor_ops" not in existing:
+        floor_module.register_routes(flask_app, root)
     if "field_home" not in existing:
         field_intake_module.register_routes(flask_app, root)
     if "costs_list" not in existing:
