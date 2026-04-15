@@ -726,3 +726,5 @@ Use exports for reporting, reconciliation, or offline analysis.
 - It shows approved or committed purchases that are ready to receive.
 - Receiving confirmation updates the purchase to `delivered`, records the receiving user, and can attach delivery photos.
 - Delivery photos and receiving metadata are visible from the main purchase review screen.
+- `Settings -> Operational Parameters` can enable or disable the standalone purchasing and receiving workflows independently.
+- `Settings -> Internal API Clients` now also shows recent mobile workflow activity for audit visibility.

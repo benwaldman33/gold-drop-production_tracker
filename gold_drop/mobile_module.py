@@ -16,17 +16,24 @@ from services.purchase_helpers import (
     photo_asset_exists,
 )
 from services.lot_allocation import ensure_purchase_lot_tracking
+from services.mobile_write_api import (
+    audit_mobile_action,
+    enforce_same_origin_for_write,
+    mobile_capabilities,
+    mobile_json,
+    mobile_json_error,
+    workflow_enabled,
+    workflow_permissions,
+)
 from services.slack_workflow import slack_supplier_candidates_for_source
 from gold_drop.uploads import save_uploads, allowed_image_filename
 
 
-MOBILE_OPPORTUNITY_STATUSES = {"ordered", "committed", "delivered", "cancelled"}
 MOBILE_EDIT_LOCK_STATUSES = {"delivered", "cancelled", "complete"}
-MOBILE_DELIVERY_ALLOWED_STATUSES = {"approved", "committed"}
 
 
 def _json_error(message: str, *, status_code: int, code: str):
-    return jsonify({"meta": build_meta(), "error": {"code": code, "message": message}}), status_code
+    return mobile_json_error(message, status_code=status_code, code=code)
 
 
 def _mobile_payload() -> dict[str, Any]:
@@ -87,15 +94,8 @@ def _mobile_user_payload(user: User) -> dict[str, Any]:
     }
 
 
-def _mobile_permissions(user: User) -> dict[str, bool]:
-    can_write = bool(user.can_edit_purchases)
-    return {
-        "can_create_opportunity": can_write,
-        "can_edit_preapproval_opportunity": can_write,
-        "can_record_delivery": can_write,
-        "can_receive_intake": can_write,
-        "can_create_supplier": can_write,
-    }
+def _mobile_permissions(root, user: User) -> dict[str, bool]:
+    return workflow_permissions(root, user)
 
 
 def _mobile_opportunity_supplier_stub(purchase: Purchase) -> dict[str, Any] | None:
@@ -126,6 +126,24 @@ def _mobile_photo_payload(photo: PhotoAsset) -> dict[str, Any]:
         "title": photo.title,
         "uploaded_at": photo.uploaded_at.isoformat() if photo.uploaded_at else None,
     }
+
+
+def _mobile_upload_limit_values() -> tuple[int, int]:
+    per_request = int(current_app.config.get("MOBILE_UPLOAD_MAX_FILES_PER_REQUEST", 6))
+    per_context_total = int(current_app.config.get("MOBILE_UPLOAD_MAX_FILES_PER_CONTEXT", 12))
+    return max(1, per_request), max(1, per_context_total)
+
+
+def _mobile_validate_photo_upload(purchase: Purchase, *, photo_context: str, files: list[Any]) -> None:
+    per_request, per_context_total = _mobile_upload_limit_values()
+    if len(files) > per_request:
+        raise ValueError(f"You can upload at most {per_request} files at once.")
+    existing_count = PhotoAsset.query.filter(
+        PhotoAsset.purchase_id == purchase.id,
+        PhotoAsset.photo_context == photo_context,
+    ).count()
+    if existing_count + len(files) > per_context_total:
+        raise ValueError(f"This record can store at most {per_context_total} {photo_context} photos.")
 
 
 def _mobile_purchase_editable(purchase: Purchase) -> bool:
@@ -356,12 +374,29 @@ def _require_mobile_user():
     return None
 
 
-def _require_mobile_writer():
+def _require_mobile_writer(root):
     auth_error = _require_mobile_user()
     if auth_error:
         return auth_error
+    origin_error = enforce_same_origin_for_write(root)
+    if origin_error:
+        return origin_error
     if not current_user.can_edit_purchases:
         return _json_error("Purchase edit access required.", status_code=403, code="forbidden")
+    return None
+
+
+def _require_mobile_workflow(root, workflow: str):
+    writer_error = _require_mobile_writer(root)
+    if writer_error:
+        return writer_error
+    if not workflow_enabled(root, workflow):
+        return _json_error("This standalone workflow is disabled for the site.", status_code=403, code="workflow_disabled")
+    permissions = _mobile_permissions(root, current_user)
+    if workflow == "buying" and not permissions["can_create_opportunity"]:
+        return _json_error("Buying workflow access required.", status_code=403, code="forbidden")
+    if workflow == "receiving" and not permissions["can_receive_intake"]:
+        return _json_error("Receiving workflow access required.", status_code=403, code="forbidden")
     return None
 
 
@@ -374,6 +409,9 @@ def register_routes(app, root):
 
     def mobile_auth_me():
         return mobile_auth_me_view(root)
+
+    def mobile_capabilities_view_func():
+        return mobile_capabilities_view(root)
 
     def mobile_opportunities_mine():
         return mobile_opportunities_mine_view(root)
@@ -417,6 +455,7 @@ def register_routes(app, root):
     app.add_url_rule("/api/mobile/v1/auth/login", endpoint="mobile_auth_login", view_func=mobile_auth_login, methods=["POST"])
     app.add_url_rule("/api/mobile/v1/auth/logout", endpoint="mobile_auth_logout", view_func=mobile_auth_logout, methods=["POST"])
     app.add_url_rule("/api/mobile/v1/auth/me", endpoint="mobile_auth_me", view_func=mobile_auth_me)
+    app.add_url_rule("/api/mobile/v1/capabilities", endpoint="mobile_capabilities", view_func=mobile_capabilities_view_func)
     app.add_url_rule("/api/mobile/v1/opportunities", endpoint="mobile_opportunity_create", view_func=mobile_opportunity_create, methods=["POST"])
     app.add_url_rule("/api/mobile/v1/opportunities/mine", endpoint="mobile_opportunities_mine", view_func=mobile_opportunities_mine)
     app.add_url_rule("/api/mobile/v1/opportunities/<opportunity_id>", endpoint="mobile_opportunity_detail", view_func=mobile_opportunity_detail, methods=["GET", "PATCH"])
@@ -461,6 +500,9 @@ def _mobile_supplier_payload(supplier: Supplier) -> dict[str, Any]:
 
 
 def mobile_auth_login_view(root):
+    origin_error = enforce_same_origin_for_write(root)
+    if origin_error:
+        return origin_error
     payload = _mobile_payload()
     username = (payload.get("username") or "").strip()
     password = payload.get("password") or ""
@@ -482,12 +524,16 @@ def mobile_auth_login_view(root):
                 "site_name": site_meta["site_name"],
                 "site_timezone": site_meta["site_timezone"],
             },
-            "permissions": _mobile_permissions(user),
+            "permissions": _mobile_permissions(root, user),
+            "capabilities": mobile_capabilities(root, user),
         },
     })
 
 
 def mobile_auth_logout_view(root):
+    origin_error = enforce_same_origin_for_write(root)
+    if origin_error:
+        return origin_error
     logout_user()
     return jsonify({"meta": build_meta(), "data": {"ok": True}})
 
@@ -508,9 +554,17 @@ def mobile_auth_me_view(root):
                 "site_name": site_meta["site_name"],
                 "site_timezone": site_meta["site_timezone"],
             },
-            "permissions": _mobile_permissions(user),
+            "permissions": _mobile_permissions(root, user),
+            "capabilities": mobile_capabilities(root, user),
         },
     })
+
+
+def mobile_capabilities_view(root):
+    auth_error = _require_mobile_user()
+    if auth_error:
+        return auth_error
+    return mobile_json(mobile_capabilities(root, current_user))
 
 
 def mobile_opportunities_mine_view(root):
@@ -540,7 +594,7 @@ def mobile_opportunities_mine_view(root):
 
 
 def mobile_receiving_queue_view(root):
-    write_error = _require_mobile_writer()
+    write_error = _require_mobile_workflow(root, "receiving")
     if write_error:
         return write_error
     status_filter = (request.args.get("status") or "ready").strip().lower()
@@ -580,7 +634,7 @@ def mobile_receiving_queue_view(root):
 
 
 def mobile_receiving_detail_view(root, opportunity_id: str):
-    write_error = _require_mobile_writer()
+    write_error = _require_mobile_workflow(root, "receiving")
     if write_error:
         return write_error
     purchase = root.db.session.get(root.Purchase, opportunity_id)
@@ -605,7 +659,7 @@ def mobile_opportunity_detail_view(root, opportunity_id: str):
 
 
 def mobile_supplier_create_view(root):
-    write_error = _require_mobile_writer()
+    write_error = _require_mobile_workflow(root, "buying")
     if write_error:
         return write_error
     payload = _mobile_payload()
@@ -615,6 +669,7 @@ def mobile_supplier_create_view(root):
         return _json_error(str(exc), status_code=400, code="bad_request")
     if warning:
         return jsonify({"meta": build_meta(), "data": warning})
+    audit_mobile_action(root, action="create", entity_type="supplier", entity_id=supplier.id, workflow="buying", details={"name": supplier.name}, user_id=current_user.id)
     root.db.session.commit()
     return jsonify({"meta": build_meta(), "data": {"supplier": {"id": supplier.id, "name": supplier.name}}}), 201
 
@@ -655,7 +710,7 @@ def mobile_supplier_detail_view(root, supplier_id: str):
 
 
 def mobile_opportunity_create_view(root):
-    write_error = _require_mobile_writer()
+    write_error = _require_mobile_workflow(root, "buying")
     if write_error:
         return write_error
     payload = _mobile_payload()
@@ -708,12 +763,21 @@ def mobile_opportunity_create_view(root):
     root.db.session.add(lot)
     root.db.session.flush()
     ensure_purchase_lot_tracking(purchase)
+    audit_mobile_action(
+        root,
+        action="create",
+        entity_type="purchase",
+        entity_id=purchase.id,
+        workflow="buying",
+        details={"batch_id": purchase.batch_id, "supplier_id": purchase.supplier_id, "created_by_user_id": current_user.id},
+        user_id=current_user.id,
+    )
     root.db.session.commit()
     return jsonify({"meta": build_meta(), "data": {"opportunity": _mobile_purchase_detail(purchase), "requires_confirmation": False}}), 201
 
 
 def mobile_opportunity_update_view(root, opportunity_id: str):
-    write_error = _require_mobile_writer()
+    write_error = _require_mobile_workflow(root, "buying")
     if write_error:
         return write_error
     purchase = root.db.session.get(root.Purchase, opportunity_id)
@@ -778,12 +842,21 @@ def mobile_opportunity_update_view(root, opportunity_id: str):
     if "notes" in payload:
         purchase.notes = (payload.get("notes") or "").strip() or None
 
+    audit_mobile_action(
+        root,
+        action="update",
+        entity_type="purchase",
+        entity_id=purchase.id,
+        workflow="buying",
+        details={"updated_fields": sorted(payload.keys())},
+        user_id=current_user.id,
+    )
     root.db.session.commit()
     return jsonify({"meta": build_meta(), "data": {"opportunity": _mobile_purchase_detail(purchase)}})
 
 
 def mobile_opportunity_delivery_view(root, opportunity_id: str):
-    write_error = _require_mobile_writer()
+    write_error = _require_mobile_workflow(root, "buying")
     if write_error:
         return write_error
     purchase = root.db.session.get(root.Purchase, opportunity_id)
@@ -800,12 +873,21 @@ def mobile_opportunity_delivery_view(root, opportunity_id: str):
     except ValueError as exc:
         return _json_error(str(exc), status_code=400, code="bad_request")
 
+    audit_mobile_action(
+        root,
+        action="deliver",
+        entity_type="purchase",
+        entity_id=purchase.id,
+        workflow="buying",
+        details={"delivered_weight_lbs": purchase.actual_weight_lbs, "delivery_date": purchase.delivery_date.isoformat() if purchase.delivery_date else None},
+        user_id=current_user.id,
+    )
     root.db.session.commit()
     return jsonify({"meta": build_meta(), "data": {"opportunity": _mobile_purchase_detail(purchase)}})
 
 
 def mobile_receiving_receive_view(root, opportunity_id: str):
-    write_error = _require_mobile_writer()
+    write_error = _require_mobile_workflow(root, "receiving")
     if write_error:
         return write_error
     purchase = root.db.session.get(root.Purchase, opportunity_id)
@@ -819,12 +901,21 @@ def mobile_receiving_receive_view(root, opportunity_id: str):
         _mobile_apply_delivery(root, purchase, payload, actor=current_user)
     except ValueError as exc:
         return _json_error(str(exc), status_code=400, code="bad_request")
+    audit_mobile_action(
+        root,
+        action="receive",
+        entity_type="purchase",
+        entity_id=purchase.id,
+        workflow="receiving",
+        details={"delivered_weight_lbs": purchase.actual_weight_lbs, "location": (payload.get("location") or "").strip() or None},
+        user_id=current_user.id,
+    )
     root.db.session.commit()
     return jsonify({"meta": build_meta(extra={"workflow": "receiving"}), "data": {"receiving": _mobile_receiving_summary(purchase)}})
 
 
 def mobile_receiving_photos_view(root, opportunity_id: str):
-    write_error = _require_mobile_writer()
+    write_error = _require_mobile_workflow(root, "receiving")
     if write_error:
         return write_error
     purchase = root.db.session.get(root.Purchase, opportunity_id)
@@ -844,6 +935,10 @@ def mobile_receiving_photos_view(root, opportunity_id: str):
         files = [single] if single and getattr(single, "filename", "") else []
     if not files:
         return _json_error("At least one photo file is required.", status_code=400, code="bad_request")
+    try:
+        _mobile_validate_photo_upload(purchase, photo_context="delivery", files=files)
+    except ValueError as exc:
+        return _json_error(str(exc), status_code=400, code="bad_request")
 
     prefix = f"mobile-{purchase.id}-delivery"
     saved_paths = save_uploads(
@@ -873,6 +968,15 @@ def mobile_receiving_photos_view(root, opportunity_id: str):
                 purchase_id=purchase.id,
                 uploaded_by=current_user.id,
             )
+    audit_mobile_action(
+        root,
+        action="upload_photo",
+        entity_type="purchase",
+        entity_id=purchase.id,
+        workflow="receiving",
+        details={"photo_context": "delivery", "count": len(saved_paths)},
+        user_id=current_user.id,
+    )
     root.db.session.commit()
     photos = PhotoAsset.query.filter(
         PhotoAsset.purchase_id == purchase.id,
@@ -889,7 +993,7 @@ def mobile_receiving_photos_view(root, opportunity_id: str):
 
 
 def mobile_opportunity_photos_view(root, opportunity_id: str):
-    write_error = _require_mobile_writer()
+    write_error = _require_mobile_workflow(root, "buying")
     if write_error:
         return write_error
     purchase = root.db.session.get(root.Purchase, opportunity_id)
@@ -913,6 +1017,10 @@ def mobile_opportunity_photos_view(root, opportunity_id: str):
         files = [single] if single and getattr(single, "filename", "") else []
     if not files:
         return _json_error("At least one photo file is required.", status_code=400, code="bad_request")
+    try:
+        _mobile_validate_photo_upload(purchase, photo_context=photo_context, files=files)
+    except ValueError as exc:
+        return _json_error(str(exc), status_code=400, code="bad_request")
 
     prefix = f"mobile-{purchase.id}-{photo_context}"
     saved_paths = save_uploads(
@@ -944,6 +1052,15 @@ def mobile_opportunity_photos_view(root, opportunity_id: str):
                 uploaded_by=current_user.id,
             )
             created.append(path)
+    audit_mobile_action(
+        root,
+        action="upload_photo",
+        entity_type="purchase",
+        entity_id=purchase.id,
+        workflow="buying",
+        details={"photo_context": photo_context, "count": len(saved_paths)},
+        user_id=current_user.id,
+    )
     root.db.session.commit()
     photos = PhotoAsset.query.filter(
         PhotoAsset.purchase_id == purchase.id,

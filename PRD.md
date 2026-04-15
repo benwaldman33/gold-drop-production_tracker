@@ -956,3 +956,15 @@ Requirements:
 - provide a receiving queue and receiving detail screen
 - allow dock staff to confirm receipt, set location / floor state, and upload delivery photos
 - keep delivery subordinate to the purchase lifecycle rather than creating a second intake object
+
+## Controlled Write Platform Hardening
+
+As standalone apps expand, the session-auth write surface now needs shared platform rules rather than one-off endpoint behavior.
+
+Current hardening requirements:
+
+- workflow-specific site toggles for standalone buying and receiving
+- same-origin enforcement on unsafe mobile writes
+- write-side audit visibility for mobile-origin mutations
+- machine-readable mobile capabilities discovery
+- upload limits for delivery and opportunity photo writes

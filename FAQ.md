@@ -304,3 +304,9 @@ Use the runbook in:
 - `standalone-receiving-intake-app/DEPLOYMENT.md`
 
 The receiving app uses the same proxy pattern locally and the same session-auth mobile API family in production.
+
+## Can I disable a standalone workflow without removing the code?
+
+Yes.
+
+Use `Settings -> Operational Parameters` to turn the standalone purchasing or receiving workflow on or off for that site. The workflow remains coded, but the corresponding mobile write endpoints return `workflow_disabled` until the setting is turned back on.

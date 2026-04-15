@@ -31,6 +31,7 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
   - **`services/supplier_merge.py`** - supplier merge preview / execute service that preserves lineage and audits source-to-target remaps
   - **`gold_drop/api_v1_module.py`** - token-authenticated internal read-only API routes under `/api/v1`
   - **`gold_drop/mobile_module.py`** - user-authenticated mobile write API routes under `/api/mobile/v1`
+  - **`services/mobile_write_api.py`** - shared standalone/mobile write helpers for workflow enablement, same-origin enforcement, capabilities, and audit metadata
   - **`gold_drop/floor_module.py`** - operator floor activity page for recent scans, recent scale captures, floor-state rollups, and extraction-readiness rollups
   - **`static/js/scan_camera.js`** - in-browser camera scanning client for `/scan`, with `BarcodeDetector` support plus manual/scanner fallback
   - **`services/api_auth.py`** - bearer-token generation, hashing, lookup, and scope enforcement
@@ -159,6 +160,7 @@ Mobile routes currently registered:
 - `POST /api/mobile/v1/auth/login`
 - `POST /api/mobile/v1/auth/logout`
 - `GET /api/mobile/v1/auth/me`
+- `GET /api/mobile/v1/capabilities`
 - `GET /api/mobile/v1/suppliers`
 - `GET /api/mobile/v1/suppliers/<supplier_id>`
 - `POST /api/mobile/v1/opportunities`
@@ -184,6 +186,11 @@ Pilot-hardening additions:
 - main-app purchase review now surfaces mobile-origin metadata and mobile-uploaded photos for approvers
 - standalone app deployment/runbook and pilot QA docs live under `standalone-purchasing-agent-app/`
 - the receiving/intake companion app lives under `standalone-receiving-intake-app/` and reuses the same session-auth mobile surface with a receiving-specific queue and receive-confirm flow
+- controlled write-platform hardening now adds:
+  - per-workflow site toggles for standalone buying and receiving
+  - same-origin checks for unsafe mobile writes
+  - mobile workflow audit entries in `audit_log`
+  - delivery-photo upload limits
 
 ### Response contract
 

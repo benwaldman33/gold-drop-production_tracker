@@ -522,6 +522,8 @@ For local development:
 
 The standalone dev server proxies `/api/*` to the Gold Drop backend by default so login and other session-based mobile endpoints work without browser CORS or cookie issues.
 
+System Settings can now enable or disable the standalone buying and receiving workflows independently, and recent mobile workflow activity is visible in `Settings`.
+
 Standalone app pilot docs:
 
 - [standalone-purchasing-agent-app/DEPLOYMENT.md](standalone-purchasing-agent-app/DEPLOYMENT.md)

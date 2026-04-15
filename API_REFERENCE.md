@@ -54,11 +54,13 @@ Authentication:
 - `POST /api/mobile/v1/auth/login`
 - `POST /api/mobile/v1/auth/logout`
 - `GET /api/mobile/v1/auth/me`
+- `GET /api/mobile/v1/capabilities`
 
 `login` returns:
 - authenticated user identity
 - site identity
 - app permissions
+- mobile write capabilities
 
 ### Opportunities
 
@@ -101,6 +103,13 @@ Behavior:
 - it is not a separate top-level record type
 - receiving confirmation sets the purchase to `delivered`
 - receiving users can upload delivery-context photos without being the original opportunity creator
+
+### Mobile Write Platform Rules
+
+- standalone buying and receiving workflows can be enabled or disabled per site in `Settings -> Operational Parameters`
+- unsafe mobile writes reject cross-site `Origin` / `Referer` values
+- mobile write actions are audited with `source = mobile_api`
+- photo uploads enforce per-request and per-context limits
 
 ## Authentication
 

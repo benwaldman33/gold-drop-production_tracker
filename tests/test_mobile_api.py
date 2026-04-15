@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from io import BytesIO
 
-from models import PhotoAsset, Purchase, Supplier, db, gen_uuid
+from models import AuditLog, PhotoAsset, Purchase, Supplier, SystemSetting, db, gen_uuid
 import app as app_module
 
 
@@ -212,6 +212,7 @@ def test_mobile_endpoints_require_auth():
     with app.test_client() as client:
         for method, path in (
             ("get", "/api/mobile/v1/auth/me"),
+            ("get", "/api/mobile/v1/capabilities"),
             ("get", "/api/mobile/v1/opportunities/mine"),
             ("post", "/api/mobile/v1/opportunities"),
             ("post", "/api/mobile/v1/suppliers"),
@@ -324,6 +325,130 @@ def test_mobile_receiving_queue_and_receive_flow():
                 receiver = db.session.get(app_module.User, receiver_id)
                 if receiver:
                     db.session.delete(receiver)
+            supplier = db.session.get(Supplier, supplier_id)
+            if supplier:
+                db.session.delete(supplier)
+            db.session.commit()
+
+
+def test_mobile_capabilities_and_workflow_toggles():
+    app = app_module.create_app()
+    with app.app_context():
+        setting = db.session.get(SystemSetting, "standalone_receiving_enabled")
+        setting.value = "0"
+        db.session.commit()
+    try:
+        with app.test_client() as client:
+            _login_mobile(client)
+            caps = client.get("/api/mobile/v1/capabilities")
+            assert caps.status_code == 200
+            payload = caps.get_json()["data"]
+            assert payload["write_workflows"]["buying"]["enabled"] is True
+            assert payload["write_workflows"]["receiving"]["enabled"] is False
+
+            denied = client.get("/api/mobile/v1/receiving/queue")
+            assert denied.status_code == 403
+            assert denied.get_json()["error"]["code"] == "workflow_disabled"
+    finally:
+        with app.app_context():
+            setting = db.session.get(SystemSetting, "standalone_receiving_enabled")
+            setting.value = "1"
+            db.session.commit()
+
+
+def test_mobile_write_origin_enforcement_and_audit_log():
+    app = app_module.create_app()
+    supplier_id = _create_supplier(app, f"Audit Supplier {gen_uuid()[:6]}")
+    purchase_id = None
+    try:
+        with app.test_client() as client:
+            _login_mobile(client)
+            blocked = client.post(
+                "/api/mobile/v1/opportunities",
+                json={
+                    "supplier_id": supplier_id,
+                    "strain_name": "Blue Dream",
+                    "expected_weight_lbs": 40,
+                },
+                headers={"Origin": "https://evil.example"},
+            )
+            assert blocked.status_code == 403
+
+            created = client.post(
+                "/api/mobile/v1/opportunities",
+                json={
+                    "supplier_id": supplier_id,
+                    "strain_name": "Blue Dream",
+                    "expected_weight_lbs": 40,
+                },
+            )
+            assert created.status_code == 201
+            purchase_id = created.get_json()["data"]["opportunity"]["id"]
+
+        with app.app_context():
+            audit_rows = AuditLog.query.filter(
+                AuditLog.entity_type == "purchase",
+                AuditLog.entity_id == purchase_id,
+            ).all()
+            assert any('"source": "mobile_api"' in (row.details or "") for row in audit_rows)
+    finally:
+        with app.app_context():
+            PhotoAsset.query.filter(PhotoAsset.purchase_id == purchase_id).delete(synchronize_session=False)
+            purchase = db.session.get(Purchase, purchase_id) if purchase_id else None
+            if purchase:
+                db.session.delete(purchase)
+            supplier = db.session.get(Supplier, supplier_id)
+            if supplier:
+                db.session.delete(supplier)
+            db.session.commit()
+
+
+def test_mobile_delivery_photo_upload_limit_enforced():
+    app = app_module.create_app()
+    supplier_id = _create_supplier(app, f"Limit Supplier {gen_uuid()[:6]}")
+    purchase_id = None
+    old_limit = app.config.get("MOBILE_UPLOAD_MAX_FILES_PER_REQUEST")
+    app.config["MOBILE_UPLOAD_MAX_FILES_PER_REQUEST"] = 1
+    try:
+        with app.app_context():
+            purchase = Purchase(
+                supplier_id=supplier_id,
+                purchase_date=app_module.date(2026, 4, 15),
+                availability_date=app_module.date(2026, 4, 15),
+                status="committed",
+                stated_weight_lbs=50,
+                declared_weight_lbs=50,
+                purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+                created_by_user_id=app_module.User.query.filter_by(username="ops").first().id,
+            )
+            db.session.add(purchase)
+            db.session.flush()
+            purchase_id = purchase.id
+            db.session.add(app_module.PurchaseLot(purchase_id=purchase.id, strain_name="MAC 1", weight_lbs=50, remaining_weight_lbs=50))
+            db.session.commit()
+
+        with app.test_client() as client:
+            _login_mobile(client)
+            res = client.post(
+                f"/api/mobile/v1/receiving/queue/{purchase_id}/photos",
+                data={
+                    "photo_context": "delivery",
+                    "photo": [
+                        (BytesIO(b"a"), "one.jpg"),
+                        (BytesIO(b"b"), "two.jpg"),
+                    ],
+                },
+                content_type="multipart/form-data",
+            )
+            assert res.status_code == 400
+            assert "at most 1 files" in res.get_json()["error"]["message"]
+    finally:
+        app.config["MOBILE_UPLOAD_MAX_FILES_PER_REQUEST"] = old_limit
+        with app.app_context():
+            PhotoAsset.query.filter(PhotoAsset.purchase_id == purchase_id).delete(synchronize_session=False)
+            purchase = db.session.get(Purchase, purchase_id) if purchase_id else None
+            if purchase:
+                db.session.delete(purchase)
             supplier = db.session.get(Supplier, supplier_id)
             if supplier:
                 db.session.delete(supplier)

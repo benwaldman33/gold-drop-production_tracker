@@ -356,6 +356,8 @@ def settings_view(root):
             site_region = site_region_raw[:80]
             site_environment = site_environment_raw if site_environment_raw in {"production", "staging", "development", "test"} else "production"
             cross_site_ops_enabled = "1" if root.request.form.get("cross_site_ops_enabled") else "0"
+            standalone_purchasing_enabled = "1" if root.request.form.get("standalone_purchasing_enabled") else "0"
+            standalone_receiving_enabled = "1" if root.request.form.get("standalone_receiving_enabled") else "0"
             site_timezone_ok = True
             if site_timezone_raw:
                 try:
@@ -372,6 +374,8 @@ def settings_view(root):
                 ("site_region", site_region, "Optional site region used in internal API metadata"),
                 ("site_environment", site_environment, "Deployment environment label used in internal API metadata"),
                 ("cross_site_ops_enabled", cross_site_ops_enabled, "Enable cross-site operations UI surfaces for this site"),
+                ("standalone_purchasing_enabled", standalone_purchasing_enabled, "Enable standalone purchasing app workflow"),
+                ("standalone_receiving_enabled", standalone_receiving_enabled, "Enable standalone receiving intake workflow"),
             ):
                 existing = root.db.session.get(root.SystemSetting, key)
                 if existing:
@@ -519,6 +523,9 @@ def settings_view(root):
     field_tokens = root.FieldAccessToken.query.order_by(root.FieldAccessToken.created_at.desc()).all()
     api_clients = ApiClient.query.order_by(ApiClient.created_at.desc()).all()
     api_request_logs = ApiClientRequestLog.query.order_by(ApiClientRequestLog.created_at.desc()).limit(25).all()
+    mobile_workflow_logs = root.AuditLog.query.filter(
+        root.AuditLog.details.ilike('%"source": "mobile_api"%')
+    ).order_by(root.AuditLog.timestamp.desc()).limit(25).all()
     remote_sites = RemoteSite.query.order_by(RemoteSite.created_at.desc()).all()
     scale_devices = root.ScaleDevice.query.order_by(root.ScaleDevice.created_at.desc()).all()
     recent_weight_captures = root.WeightCapture.query.order_by(root.WeightCapture.created_at.desc()).limit(25).all()
@@ -531,6 +538,8 @@ def settings_view(root):
         client._display_last_used_at = coerce_utc(client.last_used_at)
     for log in api_request_logs:
         log._display_created_at = coerce_utc(log.created_at)
+    for log in mobile_workflow_logs:
+        log._display_timestamp = coerce_utc(log.timestamp)
     for site in remote_sites:
         site._display_created_at = coerce_utc(site.created_at)
         site._display_updated_at = coerce_utc(site.updated_at)
@@ -578,6 +587,7 @@ def settings_view(root):
         field_tokens=field_tokens,
         api_clients=api_clients,
         api_request_logs=api_request_logs,
+        mobile_workflow_logs=mobile_workflow_logs,
         remote_sites=remote_sites,
         scale_devices=scale_devices,
         recent_weight_captures=recent_weight_captures,
