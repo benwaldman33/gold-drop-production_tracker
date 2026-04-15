@@ -508,6 +508,19 @@ The MCP layer is intentionally:
 
 ---
 
+## Standalone Purchasing App
+
+The separate mobile-first buyer app lives in:
+
+- [standalone-purchasing-agent-app](standalone-purchasing-agent-app)
+
+For local development:
+
+1. Start the main Gold Drop app on `http://127.0.0.1:5050`
+2. Start the standalone app dev server from `standalone-purchasing-agent-app`
+
+The standalone dev server proxies `/api/*` to the Gold Drop backend by default so login and other session-based mobile endpoints work without browser CORS or cookie issues.
+
 ## Importing Historical Data from Google Sheets
 
 ### Runs and run-style reports (legacy Import screen)

@@ -153,6 +153,7 @@ This surface is separate from `/api/v1`.
 - Supports opportunity creation/editing, delivery entry, supplier creation, and photo uploads
 - Enforces the opportunity -> delivery lifecycle boundary in the backend
 - Reuses current read endpoints where practical instead of duplicating read models
+- Local standalone frontend development uses a small proxying dev server so `/api/*` requests stay same-origin from the browser and can reuse Gold Drop session cookies cleanly
 
 Mobile routes currently registered:
 - `POST /api/mobile/v1/auth/login`

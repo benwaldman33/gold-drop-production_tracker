@@ -40,6 +40,13 @@ Start the app:
 node scripts/dev-server.mjs
 ```
 
+The dev server proxies `/api/*` to the Gold Drop backend on `http://127.0.0.1:5050` by default.
+To point it somewhere else:
+
+```bash
+BACKEND_URL=http://localhost:5050 node scripts/dev-server.mjs
+```
+
 Open:
 
 ```text
@@ -64,7 +71,7 @@ Example live config:
 <script>
   window.__PURCHASING_APP_CONFIG__ = {
     mode: "live",
-    apiBaseUrl: "https://your-gold-drop-host.example"
+    apiBaseUrl: ""
   };
 </script>
 ```
