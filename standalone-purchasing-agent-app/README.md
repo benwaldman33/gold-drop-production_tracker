@@ -1,0 +1,102 @@
+# Gold Drop Purchasing Agent App
+
+Standalone mobile-first frontend for field buyers and intake staff.
+
+This app is intentionally separated from the main Gold Drop backend UI. It consumes a small API surface and is designed to run on phone or tablet.
+
+## Scope
+
+Included:
+- login
+- home
+- supplier search/context
+- create opportunity
+- my opportunities
+- opportunity detail
+- edit before approval
+- record delivery against approved/committed opportunity
+- photo upload UI
+
+Excluded:
+- approval actions
+- run creation
+- barcode/scanner flows
+- scale workflows
+- broad admin access
+
+## Folder Layout
+
+- `index.html` - app entry point
+- `styles.css` - app styling
+- `src/` - browser modules
+- `tests/` - Node tests for contract logic
+- `scripts/dev-server.mjs` - tiny static dev server
+
+## Local Development
+
+Start the app:
+
+```bash
+node scripts/dev-server.mjs
+```
+
+Open:
+
+```text
+http://127.0.0.1:4173
+```
+
+Run tests:
+
+```bash
+node --test tests/*.test.mjs
+```
+
+## Mock-First Mode
+
+The app defaults to mock mode so frontend work can proceed before the backend write endpoints are available.
+
+Switch to live mode later by editing `src/config.js` or injecting `window.__PURCHASING_APP_CONFIG__` before `src/app.js` loads.
+
+Example live config:
+
+```html
+<script>
+  window.__PURCHASING_APP_CONFIG__ = {
+    mode: "live",
+    apiBaseUrl: "https://your-gold-drop-host.example"
+  };
+</script>
+```
+
+The live app uses user-based auth for mobile workflows and keeps write actions under `/api/mobile/v1`.
+
+## Backend Contract
+
+The app is designed around:
+- `Opportunity` as the primary object
+- `Delivery` as a downstream action on an approved/committed opportunity
+- edit only before approval
+- one attachment collection with `photo_context`
+- `/api/mobile/v1` for auth and writes
+- existing read endpoints reused where practical
+
+## Testing
+
+The standalone app includes Node-based tests for:
+- domain helpers
+- API adapter behavior
+- UI helper parsing/building
+
+Run them with:
+
+```bash
+node --test tests/*.test.mjs
+```
+
+## Important Notes
+
+- delivery is not a separate sibling object
+- supplier creation allows fuzzy duplicate detection and user verification
+- photo upload is in scope for v1
+- read endpoints should remain on the current Gold Drop API when practical
