@@ -344,6 +344,9 @@ sudo systemctl restart golddrop
 
 This app now exposes a read-only internal API under `/api/v1` for trusted internal consumers.
 
+Formal reference:
+- [API_REFERENCE.md](API_REFERENCE.md)
+
 Current endpoints:
 - `/api/v1/site`
 - `/api/v1/capabilities`
