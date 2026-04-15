@@ -643,6 +643,88 @@ def test_scanned_lot_can_confirm_movement_and_testing():
             db.session.commit()
 
 
+def test_floor_ops_page_shows_recent_scans_and_scale_captures():
+    app = app_module.app
+    with app.app_context():
+        supplier = Supplier(name="Floor Ops Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = Purchase(
+            supplier_id=supplier.id,
+            purchase_date=date(2026, 4, 12),
+            delivery_date=date(2026, 4, 12),
+            status="delivered",
+            stated_weight_lbs=55,
+            purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            clean_or_dirty="clean",
+            testing_status="completed",
+            batch_id=f"FLOOR-{app_module.gen_uuid()[:6]}",
+        )
+        db.session.add(purchase)
+        db.session.flush()
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Floor Dream",
+            weight_lbs=55,
+            remaining_weight_lbs=40,
+        )
+        db.session.add(lot)
+        db.session.flush()
+        event = LotScanEvent(lot_id=lot.id, tracking_id_snapshot=lot.tracking_id, action="scan_open")
+        db.session.add(event)
+        device = ScaleDevice(name="Floor Scale", interface_type="usb", protocol_type="generic_ascii", location="Reactor A")
+        db.session.add(device)
+        db.session.flush()
+        capture = WeightCapture(
+            device_id=device.id,
+            capture_type="reactor_input",
+            source_mode="device",
+            measured_weight=101.5,
+            unit="lbs",
+            raw_payload="WT,101.5,lb",
+        )
+        db.session.add(capture)
+        db.session.commit()
+        supplier_id = supplier.id
+        purchase_id = purchase.id
+        lot_id = lot.id
+        event_id = event.id
+        device_id = device.id
+        capture_id = capture.id
+
+    try:
+        with app.test_client() as client:
+            _login(client, "admin")
+            resp = client.get("/floor-ops")
+            assert resp.status_code == 200
+            assert b"Floor Ops" in resp.data
+            assert b"Recent Scan Activity" in resp.data
+            assert b"Recent Scale Captures" in resp.data
+            assert b"Open Scan Page" in resp.data
+            assert b"Floor Scale" in resp.data
+    finally:
+        with app.app_context():
+            capture_obj = db.session.get(WeightCapture, capture_id)
+            if capture_obj:
+                db.session.delete(capture_obj)
+            device_obj = db.session.get(ScaleDevice, device_id)
+            if device_obj:
+                db.session.delete(device_obj)
+            event_obj = db.session.get(LotScanEvent, event_id)
+            if event_obj:
+                db.session.delete(event_obj)
+            lot_obj = db.session.get(PurchaseLot, lot_id)
+            if lot_obj:
+                db.session.delete(lot_obj)
+            purchase_obj = db.session.get(Purchase, purchase_id)
+            if purchase_obj:
+                db.session.delete(purchase_obj)
+            supplier_obj = db.session.get(Supplier, supplier_id)
+            if supplier_obj:
+                db.session.delete(supplier_obj)
+            db.session.commit()
+
+
 def test_run_form_scale_capture_prefills_reactor_weight_and_links_capture():
     app = app_module.app
     with app.app_context():

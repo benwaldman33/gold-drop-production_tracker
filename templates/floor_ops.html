@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Floor Ops{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Floor Ops</h2>
+  <a href="{{ url_for('runs_list') }}" class="btn btn-secondary">Open Runs</a>
+</div>
+
+<div class="summary-row">
+  <div class="summary-card">
+    <div class="summary-label">Scans · 24h</div>
+    <div class="summary-value">{{ scans_last_day }}</div>
+    <div class="summary-footnote">Recent barcode execution activity</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-label">Scale Captures · 24h</div>
+    <div class="summary-value">{{ captures_last_day }}</div>
+    <div class="summary-footnote">Recent smart-scale reads</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-label">Open Lots</div>
+    <div class="summary-value">{{ open_lot_count }}</div>
+    <div class="summary-footnote">Lots with remaining inventory</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-label">Active Scales</div>
+    <div class="summary-value">{{ active_scales }}</div>
+    <div class="summary-footnote">Enabled devices in Settings</div>
+  </div>
+</div>
+
+<div class="floor-execution-grid">
+  <div class="card">
+    <div class="card-header">
+      <h3>Recent Scan Activity</h3>
+      <a href="{{ url_for('inventory') }}" class="btn btn-secondary btn-sm">Inventory</a>
+    </div>
+    {% if recent_scans %}
+    <div class="floor-event-list">
+      {% for event in recent_scans %}
+      <div class="floor-event-row">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">
+          <div>
+            <div><strong>{{ event.tracking_id_snapshot }}</strong></div>
+            <div class="text-sm cell-muted">{{ event.action.replace('_', ' ') }}</div>
+          </div>
+          <div class="text-sm cell-muted">{{ event.created_at.strftime('%Y-%m-%d %H:%M') if event.created_at else '-' }}</div>
+        </div>
+        <div class="text-sm cell-muted" style="margin-top:6px;">
+          {% if event.user and event.user.display_name %}{{ event.user.display_name }}{% else %}System{% endif %}
+          {% if event.context %}
+            ·
+            {% for key, value in event.context.items() %}
+              {{ key.replace('_', ' ') }}={{ value }}{% if not loop.last %} · {% endif %}
+            {% endfor %}
+          {% endif %}
+        </div>
+        <div class="form-actions" style="justify-content:flex-start;margin-top:10px;">
+          <a href="{{ url_for('scan_lot', tracking_id=event.tracking_id_snapshot) }}" class="btn btn-secondary btn-sm">Open Scan Page</a>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-sm cell-muted">No scan events recorded yet.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h3>Recent Scale Captures</h3>
+      {% if current_user.is_super_admin %}
+      <a href="{{ url_for('settings') }}#settings-scales" class="btn btn-secondary btn-sm">Scale Settings</a>
+      {% endif %}
+    </div>
+    {% if recent_captures %}
+    <div class="floor-event-list">
+      {% for capture in recent_captures %}
+      <div class="floor-event-row">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">
+          <div>
+            <div><strong>{{ "{:,.2f}".format(capture.value or 0) }} {{ capture.unit or '' }}</strong></div>
+            <div class="text-sm cell-muted">
+              {{ capture.device.name if capture.device else 'Manual / unknown device' }}
+              {% if capture.capture_type %} · {{ capture.capture_type.replace('_', ' ') }}{% endif %}
+            </div>
+          </div>
+          <div class="text-sm cell-muted">{{ capture.created_at.strftime('%Y-%m-%d %H:%M') if capture.created_at else '-' }}</div>
+        </div>
+        <div class="text-sm cell-muted" style="margin-top:6px;">
+          source={{ capture.source_mode or 'unknown' }}
+          {% if capture.is_stable is not none %} · stable={{ 'yes' if capture.is_stable else 'no' }}{% endif %}
+          {% if capture.run_id %} · run linked{% endif %}
+        </div>
+        {% if capture.notes %}
+        <div class="text-sm" style="margin-top:6px;">{{ capture.notes }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-sm cell-muted">No weight captures recorded yet.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

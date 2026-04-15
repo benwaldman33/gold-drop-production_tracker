@@ -19,6 +19,7 @@ import gold_drop.biomass_module as biomass_module
 import gold_drop.bootstrap_module as bootstrap_module
 import gold_drop.purchases_module as purchases_module
 import gold_drop.dashboard_module as dashboard_module
+import gold_drop.floor_module as floor_module
 import gold_drop.field_intake_module as field_intake_module
 import gold_drop.costs_module as costs_module
 import gold_drop.inventory_module as inventory_module
@@ -1242,6 +1243,8 @@ def _register_extracted_routes(flask_app):
         runs_module.register_routes(flask_app, root)
     if "dashboard" not in existing:
         dashboard_module.register_routes(flask_app, root)
+    if "floor_ops" not in existing:
+        floor_module.register_routes(flask_app, root)
     if "field_home" not in existing:
         field_intake_module.register_routes(flask_app, root)
     if "costs_list" not in existing:
