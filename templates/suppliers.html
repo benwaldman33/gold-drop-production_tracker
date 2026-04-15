@@ -54,6 +54,11 @@
     <span class="text-sm supplier-hover-card__meta">{{ ss.all_time.runs }} runs · {{ "{:,.0f}".format(ss.all_time.lbs) }} lbs processed</span>
   </div>
   <div class="supplier-hover-card__body">
+    {% if ss.supplier.is_merged and ss.supplier.merged_into_supplier %}
+    <div class="text-sm cell-muted" style="margin-bottom:10px;">
+      Archived duplicate. Canonical supplier: <strong style="color:var(--text-primary);">{{ ss.supplier.merged_into_supplier.name }}</strong>
+    </div>
+    {% endif %}
     {% if current_user.can_edit %}
     <div class="btn-group" style="margin-bottom:10px;">
       <a href="{{ url_for('supplier_edit', sid=ss.supplier.id) }}" class="btn btn-secondary btn-sm">Edit</a>

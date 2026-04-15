@@ -1414,6 +1414,92 @@ def test_purchase_approve_respects_inline_return_target():
             db.session.commit()
 
 
+def test_mobile_created_purchase_review_surfaces_origin_and_photos():
+    app = app_module.app
+    with app.app_context():
+        admin = User.query.filter_by(username="admin").first()
+        assert admin is not None
+        supplier = Supplier(name="Mobile Review Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = Purchase(
+            supplier_id=supplier.id,
+            purchase_date=date.today(),
+            delivery_date=date.today(),
+            status="delivered",
+            stated_weight_lbs=10.0,
+            actual_weight_lbs=9.5,
+            batch_id=f"MOBILE-REVIEW-{gen_uuid()[:6]}",
+            created_by_user_id=admin.id,
+            delivery_recorded_by_user_id=admin.id,
+            purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            purchase_approved_by_user_id=admin.id,
+        )
+        db.session.add(purchase)
+        db.session.flush()
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Blue Dream",
+            weight_lbs=10.0,
+            remaining_weight_lbs=10.0,
+        )
+        db.session.add(lot)
+        db.session.flush()
+        opp_photo = PhotoAsset(
+            purchase_id=purchase.id,
+            supplier_id=supplier.id,
+            source_type="mobile_api",
+            category="biomass",
+            photo_context="opportunity",
+            file_path="uploads/library/mobile-opportunity-test.jpg",
+            title="Opportunity photo",
+            uploaded_by=admin.id,
+        )
+        delivery_photo = PhotoAsset(
+            purchase_id=purchase.id,
+            supplier_id=supplier.id,
+            source_type="mobile_api",
+            category="biomass",
+            photo_context="delivery",
+            file_path="uploads/library/mobile-delivery-test.jpg",
+            title="Delivery photo",
+            uploaded_by=admin.id,
+        )
+        db.session.add_all([opp_photo, delivery_photo])
+        db.session.commit()
+        purchase_id = purchase.id
+        supplier_id = supplier.id
+        lot_id = lot.id
+        opp_photo_id = opp_photo.id
+        delivery_photo_id = delivery_photo.id
+
+    try:
+        listing = _call_view_as_user("/purchases", "purchases_list", "admin")
+        assert listing.status_code == 200
+        assert b"Mobile app" in listing.data
+        assert b"Created by VP Operations" in listing.data
+
+        detail = _call_view_as_user(f"/purchases/{purchase_id}/edit", "purchase_edit", "admin", purchase_id=purchase_id)
+        assert detail.status_code == 200
+        assert b"Submission Origin" in detail.data
+        assert b"Delivery Recorded By" in detail.data
+        assert b"Opportunity intake photos" in detail.data
+        assert b"Delivery confirmation photos" in detail.data
+    finally:
+        with app.app_context():
+            for model, obj_id in (
+                (PhotoAsset, opp_photo_id),
+                (PhotoAsset, delivery_photo_id),
+                (PurchaseLot, lot_id),
+                (Purchase, purchase_id),
+                (Supplier, supplier_id),
+            ):
+                obj = db.session.get(model, obj_id)
+                if obj is not None:
+                    db.session.delete(obj)
+            db.session.commit()
+
+
 def test_scale_readiness_models_and_weight_capture_persist():
     app = app_module.app
     with app.app_context():

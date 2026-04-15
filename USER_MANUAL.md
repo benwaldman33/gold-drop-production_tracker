@@ -711,3 +711,11 @@ Use exports for reporting, reconciliation, or offline analysis.
 - Use **Test ingest** with a raw payload such as `ST,GS, 124.6 lb` to confirm the parser and save a capture.
 - On **Runs -> New Run**, use **Capture from Scale** to prefill **Lbs in Reactor** from a live payload before saving the run.
 - The saved run keeps the linked device capture for later audit and analytics.
+
+## Standalone Purchasing Agent App
+
+- The standalone purchasing app is intended for buyer and intake workflows on phone or tablet.
+- Approvers should review mobile-created opportunities from the main app:
+  - `Purchases` list shows when a line originated from the `Mobile app`
+  - purchase edit pages surface submission origin, created-by user, delivery-recorded-by user, opportunity photos, and delivery photos
+- Supplier duplicates created from fast mobile entry can be corrected from `Suppliers -> Edit -> Merge Supplier`.

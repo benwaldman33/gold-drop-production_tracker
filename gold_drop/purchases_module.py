@@ -122,23 +122,40 @@ def _purchase_form_context(root, purchase):
     suppliers = root.Supplier.query.filter_by(is_active=True).order_by(root.Supplier.name).all()
     rate = root.SystemSetting.get_float("potency_rate", 1.50)
     purchase_audit_photos = []
+    purchase_delivery_photos = []
     purchase_support_docs = []
+    purchase_origin_summary = None
     if purchase:
         purchase_audit_photos = root.PhotoAsset.query.filter(
             root.PhotoAsset.purchase_id == purchase.id,
-            root.PhotoAsset.source_type == "field_submission",
+            root.PhotoAsset.source_type.in_(("field_submission", "mobile_api")),
+            root.or_(root.PhotoAsset.photo_context.is_(None), root.PhotoAsset.photo_context == "opportunity"),
+        ).order_by(root.PhotoAsset.uploaded_at.desc()).all()
+        purchase_delivery_photos = root.PhotoAsset.query.filter(
+            root.PhotoAsset.purchase_id == purchase.id,
+            root.PhotoAsset.source_type == "mobile_api",
+            root.PhotoAsset.photo_context == "delivery",
         ).order_by(root.PhotoAsset.uploaded_at.desc()).all()
         purchase_support_docs = root.PhotoAsset.query.filter(
             root.PhotoAsset.purchase_id == purchase.id,
             root.PhotoAsset.source_type == "purchase_upload",
         ).order_by(root.PhotoAsset.uploaded_at.desc()).all()
+        purchase_origin_summary = {
+            "source_label": "Mobile app" if purchase.created_by_user_id else "Back office",
+            "created_by_name": purchase.created_by_user.display_name if purchase.created_by_user else None,
+            "delivery_recorded_by_name": purchase.delivery_recorded_by.display_name if purchase.delivery_recorded_by else None,
+            "opportunity_photo_count": len(purchase_audit_photos),
+            "delivery_photo_count": len(purchase_delivery_photos),
+        }
     return {
         "purchase": purchase,
         "suppliers": suppliers,
         "rate": rate,
         "today": date.today(),
         "purchase_audit_photos": purchase_audit_photos,
+        "purchase_delivery_photos": purchase_delivery_photos,
         "purchase_support_docs": purchase_support_docs,
+        "purchase_origin_summary": purchase_origin_summary,
     }
 
 
@@ -184,6 +201,9 @@ def _annotate_purchase_row(purchase):
     purchase._total_allocated = total_allocated
     purchase._total_remaining = total_remaining
     purchase._exceptions = exceptions
+    purchase._intake_origin_label = "Mobile app" if purchase.created_by_user_id else "Back office"
+    purchase._created_by_name = purchase.created_by_user.display_name if purchase.created_by_user else None
+    purchase._delivery_recorded_by_name = purchase.delivery_recorded_by.display_name if purchase.delivery_recorded_by else None
     if not purchase.is_approved:
         purchase._next_action = "Approve purchase"
     elif state_key == "no_lots":

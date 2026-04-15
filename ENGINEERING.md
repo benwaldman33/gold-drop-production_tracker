@@ -176,6 +176,10 @@ The standalone app now uses the mobile surface for:
 
 That avoids mixing a user-cookie mobile session with the bearer-token-only `/api/v1` read API.
 
+Pilot-hardening additions:
+- main-app purchase review now surfaces mobile-origin metadata and mobile-uploaded photos for approvers
+- standalone app deployment/runbook and pilot QA docs live under `standalone-purchasing-agent-app/`
+
 ### Response contract
 
 Every response uses a standard envelope:

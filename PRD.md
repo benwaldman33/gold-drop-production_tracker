@@ -937,3 +937,11 @@ Some **potential** purchase / pipeline lines will never be approved. The product
 - Add richer analytics screens (time series, variance by reactor/operator).
 - Add COA upload + parsing, and stronger validation rules around potency/pricing.
 - Add automated alerts for “missing $/lb” purchases linked to recent runs.
+## Standalone Purchasing Agent App Pilot Hardening
+
+Current pilot-hardening requirements now include:
+
+- local proxy-based standalone app development so session auth works cleanly against the main backend
+- purchase review visibility for mobile-created opportunities
+- deployment/runbook documentation for the standalone app
+- a pilot QA checklist covering buyer, approver, and supplier-merge workflows

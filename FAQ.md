@@ -278,3 +278,21 @@ Yes. The current smart-scale workflow supports:
 - capturing a live payload on the run form to prefill `Lbs in Reactor`
 
 The live parser currently supports generic ASCII payloads first, which is the safest starting point for serial/USB scale integrations.
+## How do I review submissions from the standalone purchasing app?
+
+Open the record in the main app under `Purchases`.
+
+Pilot-hardening now surfaces:
+
+- `Mobile app` origin in the purchase list
+- creator and delivery recorder on the purchase review page
+- opportunity intake photos
+- delivery confirmation photos
+
+## How do I deploy the standalone purchasing app?
+
+Use the runbook in:
+
+- `standalone-purchasing-agent-app/DEPLOYMENT.md`
+
+For local development, the standalone dev server already proxies `/api/*` to the Gold Drop backend.

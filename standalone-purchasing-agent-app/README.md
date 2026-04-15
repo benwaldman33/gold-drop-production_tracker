@@ -31,6 +31,8 @@ Excluded:
 - `src/` - browser modules
 - `tests/` - Node tests for contract logic
 - `scripts/dev-server.mjs` - tiny static dev server
+- `DEPLOYMENT.md` - deployment/runbook notes
+- `PILOT_QA_CHECKLIST.md` - pilot validation checklist
 
 ## Local Development
 
@@ -108,3 +110,10 @@ node --test --experimental-test-isolation=none tests/api.test.mjs tests/domain.t
 - supplier creation allows fuzzy duplicate detection and user verification
 - photo upload is in scope for v1
 - the current live app uses `/api/mobile/v1` for auth, writes, and supplier reads
+
+## Pilot Readiness
+
+Use these documents before rollout:
+
+- [DEPLOYMENT.md](DEPLOYMENT.md)
+- [PILOT_QA_CHECKLIST.md](PILOT_QA_CHECKLIST.md)

@@ -521,6 +521,11 @@ For local development:
 
 The standalone dev server proxies `/api/*` to the Gold Drop backend by default so login and other session-based mobile endpoints work without browser CORS or cookie issues.
 
+Standalone app pilot docs:
+
+- [standalone-purchasing-agent-app/DEPLOYMENT.md](standalone-purchasing-agent-app/DEPLOYMENT.md)
+- [standalone-purchasing-agent-app/PILOT_QA_CHECKLIST.md](standalone-purchasing-agent-app/PILOT_QA_CHECKLIST.md)
+
 ## Importing Historical Data from Google Sheets
 
 ### Runs and run-style reports (legacy Import screen)
