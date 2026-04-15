@@ -131,6 +131,12 @@ def test_cross_site_ops_is_hidden_until_enabled():
         page = client.get("/cross-site", follow_redirects=False)
         assert page.status_code == 200
         assert b"Cross-Site Ops" in page.data
+        suppliers = client.get("/cross-site/suppliers", follow_redirects=False)
+        assert suppliers.status_code == 200
+        assert b"Cross-Site Supplier Comparison" in suppliers.data
+        strains = client.get("/cross-site/strains", follow_redirects=False)
+        assert strains.status_code == 200
+        assert b"Cross-Site Strain Comparison" in strains.data
     finally:
         with app.app_context():
             db.session.get(SystemSetting, "cross_site_ops_enabled").value = original

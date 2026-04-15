@@ -58,12 +58,22 @@ def register_routes(app, root):
     def cross_site_ops():
         return cross_site_ops_view(root)
 
+    @root.login_required
+    def cross_site_suppliers():
+        return cross_site_suppliers_view(root)
+
+    @root.login_required
+    def cross_site_strains():
+        return cross_site_strains_view(root)
+
     app.add_url_rule("/", endpoint="dashboard", view_func=dashboard)
     app.add_url_rule("/dept", endpoint="dept_index", view_func=dept_index)
     app.add_url_rule("/dept/", endpoint="dept_index_slash", view_func=dept_index)
     app.add_url_rule("/dept/<slug>", endpoint="dept_view", view_func=dept_view)
     app.add_url_rule("/biomass-purchasing", endpoint="biomass_purchasing_dashboard", view_func=biomass_purchasing_dashboard)
     app.add_url_rule("/cross-site", endpoint="cross_site_ops", view_func=cross_site_ops)
+    app.add_url_rule("/cross-site/suppliers", endpoint="cross_site_suppliers", view_func=cross_site_suppliers)
+    app.add_url_rule("/cross-site/strains", endpoint="cross_site_strains", view_func=cross_site_strains)
 
 
 def _cross_site_ops_enabled(root) -> bool:
@@ -457,4 +467,64 @@ def cross_site_ops_view(root):
         payload=payload,
         sites=sites,
         stale_sites=stale_sites,
+    )
+
+
+def cross_site_suppliers_view(root):
+    if not _cross_site_ops_enabled(root):
+        root.abort(404)
+
+    from gold_drop import api_v1_module as api_module
+
+    query_text = (root.request.args.get("q") or "").strip()
+    with root.app.test_request_context(
+        "/internal/cross-site/suppliers",
+        query_string={"q": query_text, "limit": "500", "offset": "0"},
+    ):
+        payload = api_module.api_v1_aggregation_suppliers.__wrapped__().get_json()["data"]
+
+    rows = sorted(
+        payload,
+        key=lambda item: float(((item.get("all_time") or {}).get("yield")) or 0),
+        reverse=True,
+    )
+    best_row = rows[0] if rows else None
+    incomplete_count = sum(1 for row in rows if row.get("profile_incomplete"))
+    return root.render_template(
+        "cross_site_suppliers.html",
+        page_title="Cross-Site Supplier Comparison",
+        query_text=query_text,
+        rows=rows,
+        best_row=best_row,
+        incomplete_count=incomplete_count,
+    )
+
+
+def cross_site_strains_view(root):
+    if not _cross_site_ops_enabled(root):
+        root.abort(404)
+
+    from gold_drop import api_v1_module as api_module
+
+    query_text = (root.request.args.get("q") or "").strip()
+    supplier_name = (root.request.args.get("supplier_name") or "").strip()
+    with root.app.test_request_context(
+        "/internal/cross-site/strains",
+        query_string={"q": query_text, "supplier_name": supplier_name, "limit": "500", "offset": "0"},
+    ):
+        payload = api_module.api_v1_aggregation_strains.__wrapped__().get_json()["data"]
+
+    rows = sorted(
+        payload,
+        key=lambda item: float(item.get("avg_yield") or 0),
+        reverse=True,
+    )
+    best_row = rows[0] if rows else None
+    return root.render_template(
+        "cross_site_strains.html",
+        page_title="Cross-Site Strain Comparison",
+        query_text=query_text,
+        supplier_name=supplier_name,
+        rows=rows,
+        best_row=best_row,
     )

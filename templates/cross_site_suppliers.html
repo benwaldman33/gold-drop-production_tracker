@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Cross-Site Supplier Comparison{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>Cross-Site Supplier Comparison</h2>
+    <p class="text-sm cell-muted" style="margin:6px 0 0 0;">Compare local supplier performance against cached remote-site analytics without exposing the feature to sites that have not enabled cross-site ops.</p>
+  </div>
+  <a href="{{ url_for('cross_site_ops') }}" class="btn btn-secondary">Back to Cross-Site Ops</a>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <form method="GET" class="filter-form">
+    <div class="form-row-3">
+      <div class="form-group">
+        <label>Supplier search</label>
+        <input type="text" name="q" value="{{ query_text }}" placeholder="Filter supplier name">
+      </div>
+      <div class="form-group" style="align-self:end;">
+        <button type="submit" class="btn btn-primary">Apply</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-card-label">Compared suppliers</div>
+    <div class="stat-card-value">{{ rows|length }}</div>
+    <div class="stat-card-detail">Local + cached remote rows</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-label">Incomplete profiles</div>
+    <div class="stat-card-value">{{ incomplete_count }}</div>
+    <div class="stat-card-detail">Supplier rows missing profile fields</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-label">Best all-time yield</div>
+    <div class="stat-card-value">{% if best_row %}{{ "{:.2f}".format((best_row.all_time or {}).get('yield') or 0) }}%{% else %}-{% endif %}</div>
+    <div class="stat-card-detail">{% if best_row %}{{ (best_row.supplier or {}).get('name') }} · {{ (best_row.site or {}).get('site_code') or (best_row.site or {}).get('site_name') }}{% else %}No supplier rows{% endif %}</div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:16px;">
+  <div class="table-responsive">
+    <table>
+      <thead>
+        <tr>
+          <th>Supplier</th>
+          <th>Site</th>
+          <th>All-Time Yield</th>
+          <th>90d Yield</th>
+          <th>Runs</th>
+          <th>Lbs</th>
+          <th>Cost / g</th>
+          <th>Last Batch</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td>
+            <strong>{{ (row.supplier or {}).get('name') or 'Unknown supplier' }}</strong>
+            {% if row.profile_incomplete %}
+            <div class="text-sm cell-muted">Profile incomplete</div>
+            {% endif %}
+          </td>
+          <td>
+            {{ (row.site or {}).get('site_name') or (row.site or {}).get('site_code') or 'Unknown site' }}
+            <div class="text-sm cell-muted">{{ (row.site or {}).get('site_code') or '—' }}</div>
+          </td>
+          <td>{{ "{:.2f}".format((row.all_time or {}).get('yield') or 0) }}%</td>
+          <td>{{ "{:.2f}".format((row.ninety_day or {}).get('yield') or 0) }}%</td>
+          <td>{{ "{:,.0f}".format((row.all_time or {}).get('runs') or 0) }}</td>
+          <td>{{ "{:,.1f}".format((row.all_time or {}).get('lbs') or 0) }}</td>
+          <td>{% if (row.all_time or {}).get('cpg') is not none %}${{ "{:.2f}".format((row.all_time or {}).get('cpg') or 0) }}{% else %}-{% endif %}</td>
+          <td>
+            {% if (row.last_batch or {}).get('date') %}
+              {{ (row.last_batch or {}).get('date') }}
+              <div class="text-sm cell-muted">{{ "{:.2f}".format((row.last_batch or {}).get('yield') or 0) }}%</div>
+            {% else %}
+              <span class="cell-muted">No recent run</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

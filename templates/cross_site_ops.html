@@ -15,6 +15,11 @@
   </div>
 </div>
 
+<div class="form-actions" style="gap:8px; margin-bottom:16px;">
+  <a href="{{ url_for('cross_site_suppliers') }}" class="btn btn-secondary">Supplier Comparison</a>
+  <a href="{{ url_for('cross_site_strains') }}" class="btn btn-secondary">Strain Comparison</a>
+</div>
+
 {% if stale_sites %}
 <div class="flash flash-error" style="margin-bottom:16px;">
   <strong>Remote cache attention:</strong> {{ stale_sites|length }} remote site{% if stale_sites|length != 1 %}s{% endif %} currently report a failed or stale pull state.
