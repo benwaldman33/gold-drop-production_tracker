@@ -85,6 +85,7 @@ class AppFactorySmokeTest(unittest.TestCase):
         self.assertIn("/api/v1/summary/scanner", rules)
         self.assertIn("/api/v1/inventory/on-hand", rules)
         self.assertIn("/floor-ops", rules)
+        self.assertIn("/scan", rules)
         self.assertIn("/scan/lot/<tracking_id>", rules)
         self.assertIn("/scan/lot/<tracking_id>/start-run", rules)
         self.assertIn("/scan/lot/<tracking_id>/confirm-movement", rules)

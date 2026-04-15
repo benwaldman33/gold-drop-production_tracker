@@ -725,6 +725,17 @@ def test_floor_ops_page_shows_recent_scans_and_scale_captures():
             db.session.commit()
 
 
+def test_scan_center_page_renders_for_authenticated_user():
+    app = app_module.app
+    with app.test_client() as client:
+        _login(client, "admin")
+        resp = client.get("/scan")
+        assert resp.status_code == 200
+        assert b"Scan Center" in resp.data
+        assert b"Start Camera Scan" in resp.data
+        assert b"tracking_id" in resp.data
+
+
 def test_run_form_scale_capture_prefills_reactor_weight_and_links_capture():
     app = app_module.app
     with app.app_context():

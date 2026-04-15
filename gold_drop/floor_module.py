@@ -6,7 +6,12 @@ def register_routes(app, root):
     def floor_ops():
         return floor_ops_view(root)
 
+    @root.login_required
+    def scan_center():
+        return scan_center_view(root)
+
     app.add_url_rule("/floor-ops", endpoint="floor_ops", view_func=floor_ops)
+    app.add_url_rule("/scan", endpoint="scan_center", view_func=scan_center)
 
 
 def floor_ops_view(root):
@@ -34,3 +39,7 @@ def floor_ops_view(root):
         scans_last_day=scans_last_day,
         captures_last_day=captures_last_day,
     )
+
+
+def scan_center_view(root):
+    return root.render_template("scan_center.html")
