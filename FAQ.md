@@ -226,6 +226,11 @@ Yes. Scanning the lot barcode now opens a dedicated scanned-lot execution page w
 - review recent scan activity
 
 There is also a top-level **Floor Ops** page that summarizes recent scan and scale activity for the floor team.
+It now also shows:
+- floor-state counts
+- lots ready for extraction
+- open lots still pending prep
+- open lots still pending testing
 
 **Can I use an iPad or Android tablet camera to scan labels?**
 Yes. Use the in-app **Scan Center** at `/scan` or open it from **Floor Ops**.

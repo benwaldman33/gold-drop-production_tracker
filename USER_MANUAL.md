@@ -234,6 +234,15 @@ Use **Floor Ops** from the left navigation when you want a quick operator view o
 - recent smart-scale captures
 - open lot count
 - active scale devices
+- lots already staged and ready for extraction
+- open lots still pending prep or testing
+
+The page also rolls open lots up by floor state:
+- in inventory
+- in vault
+- in reactor staging
+- in quarantine
+- custom movement
 
 Each recent scan row includes an **Open Scan Page** shortcut back into the lot execution workflow.
 
