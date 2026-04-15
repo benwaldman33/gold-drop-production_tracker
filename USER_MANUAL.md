@@ -6,7 +6,7 @@ This guide explains how to use the Gold Drop web app day-to-day. It intentionall
 
 **Current release note:** the app has now been split internally across dedicated route modules for dashboard, field intake, runs, purchases, biomass, costs, inventory, batch edit, suppliers/photos, purchase import, strains, settings, and Slack integration. The workflows in this manual are still the ones you should test: routes, page names, approvals, list screens, and Slack import behavior are intended to work the same as before.
 
-**Operator-facing additions in the current release:** Purchases and Inventory are more status-first, the Journey page is richer, Slack imports now includes inbox buckets, lot labels can be printed, and the data model is prepared for future smart-scale capture.
+**Operator-facing additions in the current release:** Purchases and Inventory are more status-first, the Journey page is richer, Slack imports now includes inbox buckets, lot labels now print with scannable barcodes, `Floor Ops` gives operators a recent activity surface, and the data model supports live smart-scale capture.
 
 ---
 
@@ -212,9 +212,18 @@ This table lists lots with remaining weight, including:
 
 Purchase editors see **Select all**, **Select none**, and **Batch edit…** above this table to change strain name, location, milled, potency, or notes on **multiple lots** at once (see **Batch editing from list screens**).
 
-Lots may also show a **tracking ID**. This is the permanent machine-readable identity for that physical lot and is being added now so future barcode / QR label workflows can use the same lot record without changing your inventory process.
+Lots may also show a **tracking ID**. This is the permanent machine-readable identity for that physical lot and now drives the printed barcode and scan route for that lot.
 
-Where available, use the **Label** action from Inventory, Purchases, or Journey to print a lot-facing label page. The current label output prints the stable tracking and scan payloads even before dedicated barcode / QR graphics are added.
+Where available, use the **Label** action from Inventory, Purchases, or Journey to print a lot-facing label page. The label now renders a printable **Code 39 barcode** plus the scan route for that exact lot.
+
+### Floor Ops
+Use **Floor Ops** from the left navigation when you want a quick operator view of:
+- recent barcode scans
+- recent smart-scale captures
+- open lot count
+- active scale devices
+
+Each recent scan row includes an **Open Scan Page** shortcut back into the lot execution workflow.
 
 ### In Transit / On Order
 This table lists purchases that are not yet fully received, including:

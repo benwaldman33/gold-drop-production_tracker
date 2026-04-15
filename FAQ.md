@@ -143,10 +143,10 @@ Days of supply uses on-hand pounds only, divided by your **Daily Throughput Targ
 **On Hand** only lists lots from purchases that are both in an arrived status (**delivered**, **in_testing**, **available**, **processing**) and approved (`purchase_approved_at` set). Approve the purchase first, then set the right status.
 
 **What is a tracking ID on a lot?**  
-It is the permanent machine-readable identity for that physical lot. The app now stores it so future barcode / QR label workflows can use the same lot record.
+It is the permanent machine-readable identity for that physical lot. The app now uses it directly for printed lot barcodes and scan execution.
 
 **Can I print a lot label already?**  
-Yes. Label pages are available from Purchases, Inventory, and Journey surfaces. They currently print the lot identity, payloads, and scan path even before full barcode / QR image rendering is added.
+Yes. Label pages are available from Purchases, Inventory, and Journey surfaces. They now render a printable **Code 39 barcode**, the tracking ID, and the scan path for that lot.
 
 **What are the new `/api/v1/tools/*` endpoints for?**
 They are read-only semantic endpoints for internal automation and future MCP / AI tooling. They provide higher-level answers like inventory snapshots, open-lot lookup, canonical journey resolution, and reconciliation overview without stitching together several low-level API calls first.
@@ -209,6 +209,13 @@ No. `git pull` only updates application files. Your database is separate and sho
 
 Add new questions here as operators raise them; keep answers brief and link to the manual where useful.
 ## Can a lot label do anything besides open the journey?
+Yes. Scanning the lot barcode now opens a dedicated scanned-lot execution page where operators can:
+- start a new run with the lot preselected
+- confirm movement/location
+- confirm testing status
+- review recent scan activity
+
+There is also a top-level **Floor Ops** page that summarizes recent scan and scale activity for the floor team.
 
 Yes. The scanner workflow now opens a dedicated scanned-lot page at `/scan/lot/<tracking_id>`. From there an operator can:
 - start a new run with that lot preselected

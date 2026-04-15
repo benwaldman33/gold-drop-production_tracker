@@ -70,7 +70,7 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 - **Auto-Calculations** — Yield %, cost per gram, true-up amounts calculated automatically
 - **Costs** — Enter solvent/personnel/overhead costs with date ranges; allocated into $/g
 - **Cost Allocation Settings** — Choose THCA vs HTE allocation (uniform, 50/50, custom %)
-- **Inventory** — Track biomass on hand, in transit, and days of supply, with per-lot remaining pounds and lot tracking IDs ready for future label / scan workflows
+- **Inventory** — Track biomass on hand, in transit, and days of supply, with per-lot remaining pounds and lot tracking IDs tied into live label / scan workflows
 - **Purchases** — Record purchases with potency-based pricing and true-up tracking
 - **Batch Journey** — Per-purchase lifecycle timeline (UI + API + export): open from Purchases list (**Journey**) or Purchase edit (**View Journey**) to see derived stages (`declared`, `testing`, `committed`, `delivered`, `inventory`, `extraction`, `post_processing`, `sales`) plus explicit **inventory lots**, **run allocations**, tracking IDs, remaining pounds, and drill links.
 - **Purchase spreadsheet import** — Upload **.csv**, **.xlsx**, or **.xlsm** via **Purchases → Import spreadsheet** (drag-and-drop or browse). Headers are mapped automatically (e.g. Vendor, Purchase Date, Invoice Weight, Actual Weight, Manifest, Amount, Paid Date, Payment Method, Week). Preview validates rows; commit creates **unapproved** purchases (on-hand statuses from the file are capped to **ordered** until **Approve purchase**). Optional auto-create suppliers. See `purchase_import.py` (header alias map) and `ENGINEERING.md` → **Purchase spreadsheet import**.
@@ -78,8 +78,9 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 - **Batch IDs** — Unique, readable batch IDs for all purchases (auto-generated if blank)
 - **Biomass Pipeline** — Same **`Purchase`** rows as **Purchases**: early statuses **`declared`** / **`in_testing`** (UI label *Testing*), then **`committed`**, **`delivered`**, **`cancelled`**, with pipeline fields on the purchase (`availability_date`, declared weight/price, testing metadata, field photos). No separate `BiomassAvailability` sync—one record end-to-end. **Super Admin** or **`is_purchase_approver`** must approve when moving **to or from Committed** on the pipeline form (stamps `purchase_approved_at`). Unapproved rows now also expose an inline **Approve** button directly in the Biomass Pipeline list for eligible approvers.
 - **Purchase approval gate** — On-hand inventory, dashboard on-hand, run lot pickers, and saving runs that consume lots require **`purchase_approved_at`**. You cannot set on-hand statuses (**delivered**, **in_testing**, **available**, **processing**) on **Edit Purchase** until approved. Existing on-hand purchases are **backfilled** as approved on startup. Slack **biomass intake** creates purchases as **`ordered`** until reviewed/approved per your process. Eligible approvers can now approve directly from the **Purchases** list or **Biomass Pipeline** list without opening the record first.
-- **Lot tracking IDs** — Purchase lots now receive machine-readable tracking fields (`tracking_id`, barcode payload, QR payload, label metadata) at creation or approval time so the inventory model is ready for future labels and scan workflows.
-- **Scanner workflows** — Scanned lot labels now open a dedicated lot workflow page with quick actions for **Start Run From This Lot**, **Confirm Movement**, **Confirm Testing**, and recent scan activity history.
+- **Lot tracking IDs** — Purchase lots now receive machine-readable tracking fields (`tracking_id`, barcode payload, QR payload, label metadata) at creation or approval time, and printable labels now render an offline Code 39 barcode for floor execution.
+- **Scanner workflows** — Scanned lot labels now open a dedicated lot workflow page with quick actions for **Start Run From This Lot**, **Confirm Movement**, **Confirm Testing**, **Print Label**, and recent scan activity history.
+- **Floor Ops** — A dedicated operator floor page surfaces recent scan activity, recent scale captures, open lot counts, and active device counts in one place.
 - **Scanner intelligence** — Scan activity is also exposed through internal API scanner endpoints and MCP tools (`scanner_summary`, `lot_scan_history`) for future floor analytics and AI workflows.
 - **Smart-scale live integration** — Admins can register scale devices, test raw payload ingestion in Settings, capture live allocation weights on the run form, and inspect scale data through internal API and MCP read layers.
 - **Field Photo Uploads** — Field users can attach multiple photos to biomass and purchase submissions (JPG/JPEG/PNG/WEBP/HEIC/HEIF, max 50 MB each)
@@ -109,13 +110,14 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 
 - Purchases and Inventory now emphasize allocation state, exceptions, remaining pounds, tracking readiness, and next actions.
 - Slack imports now behaves more like an inbox, with triage buckets that distinguish auto-ready rows from rows needing confirmation, manual matching, or exception handling.
-- Printable lot label pages and `/scan/lot/<tracking_id>` resolver routes are in place so future barcode / QR rendering can reuse the same lot identity model.
+- Printable lot label pages now render a scannable offline barcode and route into `/scan/lot/<tracking_id>` for direct floor execution.
 - The data model now includes `ScaleDevice` and `WeightCapture` for future smart-scale integration work.
 
 The app still starts from `app.py`, but the active route surface now lives across focused package modules in `gold_drop/`. `app.py` remains the entrypoint, app-factory host, and compatibility layer while route registration and startup bootstrap delegate into extracted modules.
 
 Current extracted route/bootstrap modules:
 - `gold_drop/dashboard_module.py`
+- `gold_drop/floor_module.py`
 - `gold_drop/field_intake_module.py`
 - `gold_drop/runs_module.py`
 - `gold_drop/purchases_module.py`
