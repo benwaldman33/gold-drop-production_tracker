@@ -387,6 +387,7 @@ class PurchaseLot(db.Model):
     potency_pct = db.Column(db.Float)
     micro_pot_test = db.Column(db.String(100))
     milled = db.Column(db.Boolean, default=False)
+    floor_state = db.Column(db.String(40), default="inventory")
     location = db.Column(db.String(200))
     notes = db.Column(db.Text)
     deleted_at = db.Column(db.DateTime)

@@ -745,6 +745,7 @@ def test_scanned_lot_can_confirm_movement_and_testing():
                 assert lot is not None
                 assert purchase is not None
                 assert lot.location == "Vault A / Shelf 2"
+                assert lot.floor_state == "vault"
                 assert purchase.testing_status == "completed"
                 assert purchase.testing_date == app_module.date.today()
                 events = LotScanEvent.query.filter_by(lot_id=lot_id).order_by(LotScanEvent.created_at.asc()).all()
@@ -753,6 +754,7 @@ def test_scanned_lot_can_confirm_movement_and_testing():
                 movement_context = events[0].context or {}
                 assert movement_context["movement_code"] == "vault"
                 assert movement_context["movement_label"] == "Move to vault"
+                assert movement_context["floor_state"] == "vault"
     finally:
         with app.app_context():
             LotScanEvent.query.filter_by(lot_id=lot_id).delete()

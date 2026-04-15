@@ -9,11 +9,11 @@ from services.lot_labels import build_lot_label_payload, build_purchase_label_pa
 from services.lot_allocation import ensure_lot_tracking_fields, ensure_purchase_lot_tracking
 
 MOVEMENT_OPTIONS = [
-    {"code": "vault", "label": "Move to vault", "default_location": "Vault"},
-    {"code": "reactor_staging", "label": "Move to reactor staging", "default_location": "Reactor staging"},
-    {"code": "quarantine", "label": "Move to quarantine", "default_location": "Quarantine"},
-    {"code": "inventory_return", "label": "Return to inventory", "default_location": "Inventory return"},
-    {"code": "custom", "label": "Custom location", "default_location": ""},
+    {"code": "vault", "label": "Move to vault", "default_location": "Vault", "floor_state": "vault"},
+    {"code": "reactor_staging", "label": "Move to reactor staging", "default_location": "Reactor staging", "floor_state": "reactor_staging"},
+    {"code": "quarantine", "label": "Move to quarantine", "default_location": "Quarantine", "floor_state": "quarantine"},
+    {"code": "inventory_return", "label": "Return to inventory", "default_location": "Inventory return", "floor_state": "inventory"},
+    {"code": "custom", "label": "Custom location", "default_location": "", "floor_state": "custom"},
 ]
 from services.purchase_helpers import (
     create_photo_asset,
@@ -633,6 +633,7 @@ def scan_lot_confirm_movement_view(root, tracking_id):
         root.flash("Enter a storage location before confirming movement.", "error")
         return root.redirect(root.url_for("scan_lot", tracking_id=tracking_id))
     lot.location = new_location
+    lot.floor_state = selected.get("floor_state") or "inventory"
     _record_lot_scan_event(
         root,
         lot,
@@ -641,6 +642,7 @@ def scan_lot_confirm_movement_view(root, tracking_id):
             "purchase_id": lot.purchase.id,
             "movement_code": movement_code,
             "movement_label": selected["label"],
+            "floor_state": lot.floor_state,
             "location": new_location,
         },
     )

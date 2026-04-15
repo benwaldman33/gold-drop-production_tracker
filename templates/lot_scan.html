@@ -33,6 +33,16 @@
       <div class="text-sm cell-muted">Testing</div>
       <div class="floor-scan-metric-value">{{ purchase.testing_status.replace('_', ' ') if purchase.testing_status else '-' }}</div>
     </div>
+    <div class="floor-scan-metric">
+      <div class="text-sm cell-muted">Floor State</div>
+      <div class="floor-scan-metric-value">
+        {% if lot.floor_state == 'vault' %}Vault
+        {% elif lot.floor_state == 'reactor_staging' %}Reactor staging
+        {% elif lot.floor_state == 'quarantine' %}Quarantine
+        {% elif lot.floor_state == 'custom' %}Custom
+        {% else %}In inventory{% endif %}
+      </div>
+    </div>
   </div>
 
   <div class="floor-action-grid">
@@ -165,6 +175,7 @@
         </div>
         <div class="text-sm cell-muted" style="margin-top:4px;">
           {% if event.user and event.user.display_name %}{{ event.user.display_name }}{% else %}System{% endif %}
+          {% if context.floor_state %} &middot; state={{ context.floor_state.replace('_', ' ') }}{% endif %}
           {% if context.location %} &middot; location={{ context.location }}{% endif %}
           {% if context.testing_status %} &middot; testing={{ context.testing_status }}{% endif %}
           {% if context.scale_device_id %} &middot; scale selected{% endif %}

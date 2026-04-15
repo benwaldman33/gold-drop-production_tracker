@@ -169,6 +169,8 @@ def ensure_sqlite_schema(root) -> None:
             root.db.session.execute(text("ALTER TABLE purchase_lots ADD COLUMN label_generated_at DATETIME"))
         if "label_version" not in cols:
             root.db.session.execute(text("ALTER TABLE purchase_lots ADD COLUMN label_version INTEGER"))
+        if "floor_state" not in cols:
+            root.db.session.execute(text("ALTER TABLE purchase_lots ADD COLUMN floor_state VARCHAR(40)"))
         if "deleted_at" not in cols:
             root.db.session.execute(text("ALTER TABLE purchase_lots ADD COLUMN deleted_at DATETIME"))
         if "deleted_by" not in cols:
