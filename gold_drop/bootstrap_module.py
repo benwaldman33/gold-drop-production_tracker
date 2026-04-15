@@ -8,6 +8,7 @@ from services.bootstrap_helpers import (
     backfill_default_inventory_lots,
     backfill_purchase_approval,
     ensure_postgres_run_hte_columns,
+    ensure_postgres_mobile_columns,
     ensure_postgres_slack_ingested_columns,
     ensure_sqlite_schema,
     migrate_biomass_to_purchase,
@@ -26,6 +27,7 @@ def init_db(root):
             raise
     ensure_sqlite_schema(root)
     ensure_postgres_run_hte_columns(root)
+    ensure_postgres_mobile_columns(root)
     ensure_postgres_slack_ingested_columns(root)
     reconcile_closed_purchase_inventory_lots(root)
     backfill_default_inventory_lots(root)

@@ -494,6 +494,8 @@ If the “exclude runs missing $/lb” setting is enabled, these analytics ignor
 
 Editors can use **Select all** / **Select none** and **Batch edit…** from the supplier cards area to **activate/deactivate** suppliers or **append notes** (see **Batch editing from list screens**). Checkboxes appear next to each supplier card title.
 
+Super Admins can also open a supplier record and use **Merge Supplier** to combine duplicates safely. The merge screen shows an impact summary first, then archives the source supplier, moves linked records to the target supplier, and keeps lineage and audit history intact.
+
 ---
 
 ## Strains (Performance)

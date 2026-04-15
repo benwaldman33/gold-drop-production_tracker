@@ -6,9 +6,10 @@ from unittest.mock import patch
 
 import app as app_module
 import gold_drop.bootstrap_module as bootstrap_module
-from models import ApiClient, FieldAccessToken, FieldPurchaseSubmission, LotScanEvent, Purchase, PurchaseLot, RemoteSite, ScaleDevice, SlackIngestedMessage, Supplier, SystemSetting, User, WeightCapture, db, gen_uuid
+from models import ApiClient, AuditLog, BiomassAvailability, FieldAccessToken, FieldPurchaseSubmission, LabTest, LotScanEvent, PhotoAsset, Purchase, PurchaseLot, RemoteSite, ScaleDevice, SlackIngestedMessage, Supplier, SupplierAttachment, SystemSetting, User, WeightCapture, db, gen_uuid
 from flask_login import login_user
 from services.scale_ingest import create_weight_capture
+from services.supplier_merge import supplier_merge_preview
 
 
 def _login(client, username: str, password: str = "golddrop2026"):
@@ -1139,6 +1140,204 @@ def test_field_submission_approve_creates_purchase_and_lots():
             if supplier:
                 db.session.delete(supplier)
             db.session.commit()
+
+
+def test_supplier_merge_preview_and_execute_rehomes_records():
+    app = app_module.app
+    with app.app_context():
+        source = Supplier(
+            name="Merge Source Supplier",
+            contact_name="Source Contact",
+            contact_phone="555-111-2222",
+            is_active=True,
+        )
+        target = Supplier(
+            name="Merge Target Supplier",
+            contact_name="Target Contact",
+            contact_phone="555-333-4444",
+            is_active=True,
+        )
+        db.session.add_all([source, target])
+        db.session.flush()
+
+        purchase = Purchase(
+            supplier_id=source.id,
+            purchase_date=date(2026, 4, 11),
+            delivery_date=date(2026, 4, 12),
+            status="delivered",
+            stated_weight_lbs=10.0,
+            batch_id=f"MERGE-{gen_uuid()[:8]}",
+        )
+        db.session.add(purchase)
+        db.session.flush()
+
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Merge Strain",
+            weight_lbs=10.0,
+            remaining_weight_lbs=10.0,
+        )
+        biomass = BiomassAvailability(
+            supplier_id=source.id,
+            availability_date=date(2026, 4, 10),
+            declared_weight_lbs=4.0,
+            notes="Merge test biomass row",
+        )
+        lab_test = LabTest(
+            supplier_id=source.id,
+            test_date=date(2026, 4, 9),
+            test_type="coa",
+            status_text="passed",
+            notes="Merge test lab row",
+        )
+        attachment = SupplierAttachment(
+            supplier_id=source.id,
+            document_type="coa",
+            title="Merge COA",
+            file_path="uploads/supplier-merge-test.pdf",
+        )
+        photo = PhotoAsset(
+            supplier_id=source.id,
+            source_type="manual",
+            category="supplier_doc",
+            title="Merge photo",
+            tags="merge,test",
+            file_path="uploads/library/supplier-merge-test.jpg",
+        )
+        submission = FieldPurchaseSubmission(
+            supplier_id=source.id,
+            purchase_date=date(2026, 4, 8),
+            status="pending",
+            lots_json=json.dumps([{"strain": "Merge Strain", "weight_lbs": 3.0}]),
+            notes="Merge test field submission",
+        )
+        db.session.add_all([lot, biomass, lab_test, attachment, photo, submission])
+        db.session.commit()
+
+        source_id = source.id
+        target_id = target.id
+        purchase_id = purchase.id
+        biomass_id = biomass.id
+        lab_test_id = lab_test.id
+        attachment_id = attachment.id
+        photo_id = photo.id
+        submission_id = submission.id
+        lot_id = lot.id
+
+    try:
+        preview = _call_view_as_user(
+            f"/suppliers/{source_id}/edit",
+            "supplier_edit",
+            "admin",
+            method="POST",
+            data={
+                "form_type": "merge",
+                "merge_target_supplier_id": target_id,
+                "merge_action": "preview",
+                "merge_notes": "duplicate supplier",
+            },
+            sid=source_id,
+        )
+        assert preview.status_code == 200
+        assert b"Impact Summary" in preview.data
+        assert b"Purchases (and linked lots)" in preview.data
+
+        merge = _call_view_as_user(
+            f"/suppliers/{source_id}/edit",
+            "supplier_edit",
+            "admin",
+            method="POST",
+            data={
+                "form_type": "merge",
+                "merge_target_supplier_id": target_id,
+                "merge_action": "execute",
+                "merge_confirm": "1",
+                "merge_notes": "duplicate supplier",
+            },
+            sid=source_id,
+        )
+        assert merge.status_code in (302, 303)
+        assert merge.headers["Location"].endswith(f"/suppliers/{target_id}/edit")
+
+        with app.app_context():
+            source = db.session.get(Supplier, source_id)
+            target = db.session.get(Supplier, target_id)
+            purchase = db.session.get(Purchase, purchase_id)
+            biomass = db.session.get(BiomassAvailability, biomass_id)
+            lab_test = db.session.get(LabTest, lab_test_id)
+            attachment = db.session.get(SupplierAttachment, attachment_id)
+            photo = db.session.get(PhotoAsset, photo_id)
+            submission = db.session.get(FieldPurchaseSubmission, submission_id)
+            audit = AuditLog.query.filter_by(entity_type="supplier", entity_id=source_id, action="merge").first()
+
+            assert source is not None
+            assert target is not None
+            assert source.is_active is False
+            assert source.merged_into_supplier_id == target_id
+            assert source.merged_by_user_id is not None
+            assert source.merged_at is not None
+            assert purchase is not None and purchase.supplier_id == target_id
+            assert biomass is not None and biomass.supplier_id == target_id
+            assert lab_test is not None and lab_test.supplier_id == target_id
+            assert attachment is not None and attachment.supplier_id == target_id
+            assert photo is not None and photo.supplier_id == target_id
+            assert submission is not None and submission.supplier_id == target_id
+            assert audit is not None
+            assert target.name in (audit.details or "")
+    finally:
+        with app.app_context():
+            for model, obj_id in (
+                (FieldPurchaseSubmission, submission_id),
+                (PhotoAsset, photo_id),
+                (SupplierAttachment, attachment_id),
+                (LabTest, lab_test_id),
+                (BiomassAvailability, biomass_id),
+            ):
+                obj = db.session.get(model, obj_id)
+                if obj is not None:
+                    db.session.delete(obj)
+            lot = db.session.get(PurchaseLot, lot_id)
+            if lot is not None:
+                db.session.delete(lot)
+            purchase = db.session.get(Purchase, purchase_id)
+            if purchase is not None:
+                db.session.delete(purchase)
+            audit = AuditLog.query.filter_by(entity_type="supplier", entity_id=source_id, action="merge").first()
+            if audit is not None:
+                db.session.delete(audit)
+            source = db.session.get(Supplier, source_id)
+            if source is not None:
+                db.session.delete(source)
+            target = db.session.get(Supplier, target_id)
+            if target is not None:
+                db.session.delete(target)
+            db.session.commit()
+
+
+def test_supplier_merge_preview_rejects_self_merge():
+    app = app_module.app
+    with app.app_context():
+        supplier = Supplier(name="Merge Self Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.commit()
+        supplier_id = supplier.id
+
+    try:
+        with app.app_context():
+            supplier = db.session.get(Supplier, supplier_id)
+            assert supplier is not None
+            try:
+                supplier_merge_preview(app_module, supplier, supplier)
+            except ValueError as exc:
+                assert "different" in str(exc).lower()
+            else:
+                raise AssertionError("Expected self-merge preview to fail")
+    finally:
+        with app.app_context():
+            supplier = db.session.get(Supplier, supplier_id)
+            if supplier is not None:
+                db.session.delete(supplier)
+                db.session.commit()
 
 
 def test_batch_edit_purchase_path_runs_inventory_and_budget_side_effects():

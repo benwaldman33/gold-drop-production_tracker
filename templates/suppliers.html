@@ -49,6 +49,7 @@
     <h3 class="supplier-hover-card__title">
       {{ ss.supplier.name }}
       {% if not ss.supplier.is_active %}<span class="badge badge-gray">Inactive</span>{% endif %}
+      {% if ss.supplier.is_merged %}<span class="badge badge-gray">Merged</span>{% endif %}
     </h3>
     <span class="text-sm supplier-hover-card__meta">{{ ss.all_time.runs }} runs · {{ "{:,.0f}".format(ss.all_time.lbs) }} lbs processed</span>
   </div>
@@ -56,6 +57,9 @@
     {% if current_user.can_edit %}
     <div class="btn-group" style="margin-bottom:10px;">
       <a href="{{ url_for('supplier_edit', sid=ss.supplier.id) }}" class="btn btn-secondary btn-sm">Edit</a>
+      {% if current_user.is_super_admin and not ss.supplier.is_merged %}
+      <a href="{{ url_for('supplier_edit', sid=ss.supplier.id) }}#supplier-merge" class="btn btn-secondary btn-sm">Merge</a>
+      {% endif %}
     </div>
     {% endif %}
 

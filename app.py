@@ -24,6 +24,7 @@ import gold_drop.field_intake_module as field_intake_module
 import gold_drop.costs_module as costs_module
 import gold_drop.inventory_module as inventory_module
 import gold_drop.batch_edit_module as batch_edit_module
+import gold_drop.mobile_module as mobile_module
 import gold_drop.purchase_import_module as purchase_import_module
 import gold_drop.suppliers_module as suppliers_module
 import gold_drop.runs_module as runs_module
@@ -166,6 +167,8 @@ def create_app():
     flask_app.config["PURCHASE_UPLOAD_MAX_BYTES"] = 50 * 1024 * 1024
     flask_app.config["PHOTO_LIBRARY_UPLOAD_DIR"] = os.path.join(flask_app.root_path, "static", "uploads", "library")
     flask_app.config["PHOTO_LIBRARY_MAX_BYTES"] = 50 * 1024 * 1024
+    flask_app.config["MOBILE_UPLOAD_DIR"] = os.path.join(flask_app.root_path, "static", "uploads", "mobile")
+    flask_app.config["MOBILE_UPLOAD_MAX_BYTES"] = 50 * 1024 * 1024
     flask_app.config["FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET"] = int(
         os.environ.get("FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET", 30)
     )
@@ -1265,6 +1268,8 @@ def _register_extracted_routes(flask_app):
         purchase_import_module.register_routes(flask_app, root)
     if "strains_list" not in existing:
         strains_module.register_routes(flask_app, root)
+    if "mobile_auth_login" not in existing:
+        mobile_module.register_routes(flask_app, root)
 
 
 _base_create_app = create_app

@@ -209,6 +209,11 @@ Use the **HTE pipeline** dropdown on **Runs** or the quick links from **Departme
 **Does export include HTE fields?**  
 Yes. Runs export includes pipeline label, terp/distillate grams, and lab file paths when present, and respects the active HTE pipeline filter.
 
+## Supplier duplicates
+
+**What happens if two supplier records refer to the same farm?**  
+Super Admins can merge duplicates from the supplier record page. The merge screen previews the impact first, then archives the source supplier, moves linked records to the chosen target supplier, and keeps an audit trail so the lineage stays visible.
+
 ## Git and deploy
 
 **How do I put new code on the server?**  

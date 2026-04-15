@@ -19,7 +19,7 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
   - **`gold_drop/costs_module.py`** - cost entry list/form/delete routes delegated from `app.py`
   - **`gold_drop/inventory_module.py`** - inventory list/filter route delegated from `app.py`
   - **`gold_drop/batch_edit_module.py`** - batch edit route and return-url guard delegated from `app.py`
-  - **`gold_drop/suppliers_module.py`** - suppliers, supplier attachments/lab tests, and photos library routes delegated from `app.py`
+  - **`gold_drop/suppliers_module.py`** - suppliers, supplier attachments/lab tests, photos library routes, and super-admin supplier merge/correction UI delegated from `app.py`
   - **`gold_drop/purchase_import_module.py`** - purchase spreadsheet import staging/validation/commit flow delegated from `app.py`
   - **`gold_drop/strains_module.py`** - strain performance route delegated from `app.py`
   - **`gold_drop/bootstrap_module.py`** - startup database initialization and baseline seed logic delegated from `init_db()`; historical/demo seeding is now explicit, not automatic
@@ -28,7 +28,9 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
   - **`services/lot_allocation.py`** - lot tracking backfill, lot candidate ranking, and run allocation apply / release logic
   - **`services/lot_labels.py`** - lot label payload generation plus Code 39 barcode rendering and QR image generation for print workflows
   - **`services/scale_ingest.py`** - future manual / device weight-capture service boundary
+  - **`services/supplier_merge.py`** - supplier merge preview / execute service that preserves lineage and audits source-to-target remaps
   - **`gold_drop/api_v1_module.py`** - token-authenticated internal read-only API routes under `/api/v1`
+  - **`gold_drop/mobile_module.py`** - user-authenticated mobile write API routes under `/api/mobile/v1`
   - **`gold_drop/floor_module.py`** - operator floor activity page for recent scans, recent scale captures, floor-state rollups, and extraction-readiness rollups
   - **`static/js/scan_camera.js`** - in-browser camera scanning client for `/scan`, with `BarcodeDetector` support plus manual/scanner fallback
   - **`services/api_auth.py`** - bearer-token generation, hashing, lookup, and scope enforcement
@@ -142,6 +144,27 @@ Phase 1 internal API is read-only and site-local.
 - `GET /api/v1/summary/scales`
 - `GET /api/v1/summary/scanner`
 - `GET /api/v1/inventory/on-hand`
+
+## Mobile Workflow API (`/api/mobile/v1`)
+
+This surface is separate from `/api/v1`.
+
+- User-authenticated session API for the standalone Purchasing Agent App
+- Supports opportunity creation/editing, delivery entry, supplier creation, and photo uploads
+- Enforces the opportunity -> delivery lifecycle boundary in the backend
+- Reuses current read endpoints where practical instead of duplicating read models
+
+Mobile routes currently registered:
+- `POST /api/mobile/v1/auth/login`
+- `POST /api/mobile/v1/auth/logout`
+- `GET /api/mobile/v1/auth/me`
+- `POST /api/mobile/v1/opportunities`
+- `GET /api/mobile/v1/opportunities/mine`
+- `GET /api/mobile/v1/opportunities/<id>`
+- `PATCH /api/mobile/v1/opportunities/<id>`
+- `POST /api/mobile/v1/opportunities/<id>/delivery`
+- `POST /api/mobile/v1/opportunities/<id>/photos`
+- `POST /api/mobile/v1/suppliers`
 
 ### Response contract
 

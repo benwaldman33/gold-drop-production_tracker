@@ -7,6 +7,10 @@ Status:
 - Read-only
 - Intended for trusted internal systems, site-to-site aggregation, and AI/MCP consumers
 
+Additional mobile workflow surface:
+- `/api/mobile/v1` is a user-authenticated write API for the standalone Purchasing Agent App
+- it uses logged-in Gold Drop users and session cookies rather than bearer-token API clients
+
 Primary HTTP API source of truth:
 - [gold_drop/api_v1_module.py](gold_drop/api_v1_module.py)
 
@@ -35,6 +39,52 @@ Out of scope for this version:
 - general write access
 - external/public customer access
 - cross-site transactional sync
+
+## Mobile Workflow API (`/api/mobile/v1`)
+
+This surface is separate from `/api/v1`.
+
+Authentication:
+- user-based login
+- session cookies
+- intended for the standalone mobile/tablet Purchasing Agent App
+
+### Auth
+
+- `POST /api/mobile/v1/auth/login`
+- `POST /api/mobile/v1/auth/logout`
+- `GET /api/mobile/v1/auth/me`
+
+`login` returns:
+- authenticated user identity
+- site identity
+- app permissions
+
+### Opportunities
+
+- `POST /api/mobile/v1/opportunities`
+- `GET /api/mobile/v1/opportunities/mine`
+- `GET /api/mobile/v1/opportunities/<opportunity_id>`
+- `PATCH /api/mobile/v1/opportunities/<opportunity_id>`
+- `POST /api/mobile/v1/opportunities/<opportunity_id>/delivery`
+- `POST /api/mobile/v1/opportunities/<opportunity_id>/photos`
+
+Behavior:
+- opportunity is the primary object
+- buyer-side edits are allowed only before approval
+- delivery is only allowed after approval or commitment
+- delivery transitions the opportunity to `delivered`
+- photo uploads use one attachment collection with `photo_context` values of `opportunity` or `delivery`
+
+### Suppliers
+
+- `POST /api/mobile/v1/suppliers`
+
+Behavior:
+- supplier creation is allowed
+- duplicate warnings can return `requires_confirmation` with `duplicate_candidates`
+- confirmed creation uses `confirm_new_supplier=true`
+- duplicate resolution and supplier merge/correction are handled in the main app
 
 ## Authentication
 

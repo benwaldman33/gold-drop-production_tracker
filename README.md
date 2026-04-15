@@ -104,6 +104,7 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 - **Windows / IANA timezones** — `tzdata` is listed in `requirements.txt` so `zoneinfo` (Slack message dates, display timezone) works on Windows; install dependencies with `pip install -r requirements.txt`.
 - **Slack Integration** — Outbound notifications; inbound slash commands, interactivity, and Events API URL (`/api/slack/events`); optional **channel history sync** for up to six channels with per-channel cursors (`conversations.history` → **Slack imports** triage UI); **Run apply** now includes ranked candidate source lots, manual lot selection or split allocation on preview, prefilled run allocation rows, Run backlink + audit, and **Slack Importer** user flag
 - **Supplier Performance** — All-time, 90-day, and last-batch analytics per farm
+- **Supplier Merge / Correction** — Super Admins can preview and merge duplicate suppliers from the supplier record page; linked purchases, lots, lab tests, attachments, and photos are rehomed while lineage is preserved
 - **Strain Performance** — Compare yields and cost/gram across strains and suppliers
 - **Data Quality Controls** — Flag runs missing $/lb; optionally exclude unpriced runs from analytics
 - **CSV Import/Export** — **Runs** (and related operational history): Import from Google Sheets via **Import** with deduplication; export filtered views from list screens. **Purchases** use the dedicated **Import spreadsheet** flow (see above), not the legacy Import screen.
