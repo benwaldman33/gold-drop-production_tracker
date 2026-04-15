@@ -513,6 +513,7 @@ The MCP layer is intentionally:
 The separate mobile-first buyer app lives in:
 
 - [standalone-purchasing-agent-app](standalone-purchasing-agent-app)
+- [standalone-receiving-intake-app](standalone-receiving-intake-app)
 
 For local development:
 
@@ -525,6 +526,8 @@ Standalone app pilot docs:
 
 - [standalone-purchasing-agent-app/DEPLOYMENT.md](standalone-purchasing-agent-app/DEPLOYMENT.md)
 - [standalone-purchasing-agent-app/PILOT_QA_CHECKLIST.md](standalone-purchasing-agent-app/PILOT_QA_CHECKLIST.md)
+- [standalone-receiving-intake-app/DEPLOYMENT.md](standalone-receiving-intake-app/DEPLOYMENT.md)
+- [standalone-receiving-intake-app/PILOT_QA_CHECKLIST.md](standalone-receiving-intake-app/PILOT_QA_CHECKLIST.md)
 
 ## Importing Historical Data from Google Sheets
 

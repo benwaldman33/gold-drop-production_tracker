@@ -47,7 +47,7 @@ This surface is separate from `/api/v1`.
 Authentication:
 - user-based login
 - session cookies
-- intended for the standalone mobile/tablet Purchasing Agent App
+- intended for standalone mobile/tablet workflow apps such as the Purchasing Agent App and Receiving Intake App
 
 ### Auth
 
@@ -88,6 +88,19 @@ Behavior:
 - duplicate warnings can return `requires_confirmation` with `duplicate_candidates`
 - confirmed creation uses `confirm_new_supplier=true`
 - duplicate resolution and supplier merge/correction are handled in the main app
+
+### Receiving
+
+- `GET /api/mobile/v1/receiving/queue`
+- `GET /api/mobile/v1/receiving/queue/<opportunity_id>`
+- `POST /api/mobile/v1/receiving/queue/<opportunity_id>/receive`
+- `POST /api/mobile/v1/receiving/queue/<opportunity_id>/photos`
+
+Behavior:
+- receiving operates on existing approved or committed purchases
+- it is not a separate top-level record type
+- receiving confirmation sets the purchase to `delivered`
+- receiving users can upload delivery-context photos without being the original opportunity creator
 
 ## Authentication
 

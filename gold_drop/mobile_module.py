@@ -93,6 +93,7 @@ def _mobile_permissions(user: User) -> dict[str, bool]:
         "can_create_opportunity": can_write,
         "can_edit_preapproval_opportunity": can_write,
         "can_record_delivery": can_write,
+        "can_receive_intake": can_write,
         "can_create_supplier": can_write,
     }
 
@@ -233,11 +234,85 @@ def _mobile_purchase_detail(purchase: Purchase) -> dict[str, Any]:
     }
 
 
+def _mobile_receiving_summary(purchase: Purchase) -> dict[str, Any]:
+    detail = _mobile_purchase_detail(purchase)
+    lots = detail.get("lots") or []
+    primary_lot = lots[0] if lots else None
+    detail["receiving"] = {
+        "queue_state": "ready" if _mobile_delivery_allowed(purchase) else "closed",
+        "location": (primary_lot or {}).get("location"),
+        "floor_state": (primary_lot or {}).get("floor_state"),
+        "lot_count": len(lots),
+        "photo_count": detail.get("delivery_photo_count", 0),
+    }
+    return detail
+
+
 def _mobile_supplier_duplicate_candidates(root, supplier_name: str, *, limit: int = 5) -> list[dict[str, Any]]:
     candidates = slack_supplier_candidates_for_source(root, supplier_name, limit=limit)
     for candidate in candidates:
         candidate["requires_confirmation"] = True
     return candidates
+
+
+def _mobile_receiving_query(root):
+    return root.Purchase.query.filter(
+        root.Purchase.deleted_at.is_(None),
+        root.or_(
+            root.Purchase.purchase_approved_at.is_not(None),
+            root.Purchase.status.in_(("committed", "delivered")),
+        ),
+    )
+
+
+def _mobile_apply_delivery(root, purchase: Purchase, payload: dict[str, Any], *, actor: User) -> None:
+    delivered_weight = _parse_float(payload.get("delivered_weight_lbs"), "Delivered weight lbs", allow_none=False)
+    if delivered_weight is None or delivered_weight <= 0:
+        raise ValueError("Delivered weight lbs must be greater than 0.")
+    delivery_date = _parse_date(payload.get("delivery_date"), "Delivery date", default_today=True)
+    if delivery_date is None:
+        raise ValueError("Delivery date is required.")
+
+    purchase.delivery_date = delivery_date
+    purchase.actual_weight_lbs = float(delivered_weight)
+    if "testing_status" in payload:
+        purchase.testing_status = (payload.get("testing_status") or "").strip() or None
+    if "actual_potency_pct" in payload:
+        purchase.tested_potency_pct = _parse_float(payload.get("actual_potency_pct"), "Actual potency pct")
+    if "clean_or_dirty" in payload:
+        purchase.clean_or_dirty = (payload.get("clean_or_dirty") or "").strip() or None
+    purchase.delivery_notes = (payload.get("delivery_notes") or "").strip() or None
+    purchase.status = "delivered"
+    purchase.delivery_recorded_by_user_id = actor.id
+
+    lot = _mobile_purchase_lot(purchase)
+    if lot is None:
+        lot = root.PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Opportunity total",
+            weight_lbs=float(delivered_weight),
+            remaining_weight_lbs=float(delivered_weight),
+            potency_pct=purchase.tested_potency_pct or purchase.stated_potency_pct,
+        )
+        root.db.session.add(lot)
+        root.db.session.flush()
+    consumed = max(0.0, float(lot.weight_lbs or 0) - float(lot.remaining_weight_lbs or 0))
+    lot.weight_lbs = float(delivered_weight)
+    lot.remaining_weight_lbs = max(0.0, float(delivered_weight) - consumed)
+    if purchase.tested_potency_pct is not None:
+        lot.potency_pct = purchase.tested_potency_pct
+    elif purchase.stated_potency_pct is not None:
+        lot.potency_pct = purchase.stated_potency_pct
+    if "location" in payload:
+        lot.location = (payload.get("location") or "").strip() or None
+    if "floor_state" in payload:
+        lot.floor_state = (payload.get("floor_state") or "").strip() or lot.floor_state
+    if "lot_notes" in payload:
+        lot.notes = (payload.get("lot_notes") or "").strip() or None
+    ensure_purchase_lot_tracking(purchase)
+
+    if purchase.price_per_lb is not None:
+        purchase.total_cost = float(delivered_weight) * float(purchase.price_per_lb)
 
 
 def _resolve_mobile_supplier(root, payload: dict[str, Any]) -> tuple[Supplier | None, dict[str, Any] | None]:
@@ -318,6 +393,18 @@ def register_routes(app, root):
     def mobile_supplier_detail(supplier_id):
         return mobile_supplier_detail_view(root, supplier_id)
 
+    def mobile_receiving_queue():
+        return mobile_receiving_queue_view(root)
+
+    def mobile_receiving_detail(opportunity_id):
+        return mobile_receiving_detail_view(root, opportunity_id)
+
+    def mobile_receiving_receive(opportunity_id):
+        return mobile_receiving_receive_view(root, opportunity_id)
+
+    def mobile_receiving_photos(opportunity_id):
+        return mobile_receiving_photos_view(root, opportunity_id)
+
     def mobile_opportunity_create():
         return mobile_opportunity_create_view(root)
 
@@ -338,6 +425,10 @@ def register_routes(app, root):
     app.add_url_rule("/api/mobile/v1/suppliers", endpoint="mobile_suppliers", view_func=mobile_suppliers, methods=["GET"])
     app.add_url_rule("/api/mobile/v1/suppliers", endpoint="mobile_supplier_create", view_func=mobile_supplier_create, methods=["POST"])
     app.add_url_rule("/api/mobile/v1/suppliers/<supplier_id>", endpoint="mobile_supplier_detail", view_func=mobile_supplier_detail, methods=["GET"])
+    app.add_url_rule("/api/mobile/v1/receiving/queue", endpoint="mobile_receiving_queue", view_func=mobile_receiving_queue, methods=["GET"])
+    app.add_url_rule("/api/mobile/v1/receiving/queue/<opportunity_id>", endpoint="mobile_receiving_detail", view_func=mobile_receiving_detail, methods=["GET"])
+    app.add_url_rule("/api/mobile/v1/receiving/queue/<opportunity_id>/receive", endpoint="mobile_receiving_receive", view_func=mobile_receiving_receive, methods=["POST"])
+    app.add_url_rule("/api/mobile/v1/receiving/queue/<opportunity_id>/photos", endpoint="mobile_receiving_photos", view_func=mobile_receiving_photos, methods=["POST"])
 
 
 def _mobile_supplier_payload(supplier: Supplier) -> dict[str, Any]:
@@ -446,6 +537,58 @@ def mobile_opportunities_mine_view(root):
         "meta": build_meta(count=total, limit=limit, offset=offset),
         "data": [_mobile_purchase_summary(purchase) for purchase in rows],
     })
+
+
+def mobile_receiving_queue_view(root):
+    write_error = _require_mobile_writer()
+    if write_error:
+        return write_error
+    status_filter = (request.args.get("status") or "ready").strip().lower()
+    supplier_id = (request.args.get("supplier_id") or "").strip()
+    try:
+        limit = max(1, min(int(request.args.get("limit") or 25), 100))
+    except ValueError:
+        limit = 25
+    try:
+        offset = max(0, int(request.args.get("offset") or 0))
+    except ValueError:
+        offset = 0
+
+    query = _mobile_receiving_query(root)
+    if supplier_id:
+        query = query.filter(root.Purchase.supplier_id == supplier_id)
+    if status_filter == "ready":
+        query = query.filter(root.Purchase.status != "delivered")
+    elif status_filter:
+        if status_filter == "approved":
+            query = query.filter(
+                root.Purchase.purchase_approved_at.is_not(None),
+                root.Purchase.status != "delivered",
+            )
+        else:
+            query = query.filter(root.func.lower(root.Purchase.status) == status_filter)
+    total = query.count()
+    rows = query.order_by(
+        root.Purchase.delivery_date.asc().nullslast(),
+        root.Purchase.purchase_date.asc().nullslast(),
+        root.Purchase.created_at.asc().nullslast(),
+    ).offset(offset).limit(limit).all()
+    return jsonify({
+        "meta": build_meta(count=total, limit=limit, offset=offset, extra={"workflow": "receiving", "status_filter": status_filter}),
+        "data": [_mobile_receiving_summary(purchase) for purchase in rows],
+    })
+
+
+def mobile_receiving_detail_view(root, opportunity_id: str):
+    write_error = _require_mobile_writer()
+    if write_error:
+        return write_error
+    purchase = root.db.session.get(root.Purchase, opportunity_id)
+    if not purchase or purchase.deleted_at is not None:
+        return _json_error("Receiving item not found.", status_code=404, code="not_found")
+    if purchase.purchase_approved_at is None and purchase.status not in {"committed", "delivered"}:
+        return _json_error("Receiving item not found.", status_code=404, code="not_found")
+    return jsonify({"meta": build_meta(extra={"workflow": "receiving"}), "data": _mobile_receiving_summary(purchase)})
 
 
 def mobile_opportunity_detail_view(root, opportunity_id: str):
@@ -652,50 +795,97 @@ def mobile_opportunity_delivery_view(root, opportunity_id: str):
         return _json_error("Delivery can only be recorded after approval or commitment.", status_code=409, code="delivery_not_allowed")
 
     payload = _mobile_payload()
-    delivered_weight = _parse_float(payload.get("delivered_weight_lbs"), "Delivered weight lbs", allow_none=False)
-    if delivered_weight is None or delivered_weight <= 0:
-        return _json_error("Delivered weight lbs must be greater than 0.", status_code=400, code="bad_request")
-    delivery_date = _parse_date(payload.get("delivery_date"), "Delivery date", default_today=True)
-    if delivery_date is None:
-        return _json_error("Delivery date is required.", status_code=400, code="bad_request")
-
-    purchase.delivery_date = delivery_date
-    purchase.actual_weight_lbs = float(delivered_weight)
-    if "testing_status" in payload:
-        purchase.testing_status = (payload.get("testing_status") or "").strip() or None
-    if "actual_potency_pct" in payload:
-        purchase.tested_potency_pct = _parse_float(payload.get("actual_potency_pct"), "Actual potency pct")
-    if "clean_or_dirty" in payload:
-        purchase.clean_or_dirty = (payload.get("clean_or_dirty") or "").strip() or None
-    purchase.delivery_notes = (payload.get("delivery_notes") or "").strip() or None
-    purchase.status = "delivered"
-    purchase.delivery_recorded_by_user_id = current_user.id
-
-    lot = _mobile_purchase_lot(purchase)
-    if lot is None:
-        lot = root.PurchaseLot(
-            purchase_id=purchase.id,
-            strain_name="Opportunity total",
-            weight_lbs=float(delivered_weight),
-            remaining_weight_lbs=float(delivered_weight),
-            potency_pct=purchase.tested_potency_pct or purchase.stated_potency_pct,
-        )
-        root.db.session.add(lot)
-        root.db.session.flush()
-    consumed = max(0.0, float(lot.weight_lbs or 0) - float(lot.remaining_weight_lbs or 0))
-    lot.weight_lbs = float(delivered_weight)
-    lot.remaining_weight_lbs = max(0.0, float(delivered_weight) - consumed)
-    if purchase.tested_potency_pct is not None:
-        lot.potency_pct = purchase.tested_potency_pct
-    elif purchase.stated_potency_pct is not None:
-        lot.potency_pct = purchase.stated_potency_pct
-    ensure_purchase_lot_tracking(purchase)
-
-    if purchase.price_per_lb is not None:
-        purchase.total_cost = float(delivered_weight) * float(purchase.price_per_lb)
+    try:
+        _mobile_apply_delivery(root, purchase, payload, actor=current_user)
+    except ValueError as exc:
+        return _json_error(str(exc), status_code=400, code="bad_request")
 
     root.db.session.commit()
     return jsonify({"meta": build_meta(), "data": {"opportunity": _mobile_purchase_detail(purchase)}})
+
+
+def mobile_receiving_receive_view(root, opportunity_id: str):
+    write_error = _require_mobile_writer()
+    if write_error:
+        return write_error
+    purchase = root.db.session.get(root.Purchase, opportunity_id)
+    if not purchase or purchase.deleted_at is not None:
+        return _json_error("Receiving item not found.", status_code=404, code="not_found")
+    if not _mobile_delivery_allowed(purchase):
+        return _json_error("Receiving can only be recorded after approval or commitment.", status_code=409, code="delivery_not_allowed")
+    payload = _mobile_payload()
+    payload.setdefault("floor_state", "receiving")
+    try:
+        _mobile_apply_delivery(root, purchase, payload, actor=current_user)
+    except ValueError as exc:
+        return _json_error(str(exc), status_code=400, code="bad_request")
+    root.db.session.commit()
+    return jsonify({"meta": build_meta(extra={"workflow": "receiving"}), "data": {"receiving": _mobile_receiving_summary(purchase)}})
+
+
+def mobile_receiving_photos_view(root, opportunity_id: str):
+    write_error = _require_mobile_writer()
+    if write_error:
+        return write_error
+    purchase = root.db.session.get(root.Purchase, opportunity_id)
+    if not purchase or purchase.deleted_at is not None:
+        return _json_error("Receiving item not found.", status_code=404, code="not_found")
+    if not _mobile_delivery_allowed(purchase) and purchase.status != "delivered":
+        return _json_error("Delivery photos can only be added after approval or commitment.", status_code=409, code="delivery_not_allowed")
+
+    payload = _mobile_payload()
+    photo_context = (payload.get("photo_context") or "").strip().lower() or "delivery"
+    if photo_context != "delivery":
+        return _json_error("Receiving photo context must be delivery.", status_code=400, code="bad_request")
+
+    files = request.files.getlist("photos") or request.files.getlist("photo")
+    if not files:
+        single = request.files.get("photo")
+        files = [single] if single and getattr(single, "filename", "") else []
+    if not files:
+        return _json_error("At least one photo file is required.", status_code=400, code="bad_request")
+
+    prefix = f"mobile-{purchase.id}-delivery"
+    saved_paths = save_uploads(
+        files,
+        prefix=prefix,
+        upload_dir=current_app.config["MOBILE_UPLOAD_DIR"],
+        max_bytes=int(current_app.config.get("MOBILE_UPLOAD_MAX_BYTES", 50 * 1024 * 1024)),
+        validator=allowed_image_filename,
+        error_message="Allowed image types: JPG, JPEG, PNG, WEBP, HEIC, HEIF.",
+    )
+
+    for path in saved_paths:
+        if not photo_asset_exists(
+            file_path=path,
+            source_type="mobile_api",
+            category="biomass",
+            photo_context="delivery",
+            purchase_id=purchase.id,
+        ):
+            create_photo_asset(
+                path,
+                source_type="mobile_api",
+                category="biomass",
+                photo_context="delivery",
+                tags=["mobile", "delivery", "purchase"],
+                title=f"Mobile delivery photo ({purchase.batch_id or purchase.id})",
+                purchase_id=purchase.id,
+                uploaded_by=current_user.id,
+            )
+    root.db.session.commit()
+    photos = PhotoAsset.query.filter(
+        PhotoAsset.purchase_id == purchase.id,
+        PhotoAsset.photo_context == "delivery",
+    ).order_by(PhotoAsset.uploaded_at.desc()).all()
+    return jsonify({
+        "meta": build_meta(extra={"workflow": "receiving"}),
+        "data": {
+            "photo_context": "delivery",
+            "count": len(photos),
+            "photos": [_mobile_photo_payload(photo) for photo in photos],
+        },
+    }), 201
 
 
 def mobile_opportunity_photos_view(root, opportunity_id: str):

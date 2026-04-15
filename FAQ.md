@@ -296,3 +296,11 @@ Use the runbook in:
 - `standalone-purchasing-agent-app/DEPLOYMENT.md`
 
 For local development, the standalone dev server already proxies `/api/*` to the Gold Drop backend.
+
+## How do I deploy the standalone receiving intake app?
+
+Use the runbook in:
+
+- `standalone-receiving-intake-app/DEPLOYMENT.md`
+
+The receiving app uses the same proxy pattern locally and the same session-auth mobile API family in production.

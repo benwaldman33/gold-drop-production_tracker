@@ -168,6 +168,10 @@ Mobile routes currently registered:
 - `POST /api/mobile/v1/opportunities/<id>/delivery`
 - `POST /api/mobile/v1/opportunities/<id>/photos`
 - `POST /api/mobile/v1/suppliers`
+- `GET /api/mobile/v1/receiving/queue`
+- `GET /api/mobile/v1/receiving/queue/<id>`
+- `POST /api/mobile/v1/receiving/queue/<id>/receive`
+- `POST /api/mobile/v1/receiving/queue/<id>/photos`
 
 The standalone app now uses the mobile surface for:
 - auth
@@ -179,6 +183,7 @@ That avoids mixing a user-cookie mobile session with the bearer-token-only `/api
 Pilot-hardening additions:
 - main-app purchase review now surfaces mobile-origin metadata and mobile-uploaded photos for approvers
 - standalone app deployment/runbook and pilot QA docs live under `standalone-purchasing-agent-app/`
+- the receiving/intake companion app lives under `standalone-receiving-intake-app/` and reuses the same session-auth mobile surface with a receiving-specific queue and receive-confirm flow
 
 ### Response contract
 

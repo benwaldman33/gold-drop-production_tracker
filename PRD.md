@@ -945,3 +945,14 @@ Current pilot-hardening requirements now include:
 - purchase review visibility for mobile-created opportunities
 - deployment/runbook documentation for the standalone app
 - a pilot QA checklist covering buyer, approver, and supplier-merge workflows
+
+## Standalone Receiving Intake App
+
+The standalone app family now extends beyond the buyer workflow to a dedicated receiving / intake app.
+
+Requirements:
+
+- operate on existing approved or committed purchases
+- provide a receiving queue and receiving detail screen
+- allow dock staff to confirm receipt, set location / floor state, and upload delivery photos
+- keep delivery subordinate to the purchase lifecycle rather than creating a second intake object

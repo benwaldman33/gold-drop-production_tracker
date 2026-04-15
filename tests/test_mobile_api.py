@@ -215,6 +215,116 @@ def test_mobile_endpoints_require_auth():
             ("get", "/api/mobile/v1/opportunities/mine"),
             ("post", "/api/mobile/v1/opportunities"),
             ("post", "/api/mobile/v1/suppliers"),
+            ("get", "/api/mobile/v1/receiving/queue"),
         ):
             response = getattr(client, method)(path)
             assert response.status_code == 401
+
+
+def test_mobile_receiving_queue_and_receive_flow():
+    app = app_module.create_app()
+    supplier_id = _create_supplier(app, f"Receiving Supplier {gen_uuid()[:6]}")
+    receiver_id = None
+    receiver_username = f"receiver_{gen_uuid()[:6]}"
+    purchase_id = None
+    try:
+        with app.app_context():
+            receiver = app_module.User(
+                username=receiver_username,
+                display_name="Receiving User",
+                role="user",
+            )
+            receiver.set_password("receiver-pass")
+            db.session.add(receiver)
+            db.session.flush()
+            receiver_id = receiver.id
+
+            purchase = Purchase(
+                supplier_id=supplier_id,
+                purchase_date=app_module.date(2026, 4, 15),
+                availability_date=app_module.date(2026, 4, 15),
+                status="ordered",
+                stated_weight_lbs=95,
+                declared_weight_lbs=95,
+                price_per_lb=245,
+                purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            )
+            db.session.add(purchase)
+            db.session.flush()
+            purchase_id = purchase.id
+
+            lot = app_module.PurchaseLot(
+                purchase_id=purchase.id,
+                strain_name="MAC 1",
+                weight_lbs=95,
+                remaining_weight_lbs=95,
+            )
+            db.session.add(lot)
+            db.session.commit()
+
+        with app.test_client() as client:
+            login = client.post("/api/mobile/v1/auth/login", json={"username": receiver_username, "password": "receiver-pass"})
+            assert login.status_code == 200
+            permissions = login.get_json()["data"]["permissions"]
+            assert permissions["can_receive_intake"] is True
+
+            listing = client.get("/api/mobile/v1/receiving/queue")
+            assert listing.status_code == 200
+            rows = listing.get_json()["data"]
+            assert any(row["id"] == purchase_id for row in rows)
+
+            detail = client.get(f"/api/mobile/v1/receiving/queue/{purchase_id}")
+            assert detail.status_code == 200
+            detail_payload = detail.get_json()["data"]
+            assert detail_payload["receiving"]["queue_state"] == "ready"
+
+            receive = client.post(
+                f"/api/mobile/v1/receiving/queue/{purchase_id}/receive",
+                json={
+                    "delivered_weight_lbs": 92.5,
+                    "delivery_date": "2026-04-16",
+                    "testing_status": "pending",
+                    "clean_or_dirty": "clean",
+                    "delivery_notes": "Received by intake team",
+                    "location": "Receiving Vault",
+                    "floor_state": "receiving",
+                },
+            )
+            assert receive.status_code == 200
+            receive_payload = receive.get_json()["data"]["receiving"]
+            assert receive_payload["status"] == "delivered"
+            assert receive_payload["receiving"]["location"] == "Receiving Vault"
+
+            photo = client.post(
+                f"/api/mobile/v1/receiving/queue/{purchase_id}/photos",
+                data={
+                    "photo_context": "delivery",
+                    "photo": (BytesIO(b"receipt-image"), "receiving.jpg"),
+                },
+                content_type="multipart/form-data",
+            )
+            assert photo.status_code == 201
+            assert photo.get_json()["data"]["photo_context"] == "delivery"
+
+        with app.app_context():
+            purchase = db.session.get(Purchase, purchase_id)
+            assert purchase.status == "delivered"
+            assert purchase.delivery_recorded_by_user_id == receiver_id
+            lot = purchase.lots.first()
+            assert lot.location == "Receiving Vault"
+            assert lot.floor_state == "receiving"
+    finally:
+        with app.app_context():
+            if purchase_id:
+                PhotoAsset.query.filter(PhotoAsset.purchase_id == purchase_id).delete(synchronize_session=False)
+                purchase = db.session.get(Purchase, purchase_id)
+                if purchase:
+                    db.session.delete(purchase)
+            if receiver_id:
+                receiver = db.session.get(app_module.User, receiver_id)
+                if receiver:
+                    db.session.delete(receiver)
+            supplier = db.session.get(Supplier, supplier_id)
+            if supplier:
+                db.session.delete(supplier)
+            db.session.commit()

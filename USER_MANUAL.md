@@ -719,3 +719,10 @@ Use exports for reporting, reconciliation, or offline analysis.
   - `Purchases` list shows when a line originated from the `Mobile app`
   - purchase edit pages surface submission origin, created-by user, delivery-recorded-by user, opportunity photos, and delivery photos
 - Supplier duplicates created from fast mobile entry can be corrected from `Suppliers -> Edit -> Merge Supplier`.
+
+## Standalone Receiving Intake App
+
+- The standalone receiving app is intended for receiving and intake staff on phone or tablet.
+- It shows approved or committed purchases that are ready to receive.
+- Receiving confirmation updates the purchase to `delivered`, records the receiving user, and can attach delivery photos.
+- Delivery photos and receiving metadata are visible from the main purchase review screen.
