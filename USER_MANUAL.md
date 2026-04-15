@@ -225,6 +225,21 @@ Use **Floor Ops** from the left navigation when you want a quick operator view o
 
 Each recent scan row includes an **Open Scan Page** shortcut back into the lot execution workflow.
 
+### Scan Center
+Use **Floor Ops -> Open Scan Center** when you want to scan with a tablet or phone camera.
+
+The scan center supports:
+- browser-camera scanning on supported devices and browsers
+- manual tracking ID entry
+- Bluetooth barcode scanners that type into the input field
+
+When the browser detects a supported barcode or QR code, it opens the scanned lot page automatically.
+
+Camera notes:
+- `http://localhost` works for local desktop testing
+- tablets usually require HTTPS for camera access
+- if camera scanning is not supported in the browser, use the manual field or a paired scanner
+
 ### In Transit / On Order
 This table lists purchases that are not yet fully received, including:
 - Supplier and status

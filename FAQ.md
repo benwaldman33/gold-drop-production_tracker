@@ -217,6 +217,15 @@ Yes. Scanning the lot barcode now opens a dedicated scanned-lot execution page w
 
 There is also a top-level **Floor Ops** page that summarizes recent scan and scale activity for the floor team.
 
+**Can I use an iPad or Android tablet camera to scan labels?**
+Yes. Use the in-app **Scan Center** at `/scan` or open it from **Floor Ops**.
+
+On supported browsers, the page uses the device camera to detect a lot barcode and open the lot automatically. If the browser does not support camera barcode detection, the same page still works with:
+- manual tracking ID entry
+- a Bluetooth barcode scanner that types into the input field
+
+For local desktop testing, `http://localhost` works. On tablets, camera access usually requires HTTPS.
+
 Yes. The scanner workflow now opens a dedicated scanned-lot page at `/scan/lot/<tracking_id>`. From there an operator can:
 - start a new run with that lot preselected
 - confirm the lot's physical storage location

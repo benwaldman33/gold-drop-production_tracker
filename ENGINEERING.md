@@ -30,6 +30,7 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
   - **`services/scale_ingest.py`** - future manual / device weight-capture service boundary
   - **`gold_drop/api_v1_module.py`** - token-authenticated internal read-only API routes under `/api/v1`
   - **`gold_drop/floor_module.py`** - operator floor activity page for recent scans and recent scale captures
+  - **`static/js/scan_camera.js`** - in-browser camera scanning client for `/scan`, with `BarcodeDetector` support plus manual/scanner fallback
   - **`services/api_auth.py`** - bearer-token generation, hashing, lookup, and scope enforcement
   - **`services/api_site.py`** - site identity + shared API response metadata
   - **`services/api_serializers.py`** - JSON serializers and response envelopes for API resources

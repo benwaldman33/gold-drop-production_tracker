@@ -155,11 +155,14 @@ def _default_slack_run_field_rules():
 def _slack_ts_to_date_value(ts_str: str | None):
     try:
         ts = float(ts_str or 0)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
     if ts <= 0:
         return None
-    return datetime.fromtimestamp(ts, tz=app_display_zoneinfo()).date()
+    try:
+        return datetime.fromtimestamp(ts, tz=app_display_zoneinfo()).date()
+    except (OverflowError, OSError, ValueError):
+        return None
 
 
 def _ensure_slack_message_date_derived(derived: dict, message_ts: str) -> None:
