@@ -32,6 +32,40 @@
   </div>
 </div>
 
+<div class="summary-row">
+  <div class="summary-card">
+    <div class="summary-label">Ready For Extraction</div>
+    <div class="summary-value">{{ floor_rollups.ready_count }}</div>
+    <div class="summary-footnote">{{ "{:,.1f}".format(floor_rollups.ready_weight_lbs or 0) }} lbs staged, milled, and test-ready</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-label">Prep Pending</div>
+    <div class="summary-value">{{ floor_rollups.pending_prep_count }}</div>
+    <div class="summary-footnote">Open lots still marked not milled</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-label">Testing Pending</div>
+    <div class="summary-value">{{ floor_rollups.pending_testing_count }}</div>
+    <div class="summary-footnote">Open lots waiting on completed or waived testing</div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:18px;">
+  <div class="card-header">
+    <h3>Floor State Rollup</h3>
+    <span class="text-sm cell-muted">Open lots by current physical state</span>
+  </div>
+  <div class="summary-row">
+    {% for item in floor_rollups.state_cards %}
+    <div class="summary-card">
+      <div class="summary-label">{{ item.label }}</div>
+      <div class="summary-value">{{ item.count }}</div>
+      <div class="summary-footnote">Open lots in this floor state</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
 <div class="floor-execution-grid">
   <div class="card">
     <div class="card-header">

@@ -804,6 +804,8 @@ def test_floor_ops_page_shows_recent_scans_and_scale_captures():
             strain_name="Floor Dream",
             weight_lbs=55,
             remaining_weight_lbs=40,
+            floor_state="reactor_staging",
+            milled=True,
         )
         db.session.add(lot)
         db.session.flush()
@@ -837,6 +839,9 @@ def test_floor_ops_page_shows_recent_scans_and_scale_captures():
             assert b"Floor Ops" in resp.data
             assert b"Recent Scan Activity" in resp.data
             assert b"Recent Scale Captures" in resp.data
+            assert b"Ready For Extraction" in resp.data
+            assert b"Reactor staging" in resp.data
+            assert b"40.0 lbs staged, milled, and test-ready" in resp.data
             assert b"Open Scan Page" in resp.data
             assert b"Floor Scale" in resp.data
     finally:
