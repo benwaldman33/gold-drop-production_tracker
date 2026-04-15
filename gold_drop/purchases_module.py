@@ -7,6 +7,14 @@ from gold_drop.purchases import biomass_budget_snapshot_for_purchase, enforce_we
 from gold_drop.uploads import save_purchase_support_docs
 from services.lot_labels import build_lot_label_payload, build_purchase_label_payloads
 from services.lot_allocation import ensure_lot_tracking_fields, ensure_purchase_lot_tracking
+
+MOVEMENT_OPTIONS = [
+    {"code": "vault", "label": "Move to vault", "default_location": "Vault"},
+    {"code": "reactor_staging", "label": "Move to reactor staging", "default_location": "Reactor staging"},
+    {"code": "quarantine", "label": "Move to quarantine", "default_location": "Quarantine"},
+    {"code": "inventory_return", "label": "Return to inventory", "default_location": "Inventory return"},
+    {"code": "custom", "label": "Custom location", "default_location": ""},
+]
 from services.purchase_helpers import (
     create_photo_asset,
     ensure_unique_batch_id,
@@ -527,7 +535,14 @@ def scan_lot_view(root, tracking_id):
     )
     root.db.session.commit()
     recent_events = lot.scan_events.order_by(root.LotScanEvent.created_at.desc()).limit(8).all()
-    return root.render_template("lot_scan.html", lot=lot, purchase=lot.purchase, recent_events=recent_events)
+    return root.render_template(
+        "lot_scan.html",
+        lot=lot,
+        purchase=lot.purchase,
+        recent_events=recent_events,
+        movement_options=MOVEMENT_OPTIONS,
+        scale_devices=root.ScaleDevice.query.filter_by(is_active=True).order_by(root.ScaleDevice.name.asc()).all(),
+    )
 
 
 def scan_lot_start_run_view(root, tracking_id):
@@ -535,12 +550,47 @@ def scan_lot_start_run_view(root, tracking_id):
     if not lot:
         root.flash("Tracked lot not found.", "error")
         return root.redirect(root.url_for("inventory"))
+    remaining_weight_lbs = float(lot.remaining_weight_lbs or 0)
+    run_start_mode = (root.request.form.get("run_start_mode") or "blank").strip()
+    requested_weight_raw = (root.request.form.get("requested_weight_lbs") or "").strip()
+    scale_device_id = (root.request.form.get("scale_device_id") or "").strip()
+    suggested_allocations = [{"lot_id": lot.id, "weight_lbs": ""}]
+    planned_weight_lbs = None
+
+    if run_start_mode == "full_remaining":
+        planned_weight_lbs = remaining_weight_lbs
+        suggested_allocations = [{"lot_id": lot.id, "weight_lbs": remaining_weight_lbs}]
+    elif run_start_mode == "partial":
+        try:
+            planned_weight_lbs = float(requested_weight_raw)
+        except ValueError:
+            root.flash("Enter a valid partial amount before starting the run.", "error")
+            return root.redirect(root.url_for("scan_lot", tracking_id=tracking_id))
+        if planned_weight_lbs <= 0:
+            root.flash("Partial run amount must be greater than zero.", "error")
+            return root.redirect(root.url_for("scan_lot", tracking_id=tracking_id))
+        if planned_weight_lbs > remaining_weight_lbs + 1e-9:
+            root.flash(f"Partial run amount cannot exceed the lot's {remaining_weight_lbs:.1f} lbs remaining.", "error")
+            return root.redirect(root.url_for("scan_lot", tracking_id=tracking_id))
+        suggested_allocations = [{"lot_id": lot.id, "weight_lbs": planned_weight_lbs}]
+    elif run_start_mode == "scale_capture":
+        planned_weight_lbs = None
+        suggested_allocations = [{"lot_id": lot.id, "weight_lbs": ""}]
+    else:
+        run_start_mode = "blank"
+
     _record_lot_scan_event(
         root,
         lot,
         "start_run",
-        context={"purchase_id": lot.purchase.id},
+        context={
+            "purchase_id": lot.purchase.id,
+            "run_start_mode": run_start_mode,
+            "planned_weight_lbs": planned_weight_lbs,
+            "scale_device_id": scale_device_id or None,
+        },
     )
+
     root.session[root.SCAN_RUN_PREFILL_SESSION_KEY] = {
         "lot_id": lot.id,
         "purchase_id": lot.purchase.id,
@@ -548,11 +598,24 @@ def scan_lot_start_run_view(root, tracking_id):
         "batch_id": lot.purchase.batch_id,
         "supplier_name": lot.supplier_name,
         "strain_name": lot.strain_name,
-        "remaining_weight_lbs": float(lot.remaining_weight_lbs or 0),
-        "suggested_allocations": [{"lot_id": lot.id, "weight_lbs": ""}],
+        "remaining_weight_lbs": remaining_weight_lbs,
+        "suggested_allocations": suggested_allocations,
+        "run_start_mode": run_start_mode,
+        "planned_weight_lbs": planned_weight_lbs,
+        "scale_device_id": scale_device_id,
     }
     root.db.session.commit()
-    root.flash(f"Scanned lot {lot.tracking_id or lot.id[:8]} preselected for a new run.", "success")
+    if run_start_mode == "full_remaining":
+        root.flash(f"Scanned lot {lot.tracking_id or lot.id[:8]} prefilled for a full-lot run.", "success")
+    elif run_start_mode == "partial":
+        root.flash(
+            f"Scanned lot {lot.tracking_id or lot.id[:8]} prefilled for {planned_weight_lbs:.1f} lbs.",
+            "success",
+        )
+    elif run_start_mode == "scale_capture":
+        root.flash("Scanned lot preselected. Capture the reactor weight from the scale before saving the run.", "success")
+    else:
+        root.flash(f"Scanned lot {lot.tracking_id or lot.id[:8]} preselected for a new run.", "success")
     return root.redirect(root.url_for("run_new"))
 
 
@@ -561,7 +624,11 @@ def scan_lot_confirm_movement_view(root, tracking_id):
     if not lot:
         root.flash("Tracked lot not found.", "error")
         return root.redirect(root.url_for("inventory"))
-    new_location = (root.request.form.get("location") or "").strip()
+    movement_code = (root.request.form.get("movement_code") or "custom").strip()
+    option_map = {item["code"]: item for item in MOVEMENT_OPTIONS}
+    selected = option_map.get(movement_code, option_map["custom"])
+    location_detail = (root.request.form.get("location") or "").strip()
+    new_location = location_detail or (selected.get("default_location") or "").strip()
     if not new_location:
         root.flash("Enter a storage location before confirming movement.", "error")
         return root.redirect(root.url_for("scan_lot", tracking_id=tracking_id))
@@ -570,10 +637,15 @@ def scan_lot_confirm_movement_view(root, tracking_id):
         root,
         lot,
         "confirm_movement",
-        context={"purchase_id": lot.purchase.id, "location": new_location},
+        context={
+            "purchase_id": lot.purchase.id,
+            "movement_code": movement_code,
+            "movement_label": selected["label"],
+            "location": new_location,
+        },
     )
     root.db.session.commit()
-    root.flash(f"Location updated to {new_location}.", "success")
+    root.flash(f"{selected['label']} confirmed: {new_location}.", "success")
     return root.redirect(root.url_for("scan_lot", tracking_id=tracking_id))
 
 

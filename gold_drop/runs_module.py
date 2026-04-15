@@ -186,6 +186,8 @@ def run_new_view(root):
     scan_meta = None
     if scan_prefill:
         display_run = display_run or root.Run()
+        if scan_prefill.get("planned_weight_lbs") not in (None, "") and not getattr(display_run, "bio_in_reactor_lbs", None):
+            display_run.bio_in_reactor_lbs = float(scan_prefill.get("planned_weight_lbs") or 0)
         scan_meta = {
             "tracking_id": (scan_prefill.get("tracking_id") or "").strip(),
             "purchase_id": (scan_prefill.get("purchase_id") or "").strip(),
@@ -194,6 +196,9 @@ def run_new_view(root):
             "strain_name": (scan_prefill.get("strain_name") or "").strip(),
             "remaining_weight_lbs": float(scan_prefill.get("remaining_weight_lbs") or 0),
             "suggested_allocations": list(scan_prefill.get("suggested_allocations") or []),
+            "run_start_mode": (scan_prefill.get("run_start_mode") or "").strip(),
+            "planned_weight_lbs": scan_prefill.get("planned_weight_lbs"),
+            "scale_device_id": (scan_prefill.get("scale_device_id") or "").strip(),
         }
     if scale_prefill:
         display_run = display_run or root.Run()
@@ -264,6 +269,8 @@ def save_run(root, existing_run):
     elif not existing_run:
         scan_prefill = root.session.get(root.SCAN_RUN_PREFILL_SESSION_KEY) or {}
         if scan_prefill:
+            if scan_prefill.get("planned_weight_lbs") not in (None, "") and not getattr(run, "bio_in_reactor_lbs", None):
+                run.bio_in_reactor_lbs = float(scan_prefill.get("planned_weight_lbs") or 0)
             scan_meta = {
                 "tracking_id": (scan_prefill.get("tracking_id") or "").strip(),
                 "purchase_id": (scan_prefill.get("purchase_id") or "").strip(),
@@ -272,6 +279,9 @@ def save_run(root, existing_run):
                 "strain_name": (scan_prefill.get("strain_name") or "").strip(),
                 "remaining_weight_lbs": float(scan_prefill.get("remaining_weight_lbs") or 0),
                 "suggested_allocations": list(scan_prefill.get("suggested_allocations") or []),
+                "run_start_mode": (scan_prefill.get("run_start_mode") or "").strip(),
+                "planned_weight_lbs": scan_prefill.get("planned_weight_lbs"),
+                "scale_device_id": (scan_prefill.get("scale_device_id") or "").strip(),
             }
         scale_prefill = root.session.get(root.RUN_SCALE_PREFILL_SESSION_KEY) or {}
         if scale_prefill:

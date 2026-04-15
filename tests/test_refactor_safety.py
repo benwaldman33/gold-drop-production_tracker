@@ -537,6 +537,7 @@ def test_scanned_lot_can_prefill_new_run():
                 assert prefill is not None
                 assert prefill["tracking_id"] == tracking_id
                 assert prefill["suggested_allocations"] == [{"lot_id": lot_id, "weight_lbs": ""}]
+                assert prefill["run_start_mode"] == "blank"
 
             run_new = client.get("/runs/new")
             assert run_new.status_code == 200
@@ -549,6 +550,88 @@ def test_scanned_lot_can_prefill_new_run():
                     for event in LotScanEvent.query.filter_by(lot_id=lot_id).order_by(LotScanEvent.created_at.asc()).all()
                 ]
                 assert actions == ["start_run"]
+    finally:
+        with app.app_context():
+            LotScanEvent.query.filter_by(lot_id=lot_id).delete()
+            lot_obj = db.session.get(PurchaseLot, lot_id)
+            if lot_obj:
+                db.session.delete(lot_obj)
+            purchase_obj = db.session.get(Purchase, purchase_id)
+            if purchase_obj:
+                db.session.delete(purchase_obj)
+            supplier_obj = db.session.get(Supplier, supplier_id)
+            if supplier_obj:
+                db.session.delete(supplier_obj)
+            db.session.commit()
+
+
+def test_scanned_lot_guided_run_start_supports_partial_and_full_modes():
+    app = app_module.app
+    with app.app_context():
+        supplier = Supplier(name="Scan Guided Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = Purchase(
+            supplier_id=supplier.id,
+            purchase_date=date(2026, 4, 12),
+            delivery_date=date(2026, 4, 12),
+            status="delivered",
+            stated_weight_lbs=125,
+            purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            clean_or_dirty="clean",
+            testing_status="completed",
+            batch_id=f"SCANG-{app_module.gen_uuid()[:6]}",
+        )
+        db.session.add(purchase)
+        db.session.flush()
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Guided Dream",
+            weight_lbs=125,
+            remaining_weight_lbs=100,
+        )
+        db.session.add(lot)
+        db.session.commit()
+        tracking_id = lot.tracking_id
+        lot_id = lot.id
+        purchase_id = purchase.id
+        supplier_id = supplier.id
+
+    try:
+        with app.test_client() as client:
+            _login(client, "admin")
+
+            partial = client.post(
+                f"/scan/lot/{tracking_id}/start-run",
+                data={"run_start_mode": "partial", "requested_weight_lbs": "42.5"},
+                follow_redirects=False,
+            )
+            assert partial.status_code in (302, 303)
+            with client.session_transaction() as sess:
+                prefill = sess.get(app_module.SCAN_RUN_PREFILL_SESSION_KEY)
+                assert prefill["run_start_mode"] == "partial"
+                assert prefill["planned_weight_lbs"] == 42.5
+                assert prefill["suggested_allocations"] == [{"lot_id": lot_id, "weight_lbs": 42.5}]
+
+            run_new = client.get("/runs/new")
+            assert run_new.status_code == 200
+            assert b"Partial run selected for 42.5 lbs" in run_new.data
+
+            full = client.post(
+                f"/scan/lot/{tracking_id}/start-run",
+                data={"run_start_mode": "full_remaining"},
+                follow_redirects=False,
+            )
+            assert full.status_code in (302, 303)
+            with client.session_transaction() as sess:
+                prefill = sess.get(app_module.SCAN_RUN_PREFILL_SESSION_KEY)
+                assert prefill["run_start_mode"] == "full_remaining"
+                assert prefill["planned_weight_lbs"] == 100.0
+                assert prefill["suggested_allocations"] == [{"lot_id": lot_id, "weight_lbs": 100.0}]
+
+            run_new = client.get("/runs/new")
+            assert run_new.status_code == 200
+            assert b"Full remaining lot selected" in run_new.data
     finally:
         with app.app_context():
             LotScanEvent.query.filter_by(lot_id=lot_id).delete()
@@ -602,7 +685,7 @@ def test_scanned_lot_can_confirm_movement_and_testing():
             _login(client, "admin")
             movement = client.post(
                 f"/scan/lot/{tracking_id}/confirm-movement",
-                data={"location": "Vault A / Shelf 2"},
+                data={"movement_code": "vault", "location": "Vault A / Shelf 2"},
                 follow_redirects=False,
             )
             assert movement.status_code in (302, 303)
@@ -624,11 +707,12 @@ def test_scanned_lot_can_confirm_movement_and_testing():
                 assert lot.location == "Vault A / Shelf 2"
                 assert purchase.testing_status == "completed"
                 assert purchase.testing_date == app_module.date.today()
-                actions = [
-                    event.action
-                    for event in LotScanEvent.query.filter_by(lot_id=lot_id).order_by(LotScanEvent.created_at.asc()).all()
-                ]
+                events = LotScanEvent.query.filter_by(lot_id=lot_id).order_by(LotScanEvent.created_at.asc()).all()
+                actions = [event.action for event in events]
                 assert actions == ["confirm_movement", "confirm_testing"]
+                movement_context = events[0].context or {}
+                assert movement_context["movement_code"] == "vault"
+                assert movement_context["movement_label"] == "Move to vault"
     finally:
         with app.app_context():
             LotScanEvent.query.filter_by(lot_id=lot_id).delete()
