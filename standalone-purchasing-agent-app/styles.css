@@ -164,6 +164,18 @@ button, input, select, textarea { font: inherit; }
 }
 
 .stat { display: grid; gap: 6px; }
+.callout {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+}
+.callout.warning {
+  border-color: rgba(161, 98, 7, 0.24);
+  background: rgba(161, 98, 7, 0.08);
+}
 .stat .label {
   color: var(--muted);
   font-size: 0.82rem;

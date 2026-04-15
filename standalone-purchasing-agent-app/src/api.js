@@ -174,6 +174,26 @@ export function createApiClient({ mode = "mock", apiBaseUrl = "", fetchImpl = fe
           can_record_delivery: true,
           can_create_supplier: true,
         },
+        capabilities: {
+          auth_mode: "session_cookie",
+          write_workflows: {
+            buying: {
+              enabled: true,
+              allowed: true,
+              endpoints: [
+                "/api/mobile/v1/opportunities",
+                "/api/mobile/v1/opportunities/mine",
+                "/api/mobile/v1/opportunities/<id>",
+                "/api/mobile/v1/opportunities/<id>/delivery",
+                "/api/mobile/v1/opportunities/<id>/photos",
+                "/api/mobile/v1/suppliers",
+              ],
+            },
+          },
+          upload_limits: {
+            max_files_per_request: 6,
+          },
+        },
         site: {
           site_code: "MOCK",
           site_name: "Gold Drop Mock Site",
@@ -206,6 +226,24 @@ export function createApiClient({ mode = "mock", apiBaseUrl = "", fetchImpl = fe
         }
       }
       return loadSession() || { authenticated: false };
+    },
+    async capabilities() {
+      if (mode === "live") {
+        return unwrapData(await liveRequest(apiBaseUrl, fetchImpl, "/api/mobile/v1/capabilities"));
+      }
+      return loadSession()?.capabilities || {
+        auth_mode: "session_cookie",
+        write_workflows: {
+          buying: {
+            enabled: true,
+            allowed: true,
+            endpoints: [],
+          },
+        },
+        upload_limits: {
+          max_files_per_request: 6,
+        },
+      };
     },
     async listSuppliers(query = "") {
       if (mode === "live") {

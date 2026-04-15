@@ -9,7 +9,7 @@ const app = document.getElementById("app");
 
 const state = {
   route: parseRoute(window.location.hash || "#/login"),
-  auth: { authenticated: false, user: null, permissions: {}, site: null },
+  auth: { authenticated: false, user: null, permissions: {}, capabilities: null, site: null },
   loading: false,
   toast: "",
   suppliers: [],
@@ -41,13 +41,34 @@ async function start() {
 async function bootstrapAuth() {
   const me = await api.me();
   if (me?.authenticated || me?.user) {
+    const capabilities = me.capabilities || (config.mode === "live" ? await api.capabilities() : null);
     state.auth = {
       authenticated: true,
       user: me.user || null,
       permissions: me.permissions || {},
+      capabilities,
       site: me.site || null,
     };
   }
+}
+
+function buyingWorkflowState() {
+  const workflow = state.auth.capabilities?.write_workflows?.buying;
+  return {
+    enabled: workflow?.enabled ?? true,
+    allowed: workflow?.allowed ?? Boolean(state.auth.permissions?.can_create_opportunity),
+  };
+}
+
+function buyingWorkflowMessage() {
+  const workflow = buyingWorkflowState();
+  if (!workflow.enabled) {
+    return "The site has the standalone purchasing workflow disabled. A Super Admin can re-enable it in Settings.";
+  }
+  if (!workflow.allowed) {
+    return "Your account does not currently have access to the standalone purchasing workflow. Ask an administrator to review your purchase-edit permissions.";
+  }
+  return "";
 }
 
 async function onRouteChange() {
@@ -58,6 +79,7 @@ async function onRouteChange() {
 
 async function loadRoute() {
   if (!state.auth.authenticated) return;
+  if (!buyingWorkflowState().enabled || !buyingWorkflowState().allowed) return;
   if (["home", "opportunities", "suppliers"].includes(state.route.name)) {
     await Promise.all([loadSuppliers(state.route.query || state.supplierQuery || ""), loadOpportunities(state.route.status || "")]);
   }
@@ -103,6 +125,7 @@ function escapeHtml(value) {
 }
 
 function shell(content) {
+  const buyingWorkflow = buyingWorkflowState();
   return `
     <div class="app-shell">
       <aside class="sidebar">
@@ -113,7 +136,7 @@ function shell(content) {
           <p class="subtle">${escapeHtml(state.auth.site?.site_name || "Mock site")}</p>
         </div>
         ${
-          state.auth.authenticated
+          state.auth.authenticated && buyingWorkflow.enabled && buyingWorkflow.allowed
             ? `
           <nav class="nav">
             <a href="#/home" class="${state.route.name === "home" ? "active" : ""}">Home <small>Dashboard</small></a>
@@ -140,6 +163,7 @@ function render() {
 
 function renderContent() {
   if (!state.auth.authenticated) return renderLogin();
+  if (!buyingWorkflowState().enabled || !buyingWorkflowState().allowed) return renderWorkflowUnavailable();
   if (state.route.name === "home") return renderHome();
   if (state.route.name === "opportunities") return renderOpportunityList();
   if (state.route.name === "suppliers") return renderSuppliers();
@@ -170,6 +194,27 @@ function renderLogin() {
   `;
 }
 
+function renderWorkflowUnavailable() {
+  return `
+    <section class="panel" style="max-width: 760px; margin: 7vh auto;">
+      <div class="stack">
+        <div class="brand-badge">Workflow unavailable</div>
+        <h1 class="page-title">Purchasing workflow not available</h1>
+        <p class="subtle">${escapeHtml(buyingWorkflowMessage())}</p>
+      </div>
+      <div class="stack" style="margin-top: 18px;">
+        <div class="callout warning">
+          <strong>What to check</strong>
+          <p class="subtle">If this is unexpected, confirm the site toggle for standalone purchasing is enabled and that this user still has purchase-edit rights.</p>
+        </div>
+        <div class="actions">
+          <button class="btn btn-secondary" data-action="logout">Log out</button>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
 function renderHome() {
   const stats = {
     pending: state.opportunities.filter((item) => item.status === "submitted").length,
@@ -183,6 +228,17 @@ function renderHome() {
         <div><h2>Home</h2><div class="meta">Buyer dashboard and fast entry point for field work.</div></div>
         <div class="actions"><a class="btn btn-primary" href="#/opportunities/new">New Opportunity</a><a class="btn btn-secondary" href="#/suppliers">Search Suppliers</a></div>
       </div>
+      <section class="card">
+        <div class="row" style="grid-template-columns: 1fr auto;">
+          <div class="stack">
+            <h3>Deployment status</h3>
+            <p>Live mode: ${escapeHtml(config.mode)}. Write workflow: ${escapeHtml(buyingWorkflowState().enabled ? "enabled" : "disabled")}.</p>
+          </div>
+          <div class="actions">
+            <span class="chip ${buyingWorkflowState().enabled ? "approved" : "rejected"}">${escapeHtml(buyingWorkflowState().enabled ? "ready" : "disabled")}</span>
+          </div>
+        </div>
+      </section>
       <section class="grid-3">
         <div class="card stat"><div class="label">Pending</div><div class="value">${stats.pending}</div><div class="hint">Awaiting review or approval</div></div>
         <div class="card stat"><div class="label">Approved</div><div class="value">${stats.approved}</div><div class="hint">Ready for delivery capture</div></div>
@@ -302,7 +358,13 @@ async function handleLogin(event) {
   setLoading(true);
   try {
     const result = await api.login(String(form.get("username") || ""), String(form.get("password") || ""));
-    state.auth = { authenticated: true, user: result.user || null, permissions: result.permissions || {}, site: result.site || null };
+    state.auth = {
+      authenticated: true,
+      user: result.user || null,
+      permissions: result.permissions || {},
+      capabilities: result.capabilities || null,
+      site: result.site || null,
+    };
     navigate("#/home");
     await loadRoute();
     showToast(`Signed in as ${state.auth.user?.display_name || state.auth.user?.username || "user"}`);
@@ -316,7 +378,7 @@ async function handleLogin(event) {
 
 async function handleLogout() {
   await api.logout();
-  state.auth = { authenticated: false, user: null, permissions: {}, site: null };
+  state.auth = { authenticated: false, user: null, permissions: {}, capabilities: null, site: null };
   state.opportunities = [];
   state.suppliers = [];
   state.opportunity = null;

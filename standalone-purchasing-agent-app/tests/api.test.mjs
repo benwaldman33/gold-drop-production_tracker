@@ -124,6 +124,14 @@ test("live api unwraps mobile envelopes for auth and opportunities", async () =>
               authenticated: true,
               user: { id: "user-1", username: "buyer1", display_name: "Buyer One" },
               permissions: {},
+              capabilities: {
+                write_workflows: {
+                  buying: {
+                    enabled: true,
+                    allowed: true,
+                  },
+                },
+              },
               site: { site_name: "Gold Drop" },
             },
           };
@@ -167,6 +175,7 @@ test("live api unwraps mobile envelopes for auth and opportunities", async () =>
   const api = createApiClient({ mode: "live", apiBaseUrl: "https://example.test", fetchImpl });
   const me = await api.me();
   assert.equal(me.user.username, "buyer1");
+  assert.equal(me.capabilities.write_workflows.buying.enabled, true);
 
   const opportunities = await api.listOpportunitiesMine();
   assert.equal(opportunities.length, 1);
@@ -176,6 +185,38 @@ test("live api unwraps mobile envelopes for auth and opportunities", async () =>
   assert.equal(created.id, "opp-2");
   assert.equal(created.supplier.name, "Farmlane");
   assert.equal(calls.length, 3);
+});
+
+test("live api fetches standalone capabilities explicitly", async () => {
+  const fetchImpl = async (url) => {
+    if (url.endsWith("/api/mobile/v1/capabilities")) {
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return {
+            meta: {},
+            data: {
+              auth_mode: "session_cookie",
+              write_workflows: {
+                buying: {
+                  enabled: false,
+                  allowed: false,
+                  endpoints: ["/api/mobile/v1/opportunities"],
+                },
+              },
+            },
+          };
+        },
+      };
+    }
+    throw new Error(`Unexpected URL ${url}`);
+  };
+
+  const api = createApiClient({ mode: "live", apiBaseUrl: "https://example.test", fetchImpl });
+  const capabilities = await api.capabilities();
+  assert.equal(capabilities.write_workflows.buying.enabled, false);
+  assert.equal(capabilities.write_workflows.buying.allowed, false);
 });
 
 test("live api uses mobile supplier reads and normalizes duplicates", async () => {

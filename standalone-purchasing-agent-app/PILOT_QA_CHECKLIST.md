@@ -5,6 +5,7 @@
 - open the standalone app
 - log in with a real buyer account
 - verify the home screen loads without browser errors
+- if standalone purchasing is disabled for the site, verify the app shows a workflow-unavailable message instead of a broken shell
 
 ## Supplier Search
 
@@ -70,4 +71,3 @@
 - bad password should show clean login failure
 - backend stopped should show a proxy/backend failure instead of silent breakage
 - invalid delivery attempt on a non-approved opportunity should fail cleanly
-

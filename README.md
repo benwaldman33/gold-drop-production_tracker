@@ -528,6 +528,8 @@ Standalone app pilot docs:
 
 - [standalone-purchasing-agent-app/DEPLOYMENT.md](standalone-purchasing-agent-app/DEPLOYMENT.md)
 - [standalone-purchasing-agent-app/PILOT_QA_CHECKLIST.md](standalone-purchasing-agent-app/PILOT_QA_CHECKLIST.md)
+- [standalone-purchasing-agent-app/PRODUCTION_ROLLOUT.md](standalone-purchasing-agent-app/PRODUCTION_ROLLOUT.md)
+- [standalone-purchasing-agent-app/deploy/nginx-site.conf](standalone-purchasing-agent-app/deploy/nginx-site.conf)
 - [standalone-receiving-intake-app/DEPLOYMENT.md](standalone-receiving-intake-app/DEPLOYMENT.md)
 - [standalone-receiving-intake-app/PILOT_QA_CHECKLIST.md](standalone-receiving-intake-app/PILOT_QA_CHECKLIST.md)
 

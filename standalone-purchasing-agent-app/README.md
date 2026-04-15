@@ -33,6 +33,8 @@ Excluded:
 - `scripts/dev-server.mjs` - tiny static dev server
 - `DEPLOYMENT.md` - deployment/runbook notes
 - `PILOT_QA_CHECKLIST.md` - pilot validation checklist
+- `PRODUCTION_ROLLOUT.md` - production deployment and smoke-test runbook
+- `deploy/nginx-site.conf` - sample Nginx site config for same-origin `/api/*` proxying
 
 ## Local Development
 
@@ -80,6 +82,7 @@ Example live config:
 
 The live app uses user-based auth for mobile workflows and keeps write actions under `/api/mobile/v1`.
 It also uses `/api/mobile/v1/suppliers` for authenticated supplier search/context because the bearer-token-only internal read API is not appropriate for the mobile user session.
+The app now reads mobile `capabilities` so it can show a clear unavailable state if the standalone purchasing workflow is disabled or the user lacks access.
 
 ## Backend Contract
 
@@ -117,3 +120,4 @@ Use these documents before rollout:
 
 - [DEPLOYMENT.md](DEPLOYMENT.md)
 - [PILOT_QA_CHECKLIST.md](PILOT_QA_CHECKLIST.md)
+- [PRODUCTION_ROLLOUT.md](PRODUCTION_ROLLOUT.md)

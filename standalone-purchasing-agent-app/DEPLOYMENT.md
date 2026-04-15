@@ -16,6 +16,10 @@ Example shape:
 
 This keeps browser auth and session behavior straightforward.
 
+Use the included sample config as a starting point:
+
+- [deploy/nginx-site.conf](deploy/nginx-site.conf)
+
 ## Local Development
 
 Start the main app first:
@@ -63,9 +67,19 @@ The standalone app expects:
 - backend reachable from the standalone host
 - `/api/*` proxy configured
 - HTTPS enabled
+- standalone purchasing workflow enabled in site settings
 - mobile buyer/test users created
 - purchase edit permission granted only to intended buyer users
 - approvers able to review mobile-created opportunities in the main app
+
+## Production Guardrails
+
+The app consumes mobile `capabilities` and will show a workflow-unavailable screen when:
+
+- the site has standalone purchasing disabled
+- the current user lacks buying workflow access
+
+That failure mode is intentional for production rollout so the site can keep the app deployed while disabling access operationally.
 
 ## Approval / Review Expectations
 
@@ -79,3 +93,6 @@ Approvers should verify:
   - opportunity photos
   - delivery photos
 
+For the complete production runbook, use:
+
+- [PRODUCTION_ROLLOUT.md](PRODUCTION_ROLLOUT.md)

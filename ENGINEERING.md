@@ -184,13 +184,14 @@ That avoids mixing a user-cookie mobile session with the bearer-token-only `/api
 
 Pilot-hardening additions:
 - main-app purchase review now surfaces mobile-origin metadata and mobile-uploaded photos for approvers
-- standalone app deployment/runbook and pilot QA docs live under `standalone-purchasing-agent-app/`
+- standalone app deployment/runbook and pilot QA docs live under `standalone-purchasing-agent-app/`, including a production rollout runbook and sample Nginx site config
 - the receiving/intake companion app lives under `standalone-receiving-intake-app/` and reuses the same session-auth mobile surface with a receiving-specific queue and receive-confirm flow
 - controlled write-platform hardening now adds:
   - per-workflow site toggles for standalone buying and receiving
   - same-origin checks for unsafe mobile writes
   - mobile workflow audit entries in `audit_log`
   - delivery-photo upload limits
+- the standalone purchasing app consumes mobile `capabilities` so production users see a clear unavailable state when standalone buying is disabled or the user lacks access
 
 ### Response contract
 
