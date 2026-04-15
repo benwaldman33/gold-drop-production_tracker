@@ -917,7 +917,7 @@ Some **potential** purchase / pipeline lines will never be approved. The product
 - **Lot allocation integrity + UX:** make `PurchaseLot` and `RunInput` the explicit `Purchase -> Lot -> Allocation -> Run -> Output` chain; add guided resolution when multiple same-supplier lots exist.
 - **Batch Journey upgrade:** evolve the current purchase timeline into a true graph/timeline view with lot nodes, allocation edges, physical descriptors, and exception states.
 - **Slack inbox redesign:** move from raw import review to confidence buckets, candidate-lot resolution, and simple manual allocation/split workflows.
-- **Lot identity + labels:** generate `tracking_id`, barcode, and QR for each lot at purchase authorization / lot creation; support printable labels with live barcode rendering and `/scan/lot/<tracking_id>` execution.
+- **Lot identity + labels:** generate `tracking_id`, barcode, and QR for each lot at purchase authorization / lot creation; support printable labels with live barcode + QR rendering and `/scan/lot/<tracking_id>` execution.
 - **Operator floor UX:** expose a dedicated floor surface for recent scan activity, recent scale captures, and quick handoff back into lot execution workflows.
 - **Tablet scan center:** provide an in-browser `/scan` workflow for supported tablet/phone cameras, with manual and hardware-scanner fallback when camera barcode detection is unavailable.
 - **Connected scale readiness:** add device-backed weight capture as a future structured input channel without changing the operator-facing material model. The current delivery already includes `ScaleDevice` and `WeightCapture` as the persistence layer for that later workflow.

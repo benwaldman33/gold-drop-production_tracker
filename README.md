@@ -78,7 +78,7 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 - **Batch IDs** — Unique, readable batch IDs for all purchases (auto-generated if blank)
 - **Biomass Pipeline** — Same **`Purchase`** rows as **Purchases**: early statuses **`declared`** / **`in_testing`** (UI label *Testing*), then **`committed`**, **`delivered`**, **`cancelled`**, with pipeline fields on the purchase (`availability_date`, declared weight/price, testing metadata, field photos). No separate `BiomassAvailability` sync—one record end-to-end. **Super Admin** or **`is_purchase_approver`** must approve when moving **to or from Committed** on the pipeline form (stamps `purchase_approved_at`). Unapproved rows now also expose an inline **Approve** button directly in the Biomass Pipeline list for eligible approvers.
 - **Purchase approval gate** — On-hand inventory, dashboard on-hand, run lot pickers, and saving runs that consume lots require **`purchase_approved_at`**. You cannot set on-hand statuses (**delivered**, **in_testing**, **available**, **processing**) on **Edit Purchase** until approved. Existing on-hand purchases are **backfilled** as approved on startup. Slack **biomass intake** creates purchases as **`ordered`** until reviewed/approved per your process. Eligible approvers can now approve directly from the **Purchases** list or **Biomass Pipeline** list without opening the record first.
-- **Lot tracking IDs** — Purchase lots now receive machine-readable tracking fields (`tracking_id`, barcode payload, QR payload, label metadata) at creation or approval time, and printable labels now render an offline Code 39 barcode for floor execution.
+- **Lot tracking IDs** — Purchase lots now receive machine-readable tracking fields (`tracking_id`, barcode payload, QR payload, label metadata) at creation or approval time, and printable labels now render both a Code 39 barcode and a QR code for floor execution.
 - **Scanner workflows** — Scanned lot labels now open a dedicated lot workflow page with quick actions for **Start Run From This Lot**, **Confirm Movement**, **Confirm Testing**, **Print Label**, and recent scan activity history.
 - **Floor Ops** — A dedicated operator floor page surfaces recent scan activity, recent scale captures, open lot counts, and active device counts in one place, with a direct **Scan Center** launcher.
 - **Tablet camera scanning** — `/scan` provides an in-browser camera scanning page for supported mobile browsers, with manual and Bluetooth-scanner fallback when camera barcode detection is unavailable.
@@ -111,7 +111,7 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 
 - Purchases and Inventory now emphasize allocation state, exceptions, remaining pounds, tracking readiness, and next actions.
 - Slack imports now behaves more like an inbox, with triage buckets that distinguish auto-ready rows from rows needing confirmation, manual matching, or exception handling.
-- Printable lot label pages now render a scannable offline barcode and route into `/scan/lot/<tracking_id>` for direct floor execution.
+- Printable lot label pages now render both a scannable barcode and QR code and route into `/scan/lot/<tracking_id>` for direct floor execution.
 - Tablet/mobile operators can also open `/scan` to use the browser camera and route directly into `/scan/lot/<tracking_id>` when barcode detection is supported.
 - The data model now includes `ScaleDevice` and `WeightCapture` for future smart-scale integration work.
 

@@ -26,7 +26,7 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
   - **`gold_drop/settings_module.py`** - extracted settings/admin view logic called by the `/settings` route; also normalizes legacy field-token datetimes before render so Settings can compare token expiry against aware UTC safely
   - **`gold_drop/uploads.py`** - upload validation, save helpers, and JSON path normalization
   - **`services/lot_allocation.py`** - lot tracking backfill, lot candidate ranking, and run allocation apply / release logic
-  - **`services/lot_labels.py`** - lot label payload generation plus offline Code 39 barcode SVG rendering for print workflows
+  - **`services/lot_labels.py`** - lot label payload generation plus Code 39 barcode rendering and QR image generation for print workflows
   - **`services/scale_ingest.py`** - future manual / device weight-capture service boundary
   - **`gold_drop/api_v1_module.py`** - token-authenticated internal read-only API routes under `/api/v1`
   - **`gold_drop/floor_module.py`** - operator floor activity page for recent scans and recent scale captures

@@ -214,7 +214,7 @@ Purchase editors see **Select all**, **Select none**, and **Batch edit…** abov
 
 Lots may also show a **tracking ID**. This is the permanent machine-readable identity for that physical lot and now drives the printed barcode and scan route for that lot.
 
-Where available, use the **Label** action from Inventory, Purchases, or Journey to print a lot-facing label page. The label now renders a printable **Code 39 barcode** plus the scan route for that exact lot.
+Where available, use the **Label** action from Inventory, Purchases, or Journey to print a lot-facing label page. The label now renders a printable **Code 39 barcode**, a **QR code**, and the scan route for that exact lot.
 
 ### Floor Ops
 Use **Floor Ops** from the left navigation when you want a quick operator view of:

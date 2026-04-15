@@ -146,7 +146,7 @@ Days of supply uses on-hand pounds only, divided by your **Daily Throughput Targ
 It is the permanent machine-readable identity for that physical lot. The app now uses it directly for printed lot barcodes and scan execution.
 
 **Can I print a lot label already?**  
-Yes. Label pages are available from Purchases, Inventory, and Journey surfaces. They now render a printable **Code 39 barcode**, the tracking ID, and the scan path for that lot.
+Yes. Label pages are available from Purchases, Inventory, and Journey surfaces. They now render a printable **Code 39 barcode**, a **QR code**, the tracking ID, and the scan path for that lot.
 
 **What are the new `/api/v1/tools/*` endpoints for?**
 They are read-only semantic endpoints for internal automation and future MCP / AI tooling. They provide higher-level answers like inventory snapshots, open-lot lookup, canonical journey resolution, and reconciliation overview without stitching together several low-level API calls first.
