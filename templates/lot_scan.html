@@ -6,85 +6,95 @@
   <a href="{{ url_for('inventory') }}" class="btn btn-secondary">Back to Inventory</a>
 </div>
 
-<div class="card">
-  <div class="form-section" style="padding-top:0;">
-    <h4 style="margin-bottom:10px;">{{ lot.tracking_id or lot.id[:8] }}</h4>
-    <div class="form-row-3">
-      <div>
-        <div class="text-sm cell-muted">Strain</div>
-        <div><strong>{{ lot.strain_name }}</strong></div>
-      </div>
-      <div>
-        <div class="text-sm cell-muted">Supplier</div>
-        <div><strong>{{ lot.supplier_name }}</strong></div>
-      </div>
-      <div>
-        <div class="text-sm cell-muted">Batch</div>
-        <div><strong>{{ purchase.batch_id or purchase.id[:8] }}</strong></div>
-      </div>
+<div class="card floor-scan-hero">
+  <div class="floor-scan-hero-top">
+    <div>
+      <div class="text-sm cell-muted">Floor execution target</div>
+      <div class="text-mono floor-scan-id">{{ lot.tracking_id or lot.id[:8] }}</div>
+      <div class="floor-scan-subtitle">{{ lot.strain_name }} · {{ lot.supplier_name }} · {{ purchase.batch_id or purchase.id[:8] }}</div>
     </div>
-    <div class="form-row-3" style="margin-top:16px;">
-      <div>
-        <div class="text-sm cell-muted">Remaining</div>
-        <div><strong>{{ "{:,.1f}".format(lot.remaining_weight_lbs or 0) }} lbs</strong></div>
-      </div>
-      <div>
-        <div class="text-sm cell-muted">Allocated</div>
-        <div><strong>{{ "{:,.1f}".format(lot.allocated_weight_lbs or 0) }} lbs</strong></div>
-      </div>
-      <div>
-        <div class="text-sm cell-muted">Potency</div>
-        <div><strong>{% if lot.potency_pct is not none %}{{ "{:.2f}".format(lot.potency_pct) }}%{% else %}—{% endif %}</strong></div>
-      </div>
+    <a href="{{ url_for('lot_label', lot_id=lot.id) }}" class="btn btn-secondary">Print Label</a>
+  </div>
+
+  <div class="floor-scan-metrics">
+    <div class="floor-scan-metric">
+      <div class="text-sm cell-muted">Remaining</div>
+      <div class="floor-scan-metric-value">{{ "{:,.1f}".format(lot.remaining_weight_lbs or 0) }} lbs</div>
+    </div>
+    <div class="floor-scan-metric">
+      <div class="text-sm cell-muted">Allocated</div>
+      <div class="floor-scan-metric-value">{{ "{:,.1f}".format(lot.allocated_weight_lbs or 0) }} lbs</div>
+    </div>
+    <div class="floor-scan-metric">
+      <div class="text-sm cell-muted">Potency</div>
+      <div class="floor-scan-metric-value">{% if lot.potency_pct is not none %}{{ "{:.2f}".format(lot.potency_pct) }}%{% else %}-{% endif %}</div>
+    </div>
+    <div class="floor-scan-metric">
+      <div class="text-sm cell-muted">Testing</div>
+      <div class="floor-scan-metric-value">{{ purchase.testing_status.replace('_', ' ') if purchase.testing_status else '-' }}</div>
     </div>
   </div>
 
-  <div class="form-actions" style="justify-content:flex-start;">
-    <form method="POST" action="{{ url_for('scan_lot_start_run', tracking_id=lot.tracking_id) }}" style="display:inline;">
-      <button type="submit" class="btn btn-primary">Start Run From This Lot</button>
+  <div class="floor-action-grid">
+    <form method="POST" action="{{ url_for('scan_lot_start_run', tracking_id=lot.tracking_id) }}" class="floor-action-card floor-action-card-primary">
+      <div class="floor-action-title">Start Run</div>
+      <div class="floor-action-copy">Open a new run with this lot already selected as the source material.</div>
+      <button type="submit" class="btn btn-primary floor-action-button">Start Run From This Lot</button>
     </form>
-    <a href="{{ url_for('purchases_bp.purchase_journey', purchase_id=purchase.id, lot=lot.tracking_id) }}" class="btn btn-secondary">View Journey</a>
-    <a href="{{ url_for('purchase_edit', purchase_id=purchase.id) }}" class="btn btn-secondary">Open Purchase</a>
+
+    <a href="{{ url_for('purchases_bp.purchase_journey', purchase_id=purchase.id, lot=lot.tracking_id) }}" class="floor-action-card">
+      <div class="floor-action-title">Trace Journey</div>
+      <div class="floor-action-copy">See where this lot came from and which runs have consumed it.</div>
+      <span class="btn btn-secondary floor-action-button">View Journey</span>
+    </a>
+
+    <a href="{{ url_for('purchase_edit', purchase_id=purchase.id) }}" class="floor-action-card">
+      <div class="floor-action-title">Open Record</div>
+      <div class="floor-action-copy">Jump into the purchase record for deeper edits and review.</div>
+      <span class="btn btn-secondary floor-action-button">Open Purchase</span>
+    </a>
   </div>
 </div>
 
-<div class="card" style="margin-top:16px;">
-  <div class="form-section" style="padding-top:0;">
-    <h4>Confirm Movement</h4>
-    <p class="text-sm cell-muted">Use the scanned lot to update where this biomass is physically stored.</p>
-    <form method="POST" action="{{ url_for('scan_lot_confirm_movement', tracking_id=lot.tracking_id) }}">
-      <div class="form-row">
-        <div class="form-group">
-          <label>Storage location</label>
-          <input type="text" name="location" value="{{ lot.location or '' }}" placeholder="e.g. Vault A / Shelf 2">
+<div class="floor-execution-grid">
+  <div class="card">
+    <div class="form-section" style="padding-top:0;">
+      <h4>Confirm Movement</h4>
+      <p class="text-sm cell-muted">Update the lot's physical storage location from the scanner workflow.</p>
+      <form method="POST" action="{{ url_for('scan_lot_confirm_movement', tracking_id=lot.tracking_id) }}">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Storage location</label>
+            <input type="text" name="location" value="{{ lot.location or '' }}" placeholder="e.g. Vault A / Shelf 2">
+          </div>
         </div>
-      </div>
-      <div class="form-actions" style="justify-content:flex-start;">
-        <button type="submit" class="btn btn-secondary">Confirm Movement</button>
-      </div>
-    </form>
+        <div class="form-actions" style="justify-content:flex-start;">
+          <button type="submit" class="btn btn-secondary">Confirm Movement</button>
+        </div>
+      </form>
+    </div>
   </div>
-</div>
 
-<div class="card" style="margin-top:16px;">
-  <div class="form-section" style="padding-top:0;">
-    <h4>Confirm Testing</h4>
-    <p class="text-sm cell-muted">Update the purchase testing status directly from the scanned lot.</p>
-    <form method="POST" action="{{ url_for('scan_lot_confirm_testing', tracking_id=lot.tracking_id) }}">
-      <div class="form-row">
-        <div class="form-group">
-          <label>Testing status</label>
-          <select name="testing_status">
-            <option value="pending" {% if purchase.testing_status == 'pending' %}selected{% endif %}>Pending</option>
-            <option value="completed" {% if purchase.testing_status == 'completed' %}selected{% endif %}>Completed</option>
-            <option value="not_needed" {% if purchase.testing_status == 'not_needed' %}selected{% endif %}>Not Needed</option>
-          </select>
+  <div class="card">
+    <div class="form-section" style="padding-top:0;">
+      <h4>Confirm Testing</h4>
+      <p class="text-sm cell-muted">Update the testing state directly from the scanned lot without opening the purchase form.</p>
+      <form method="POST" action="{{ url_for('scan_lot_confirm_testing', tracking_id=lot.tracking_id) }}">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Testing status</label>
+            <select name="testing_status">
+              <option value="pending" {% if purchase.testing_status == 'pending' %}selected{% endif %}>Pending</option>
+              <option value="completed" {% if purchase.testing_status == 'completed' %}selected{% endif %}>Completed</option>
+              <option value="not_needed" {% if purchase.testing_status == 'not_needed' %}selected{% endif %}>Not Needed</option>
+            </select>
+          </div>
         </div>
-      </div>
-      <div class="form-actions" style="justify-content:flex-start;">
-        <button type="submit" class="btn btn-secondary">Confirm Testing</button>
-      </div>
-    </form>
+        <div class="form-actions" style="justify-content:flex-start;">
+          <button type="submit" class="btn btn-secondary">Confirm Testing</button>
+        </div>
+      </form>
+    </div>
   </div>
 </div>
 
@@ -92,9 +102,9 @@
   <div class="form-section" style="padding-top:0;">
     <h4>Recent Scan Activity</h4>
     {% if recent_events %}
-    <div style="display:grid;gap:8px;">
+    <div class="floor-event-list">
       {% for event in recent_events %}
-      <div style="border:1px solid var(--border);border-radius:8px;padding:10px;">
+      <div class="floor-event-row">
         <div class="text-sm">
           <strong>{{ event.action.replace('_', ' ') }}</strong>
           <span class="cell-muted"> · {{ event.created_at.strftime('%Y-%m-%d %H:%M') if event.created_at else 'Unknown time' }}</span>

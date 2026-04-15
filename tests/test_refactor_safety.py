@@ -462,12 +462,16 @@ def test_purchase_label_routes_and_scan_route_render_and_resolve():
             assert multi.status_code == 200
             assert b"Print" in multi.data
             assert b"Barcode payload" in multi.data
+            assert b"Format: CODE39" in multi.data
+            assert b"<svg" in multi.data
 
             scan = client.get(f"/scan/lot/{tracking_id}")
             assert scan.status_code == 200
             assert b"Scanned Lot" in scan.data
             assert tracking_id.encode() in scan.data
             assert b"Start Run From This Lot" in scan.data
+            assert b"Print Label" in scan.data
+            assert b"Trace Journey" in scan.data
             assert b"Recent Scan Activity" in scan.data
 
             with app.app_context():
