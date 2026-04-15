@@ -49,6 +49,7 @@ Operations needs a single system to answer:
 - **Allocation integrity**: every reactor input must resolve to a **specific source lot**; the product must never silently guess between multiple viable lots from the same supplier.
 - **Physical-state visibility**: operators must be able to see **weight, remaining weight, potency, testing state, clean/dirty, and cost** anywhere material is reviewed or matched.
 - **Automation readiness**: lots must support live **barcode execution**, scan-history capture, and **connected scale** workflows without changing the core data model later.
+- **Guided floor execution**: after a lot is scanned, the operator should be able to start a run, confirm movement, and confirm testing through standardized floor actions rather than a generic record-edit workflow.
 - **Internal data access**: each site deployment must expose a stable, read-only internal API so trusted internal consumers, future site rollups, and future read-only MCP / AI tools can access detailed operational data without querying the database directly.
 - **Accurate $/g**: include biomass $/lb inputs and allocated operational costs.
 - **Configurable allocation**: choose how total run dollars are distributed between THCA and HTE.
@@ -920,6 +921,7 @@ Some **potential** purchase / pipeline lines will never be approved. The product
 - **Lot identity + labels:** generate `tracking_id`, barcode, and QR for each lot at purchase authorization / lot creation; support printable labels with live barcode + QR rendering and `/scan/lot/<tracking_id>` execution.
 - **Operator floor UX:** expose a dedicated floor surface for recent scan activity, recent scale captures, and quick handoff back into lot execution workflows.
 - **Tablet scan center:** provide an in-browser `/scan` workflow for supported tablet/phone cameras, with manual and hardware-scanner fallback when camera barcode detection is unavailable.
+- **Guided scanned-lot execution:** when `/scan/lot/<tracking_id>` opens, operators can choose a run-start mode (blank form, full remaining lot, partial lbs, or scale-capture-first), record standardized movement actions (vault, reactor staging, quarantine, inventory return, or custom), confirm testing status, and review recent floor activity with structured context.
 - **Connected scale readiness:** add device-backed weight capture as a future structured input channel without changing the operator-facing material model. The current delivery already includes `ScaleDevice` and `WeightCapture` as the persistence layer for that later workflow.
 - **Department UIs + governance:** **capabilities**, **purchase approval**, **Old Lots** + **soft delete**, and **`/dept` department hub + per-department pages** are implemented; continue to deepen per-department workflows (e.g. explicit “on stripper” stage, richer testing integrations) per **Operational departments & shared data model**.
 - **Explicit close-out reasons** for potential lines (declined, lost, withdrawn) — optional enhancement beyond aging; supports analytics such as win rate by supplier without relying on soft-delete alone.

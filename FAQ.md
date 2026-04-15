@@ -232,6 +232,24 @@ Yes. The scanner workflow now opens a dedicated scanned-lot page at `/scan/lot/<
 - confirm the purchase testing status
 - review recent scan activity for that lot
 
+**What does "Start Run From This Lot" do now?**
+It is now a guided floor action. The operator can choose:
+- a blank run form
+- full remaining lot
+- a partial lbs amount
+- a scale-capture-first flow
+
+Those choices carry into the run form so reactor lbs and suggested source allocation can be prefilled when appropriate.
+
+**What movement actions are standardized on the scanned-lot page?**
+Operators can confirm:
+- move to vault
+- move to reactor staging
+- move to quarantine
+- move back to inventory
+
+They can also add a custom location detail. The scan history records the movement label and location so floor activity is easier to audit later.
+
 ## Can the app take live scale readings?
 
 Yes. The current smart-scale workflow supports:

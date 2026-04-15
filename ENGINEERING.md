@@ -254,6 +254,18 @@ This keeps each deployed facility self-identifying for future aggregation withou
   - New lots receive tracking / label fields on insert.
   - `services/bootstrap_helpers.py` extends SQLite schema compatibility for the new `purchase_lots` and `run_inputs` columns.
   - Purchase approval and inventory-lot maintenance backfill missing lot tracking fields so legacy rows are upgraded without a manual migration step.
+- **Scanner execution flows**
+  - `gold_drop/purchases_module.py` now owns the scanned-lot execution actions:
+    - guided run-start modes: `blank`, `full_remaining`, `partial`, `scale_capture`
+    - standardized movement codes: `vault`, `reactor_staging`, `quarantine`, `inventory_return`, `custom`
+    - testing confirmation from the scanned-lot page
+  - The scanned-lot run-start flow writes a richer session prefill payload (`SCAN_RUN_PREFILL_SESSION_KEY`) that can include:
+    - `run_start_mode`
+    - `planned_weight_lbs`
+    - `scale_device_id`
+    - `suggested_allocations`
+  - `gold_drop/runs_module.py` consumes those fields so the new-run form can prefill reactor lbs, source allocations, and scanner guidance text.
+  - `LotScanEvent.context_json` now carries richer floor context for movement labels, locations, run-start mode, and planned partial weight so activity history is auditable without parsing free-text notes.
 - **Service boundary**
   - `services/lot_allocation.py`
     - `ensure_lot_tracking_fields`
