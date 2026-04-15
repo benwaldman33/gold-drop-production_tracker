@@ -244,31 +244,6 @@ function statusChip(status) {
   return `<span class="chip ${escapeHtml(label)}">${escapeHtml(label)}</span>`;
 }
 
-function renderSupplierForm() {
-  return `
-    <div class="layout-grid">
-      <div class="topbar"><div><h2>Create Supplier</h2><div class="meta">Duplicates will be flagged for verification.</div></div></div>
-      ${state.duplicateContext?.kind === "supplier" ? renderDuplicateBanner() : ""}
-      <section class="panel">
-        <form class="form" data-form="create-supplier">
-          <div class="grid-2">
-            <div class="field"><label for="name">Name</label><input id="name" name="name" required value="${escapeHtml(state.duplicateContext?.payload?.name || "")}" /></div>
-            <div class="field"><label for="location">Location</label><input id="location" name="location" value="${escapeHtml(state.duplicateContext?.payload?.location || "")}" /></div>
-          </div>
-          <div class="grid-2">
-            <div class="field"><label for="contact_name">Contact</label><input id="contact_name" name="contact_name" value="${escapeHtml(state.duplicateContext?.payload?.contact_name || "")}" /></div>
-            <div class="field"><label for="phone">Phone</label><input id="phone" name="phone" value="${escapeHtml(state.duplicateContext?.payload?.phone || "")}" /></div>
-          </div>
-          <div class="field"><label for="email">Email</label><input id="email" name="email" value="${escapeHtml(state.duplicateContext?.payload?.email || "")}" /></div>
-          <div class="field"><label for="notes">Notes</label><textarea id="notes" name="notes">${escapeHtml(state.duplicateContext?.payload?.notes || "")}</textarea></div>
-          <div class="field"><label><input type="checkbox" name="confirm_new_supplier" ${state.duplicateContext?.payload?.confirm_new_supplier ? "checked" : ""} /> Confirm new supplier if a duplicate is flagged</label></div>
-          <div class="actions"><button class="btn btn-primary" type="submit">${state.loading ? "Creating..." : "Create supplier"}</button><a class="btn btn-secondary" href="#/suppliers">Cancel</a></div>
-        </form>
-      </section>
-    </div>
-  `;
-}
-
 function renderDuplicateBanner() {
   const context = state.duplicateContext;
   return `

@@ -82,6 +82,32 @@ def test_mobile_supplier_duplicate_warning_and_confirm_create():
             db.session.commit()
 
 
+def test_mobile_supplier_reads_require_auth_and_return_searchable_rows():
+    app = app_module.create_app()
+    supplier_id = _create_supplier(app, f"Searchable Supplier {gen_uuid()[:6]}")
+    try:
+        with app.test_client() as client:
+            unauth = client.get("/api/mobile/v1/suppliers")
+            assert unauth.status_code == 401
+
+            _login_mobile(client)
+            listing = client.get("/api/mobile/v1/suppliers?q=Searchable")
+            assert listing.status_code == 200
+            payload = listing.get_json()["data"]
+            assert payload
+            assert any(row["id"] == supplier_id for row in payload)
+
+            detail = client.get(f"/api/mobile/v1/suppliers/{supplier_id}")
+            assert detail.status_code == 200
+            assert detail.get_json()["data"]["id"] == supplier_id
+    finally:
+        with app.app_context():
+            supplier = db.session.get(Supplier, supplier_id)
+            if supplier:
+                db.session.delete(supplier)
+            db.session.commit()
+
+
 def test_mobile_opportunity_edit_delivery_and_photo_flow():
     app = app_module.create_app()
     supplier_id = _create_supplier(app, f"Mobile Supplier {gen_uuid()[:6]}")

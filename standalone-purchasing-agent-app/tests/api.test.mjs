@@ -108,3 +108,124 @@ test("mock api uploads opportunity photos", async () => {
     global.FileReader = originalReader;
   }
 });
+
+test("live api unwraps mobile envelopes for auth and opportunities", async () => {
+  const calls = [];
+  const fetchImpl = async (url, options = {}) => {
+    calls.push({ url, options });
+    if (url.endsWith("/api/mobile/v1/auth/me")) {
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return {
+            meta: {},
+            data: {
+              authenticated: true,
+              user: { id: "user-1", username: "buyer1", display_name: "Buyer One" },
+              permissions: {},
+              site: { site_name: "Gold Drop" },
+            },
+          };
+        },
+      };
+    }
+    if (url.includes("/api/mobile/v1/opportunities/mine")) {
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return {
+            meta: {},
+            data: [{ id: "opp-1", status: "submitted", supplier_name: "Farmlane", strain_name: "Blue Dream" }],
+          };
+        },
+      };
+    }
+    if (url.endsWith("/api/mobile/v1/opportunities")) {
+      return {
+        ok: true,
+        status: 201,
+        async json() {
+          return {
+            meta: {},
+            data: {
+              opportunity: {
+                id: "opp-2",
+                status: "submitted",
+                supplier: { id: "sup-1", name: "Farmlane" },
+                photos: [],
+              },
+            },
+          };
+        },
+      };
+    }
+    throw new Error(`Unexpected URL ${url}`);
+  };
+
+  const api = createApiClient({ mode: "live", apiBaseUrl: "https://example.test", fetchImpl });
+  const me = await api.me();
+  assert.equal(me.user.username, "buyer1");
+
+  const opportunities = await api.listOpportunitiesMine();
+  assert.equal(opportunities.length, 1);
+  assert.equal(opportunities[0].supplier.name, "Farmlane");
+
+  const created = await api.createOpportunity({ supplier_id: "sup-1", strain_name: "Blue Dream", expected_weight_lbs: 120 });
+  assert.equal(created.id, "opp-2");
+  assert.equal(created.supplier.name, "Farmlane");
+  assert.equal(calls.length, 3);
+});
+
+test("live api uses mobile supplier reads and normalizes duplicates", async () => {
+  const fetchImpl = async (url, options = {}) => {
+    if (url.includes("/api/mobile/v1/suppliers?")) {
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return {
+            meta: {},
+            data: [
+              {
+                id: "sup-1",
+                name: "Farmlane",
+                location: "Salinas",
+                opportunity_count: 2,
+                open_count: 1,
+              },
+            ],
+          };
+        },
+      };
+    }
+    if (url.endsWith("/api/mobile/v1/suppliers")) {
+      if (options.method === "POST") {
+        return {
+          ok: true,
+          status: 200,
+          async json() {
+            return {
+              meta: {},
+              data: {
+                requires_confirmation: true,
+                duplicate_candidates: [{ id: "sup-1", name: "Farmlane", location: "Salinas" }],
+              },
+            };
+          },
+        };
+      }
+    }
+    throw new Error(`Unexpected URL ${url}`);
+  };
+
+  const api = createApiClient({ mode: "live", apiBaseUrl: "https://example.test", fetchImpl });
+  const suppliers = await api.listSuppliers("farm");
+  assert.equal(suppliers[0].name, "Farmlane");
+  assert.equal(suppliers[0].open_count, 1);
+
+  const result = await api.createSupplier({ name: "Farmlane" });
+  assert.equal(result.requires_confirmation, true);
+  assert.equal(result.duplicate_candidates[0].id, "sup-1");
+});

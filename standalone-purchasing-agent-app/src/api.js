@@ -100,15 +100,59 @@ function liveRequest(baseUrl, fetchImpl, path, options = {}) {
   });
 }
 
+function unwrapData(payload) {
+  if (payload && typeof payload === "object" && "data" in payload) return payload.data;
+  return payload;
+}
+
+function supplierFromRow(row) {
+  if (!row) return row;
+  if (row.supplier?.id || row.supplier?.name) {
+    return {
+      id: row.supplier.id,
+      name: row.supplier.name,
+      location: row.location || "",
+      contact_name: row.contact_name || "",
+      phone: row.contact_phone || row.phone || "",
+      email: row.contact_email || row.email || "",
+      notes: row.notes || "",
+      opportunity_count: row.opportunity_count || 0,
+      open_count: row.open_count || 0,
+      profile_incomplete: Boolean(row.profile_incomplete),
+    };
+  }
+  return {
+    id: row.id,
+    name: row.name || row.label || "",
+    location: row.location || row.subtitle || "",
+    contact_name: row.contact_name || "",
+    phone: row.phone || "",
+    email: row.email || "",
+    notes: row.notes || "",
+    opportunity_count: row.opportunity_count || 0,
+    open_count: row.open_count || 0,
+    profile_incomplete: Boolean(row.profile_incomplete),
+  };
+}
+
+function opportunityFromPayload(payload) {
+  if (!payload) return payload;
+  return {
+    ...payload,
+    supplier: payload.supplier || (payload.supplier_name ? { id: payload.supplier_id, name: payload.supplier_name } : null),
+    photos: Array.isArray(payload.photos) ? payload.photos : [],
+  };
+}
+
 export function createApiClient({ mode = "mock", apiBaseUrl = "", fetchImpl = fetch } = {}) {
   return {
     mode,
     async login(username, password) {
       if (mode === "live") {
-        return liveRequest(apiBaseUrl, fetchImpl, "/api/mobile/v1/auth/login", {
+        return unwrapData(await liveRequest(apiBaseUrl, fetchImpl, "/api/mobile/v1/auth/login", {
           method: "POST",
           body: JSON.stringify({ username, password }),
-        });
+        }));
       }
 
       if (!username || !password) {
@@ -144,7 +188,7 @@ export function createApiClient({ mode = "mock", apiBaseUrl = "", fetchImpl = fe
     },
     async logout() {
       if (mode === "live") {
-        return liveRequest(apiBaseUrl, fetchImpl, "/api/mobile/v1/auth/logout", { method: "POST", body: JSON.stringify({}) });
+        return unwrapData(await liveRequest(apiBaseUrl, fetchImpl, "/api/mobile/v1/auth/logout", { method: "POST", body: JSON.stringify({}) }));
       }
       const state = loadState();
       state.session = null;
@@ -154,14 +198,20 @@ export function createApiClient({ mode = "mock", apiBaseUrl = "", fetchImpl = fe
     },
     async me() {
       if (mode === "live") {
-        return liveRequest(apiBaseUrl, fetchImpl, "/api/mobile/v1/auth/me");
+        try {
+          return unwrapData(await liveRequest(apiBaseUrl, fetchImpl, "/api/mobile/v1/auth/me"));
+        } catch (error) {
+          if (error.status === 401) return { authenticated: false };
+          throw error;
+        }
       }
       return loadSession() || { authenticated: false };
     },
     async listSuppliers(query = "") {
       if (mode === "live") {
-        if (!query) return liveRequest(apiBaseUrl, fetchImpl, "/api/v1/suppliers");
-        return liveRequest(apiBaseUrl, fetchImpl, `/api/v1/search?q=${encodeURIComponent(query)}&types=suppliers`);
+        const suffix = query ? `?q=${encodeURIComponent(query)}` : "";
+        const payload = unwrapData(await liveRequest(apiBaseUrl, fetchImpl, `/api/mobile/v1/suppliers${suffix}`));
+        return Array.isArray(payload) ? payload.map(supplierFromRow) : [];
       }
       const state = loadState();
       return filterSuppliers(query, state.suppliers).map((supplier) => ({
@@ -172,7 +222,7 @@ export function createApiClient({ mode = "mock", apiBaseUrl = "", fetchImpl = fe
     },
     async getSupplier(id) {
       if (mode === "live") {
-        return liveRequest(apiBaseUrl, fetchImpl, `/api/v1/suppliers/${encodeURIComponent(id)}`);
+        return supplierFromRow(unwrapData(await liveRequest(apiBaseUrl, fetchImpl, `/api/mobile/v1/suppliers/${encodeURIComponent(id)}`)));
       }
       const state = loadState();
       const supplier = state.suppliers.find((item) => item.id === id);
@@ -181,10 +231,13 @@ export function createApiClient({ mode = "mock", apiBaseUrl = "", fetchImpl = fe
     },
     async createSupplier(payload) {
       if (mode === "live") {
-        return liveRequest(apiBaseUrl, fetchImpl, "/api/mobile/v1/suppliers", {
+        const response = unwrapData(await liveRequest(apiBaseUrl, fetchImpl, "/api/mobile/v1/suppliers", {
           method: "POST",
           body: JSON.stringify(payload),
-        });
+        }));
+        if (response?.requires_confirmation) return response;
+        if (response?.supplier) return { supplier: supplierFromRow(response.supplier) };
+        return response;
       }
       ensureMockSession();
       const state = loadState();
@@ -208,7 +261,8 @@ export function createApiClient({ mode = "mock", apiBaseUrl = "", fetchImpl = fe
     async listOpportunitiesMine(status = "") {
       if (mode === "live") {
         const suffix = status ? `?status=${encodeURIComponent(status)}` : "";
-        return liveRequest(apiBaseUrl, fetchImpl, `/api/mobile/v1/opportunities/mine${suffix}`);
+        const payload = unwrapData(await liveRequest(apiBaseUrl, fetchImpl, `/api/mobile/v1/opportunities/mine${suffix}`));
+        return Array.isArray(payload) ? payload.map(opportunityFromPayload) : [];
       }
       ensureMockSession();
       const state = loadState();
@@ -216,7 +270,7 @@ export function createApiClient({ mode = "mock", apiBaseUrl = "", fetchImpl = fe
     },
     async getOpportunity(id) {
       if (mode === "live") {
-        return liveRequest(apiBaseUrl, fetchImpl, `/api/mobile/v1/opportunities/${encodeURIComponent(id)}`);
+        return opportunityFromPayload(unwrapData(await liveRequest(apiBaseUrl, fetchImpl, `/api/mobile/v1/opportunities/${encodeURIComponent(id)}`)));
       }
       ensureMockSession();
       const state = loadState();
@@ -226,10 +280,13 @@ export function createApiClient({ mode = "mock", apiBaseUrl = "", fetchImpl = fe
     },
     async createOpportunity(payload) {
       if (mode === "live") {
-        return liveRequest(apiBaseUrl, fetchImpl, "/api/mobile/v1/opportunities", {
+        const response = unwrapData(await liveRequest(apiBaseUrl, fetchImpl, "/api/mobile/v1/opportunities", {
           method: "POST",
           body: JSON.stringify(payload),
-        });
+        }));
+        if (response?.requires_confirmation) return response;
+        if (response?.opportunity) return opportunityFromPayload(response.opportunity);
+        return opportunityFromPayload(response);
       }
       ensureMockSession();
       const state = loadState();
@@ -276,10 +333,11 @@ export function createApiClient({ mode = "mock", apiBaseUrl = "", fetchImpl = fe
     },
     async patchOpportunity(id, payload) {
       if (mode === "live") {
-        return liveRequest(apiBaseUrl, fetchImpl, `/api/mobile/v1/opportunities/${encodeURIComponent(id)}`, {
+        const response = unwrapData(await liveRequest(apiBaseUrl, fetchImpl, `/api/mobile/v1/opportunities/${encodeURIComponent(id)}`, {
           method: "PATCH",
           body: JSON.stringify(payload),
-        });
+        }));
+        return opportunityFromPayload(response?.opportunity || response);
       }
       ensureMockSession();
       const state = loadState();
@@ -308,10 +366,11 @@ export function createApiClient({ mode = "mock", apiBaseUrl = "", fetchImpl = fe
     },
     async recordDelivery(id, payload) {
       if (mode === "live") {
-        return liveRequest(apiBaseUrl, fetchImpl, `/api/mobile/v1/opportunities/${encodeURIComponent(id)}/delivery`, {
+        const response = unwrapData(await liveRequest(apiBaseUrl, fetchImpl, `/api/mobile/v1/opportunities/${encodeURIComponent(id)}/delivery`, {
           method: "POST",
           body: JSON.stringify(payload),
-        });
+        }));
+        return opportunityFromPayload(response?.opportunity || response);
       }
       ensureMockSession();
       const state = loadState();
@@ -344,7 +403,7 @@ export function createApiClient({ mode = "mock", apiBaseUrl = "", fetchImpl = fe
     async uploadPhoto(id, { file, photo_context }) {
       if (mode === "live") {
         const form = new FormData();
-        form.append("file", file);
+        form.append("photo", file);
         form.append("photo_context", photo_context);
         const response = await fetchImpl(`${apiBaseUrl}/api/mobile/v1/opportunities/${encodeURIComponent(id)}/photos`, {
           method: "POST",
@@ -354,9 +413,21 @@ export function createApiClient({ mode = "mock", apiBaseUrl = "", fetchImpl = fe
         if (!response.ok) {
           const error = new Error(`Upload failed with status ${response.status}`);
           error.status = response.status;
+          try {
+            error.payload = await response.json();
+          } catch {
+            error.payload = null;
+          }
           throw error;
         }
-        return response.json();
+        const payload = unwrapData(await response.json());
+        const photos = Array.isArray(payload?.photos) ? payload.photos : [];
+        return {
+          photo_context: payload?.photo_context,
+          count: payload?.count ?? photos.length,
+          photos,
+          photo: photos[0] || null,
+        };
       }
       ensureMockSession();
       const state = loadState();

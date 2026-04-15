@@ -158,6 +158,8 @@ Mobile routes currently registered:
 - `POST /api/mobile/v1/auth/login`
 - `POST /api/mobile/v1/auth/logout`
 - `GET /api/mobile/v1/auth/me`
+- `GET /api/mobile/v1/suppliers`
+- `GET /api/mobile/v1/suppliers/<supplier_id>`
 - `POST /api/mobile/v1/opportunities`
 - `GET /api/mobile/v1/opportunities/mine`
 - `GET /api/mobile/v1/opportunities/<id>`
@@ -165,6 +167,13 @@ Mobile routes currently registered:
 - `POST /api/mobile/v1/opportunities/<id>/delivery`
 - `POST /api/mobile/v1/opportunities/<id>/photos`
 - `POST /api/mobile/v1/suppliers`
+
+The standalone app now uses the mobile surface for:
+- auth
+- writes
+- supplier reads
+
+That avoids mixing a user-cookie mobile session with the bearer-token-only `/api/v1` read API.
 
 ### Response contract
 

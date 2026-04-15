@@ -25,12 +25,14 @@ test("buildOpportunityPayload extracts form data", () => {
   form.set("clean_or_dirty", "clean");
   form.set("testing_notes", "fresh");
   form.set("notes", "important");
+  form.set("confirm_new_supplier", "on");
 
   const payload = buildOpportunityPayload(form);
   assert.equal(payload.supplier_id, "sup-1");
   assert.equal(payload.strain_name, "Blue Dream");
   assert.equal(payload.expected_weight_lbs, "350");
   assert.equal(payload.expected_potency_pct, "23.5");
+  assert.equal(payload.confirm_new_supplier, true);
 });
 
 test("buildSupplierPayload extracts supplier form data", () => {

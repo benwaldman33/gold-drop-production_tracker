@@ -49,7 +49,7 @@ http://127.0.0.1:4173
 Run tests:
 
 ```bash
-node --test tests/*.test.mjs
+node --test --experimental-test-isolation=none tests/api.test.mjs tests/domain.test.mjs tests/ui-helpers.test.mjs
 ```
 
 ## Mock-First Mode
@@ -70,6 +70,7 @@ Example live config:
 ```
 
 The live app uses user-based auth for mobile workflows and keeps write actions under `/api/mobile/v1`.
+It also uses `/api/mobile/v1/suppliers` for authenticated supplier search/context because the bearer-token-only internal read API is not appropriate for the mobile user session.
 
 ## Backend Contract
 
@@ -91,7 +92,7 @@ The standalone app includes Node-based tests for:
 Run them with:
 
 ```bash
-node --test tests/*.test.mjs
+node --test --experimental-test-isolation=none tests/api.test.mjs tests/domain.test.mjs tests/ui-helpers.test.mjs
 ```
 
 ## Important Notes
@@ -99,4 +100,4 @@ node --test tests/*.test.mjs
 - delivery is not a separate sibling object
 - supplier creation allows fuzzy duplicate detection and user verification
 - photo upload is in scope for v1
-- read endpoints should remain on the current Gold Drop API when practical
+- the current live app uses `/api/mobile/v1` for auth, writes, and supplier reads

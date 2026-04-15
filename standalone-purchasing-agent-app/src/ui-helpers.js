@@ -19,8 +19,10 @@ export function parseRoute(hash) {
 export function buildOpportunityPayload(form) {
   const supplierId = String(form.get("supplier_id") || "");
   const newSupplierName = String(form.get("new_supplier_name") || "").trim();
+  const confirmNewSupplier = form.get("confirm_new_supplier") === "on";
   return {
     supplier_id: supplierId || undefined,
+    confirm_new_supplier: confirmNewSupplier,
     new_supplier: newSupplierName
       ? {
           name: newSupplierName,
@@ -29,7 +31,7 @@ export function buildOpportunityPayload(form) {
           email: String(form.get("new_supplier_email") || ""),
           location: String(form.get("new_supplier_location") || ""),
           notes: String(form.get("new_supplier_notes") || ""),
-          confirm_new_supplier: form.get("confirm_new_supplier") === "on",
+          confirm_new_supplier: confirmNewSupplier,
         }
       : undefined,
     strain_name: String(form.get("strain_name") || "").trim(),

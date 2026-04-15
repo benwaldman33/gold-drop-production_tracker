@@ -78,9 +78,12 @@ Behavior:
 
 ### Suppliers
 
+- `GET /api/mobile/v1/suppliers`
+- `GET /api/mobile/v1/suppliers/<supplier_id>`
 - `POST /api/mobile/v1/suppliers`
 
 Behavior:
+- supplier reads are available on the mobile surface so the standalone app can search and review supplier context with the same authenticated user session it uses for writes
 - supplier creation is allowed
 - duplicate warnings can return `requires_confirmation` with `duplicate_candidates`
 - confirmed creation uses `confirm_new_supplier=true`

@@ -312,6 +312,12 @@ def register_routes(app, root):
     def mobile_supplier_create():
         return mobile_supplier_create_view(root)
 
+    def mobile_suppliers():
+        return mobile_suppliers_view(root)
+
+    def mobile_supplier_detail(supplier_id):
+        return mobile_supplier_detail_view(root, supplier_id)
+
     def mobile_opportunity_create():
         return mobile_opportunity_create_view(root)
 
@@ -329,7 +335,38 @@ def register_routes(app, root):
     app.add_url_rule("/api/mobile/v1/opportunities/<opportunity_id>", endpoint="mobile_opportunity_detail", view_func=mobile_opportunity_detail, methods=["GET", "PATCH"])
     app.add_url_rule("/api/mobile/v1/opportunities/<opportunity_id>/delivery", endpoint="mobile_opportunity_delivery", view_func=mobile_opportunity_delivery, methods=["POST"])
     app.add_url_rule("/api/mobile/v1/opportunities/<opportunity_id>/photos", endpoint="mobile_opportunity_photos", view_func=mobile_opportunity_photos, methods=["POST"])
+    app.add_url_rule("/api/mobile/v1/suppliers", endpoint="mobile_suppliers", view_func=mobile_suppliers, methods=["GET"])
     app.add_url_rule("/api/mobile/v1/suppliers", endpoint="mobile_supplier_create", view_func=mobile_supplier_create, methods=["POST"])
+    app.add_url_rule("/api/mobile/v1/suppliers/<supplier_id>", endpoint="mobile_supplier_detail", view_func=mobile_supplier_detail, methods=["GET"])
+
+
+def _mobile_supplier_payload(supplier: Supplier) -> dict[str, Any]:
+    if supplier is None:
+        return {}
+    opportunity_count = Purchase.query.filter(
+        Purchase.deleted_at.is_(None),
+        Purchase.supplier_id == supplier.id,
+        Purchase.created_by_user_id == current_user.id,
+    ).count()
+    open_count = Purchase.query.filter(
+        Purchase.deleted_at.is_(None),
+        Purchase.supplier_id == supplier.id,
+        Purchase.created_by_user_id == current_user.id,
+        Purchase.purchase_approved_at.is_not(None),
+        Purchase.status != "delivered",
+    ).count()
+    return {
+        "id": supplier.id,
+        "name": supplier.name,
+        "contact_name": supplier.contact_name,
+        "phone": supplier.contact_phone,
+        "email": supplier.contact_email,
+        "location": supplier.location,
+        "notes": supplier.notes,
+        "is_active": bool(supplier.is_active),
+        "opportunity_count": opportunity_count,
+        "open_count": open_count,
+    }
 
 
 def mobile_auth_login_view(root):
@@ -437,6 +474,41 @@ def mobile_supplier_create_view(root):
         return jsonify({"meta": build_meta(), "data": warning})
     root.db.session.commit()
     return jsonify({"meta": build_meta(), "data": {"supplier": {"id": supplier.id, "name": supplier.name}}}), 201
+
+
+def mobile_suppliers_view(root):
+    auth_error = _require_mobile_user()
+    if auth_error:
+        return auth_error
+    query_text = (request.args.get("q") or "").strip()
+    try:
+        limit = max(1, min(int(request.args.get("limit") or 25), 100))
+    except ValueError:
+        limit = 25
+    try:
+        offset = max(0, int(request.args.get("offset") or 0))
+    except ValueError:
+        offset = 0
+    query = root.Supplier.query
+    if query_text:
+        query = query.filter(root.Supplier.name.ilike(f"%{query_text}%"))
+    query = query.order_by(root.Supplier.name.asc(), root.Supplier.id.asc())
+    total = query.count()
+    rows = query.offset(offset).limit(limit).all()
+    return jsonify({
+        "meta": build_meta(count=total, limit=limit, offset=offset),
+        "data": [_mobile_supplier_payload(supplier) for supplier in rows],
+    })
+
+
+def mobile_supplier_detail_view(root, supplier_id: str):
+    auth_error = _require_mobile_user()
+    if auth_error:
+        return auth_error
+    supplier = root.db.session.get(root.Supplier, supplier_id)
+    if not supplier:
+        return _json_error("Supplier not found.", status_code=404, code="not_found")
+    return jsonify({"meta": build_meta(), "data": _mobile_supplier_payload(supplier)})
 
 
 def mobile_opportunity_create_view(root):
