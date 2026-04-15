@@ -83,6 +83,13 @@ a:hover { color: var(--gold-light); }
 .sidebar-nav a:hover { background: var(--dark-hover); color: var(--text-primary); }
 .sidebar-nav a.active { background: rgba(200, 150, 62, 0.12); color: var(--gold); }
 .sidebar-nav a .icon { font-size: 1.1rem; width: 22px; text-align: center; }
+.sidebar-nav a[href$="/floor-ops"] .icon {
+  font-size: 0;
+}
+.sidebar-nav a[href$="/floor-ops"] .icon::before {
+  content: "\1F4F1";
+  font-size: 1.1rem;
+}
 .sidebar-biomass-budget {
   margin: 0 10px 10px;
   padding: 12px;
