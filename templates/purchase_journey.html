@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% block title %}Batch Journey{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Batch Journey — {{ purchase.batch_id or purchase.id }}</h2>
+  <div class="btn-group">
+    <a href="{{ url_for('purchases_bp.purchase_journey_export', purchase_id=purchase.id, format='json', include_archived=1 if include_archived else 0) }}" class="btn btn-secondary btn-sm">Export JSON</a>
+    <a href="{{ url_for('purchases_bp.purchase_journey_export', purchase_id=purchase.id, format='csv', include_archived=1 if include_archived else 0) }}" class="btn btn-secondary btn-sm">Export CSV</a>
+    <a href="{{ url_for('purchase_labels', purchase_id=purchase.id) }}" class="btn btn-secondary btn-sm">Print Labels</a>
+    {% if current_user.is_super_admin %}
+    <a href="{{ url_for('purchases_bp.purchase_journey', purchase_id=purchase.id, include_archived=1 if not include_archived else 0) }}" class="btn btn-secondary btn-sm">
+      {% if include_archived %}Hide archived{% else %}Include archived{% endif %}
+    </a>
+    {% endif %}
+    <a href="{{ url_for('purchase_edit', purchase_id=purchase.id) }}" class="btn btn-secondary btn-sm">Edit Purchase</a>
+    <a href="{{ url_for('purchases_list') }}" class="btn btn-secondary btn-sm">← Back</a>
+  </div>
+</div>
+
+<div class="summary-row" style="margin-bottom:14px;">
+  <div class="summary-stat">
+    <div class="label">Supplier</div>
+    <div class="value" style="font-size:1rem;">{{ purchase.supplier_name }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Current Status</div>
+    <div class="value" style="font-size:1rem;">{{ journey.status.replace('_', ' ') }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Lot Count</div>
+    <div class="value">{{ journey.summary.lot_count }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Allocated Lbs</div>
+    <div class="value">{{ "{:,.0f}".format(journey.summary.allocated_lbs) }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Remaining Lbs</div>
+    <div class="value">{{ "{:,.0f}".format(journey.summary.remaining_lbs) }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Runs</div>
+    <div class="value">{{ journey.summary.run_count }}</div>
+  </div>
+</div>
+
+{% if journey.exceptions %}
+<div class="card" style="margin-bottom:14px;">
+  <h4 style="margin-top:0;">Exceptions</h4>
+  <div style="display:grid;gap:8px;">
+    {% for item in journey.exceptions %}
+    <div style="border:1px solid var(--border);border-left:4px solid {% if item.level == 'error' %}#d14d4d{% else %}#d4a843{% endif %};border-radius:8px;padding:10px 12px;">
+      <div><strong>{{ item.label }}</strong></div>
+      <div class="text-sm cell-muted">{{ item.detail }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<div class="card" style="margin-bottom:14px;">
+  <h4 style="margin-top:0;">Material Map</h4>
+  <p class="text-sm cell-muted" style="margin-top:0;">
+    Purchase → inventory lots → run allocations → runs. Use this to track material forward into extraction or back to the source lot.
+  </p>
+  <div style="display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr;gap:12px;align-items:start;">
+    <div style="border:1px solid var(--border);border-radius:10px;padding:12px;background:rgba(255,255,255,0.02);">
+      <div class="text-sm cell-muted">Purchase</div>
+      <div class="text-mono" style="margin-top:4px;"><strong>{{ purchase.batch_id or purchase.id }}</strong></div>
+      <div style="margin-top:6px;">{{ purchase.supplier_name }}</div>
+      <div class="text-sm cell-muted" style="margin-top:6px;">
+        {{ purchase.status.replace('_', ' ') }}{% if purchase.delivery_date %} · delivered {{ purchase.delivery_date.strftime('%Y-%m-%d') }}{% endif %}
+      </div>
+      <div class="text-sm cell-muted" style="margin-top:6px;">
+        {{ "{:,.0f}".format(purchase.actual_weight_lbs) if purchase.actual_weight_lbs else "{:,.0f}".format(purchase.stated_weight_lbs) }} lbs
+      </div>
+    </div>
+    <div>
+      <div class="text-sm cell-muted" style="margin-bottom:8px;">Inventory Lots</div>
+      <div style="display:grid;gap:8px;">
+        {% for lot in journey.lots %}
+        {% set focused = focus_tracking_id and focus_tracking_id == lot.tracking_id %}
+        <div style="border:1px solid {% if focused %}var(--gold){% else %}var(--border){% endif %};border-radius:10px;padding:10px;background:{% if focused %}rgba(212,168,67,0.08){% else %}rgba(255,255,255,0.02){% endif %};">
+          <div class="text-mono"><strong>{{ lot.tracking_id or lot.lot_id[:8] }}</strong></div>
+          <div style="margin-top:4px;">{{ lot.strain_name }}</div>
+          <div class="text-sm cell-muted" style="margin-top:4px;">{{ "{:,.0f}".format(lot.remaining_weight_lbs) }} of {{ "{:,.0f}".format(lot.weight_lbs) }} lbs remaining</div>
+          <div class="text-sm cell-muted">Allocated {{ "{:,.0f}".format(lot.allocated_weight_lbs) }} lbs</div>
+          <div class="text-sm cell-muted">
+            {% if lot.potency_pct is not none %}{{ lot.potency_pct }}% potency{% else %}Potency pending{% endif %}
+            {% if lot.clean_or_dirty %} · {{ lot.clean_or_dirty }}{% endif %}
+            {% if lot.testing_status %} · {{ lot.testing_status }}{% endif %}
+          </div>
+          <div style="margin-top:8px;">
+            <a href="{{ url_for('lot_label', lot_id=lot.lot_id) }}" class="btn btn-secondary btn-sm">Label</a>
+          </div>
+        </div>
+        {% else %}
+        <div class="cell-muted">No lots on this purchase yet.</div>
+        {% endfor %}
+      </div>
+    </div>
+    <div>
+      <div class="text-sm cell-muted" style="margin-bottom:8px;">Run Allocations</div>
+      <div style="display:grid;gap:8px;">
+        {% for edge in journey.allocations %}
+        {% set lot = (journey.lots | selectattr('lot_id', 'equalto', edge.lot_id) | list | first) %}
+        {% set run = (journey.runs | selectattr('run_id', 'equalto', edge.run_id) | list | first) %}
+        <div style="border:1px solid var(--border);border-radius:10px;padding:10px;background:rgba(255,255,255,0.02);">
+          <div><strong>{{ "{:,.1f}".format(edge.weight_lbs) }} lbs</strong></div>
+          <div class="text-sm cell-muted" style="margin-top:4px;">
+            {{ lot.tracking_id if lot else edge.lot_id[:8] }} → Reactor {{ run.reactor_number if run else '?' }}
+          </div>
+          <div class="text-sm cell-muted">
+            {% if edge.allocation_source %}{{ edge.allocation_source }}{% endif %}
+            {% if edge.allocation_confidence is not none %} · {{ "{:.0f}".format(edge.allocation_confidence * 100) }}% confidence{% endif %}
+          </div>
+        </div>
+        {% else %}
+        <div class="cell-muted">No run allocations recorded yet.</div>
+        {% endfor %}
+      </div>
+    </div>
+    <div>
+      <div class="text-sm cell-muted" style="margin-bottom:8px;">Runs</div>
+      <div style="display:grid;gap:8px;">
+        {% for run in journey.runs %}
+        <div style="border:1px solid var(--border);border-radius:10px;padding:10px;background:rgba(255,255,255,0.02);">
+          <div><strong>Reactor {{ run.reactor_number }}</strong></div>
+          <div class="text-sm cell-muted" style="margin-top:4px;">{{ run.run_date or 'Date pending' }}</div>
+          <div class="text-sm cell-muted">{{ "{:,.0f}".format(run.bio_in_reactor_lbs) }} lbs input</div>
+          <div class="text-sm cell-muted">{{ "{:,.0f}".format(run.dry_thca_g) }} g THCA · {{ "{:,.0f}".format(run.dry_hte_g) }} g HTE</div>
+          {% if run.hte_pipeline_stage %}<div class="text-sm cell-muted">{{ run.hte_pipeline_stage.replace('_', ' ') }}</div>{% endif %}
+          <div style="margin-top:8px;"><a href="{{ run.run_url }}" class="btn btn-secondary btn-sm">Open Run</a></div>
+        </div>
+        {% else %}
+        <div class="cell-muted">No runs linked to this purchase yet.</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:14px;">
+  <h4 style="margin-top:0;">Progress timeline</h4>
+  <div style="display:grid;gap:10px;">
+    {% for event in journey.events %}
+    <div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;background:rgba(255,255,255,0.01);">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">
+        <strong>{{ event.stage_key.replace('_', ' ').title() }}</strong>
+        <span class="badge status-{{ event.state }}">{{ event.state.replace('_', ' ') }}</span>
+      </div>
+      <div class="text-sm" style="margin-top:6px;color:var(--text-muted);">
+        Start: {{ event.started_at or '—' }} · Complete: {{ event.completed_at or '—' }}
+      </div>
+      {% if event.metrics %}
+      <div class="text-sm" style="margin-top:8px;">
+        {% for key, value in event.metrics.items() %}
+        <span style="display:inline-block;margin-right:12px;"><strong>{{ key.replace('_',' ') }}:</strong> {{ value }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% if event.links %}
+      <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+        {% for link in event.links %}
+        <a class="btn btn-secondary btn-sm" href="{{ link.url }}">{{ link.label }}</a>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+{% if journey.lots %}
+<div class="card" style="margin-top:14px;">
+  <h4 style="margin-top:0;">Inventory Lots</h4>
+  <div style="display:grid;gap:10px;">
+    {% for lot in journey.lots %}
+    {% set focused = focus_tracking_id and focus_tracking_id == lot.tracking_id %}
+    <div style="border:1px solid {% if focused %}var(--gold){% else %}var(--border){% endif %};border-radius:10px;padding:12px 14px;background:{% if focused %}rgba(212,168,67,0.08){% else %}rgba(255,255,255,0.01){% endif %};">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;">
+        <strong>{{ lot.tracking_id or lot.lot_id[:8] }} · {{ lot.strain_name }}</strong>
+        <span class="text-sm cell-muted">{{ lot.supplier_name }}</span>
+      </div>
+      <div class="text-sm" style="margin-top:8px;">
+        <span style="display:inline-block;margin-right:12px;"><strong>Weight:</strong> {{ lot.weight_lbs }}</span>
+        <span style="display:inline-block;margin-right:12px;"><strong>Allocated:</strong> {{ lot.allocated_weight_lbs }}</span>
+        <span style="display:inline-block;margin-right:12px;"><strong>Remaining:</strong> {{ lot.remaining_weight_lbs }}</span>
+        <span style="display:inline-block;margin-right:12px;"><strong>Remaining %:</strong> {{ "{:.1f}".format(lot.remaining_pct) }}%</span>
+        {% if lot.potency_pct is not none %}<span style="display:inline-block;margin-right:12px;"><strong>Potency:</strong> {{ lot.potency_pct }}</span>{% endif %}
+        {% if lot.clean_or_dirty %}<span style="display:inline-block;margin-right:12px;"><strong>Clean/Dirty:</strong> {{ lot.clean_or_dirty }}</span>{% endif %}
+        {% if lot.testing_status %}<span style="display:inline-block;margin-right:12px;"><strong>Testing:</strong> {{ lot.testing_status }}</span>{% endif %}
+        {% if lot.location %}<span style="display:inline-block;margin-right:12px;"><strong>Location:</strong> {{ lot.location }}</span>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if journey.allocations %}
+<div class="card" style="margin-top:14px;">
+  <h4 style="margin-top:0;">Run Allocations</h4>
+  <div style="display:grid;gap:10px;">
+    {% for edge in journey.allocations %}
+    {% set run = (journey.runs | selectattr('run_id', 'equalto', edge.run_id) | list | first) %}
+    {% set lot = (journey.lots | selectattr('lot_id', 'equalto', edge.lot_id) | list | first) %}
+    <div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;background:rgba(255,255,255,0.01);">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;">
+        <strong>
+          {{ lot.tracking_id if lot else edge.lot_id[:8] }}
+          → Reactor {{ run.reactor_number if run else "?" }}
+        </strong>
+        <span class="badge status-done">{{ edge.weight_lbs }} lbs</span>
+      </div>
+      <div class="text-sm cell-muted" style="margin-top:6px;">
+        {% if lot %}{{ lot.strain_name }} · {{ lot.supplier_name }}{% endif %}
+        {% if run and run.run_date %} · {{ run.run_date }}{% endif %}
+        {% if edge.allocation_source %} · {{ edge.allocation_source }}{% endif %}
+      </div>
+      {% if run %}
+      <div style="margin-top:8px;">
+        <a class="btn btn-secondary btn-sm" href="{{ run.run_url }}">Open Run</a>
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}

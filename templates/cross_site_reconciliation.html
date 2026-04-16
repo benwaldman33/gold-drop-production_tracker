@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Cross-Site Reconciliation{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>Cross-Site Reconciliation</h2>
+    <p class="text-sm cell-muted" style="margin:6px 0 0 0;">Compare exception posture and Slack-import resolution pressure across the local site and cached remote-site rollups.</p>
+  </div>
+  <a href="{{ url_for('cross_site_ops') }}" class="btn btn-secondary">Back to Cross-Site Ops</a>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-card-label">Tracked sites</div>
+    <div class="stat-card-value">{{ rows|length }}</div>
+    <div class="stat-card-detail">Local + enabled remote caches</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-label">Highest exception site</div>
+    <div class="stat-card-value">{% if rows %}{{ rows[0].total_exceptions }}{% else %}0{% endif %}</div>
+    <div class="stat-card-detail">{% if rows %}{{ (rows[0].site or {}).get('site_name') or (rows[0].site or {}).get('site_code') }}{% else %}No sites{% endif %}</div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:16px;">
+  <div class="table-responsive">
+    <table>
+      <thead>
+        <tr>
+          <th>Site</th>
+          <th>Exceptions</th>
+          <th>Slack Messages</th>
+          <th>Needs Manual Match</th>
+          <th>Blocked</th>
+          <th>Coverage None</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td>
+            <strong>{{ (row.site or {}).get('site_name') or (row.site or {}).get('site_code') or 'Unknown site' }}</strong>
+            <div class="text-sm cell-muted">
+              {{ (row.site or {}).get('site_code') or '—' }}
+              {% if (row.site or {}).get('source') == 'remote_cache' %}
+               &middot; cached remote
+              {% else %}
+               &middot; local
+              {% endif %}
+            </div>
+          </td>
+          <td>{{ "{:,.0f}".format(row.total_exceptions or 0) }}</td>
+          <td>{{ "{:,.0f}".format(row.total_messages or 0) }}</td>
+          <td>{{ "{:,.0f}".format(row.needs_manual_match or 0) }}</td>
+          <td>{{ "{:,.0f}".format(row.blocked or 0) }}</td>
+          <td>{{ "{:,.0f}".format(row.coverage_none or 0) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

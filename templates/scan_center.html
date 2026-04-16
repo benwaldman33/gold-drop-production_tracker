@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Scan Center{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Scan Center</h2>
+  <a href="{{ url_for('floor_ops') }}" class="btn btn-secondary">Back to Floor Ops</a>
+</div>
+
+<div class="card scan-center-card">
+  <div class="scan-center-layout">
+    <div>
+      <div class="text-sm cell-muted">Tablet / mobile workflow</div>
+      <h3 style="margin-top:6px;">Open the camera, scan a lot label, and jump straight into floor execution.</h3>
+      <p class="text-sm cell-muted" style="margin-top:10px;">
+        This works best on modern Android Chrome and supported iPad browsers. If camera scanning is unavailable,
+        use the manual field below or a Bluetooth scanner that types the tracking ID into the form.
+      </p>
+
+      <div class="scan-center-actions">
+        <button type="button" class="btn btn-primary" id="scan-start-btn">Start Camera Scan</button>
+        <button type="button" class="btn btn-secondary" id="scan-stop-btn" disabled>Stop Camera</button>
+      </div>
+
+      <div class="scan-capability-notes">
+        <div class="scan-capability-pill">Camera</div>
+        <div class="scan-capability-pill">Bluetooth scanner</div>
+        <div class="scan-capability-pill">Manual entry</div>
+      </div>
+
+      <div class="scan-status-box" id="scan-status-box">
+        <div class="text-sm cell-muted">Scanner status</div>
+        <div id="scan-status-text">Camera scan is idle.</div>
+      </div>
+
+      <form class="scan-manual-form" id="scan-manual-form">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="tracking-id-input">Tracking ID</label>
+            <input id="tracking-id-input" name="tracking_id" type="text" placeholder="e.g. LOT-123ABC45" autocomplete="off" autofocus>
+          </div>
+        </div>
+        <div class="form-actions" style="justify-content:flex-start;">
+          <button type="submit" class="btn btn-secondary">Open Lot</button>
+        </div>
+      </form>
+
+      <div class="text-sm cell-muted" style="margin-top:12px;">
+        Camera access typically requires HTTPS on tablets. `http://localhost` also works for local desktop testing.
+      </div>
+    </div>
+
+    <div class="scan-preview-shell">
+      <video id="scan-video" class="scan-video" playsinline muted></video>
+      <div class="scan-preview-empty" id="scan-preview-empty">
+        Point the camera at a printed lot barcode.
+      </div>
+    </div>
+  </div>
+
+  {% if recent_scans %}
+  <div class="card" style="margin-top:18px; margin-bottom:0;">
+    <div class="card-header">
+      <h3>Recent Floor Scans</h3>
+      <a href="{{ url_for('floor_ops') }}" class="btn btn-secondary btn-sm">View Floor Ops</a>
+    </div>
+    <div class="floor-event-list">
+      {% for event in recent_scans %}
+      <div class="floor-event-row">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">
+          <div>
+            <div><strong>{{ event.tracking_id_snapshot }}</strong></div>
+            <div class="text-sm cell-muted">{{ event.action.replace('_', ' ') }}</div>
+          </div>
+          <div class="text-sm cell-muted">{{ event.created_at.strftime('%Y-%m-%d %H:%M') if event.created_at else '-' }}</div>
+        </div>
+        <div class="form-actions" style="justify-content:flex-start;margin-top:10px;">
+          <a href="{{ url_for('scan_lot', tracking_id=event.tracking_id_snapshot) }}" class="btn btn-secondary btn-sm">Open Lot</a>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+  {{ super() }}
+  <script>
+    window.goldDropScanConfig = {
+      scanLotBase: "{{ url_for('scan_lot', tracking_id='__TRACKING_ID__') }}",
+      scanLookupBase: "{{ url_for('scan_center') }}"
+    };
+  </script>
+  <script src="{{ url_for('static', filename='js/scan_camera.js') }}"></script>
+{% endblock %}

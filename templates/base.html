@@ -27,10 +27,18 @@
         <a href="{{ url_for('runs_list') }}" class="{% if request.endpoint in ('runs_list', 'run_new', 'run_edit') %}active{% endif %}">
           <span class="icon">⚗️</span><span>Runs</span>
         </a>
+        <a href="{{ url_for('floor_ops') }}" class="{% if request.endpoint in ('floor_ops', 'scan_center', 'scan_lot') %}active{% endif %}">
+          <span class="icon">ðŸ“±</span><span>Floor Ops</span>
+        </a>
+        {% if current_user.is_authenticated and cross_site_ops_enabled %}
+        <a href="{{ url_for('cross_site_ops') }}" class="{% if request.endpoint == 'cross_site_ops' %}active{% endif %}">
+          <span class="icon">🌐</span><span>Cross-Site Ops</span>
+        </a>
+        {% endif %}
         <a href="{{ url_for('inventory') }}" class="{% if request.endpoint == 'inventory' %}active{% endif %}">
           <span class="icon">📦</span><span>Inventory</span>
         </a>
-        <a href="{{ url_for('purchases_list') }}" class="{% if request.endpoint in ('purchases_list', 'purchase_new', 'purchase_edit') %}active{% endif %}">
+        <a href="{{ url_for('purchases_list') }}" class="{% if request.endpoint in ('purchases_list', 'purchase_new', 'purchase_edit', 'purchase_import', 'purchase_import_preview') %}active{% endif %}">
           <span class="icon">💰</span><span>Purchases</span>
         </a>
         <a href="{{ url_for('costs_list') }}" class="{% if request.endpoint in ('costs_list', 'cost_new', 'cost_edit') %}active{% endif %}">
@@ -174,5 +182,6 @@
       }, true);
     })();
   </script>
+  <script src="{{ url_for('static', filename='js/batch_select.js') }}"></script>
 </body>
 </html>

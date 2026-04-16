@@ -1,19 +1,51 @@
 {% extends "base.html" %}
 {% block title %}Purchases{% endblock %}
 {% block content %}
+{% set htq = '&hide_terminal=1' if hide_terminal else '' %}
 <div class="page-header">
   <h2>Purchases</h2>
   <div class="btn-group">
     {% if current_user.can_edit_purchases %}
+    <div class="btn-group" data-batch-toolbar="1" data-batch-entity="purchases" data-table-selector="#purchases-table" data-return-to="{{ request.full_path }}">
+      <button type="button" class="btn btn-secondary btn-sm" data-batch-select-all>Select all</button>
+      <button type="button" class="btn btn-secondary btn-sm" data-batch-select-none>Select none</button>
+      <button type="button" class="btn btn-primary btn-sm" data-batch-edit disabled>Batch edit…</button>
+    </div>
     <a href="{{ url_for('purchase_new') }}" class="btn btn-primary">+ New Purchase</a>
+    <a href="{{ url_for('purchase_import') }}" class="btn btn-secondary">Import spreadsheet</a>
     {% endif %}
-    <a href="{{ url_for('export_csv', entity='purchases', status=status_filter, start_date=start_date, end_date=end_date, supplier_id=supplier_filter, min_potency=min_potency, max_potency=max_potency) }}" class="btn btn-secondary">Export CSV</a>
+    <a href="{{ url_for('export_csv', entity='purchases', status=status_filter, start_date=start_date, end_date=end_date, supplier_id=supplier_filter, min_potency=min_potency, max_potency=max_potency) }}{{ htq }}" class="btn btn-secondary">Export CSV</a>
+  </div>
+</div>
+
+<div class="summary-row" style="margin-bottom:12px;">
+  <div class="summary-stat">
+    <div class="label">Visible Purchases</div>
+    <div class="value">{{ summary_counts.visible }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Unapproved</div>
+    <div class="value {% if summary_counts.unapproved %}cell-red{% endif %}">{{ summary_counts.unapproved }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Partially Allocated</div>
+    <div class="value {% if summary_counts.partially_allocated %}text-gold{% endif %}">{{ summary_counts.partially_allocated }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Needs Review</div>
+    <div class="value {% if summary_counts.needs_review %}cell-red{% endif %}">{{ summary_counts.needs_review }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Remaining Lbs</div>
+    <div class="value">{{ "{:,.0f}".format(summary_counts.remaining_lbs) }}</div>
   </div>
 </div>
 
 <div class="card" style="margin-bottom:12px;">
   <form method="GET" style="display:grid;grid-template-columns:180px 160px 160px 120px 120px auto;gap:8px;align-items:end;">
     <div class="form-group" style="margin:0;">
+      <input type="hidden" name="filter_form" value="1">
+      <input type="hidden" name="page" value="1">
       <label>Supplier</label>
       <select name="supplier_id">
         <option value="">All suppliers</option>
@@ -39,67 +71,135 @@
       <input type="number" step="0.1" name="max_potency" value="{{ max_potency }}">
     </div>
     <input type="hidden" name="status" value="{{ status_filter }}">
-    <button type="submit" class="btn btn-secondary">Apply Filters</button>
+    <div style="display:flex;flex-direction:column;gap:10px;align-items:stretch;justify-content:end;">
+      <label class="text-sm" style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0;color:var(--text-secondary);">
+        <input type="checkbox" name="hide_terminal" value="1" {% if hide_terminal %}checked{% endif %}>
+        Hide complete &amp; cancelled
+      </label>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+        <button type="submit" class="btn btn-secondary">Apply Filters</button>
+        {% if list_filters_active %}
+        <a href="{{ clear_filters_url }}" class="btn btn-secondary btn-sm">Remove filters</a>
+        {% endif %}
+      </div>
+    </div>
   </form>
 </div>
 
 <div class="view-toggle">
   <div class="btn-group">
-    <a href="?status=&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&min_potency={{ min_potency }}&max_potency={{ max_potency }}" class="btn {% if not status_filter %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">All</a>
-    <a href="?status=committed&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&min_potency={{ min_potency }}&max_potency={{ max_potency }}" class="btn {% if status_filter == 'committed' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">Committed</a>
-    <a href="?status=ordered&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&min_potency={{ min_potency }}&max_potency={{ max_potency }}" class="btn {% if status_filter == 'ordered' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">Ordered</a>
-    <a href="?status=in_transit&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&min_potency={{ min_potency }}&max_potency={{ max_potency }}" class="btn {% if status_filter == 'in_transit' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">In Transit</a>
-    <a href="?status=delivered&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&min_potency={{ min_potency }}&max_potency={{ max_potency }}" class="btn {% if status_filter == 'delivered' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">Delivered</a>
-    <a href="?status=complete&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&min_potency={{ min_potency }}&max_potency={{ max_potency }}" class="btn {% if status_filter == 'complete' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">Complete</a>
-    <a href="?status=cancelled&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&min_potency={{ min_potency }}&max_potency={{ max_potency }}" class="btn {% if status_filter == 'cancelled' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">Cancelled</a>
+    <a href="?page=1&status=&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&min_potency={{ min_potency }}&max_potency={{ max_potency }}{{ htq }}" class="btn {% if not status_filter %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">All</a>
+    <a href="?page=1&status=committed&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&min_potency={{ min_potency }}&max_potency={{ max_potency }}{{ htq }}" class="btn {% if status_filter == 'committed' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">Committed</a>
+    <a href="?page=1&status=ordered&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&min_potency={{ min_potency }}&max_potency={{ max_potency }}{{ htq }}" class="btn {% if status_filter == 'ordered' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">Ordered</a>
+    <a href="?page=1&status=in_transit&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&min_potency={{ min_potency }}&max_potency={{ max_potency }}{{ htq }}" class="btn {% if status_filter == 'in_transit' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">In Transit</a>
+    <a href="?page=1&status=delivered&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&min_potency={{ min_potency }}&max_potency={{ max_potency }}{{ htq }}" class="btn {% if status_filter == 'delivered' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">Delivered</a>
+    <a href="?page=1&status=complete&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&min_potency={{ min_potency }}&max_potency={{ max_potency }}{{ htq }}" class="btn {% if status_filter == 'complete' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">Complete</a>
+    <a href="?page=1&status=cancelled&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&min_potency={{ min_potency }}&max_potency={{ max_potency }}{{ htq }}" class="btn {% if status_filter == 'cancelled' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">Cancelled</a>
   </div>
 </div>
 
 <div class="table-wrap">
-  <table>
+  <table id="purchases-table">
     <thead>
       <tr>
+        {% if current_user.can_edit_purchases %}<th class="text-center" style="width:36px;"></th>{% endif %}
         <th>Date</th>
         <th>Batch</th>
         <th>Supplier</th>
-        <th>Status</th>
-        <th class="text-right">Stated Lbs</th>
-        <th class="text-right">Actual Lbs</th>
-        <th class="text-right">Potency %</th>
-        <th class="text-right">$/lb</th>
-        <th class="text-right">Total Cost</th>
-        <th class="text-right">True-Up</th>
-        <th>Lots</th>
+        <th>Operational State</th>
+        <th>Material</th>
+        <th>Tracking</th>
+        <th>Exceptions / Next Step</th>
         <th></th>
       </tr>
     </thead>
     <tbody>
       {% for p in purchases %}
       <tr>
+        {% if current_user.can_edit_purchases %}
+        <td class="text-center"><input type="checkbox" class="batch-select-cb" data-batch-entity="purchases" value="{{ p.id }}" aria-label="Select purchase"></td>
+        {% endif %}
         <td>{{ p.purchase_date.strftime('%m/%d/%y') if p.purchase_date else '—' }}</td>
-        <td class="text-mono">{{ p.batch_id if p.batch_id else '—' }}</td>
+        <td class="text-mono">
+          <div><strong>{{ p.batch_id if p.batch_id else '—' }}</strong></div>
+          <div class="text-sm cell-muted">
+            {{ p.status.replace('_', ' ') }}
+            {% if p.created_by_user_id %} &middot; {{ p._intake_origin_label }}{% endif %}
+          </div>
+          {% if p._created_by_name %}
+          <div class="text-sm cell-muted">Created by {{ p._created_by_name }}</div>
+          {% endif %}
+        </td>
         <td><strong>{{ p.supplier_name }}</strong></td>
-        <td><span class="badge status-{{ p.status }}">{{ p.status.replace('_', ' ') }}</span></td>
-        <td class="text-right text-mono">{{ "{:,.0f}".format(p.stated_weight_lbs) if p.stated_weight_lbs else '—' }}</td>
-        <td class="text-right text-mono">{{ "{:,.0f}".format(p.actual_weight_lbs) if p.actual_weight_lbs else '—' }}</td>
-        <td class="text-right text-mono">
-          {{ "{:.1f}".format(p.stated_potency_pct) if p.stated_potency_pct else '—' }}
-          {% if p.tested_potency_pct %} → {{ "{:.1f}".format(p.tested_potency_pct) }}{% endif %}
-        </td>
-        <td class="text-right text-mono">{{ "${:,.2f}".format(p.price_per_lb) if p.price_per_lb else '—' }}</td>
-        <td class="text-right text-mono">{{ "${:,.2f}".format(p.total_cost) if p.total_cost else '—' }}</td>
-        <td class="text-right text-mono {% if p.true_up_amount and p.true_up_amount > 0 %}cell-red{% elif p.true_up_amount and p.true_up_amount < 0 %}cell-green{% endif %}">
-          {% if p.true_up_amount %}{{ "${:,.2f}".format(p.true_up_amount) }}{% else %}—{% endif %}
-        </td>
-        <td>{{ p.lots.count() }} lots</td>
         <td>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+            <span class="badge status-{{ p.status }}">{{ p.status.replace('_', ' ') }}</span>
+            <span class="badge {% if p._allocation_state_key == 'fully_allocated' %}badge-gray{% elif p._allocation_state_key == 'partially_allocated' %}badge-gold{% elif p._allocation_state_key == 'no_lots' %}badge-red{% else %}badge-green{% endif %}">
+              {{ p._allocation_state_label }}
+            </span>
+            {% if not p.is_approved %}<span class="badge" style="background:#d4a843;color:#fff;" title="Not yet approved — material cannot be used in runs">Unapproved</span>{% endif %}
+          </div>
+        </td>
+        <td class="text-sm">
+          <div><strong>{{ "{:,.0f}".format(p._total_remaining) }}</strong> lbs remaining</div>
+          <div class="cell-muted">{{ "{:,.0f}".format(p._total_allocated) }} lbs allocated</div>
+          <div class="cell-muted">
+            {{ p._lot_count }} lot{% if p._lot_count != 1 %}s{% endif %}
+            {% if p.stated_potency_pct %} · {{ "{:.1f}".format(p.stated_potency_pct) }}%{% endif %}
+          </div>
+          <div class="cell-muted">
+            {{ "${:,.2f}".format(p.price_per_lb) if p.price_per_lb else 'No $/lb' }}
+            {% if p.total_cost %} · {{ "${:,.0f}".format(p.total_cost) }} total{% endif %}
+          </div>
+        </td>
+        <td class="text-sm">
+          {% if p._lot_count %}
+          <div><strong>{{ p._tracking_ready_count }}/{{ p._lot_count }}</strong> lots ready</div>
+          <div class="cell-muted">
+            {% if p.actual_weight_lbs %}{{ "{:,.0f}".format(p.actual_weight_lbs) }}{% else %}{{ "{:,.0f}".format(p.stated_weight_lbs) if p.stated_weight_lbs else '—' }}{% endif %} lbs received
+          </div>
+          {% else %}
+          <span class="cell-muted">No lot labels yet</span>
+          {% endif %}
+        </td>
+        <td class="text-sm">
+          {% if p._exceptions %}
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;">
+            {% for item in p._exceptions %}
+            <span class="badge badge-red">{{ item }}</span>
+            {% endfor %}
+          </div>
+          {% else %}
+          <span class="badge badge-green">No open exceptions</span>
+          {% endif %}
+          <div class="cell-muted" style="margin-top:6px;">Next: {{ p._next_action }}</div>
+          {% if p._delivery_recorded_by_name %}
+          <div class="cell-muted" style="margin-top:4px;">Delivered by {{ p._delivery_recorded_by_name }}</div>
+          {% endif %}
+          {% if p.true_up_amount %}
+          <div class="{% if p.true_up_amount > 0 %}cell-red{% elif p.true_up_amount < 0 %}cell-green{% else %}cell-muted{% endif %}" style="margin-top:4px;">
+            True-up {{ "${:,.2f}".format(p.true_up_amount) }}
+          </div>
+          {% endif %}
+        </td>
+        <td style="white-space:nowrap;">
+          <a href="{{ url_for('purchases_bp.purchase_journey', purchase_id=p.id) }}" class="btn btn-secondary btn-sm">Journey</a>
+          {% if p._lot_count %}
+          <a href="{{ url_for('purchase_labels', purchase_id=p.id) }}" class="btn btn-secondary btn-sm">Labels</a>
+          {% endif %}
+          {% if not p.is_approved and current_user.can_approve_purchase %}
+          <form method="POST" action="{{ url_for('purchase_approve', purchase_id=p.id) }}" style="display:inline;" onsubmit="return confirm('Approve this purchase? This allows its material to be used in extraction runs.');">
+            <input type="hidden" name="return_to" value="{{ request.full_path }}">
+            <button type="submit" class="btn btn-success btn-sm">Approve</button>
+          </form>
+          {% endif %}
           {% if current_user.can_edit_purchases %}
           <a href="{{ url_for('purchase_edit', purchase_id=p.id) }}" class="btn btn-secondary btn-sm">Edit</a>
           {% endif %}
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="12" class="text-center cell-muted" style="padding:40px;">No purchases recorded yet.</td></tr>
+      <tr><td colspan="{% if current_user.can_edit_purchases %}9{% else %}8{% endif %}" class="text-center cell-muted" style="padding:40px;">No purchases recorded yet.</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -107,12 +207,12 @@
 
 {% if pagination.pages > 1 %}
 <div class="pagination">
-  {% if pagination.has_prev %}<a href="?page={{ pagination.prev_num }}&status={{ status_filter }}&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&min_potency={{ min_potency }}&max_potency={{ max_potency }}">← Prev</a>{% endif %}
+  {% if pagination.has_prev %}<a href="?page={{ pagination.prev_num }}&status={{ status_filter }}&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&min_potency={{ min_potency }}&max_potency={{ max_potency }}{{ htq }}">← Prev</a>{% endif %}
   {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
-    {% if p %}<a href="?page={{ p }}&status={{ status_filter }}&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&min_potency={{ min_potency }}&max_potency={{ max_potency }}" class="{% if p == pagination.page %}active{% endif %}">{{ p }}</a>
+    {% if p %}<a href="?page={{ p }}&status={{ status_filter }}&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&min_potency={{ min_potency }}&max_potency={{ max_potency }}{{ htq }}" class="{% if p == pagination.page %}active{% endif %}">{{ p }}</a>
     {% else %}<span>…</span>{% endif %}
   {% endfor %}
-  {% if pagination.has_next %}<a href="?page={{ pagination.next_num }}&status={{ status_filter }}&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&min_potency={{ min_potency }}&max_potency={{ max_potency }}">Next →</a>{% endif %}
+  {% if pagination.has_next %}<a href="?page={{ pagination.next_num }}&status={{ status_filter }}&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&min_potency={{ min_potency }}&max_potency={{ max_potency }}{{ htq }}">Next →</a>{% endif %}
 </div>
 {% endif %}
 {% endblock %}

@@ -8,6 +8,9 @@
 
 <div class="card">
   <form method="POST" enctype="multipart/form-data">
+    {% if scale_meta and scale_meta.capture_id %}
+    <input type="hidden" name="scale_capture_id" value="{{ scale_meta.capture_id }}">
+    {% endif %}
     {% if slack_meta and slack_meta.ingested_message_id %}
     <input type="hidden" name="slack_ingested_message_id" value="{{ slack_meta.ingested_message_id }}">
     <input type="hidden" name="slack_channel_id" value="{{ slack_meta.channel_id or '' }}">
@@ -31,11 +34,80 @@
       {% endif %}
     </div>
     {% endif %}
+    {% if scan_meta and scan_meta.tracking_id %}
+    <div class="flash flash-success" style="margin-bottom:16px;">
+      <strong>Scanner prefill:</strong> lot <strong>{{ scan_meta.tracking_id }}</strong> was selected from a scan.
+      {% if scan_meta.run_start_mode == 'full_remaining' %}
+      <span class="text-sm" style="display:block;margin-top:6px;color:var(--text-muted);">
+        Full remaining lot selected. Reactor weight and source allocation were prefilled.
+      </span>
+      {% elif scan_meta.run_start_mode == 'partial' and scan_meta.planned_weight_lbs %}
+      <span class="text-sm" style="display:block;margin-top:6px;color:var(--text-muted);">
+        Partial run selected for {{ "{:,.1f}".format(scan_meta.planned_weight_lbs or 0) }} lbs. Reactor weight and source allocation were prefilled.
+      </span>
+      {% elif scan_meta.run_start_mode == 'scale_capture' %}
+      <span class="text-sm" style="display:block;margin-top:6px;color:var(--text-muted);">
+        Scale-first flow selected{% if scan_meta.scale_device_id %}; capture from the selected scale before saving this run.{% else %}; capture from a scale before saving this run.{% endif %}
+      </span>
+      {% endif %}
+      <span class="text-sm" style="display:block;margin-top:6px;">
+        {{ scan_meta.strain_name or 'Unknown strain' }}{% if scan_meta.supplier_name %} / {{ scan_meta.supplier_name }}{% endif %}
+        {% if scan_meta.batch_id %} · batch {{ scan_meta.batch_id }}{% endif %}
+        · {{ "{:,.1f}".format(scan_meta.remaining_weight_lbs or 0) }} lbs remaining
+      </span>
+      <span class="text-sm" style="display:block;margin-top:6px;color:var(--text-muted);">
+        Enter the reactor weight and save the run when the extraction is ready to be logged.
+      </span>
+    </div>
+    {% endif %}
+    {% if scale_meta and scale_meta.capture_id %}
+    <div class="flash flash-success" style="margin-bottom:16px;">
+      <strong>Scale prefill:</strong> {{ "{:,.2f}".format(scale_meta.measured_weight or 0) }} {{ scale_meta.unit or 'lb' }}
+      from <strong>{{ scale_meta.device_name or 'scale device' }}</strong>.
+      <span class="text-sm" style="display:block;margin-top:6px;">
+        This capture has been applied to <strong>Lbs in Reactor</strong>{% if scale_meta.is_stable is not none %} · {{ 'stable' if scale_meta.is_stable else 'unstable' }}{% endif %}.
+      </span>
+      {% if scale_meta.raw_payload %}
+      <span class="text-sm" style="display:block;margin-top:6px;color:var(--text-muted);">
+        Raw payload: <code>{{ scale_meta.raw_payload }}</code>
+      </span>
+      {% endif %}
+    </div>
+    {% endif %}
     {% if slack_meta and slack_meta.ingested_message_id and not can_save_run %}
     <div class="flash flash-error" style="margin-bottom:16px;">
       Your account can review this prefilled run but only <strong>User</strong> or <strong>Super Admin</strong> can save runs. Ask an admin to upgrade your role or copy values into a run under an editor account.
     </div>
     {% endif %}
+    <div class="form-section">
+      <h4>Live Scale Capture</h4>
+      <div class="card" style="margin-bottom:12px;background:rgba(255,255,255,0.02);">
+        <p class="text-sm cell-muted" style="margin-bottom:10px;">
+          Paste a live device payload to prefill <strong>Lbs in Reactor</strong> and attach the capture to this run when saved.
+        </p>
+        <div class="form-row-3">
+          <div class="form-group">
+            <label>Scale device</label>
+            <select name="scale_device_id">
+              <option value="">Select device...</option>
+              {% for device in scale_devices %}
+              <option value="{{ device.id }}" {% if scale_meta and scale_meta.device_id == device.id %}selected{% endif %}>{{ device.name }}{% if device.location %} · {{ device.location }}{% endif %}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group" style="grid-column: span 2;">
+            <label>Raw payload</label>
+            <input type="text" name="scale_raw_payload" placeholder="e.g. ST,GS, 124.6 lb">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <input type="text" name="scale_notes" placeholder="Optional operator note">
+        </div>
+        <button type="submit" class="btn btn-secondary btn-sm" formaction="{{ url_for('run_scale_capture') }}" formmethod="POST">Capture from Scale</button>
+      </div>
+    </div>
+
     <div class="form-section">
       <h4>Run Details</h4>
       <div class="form-row-3">
@@ -68,6 +140,32 @@
 
     <div class="form-section">
       <h4>Source Material</h4>
+      {% if slack_meta and slack_meta.lot_candidates %}
+      <div class="card" style="margin-bottom:12px;background:rgba(255,255,255,0.02);">
+        <h4 style="margin:0 0 8px 0;font-size:0.95rem;">Suggested source lots from Slack</h4>
+        <p class="text-sm cell-muted" style="margin-bottom:8px;">
+          Ranked using supplier, strain, remaining lbs, and received date. Review before saving.
+          {% if slack_meta.suggested_allocations %}The top match has been prefilled below.{% endif %}
+        </p>
+        <div style="display:grid;gap:8px;">
+          {% for candidate in slack_meta.lot_candidates %}
+          <div style="border:1px solid var(--border);border-radius:8px;padding:8px 10px;">
+            <div class="text-sm">
+              <strong>{{ candidate.tracking_id or candidate.lot_id[:8] }}</strong>
+              {% if candidate.batch_id %}<span class="cell-muted"> · {{ candidate.batch_id }}</span>{% endif %}
+            </div>
+            <div class="text-sm cell-muted" style="margin-top:4px;">
+              {{ candidate.supplier_name }} · {{ candidate.strain_name }} · {{ "{:,.1f}".format(candidate.remaining_weight_lbs or 0) }} lbs remaining
+              {% if candidate.received_date %} · received {{ candidate.received_date }}{% endif %}
+            </div>
+            <div class="text-sm cell-muted" style="margin-top:4px;">
+              {{ candidate.match_reason }}{% if candidate.score is not none %} · score {{ candidate.score }}{% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
       <div class="form-group">
         <label>Biomass load source (A / B / combined)</label>
         <input type="text" name="load_source_reactors" value="{{ run.load_source_reactors if run and run.load_source_reactors else '' }}" placeholder="e.g. A, B, A+B" maxlength="120">
@@ -76,35 +174,48 @@
         </span>
       </div>
       <div id="lot-container" class="lot-inputs">
-        {% if run and run.inputs.count() > 0 %}
-          {% for inp in run.inputs %}
+        {% if lot_rows %}
+          {% for inp in lot_rows %}
           <div class="lot-row">
-            <select name="lot_ids[]">
+            <select name="lot_ids[]" data-lot-select="1">
               <option value="">Select lot...</option>
               {% for lot in lots %}
-              <option value="{{ lot.id }}" {% if lot.id == inp.lot_id %}selected{% endif %}>
+              <option value="{{ lot.id }}" data-tracking-id="{{ lot.tracking_id or '' }}" data-strain="{{ lot.strain_name }}" data-supplier="{{ lot.supplier_name }}" data-remaining="{{ lot.remaining_weight_lbs }}" data-allocated="{{ lot.allocated_weight_lbs }}" {% if lot.id == inp.lot_id %}selected{% endif %}>
                 {{ lot.display_label }}
               </option>
               {% endfor %}
             </select>
-            <input type="number" name="lot_weights[]" value="{{ inp.weight_lbs }}" placeholder="Lbs" step="0.1">
+            <input type="number" name="lot_weights[]" value="{{ inp.weight_lbs }}" placeholder="Lbs" step="0.1" data-lot-weight="1">
+            <div class="text-sm cell-muted" data-lot-status="1" style="min-width:260px;"></div>
             <button type="button" class="remove-lot" onclick="this.parentElement.remove()">✕</button>
           </div>
           {% endfor %}
         {% else %}
         <div class="lot-row">
-          <select name="lot_ids[]">
+          <select name="lot_ids[]" data-lot-select="1">
             <option value="">Select lot...</option>
             {% for lot in lots %}
-            <option value="{{ lot.id }}">{{ lot.display_label }}</option>
+            <option value="{{ lot.id }}" data-tracking-id="{{ lot.tracking_id or '' }}" data-strain="{{ lot.strain_name }}" data-supplier="{{ lot.supplier_name }}" data-remaining="{{ lot.remaining_weight_lbs }}" data-allocated="{{ lot.allocated_weight_lbs }}">{{ lot.display_label }}</option>
             {% endfor %}
           </select>
-          <input type="number" name="lot_weights[]" placeholder="Lbs" step="0.1">
+          <input type="number" name="lot_weights[]" placeholder="Lbs" step="0.1" data-lot-weight="1">
+          <div class="text-sm cell-muted" data-lot-status="1" style="min-width:260px;"></div>
           <button type="button" class="remove-lot" onclick="this.parentElement.remove()">✕</button>
         </div>
         {% endif %}
       </div>
       <button type="button" class="btn btn-secondary btn-sm mt-2" onclick="addLotRow()">+ Add Source Lot</button>
+      <div class="card" style="margin-top:12px;background:rgba(255,255,255,0.02);">
+        <h4 style="margin:0 0 8px 0;font-size:0.95rem;">Allocation status</h4>
+        <div class="text-sm" style="display:flex;gap:14px;flex-wrap:wrap;">
+          <span><strong>Allocated:</strong> <span id="allocation-total">0.0</span> lbs</span>
+          <span><strong>Target:</strong> <span id="allocation-target">{% if run and run.bio_in_reactor_lbs is not none %}{{ run.bio_in_reactor_lbs }}{% else %}0.0{% endif %}</span> lbs</span>
+          <span><strong>Delta:</strong> <span id="allocation-delta">0.0</span> lbs</span>
+        </div>
+        <div id="allocation-warning" class="text-sm" style="margin-top:8px;color:var(--text-muted);">
+          Add one or more source lots so allocated biomass matches the run weight.
+        </div>
+      </div>
     </div>
 
     <div class="form-section">
@@ -112,7 +223,7 @@
       <div class="form-row-3">
         <div class="form-group">
           <label>Lbs in Reactor *</label>
-          <input type="number" name="bio_in_reactor_lbs" value="{{ run.bio_in_reactor_lbs if run and run.bio_in_reactor_lbs else '' }}" step="0.1" required>
+          <input type="number" name="bio_in_reactor_lbs" value="{{ run.bio_in_reactor_lbs if run and run.bio_in_reactor_lbs else '' }}" step="0.1" required data-reactor-weight="1">
         </div>
         <div class="form-group">
           <label>Bio in House (auto from inventory)</label>
@@ -264,11 +375,108 @@ function addLotRow() {
   const row = document.createElement('div');
   row.className = 'lot-row';
   row.innerHTML = `
-    <select name="lot_ids[]">${firstSelect ? firstSelect.innerHTML : '<option value="">No lots available</option>'}</select>
-    <input type="number" name="lot_weights[]" placeholder="Lbs" step="0.1">
+    <select name="lot_ids[]" data-lot-select="1">${firstSelect ? firstSelect.innerHTML : '<option value="">No lots available</option>'}</select>
+    <input type="number" name="lot_weights[]" placeholder="Lbs" step="0.1" data-lot-weight="1">
+    <div class="text-sm cell-muted" data-lot-status="1" style="min-width:260px;"></div>
     <button type="button" class="remove-lot" onclick="this.parentElement.remove()">✕</button>
   `;
   container.appendChild(row);
+  wireAllocationRow(row);
+  updateAllocationStatus();
 }
+
+function wireAllocationRow(row) {
+  if (!row) return;
+  const select = row.querySelector('[data-lot-select]');
+  const weight = row.querySelector('[data-lot-weight]');
+  const button = row.querySelector('.remove-lot');
+  if (select) select.addEventListener('change', updateAllocationStatus);
+  if (weight) weight.addEventListener('input', updateAllocationStatus);
+  if (button) {
+    button.addEventListener('click', function() {
+      queueMicrotask(updateAllocationStatus);
+    });
+  }
+}
+
+function updateAllocationStatus() {
+  const targetInput = document.querySelector('[data-reactor-weight]');
+  const target = parseFloat((targetInput && targetInput.value) || '0') || 0;
+  const rows = Array.from(document.querySelectorAll('#lot-container .lot-row'));
+  let total = 0;
+
+  for (const row of rows) {
+    const select = row.querySelector('[data-lot-select]');
+    const weightInput = row.querySelector('[data-lot-weight]');
+    const status = row.querySelector('[data-lot-status]');
+    const option = select && select.options[select.selectedIndex];
+    const weight = parseFloat((weightInput && weightInput.value) || '0') || 0;
+    total += weight;
+
+    if (!status) continue;
+    if (!option || !option.value) {
+      status.textContent = '';
+      continue;
+    }
+
+    const trackingId = option.getAttribute('data-tracking-id') || option.value.slice(0, 8);
+    const remaining = parseFloat(option.getAttribute('data-remaining') || '0') || 0;
+    const projected = remaining - weight;
+    const supplier = option.getAttribute('data-supplier') || '';
+    const strain = option.getAttribute('data-strain') || '';
+    let message = `${trackingId}`;
+    if (strain || supplier) {
+      message += ` · ${strain}${strain && supplier ? ' / ' : ''}${supplier}`;
+    }
+    message += ` · ${remaining.toFixed(1)} lbs available`;
+    if (weight > 0) {
+      message += ` · after allocation: ${projected.toFixed(1)} lbs`;
+    }
+    if (projected < -0.09) {
+      status.style.color = 'var(--danger)';
+      message += ' · over allocated';
+    } else if (weight > 0) {
+      status.style.color = 'var(--text-muted)';
+    } else {
+      status.style.color = 'var(--text-muted)';
+    }
+    status.textContent = message;
+  }
+
+  const delta = total - target;
+  const totalNode = document.getElementById('allocation-total');
+  const targetNode = document.getElementById('allocation-target');
+  const deltaNode = document.getElementById('allocation-delta');
+  const warningNode = document.getElementById('allocation-warning');
+  if (totalNode) totalNode.textContent = total.toFixed(1);
+  if (targetNode) targetNode.textContent = target.toFixed(1);
+  if (deltaNode) deltaNode.textContent = delta.toFixed(1);
+  if (!warningNode) return;
+
+  if (!target) {
+    warningNode.style.color = 'var(--text-muted)';
+    warningNode.textContent = 'Enter Lbs in Reactor to compare selected lot allocations.';
+    return;
+  }
+  if (Math.abs(delta) <= 0.09) {
+    warningNode.style.color = 'var(--green)';
+    warningNode.textContent = 'Allocated source lots match the run weight.';
+    return;
+  }
+  if (delta < 0) {
+    warningNode.style.color = 'var(--yellow)';
+    warningNode.textContent = `You are under allocated by ${Math.abs(delta).toFixed(1)} lbs. Add more lot weight before saving.`;
+    return;
+  }
+  warningNode.style.color = 'var(--danger)';
+  warningNode.textContent = `You are over allocated by ${delta.toFixed(1)} lbs. Reduce lot weight before saving.`;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('#lot-container .lot-row').forEach(wireAllocationRow);
+  const targetInput = document.querySelector('[data-reactor-weight]');
+  if (targetInput) targetInput.addEventListener('input', updateAllocationStatus);
+  updateAllocationStatus();
+});
 </script>
 {% endblock %}

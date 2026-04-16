@@ -1,15 +1,33 @@
 """Database models for Gold Drop Biomass Tracking System."""
+import json
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
+from sqlalchemy import event
 from werkzeug.security import generate_password_hash, check_password_hash
 
 db = SQLAlchemy()
 
 
+def utc_now():
+    return datetime.now(timezone.utc)
+
+
+def coerce_utc(value):
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def gen_uuid():
     return str(uuid.uuid4())
+
+
+def gen_tracking_id(prefix: str = "LOT") -> str:
+    return f"{prefix}-{uuid.uuid4().hex[:8].upper()}"
 
 
 class User(UserMixin, db.Model):
@@ -22,7 +40,7 @@ class User(UserMixin, db.Model):
     is_active_user = db.Column(db.Boolean, default=True)
     is_slack_importer = db.Column(db.Boolean, default=False)
     is_purchase_approver = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now)
 
     def set_password(self, password):
         # pbkdf2 works on all Python builds; Werkzeug's default (scrypt) needs hashlib.scrypt (OpenSSL).
@@ -70,6 +88,135 @@ class User(UserMixin, db.Model):
         return self.is_super_admin or bool(getattr(self, "is_purchase_approver", False))
 
 
+class ApiClient(db.Model):
+    __tablename__ = "api_clients"
+
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    name = db.Column(db.String(120), nullable=False)
+    token_hash = db.Column(db.String(128), nullable=False, unique=True, index=True)
+    scopes_json = db.Column(db.Text, nullable=False, default="[]")
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    last_used_at = db.Column(db.DateTime)
+    last_used_scope = db.Column(db.String(64))
+    last_used_endpoint = db.Column(db.String(255))
+
+    @property
+    def scopes(self):
+        try:
+            value = json.loads(self.scopes_json or "[]")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return []
+        return value if isinstance(value, list) else []
+
+    def set_scopes(self, scopes):
+        normalized = sorted({str(scope).strip() for scope in (scopes or []) if str(scope).strip()})
+        self.scopes_json = json.dumps(normalized)
+
+
+class ApiClientRequestLog(db.Model):
+    __tablename__ = "api_client_request_logs"
+
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    api_client_id = db.Column(db.String(36), db.ForeignKey("api_clients.id"), nullable=False, index=True)
+    request_path = db.Column(db.String(255), nullable=False)
+    request_method = db.Column(db.String(16), nullable=False, default="GET")
+    scope_used = db.Column(db.String(64), nullable=False)
+    status_code = db.Column(db.Integer)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+
+    api_client = db.relationship("ApiClient", backref=db.backref("request_logs", lazy="dynamic", cascade="all, delete-orphan"))
+
+
+class RemoteSite(db.Model):
+    __tablename__ = "remote_sites"
+
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    name = db.Column(db.String(120), nullable=False)
+    base_url = db.Column(db.String(255), nullable=False, unique=True)
+    api_token = db.Column(db.Text)
+    site_code = db.Column(db.String(24))
+    site_name = db.Column(db.String(120))
+    site_region = db.Column(db.String(80))
+    site_environment = db.Column(db.String(32))
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    notes = db.Column(db.Text)
+    last_pull_started_at = db.Column(db.DateTime)
+    last_pull_finished_at = db.Column(db.DateTime)
+    last_pull_status = db.Column(db.String(32))
+    last_pull_error = db.Column(db.Text)
+    last_site_payload_json = db.Column(db.Text)
+    last_manifest_payload_json = db.Column(db.Text)
+    last_dashboard_payload_json = db.Column(db.Text)
+    last_inventory_payload_json = db.Column(db.Text)
+    last_exceptions_payload_json = db.Column(db.Text)
+    last_slack_payload_json = db.Column(db.Text)
+    last_suppliers_payload_json = db.Column(db.Text)
+    last_strains_payload_json = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+    pulls = db.relationship(
+        "RemoteSitePull",
+        backref="remote_site",
+        lazy="dynamic",
+        cascade="all, delete-orphan",
+    )
+
+    def payload(self, attr_name: str):
+        raw_value = getattr(self, attr_name, None)
+        if not raw_value:
+            return None
+        try:
+            return json.loads(raw_value)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return None
+
+    def set_payload(self, attr_name: str, value):
+        setattr(self, attr_name, json.dumps(value or {}))
+
+    @property
+    def masked_token(self) -> str:
+        token = (self.api_token or "").strip()
+        if not token:
+            return ""
+        if len(token) <= 8:
+            return "*" * len(token)
+        return f"{token[:4]}...{token[-4:]}"
+
+
+class RemoteSitePull(db.Model):
+    __tablename__ = "remote_site_pulls"
+
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    remote_site_id = db.Column(db.String(36), db.ForeignKey("remote_sites.id"), nullable=False, index=True)
+    started_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    finished_at = db.Column(db.DateTime)
+    status = db.Column(db.String(32), nullable=False, default="started")
+    error_message = db.Column(db.Text)
+    site_payload_json = db.Column(db.Text)
+    manifest_payload_json = db.Column(db.Text)
+    dashboard_payload_json = db.Column(db.Text)
+    inventory_payload_json = db.Column(db.Text)
+    exceptions_payload_json = db.Column(db.Text)
+    slack_payload_json = db.Column(db.Text)
+    suppliers_payload_json = db.Column(db.Text)
+    strains_payload_json = db.Column(db.Text)
+
+    def payload(self, attr_name: str):
+        raw_value = getattr(self, attr_name, None)
+        if not raw_value:
+            return None
+        try:
+            return json.loads(raw_value)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return None
+
+    def set_payload(self, attr_name: str, value):
+        setattr(self, attr_name, json.dumps(value or {}))
+
+
 class Supplier(db.Model):
     __tablename__ = "suppliers"
     id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
@@ -80,7 +227,11 @@ class Supplier(db.Model):
     location = db.Column(db.String(200))
     notes = db.Column(db.Text)
     is_active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now)
+    merged_into_supplier_id = db.Column(db.String(36), db.ForeignKey("suppliers.id"))
+    merged_at = db.Column(db.DateTime)
+    merged_by_user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
+    merge_notes = db.Column(db.Text)
 
     purchases = db.relationship("Purchase", backref="supplier", lazy="dynamic")
     biomass_availabilities = db.relationship(
@@ -89,6 +240,13 @@ class Supplier(db.Model):
         lazy="dynamic",
         cascade="all, delete-orphan",
     )
+    merged_into_supplier = db.relationship(
+        "Supplier",
+        remote_side=[id],
+        foreign_keys=[merged_into_supplier_id],
+        post_update=True,
+    )
+    merged_by_user = db.relationship("User", foreign_keys=[merged_by_user_id])
 
     def avg_yield(self, days=None):
         """Calculate average overall yield for this supplier."""
@@ -105,7 +263,7 @@ class Supplier(db.Model):
             Run.overall_yield_pct.isnot(None)
         )
         if days:
-            cutoff = datetime.utcnow().date() - __import__('datetime').timedelta(days=days)
+            cutoff = utc_now().date() - __import__("datetime").timedelta(days=days)
             query = query.filter(Run.run_date >= cutoff)
         result = query.scalar()
         return result if result else 0
@@ -116,6 +274,8 @@ class Purchase(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
     batch_id = db.Column(db.String(80), unique=True, index=True)
     supplier_id = db.Column(db.String(36), db.ForeignKey("suppliers.id"), nullable=False)
+    created_by_user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
+    delivery_recorded_by_user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
     purchase_date = db.Column(db.Date, nullable=False)
     delivery_date = db.Column(db.Date)
     status = db.Column(db.String(20), nullable=False, default="ordered")
@@ -135,16 +295,42 @@ class Purchase(db.Model):
     clean_or_dirty = db.Column(db.String(10))
     indoor_outdoor = db.Column(db.String(20))
     notes = db.Column(db.Text)
+    testing_notes = db.Column(db.Text)
+    delivery_notes = db.Column(db.Text)
     deleted_at = db.Column(db.DateTime)
     deleted_by = db.Column(db.String(36), db.ForeignKey("users.id"))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
+
+    # Purchase approval gate: material must not be consumed until approved
+    purchase_approved_at = db.Column(db.DateTime)
+    purchase_approved_by_user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
+    purchase_approved_by = db.relationship("User", foreign_keys=[purchase_approved_by_user_id])
+    created_by_user = db.relationship("User", foreign_keys=[created_by_user_id])
+    delivery_recorded_by = db.relationship("User", foreign_keys=[delivery_recorded_by_user_id])
+
+    # Biomass pipeline fields (merged from BiomassAvailability)
+    availability_date = db.Column(db.Date)  # when biomass first became available from supplier
+    declared_weight_lbs = db.Column(db.Float)  # initial supplier declaration of weight
+    declared_price_per_lb = db.Column(db.Float)  # initial price quote
+    testing_timing = db.Column(db.String(20))  # before_delivery, after_delivery
+    testing_status = db.Column(db.String(20))  # pending, completed, not_needed
+    testing_date = db.Column(db.Date)
+    field_photo_paths_json = db.Column(db.Text)  # JSON array of field intake photos
 
     lots = db.relationship("PurchaseLot", backref="purchase", lazy="dynamic", cascade="all, delete-orphan")
 
     @property
+    def is_approved(self):
+        return self.purchase_approved_at is not None
+
+    @property
     def supplier_name(self):
         return self.supplier.name if self.supplier else "Unknown"
+
+    @property
+    def is_merged(self):
+        return self.merged_into_supplier_id is not None
 
 
 class BiomassAvailability(db.Model):
@@ -190,8 +376,8 @@ class BiomassAvailability(db.Model):
     field_photo_paths_json = db.Column(db.Text)
 
     notes = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
 
     purchase_approved_at = db.Column(db.DateTime)
     purchase_approved_by_user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
@@ -214,19 +400,37 @@ class PurchaseLot(db.Model):
     strain_name = db.Column(db.String(200), nullable=False)
     weight_lbs = db.Column(db.Float, nullable=False)
     remaining_weight_lbs = db.Column(db.Float, nullable=False)
+    tracking_id = db.Column(db.String(24))
+    barcode_value = db.Column(db.String(120))
+    qr_value = db.Column(db.String(255))
+    label_generated_at = db.Column(db.DateTime)
+    label_version = db.Column(db.Integer)
     potency_pct = db.Column(db.Float)
     micro_pot_test = db.Column(db.String(100))
     milled = db.Column(db.Boolean, default=False)
+    floor_state = db.Column(db.String(40), default="inventory")
     location = db.Column(db.String(200))
     notes = db.Column(db.Text)
     deleted_at = db.Column(db.DateTime)
     deleted_by = db.Column(db.String(36), db.ForeignKey("users.id"))
 
     run_inputs = db.relationship("RunInput", backref="lot", lazy="dynamic")
+    scan_events = db.relationship("LotScanEvent", backref="lot", lazy="dynamic", cascade="all, delete-orphan")
 
     @property
     def supplier_name(self):
         return self.purchase.supplier_name if self.purchase else "Unknown"
+
+    @property
+    def allocated_weight_lbs(self):
+        return max(0.0, float(self.weight_lbs or 0) - float(self.remaining_weight_lbs or 0))
+
+    @property
+    def remaining_pct(self):
+        total = float(self.weight_lbs or 0)
+        if total <= 0:
+            return 0.0
+        return max(0.0, min(100.0, (float(self.remaining_weight_lbs or 0) / total) * 100.0))
 
     @property
     def display_label(self):
@@ -268,7 +472,7 @@ class Run(db.Model):
     notes = db.Column(db.Text)
     deleted_at = db.Column(db.DateTime)
     deleted_by = db.Column(db.String(36), db.ForeignKey("users.id"))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now)
     created_by = db.Column(db.String(36), db.ForeignKey("users.id"))
     slack_channel_id = db.Column(db.String(32))
     slack_message_ts = db.Column(db.String(32))
@@ -399,6 +603,91 @@ class RunInput(db.Model):
     run_id = db.Column(db.String(36), db.ForeignKey("runs.id"), nullable=False)
     lot_id = db.Column(db.String(36), db.ForeignKey("purchase_lots.id"), nullable=False)
     weight_lbs = db.Column(db.Float, nullable=False)
+    allocation_source = db.Column(db.String(20), default="manual")
+    allocation_confidence = db.Column(db.Float)
+    allocation_notes = db.Column(db.Text)
+    slack_ingested_message_id = db.Column(db.String(36))
+
+
+class LotScanEvent(db.Model):
+    __tablename__ = "lot_scan_events"
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    lot_id = db.Column(db.String(36), db.ForeignKey("purchase_lots.id"), nullable=False, index=True)
+    tracking_id_snapshot = db.Column(db.String(24), nullable=False)
+    action = db.Column(db.String(40), nullable=False, default="scan_open")
+    context_json = db.Column(db.Text)
+    user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+
+    user = db.relationship("User")
+
+    @property
+    def context(self):
+        try:
+            value = json.loads(self.context_json or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return {}
+        return value if isinstance(value, dict) else {}
+
+    def set_context(self, context):
+        self.context_json = json.dumps(context or {})
+
+
+class ScaleDevice(db.Model):
+    __tablename__ = "scale_devices"
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    name = db.Column(db.String(120), nullable=False)
+    location = db.Column(db.String(120))
+    make_model = db.Column(db.String(200))
+    interface_type = db.Column(db.String(40))  # rs232, usb_serial, tcp, modbus_rtu, modbus_tcp
+    protocol_type = db.Column(db.String(40))  # vendor protocol / parser key
+    connection_target = db.Column(db.String(200))
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=utc_now)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
+
+
+class WeightCapture(db.Model):
+    __tablename__ = "weight_captures"
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    capture_type = db.Column(db.String(40), nullable=False, default="manual")  # intake, allocation, output, adjustment
+    source_mode = db.Column(db.String(20), nullable=False, default="manual")  # manual, device
+    measured_weight = db.Column(db.Float, nullable=False)
+    unit = db.Column(db.String(16), nullable=False, default="lb")
+    gross_weight = db.Column(db.Float)
+    tare_weight = db.Column(db.Float)
+    net_weight = db.Column(db.Float)
+    is_stable = db.Column(db.Boolean)
+    accepted_at = db.Column(db.DateTime)
+    rejected_at = db.Column(db.DateTime)
+    raw_payload = db.Column(db.Text)
+    notes = db.Column(db.Text)
+    device_id = db.Column(db.String(36), db.ForeignKey("scale_devices.id"))
+    purchase_id = db.Column(db.String(36), db.ForeignKey("purchases.id"))
+    purchase_lot_id = db.Column(db.String(36), db.ForeignKey("purchase_lots.id"))
+    run_id = db.Column(db.String(36), db.ForeignKey("runs.id"))
+    created_by = db.Column(db.String(36), db.ForeignKey("users.id"))
+    created_at = db.Column(db.DateTime, default=utc_now)
+
+    device = db.relationship("ScaleDevice")
+    purchase = db.relationship("Purchase")
+    purchase_lot = db.relationship("PurchaseLot")
+    run = db.relationship("Run")
+
+
+@event.listens_for(PurchaseLot, "before_insert")
+def _purchase_lot_before_insert(_mapper, _connection, target):
+    if not target.tracking_id:
+        target.tracking_id = gen_tracking_id("LOT")
+    if not target.barcode_value:
+        target.barcode_value = target.tracking_id
+    if not target.qr_value:
+        target.qr_value = f"/scan/lot/{target.tracking_id}"
+    if target.label_generated_at is None:
+        target.label_generated_at = utc_now()
+    if target.label_version is None:
+        target.label_version = 1
 
 
 class KpiTarget(db.Model):
@@ -439,11 +728,11 @@ class SystemSetting(db.Model):
     key = db.Column(db.String(100), primary_key=True)
     value = db.Column(db.String(500), nullable=False)
     description = db.Column(db.String(500))
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
 
     @staticmethod
     def get(key, default=None):
-        s = SystemSetting.query.get(key)
+        s = db.session.get(SystemSetting, key)
         return s.value if s else default
 
     @staticmethod
@@ -458,7 +747,7 @@ class SystemSetting(db.Model):
 class AuditLog(db.Model):
     __tablename__ = "audit_log"
     id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    timestamp = db.Column(db.DateTime, default=utc_now)
     user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
     action = db.Column(db.String(20), nullable=False)  # create, update, delete
     entity_type = db.Column(db.String(50), nullable=False)
@@ -481,7 +770,7 @@ class CostEntry(db.Model):
     start_date = db.Column(db.Date, nullable=False)
     end_date = db.Column(db.Date, nullable=False)
     notes = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now)
     created_by = db.Column(db.String(36), db.ForeignKey("users.id"))
 
 
@@ -495,7 +784,7 @@ class FieldAccessToken(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
     label = db.Column(db.String(200), nullable=False)
     token_hash = db.Column(db.String(64), unique=True, nullable=False, index=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now)
     created_by = db.Column(db.String(36), db.ForeignKey("users.id"))
     expires_at = db.Column(db.DateTime)
     revoked_at = db.Column(db.DateTime)
@@ -505,7 +794,8 @@ class FieldAccessToken(db.Model):
     def is_active(self):
         if self.revoked_at is not None:
             return False
-        if self.expires_at is not None and datetime.utcnow() > self.expires_at:
+        expires_at = coerce_utc(self.expires_at)
+        if expires_at is not None and utc_now() > expires_at:
             return False
         return True
 
@@ -518,7 +808,7 @@ class FieldPurchaseSubmission(db.Model):
     """
     __tablename__ = "field_purchase_submissions"
     id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
-    submitted_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    submitted_at = db.Column(db.DateTime, default=utc_now, nullable=False)
     source_token_id = db.Column(db.String(36), db.ForeignKey("field_access_tokens.id"))
     source_token = db.relationship("FieldAccessToken", foreign_keys=[source_token_id])
 
@@ -566,7 +856,7 @@ class LabTest(db.Model):
     potency_pct = db.Column(db.Float)
     notes = db.Column(db.Text)
     result_paths_json = db.Column(db.Text)  # JSON array of files under static/uploads/labs
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now)
     created_by = db.Column(db.String(36), db.ForeignKey("users.id"))
 
     supplier = db.relationship("Supplier", foreign_keys=[supplier_id])
@@ -580,7 +870,7 @@ class SupplierAttachment(db.Model):
     document_type = db.Column(db.String(50), nullable=False, default="coa")
     title = db.Column(db.String(200))
     file_path = db.Column(db.String(500), nullable=False)
-    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+    uploaded_at = db.Column(db.DateTime, default=utc_now)
     uploaded_by = db.Column(db.String(36), db.ForeignKey("users.id"))
 
     supplier = db.relationship("Supplier", foreign_keys=[supplier_id])
@@ -592,12 +882,13 @@ class PhotoAsset(db.Model):
     supplier_id = db.Column(db.String(36), db.ForeignKey("suppliers.id"))
     purchase_id = db.Column(db.String(36), db.ForeignKey("purchases.id"))
     submission_id = db.Column(db.String(36), db.ForeignKey("field_purchase_submissions.id"))
+    photo_context = db.Column(db.String(32))
     source_type = db.Column(db.String(50), nullable=False, default="manual")  # field_submission, supplier_attachment, lab_test, purchase_upload
     category = db.Column(db.String(50), nullable=False, default="other")  # supplier_license, biomass, coa, lab_result, supplier_doc
     title = db.Column(db.String(200))
     tags = db.Column(db.String(500))  # comma-separated searchable tags
     file_path = db.Column(db.String(500), nullable=False)
-    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+    uploaded_at = db.Column(db.DateTime, default=utc_now)
     uploaded_by = db.Column(db.String(36), db.ForeignKey("users.id"))
 
     supplier = db.relationship("Supplier", foreign_keys=[supplier_id])
@@ -618,7 +909,7 @@ class SlackIngestedMessage(db.Model):
     raw_text = db.Column(db.Text)
     message_kind = db.Column(db.String(40))  # yield_report, production_log, unknown
     derived_json = db.Column(db.Text)
-    ingested_at = db.Column(db.DateTime, default=datetime.utcnow)
+    ingested_at = db.Column(db.DateTime, default=utc_now)
     ingested_by = db.Column(db.String(36), db.ForeignKey("users.id"))
     # User dismissed from triage list (noise / will never promote); not the same as run-linked "imported".
     hidden_from_imports = db.Column(db.Boolean, default=False, nullable=False)

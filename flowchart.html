@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gold Drop Production Flow</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #f8f7f4;
+    color: #2c2c2c;
+    padding: 40px 20px;
+  }
+  .page {
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  h1 {
+    font-size: 28px;
+    font-weight: 700;
+    color: #1a1a1a;
+    margin-bottom: 4px;
+  }
+  .subtitle {
+    font-size: 14px;
+    color: #888;
+    margin-bottom: 36px;
+  }
+  .chart-container {
+    background: #fff;
+    border: 1px solid #e0ddd8;
+    border-radius: 12px;
+    padding: 40px 24px;
+    margin-bottom: 36px;
+    overflow-x: auto;
+  }
+  .chart-container h2 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 24px;
+    color: #1a1a1a;
+  }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    margin-bottom: 36px;
+    padding: 20px 24px;
+    background: #fff;
+    border: 1px solid #e0ddd8;
+    border-radius: 12px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #555;
+  }
+  .legend-swatch {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+  }
+  .notes {
+    background: #fff;
+    border: 1px solid #e0ddd8;
+    border-radius: 12px;
+    padding: 24px;
+  }
+  .notes h2 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 16px;
+  }
+  .notes ul {
+    list-style: none;
+    padding: 0;
+  }
+  .notes li {
+    padding: 8px 0;
+    border-bottom: 1px solid #f0ede8;
+    font-size: 14px;
+    line-height: 1.5;
+    color: #444;
+  }
+  .notes li:last-child { border-bottom: none; }
+  .notes li strong { color: #1a1a1a; }
+  .mermaid { text-align: center; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>Gold Drop -- Production Flow</h1>
+  <p class="subtitle">End-to-end material flow from supplier sourcing through finished product. Single Purchase entity tracks the full lifecycle.</p>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-swatch" style="background:#d4a843;"></div> Pipeline (Declared / Testing)</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#5b8a72;"></div> Purchasing & Receiving</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#4a7fb5;"></div> Inventory</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#8b5e9b;"></div> Extraction</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#c0703b;"></div> HTE Post-Processing</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#c9302c;border:2px solid #c9302c;"></div> Approval Gate</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:#777;"></div> Cost & Analytics</div>
+  </div>
+
+  <!-- Main production flow -->
+  <div class="chart-container">
+    <h2>Main Production Flow</h2>
+    <pre class="mermaid">
+flowchart TB
+    %% ── Single Purchase entity lifecycle ──
+    SUP["<b>Suppliers</b><br/>(Farms)"]
+    DEC["<b>Declared</b><br/>Purchase created<br/>with availability,<br/>weight, $/lb, potency"]
+    TEST["<b>In Testing</b><br/>Potency test<br/>(optional)"]
+    COMMIT["<b>Committed</b><br/>Approved for purchase<br/><i>(requires approver)</i>"]
+    DELIV["<b>Delivered</b><br/>Material arrives<br/>at facility"]
+    CANCEL(["Cancelled"])
+
+    SUP --> DEC
+    DEC --> TEST
+    DEC --> COMMIT
+    TEST --> COMMIT
+    COMMIT --> DELIV
+    DEC -.-> CANCEL
+    TEST -.-> CANCEL
+
+    %% ── Purchase entry points ──
+    FIELD["<b>Field Intake</b><br/>Mobile form<br/>+ photos"]
+    IMPORT["<b>Spreadsheet Import</b><br/>CSV / Excel"]
+    SLACK_IMP["<b>Slack Import</b><br/>Channel messages"]
+    BUDGET{"Budget<br/>check<br/>(weekly)"}
+
+    FIELD -- "creates declared<br/>Purchase" --> DEC
+    IMPORT -- "created as<br/>unapproved" --> DEC
+    SLACK_IMP -- "created as<br/>unapproved" --> DEC
+    DELIV --> BUDGET
+    BUDGET -- "within budget" --> BUDGETOK["Budget OK"]
+    BUDGET -- "over budget" --> BLOCKED(["Blocked"])
+
+    %% ── Approval Gate ──
+    APPROVE{"<b>PURCHASE<br/>APPROVAL</b><br/>Required before<br/>material can be<br/>used in runs"}
+
+    BUDGETOK --> APPROVE
+    COMMIT -- "auto-approved at<br/>commitment" --> APPROVE
+    APPROVE -- "approved by<br/>authorized user" --> APPROVED["<b>Purchase Approved</b>"]
+    APPROVE -- "not yet<br/>approved" --> WAITING(["Waiting<br/>(material locked)"])
+
+    %% ── Inventory ──
+    LOTS["<b>Purchase Lots</b><br/>Strain, weight,<br/>potency, location,<br/>milled status"]
+    INTRANSIT["<b>In-Transit Inventory</b><br/>Committed / Ordered /<br/>In Transit"]
+    ONHAND["<b>On-Hand Inventory</b><br/>Delivered / Available /<br/>Processing<br/><i>(approved only)</i>"]
+
+    APPROVED --> INTRANSIT
+    APPROVED --> LOTS
+    LOTS --> INTRANSIT
+    LOTS --> ONHAND
+    INTRANSIT -- "status change<br/>on arrival" --> ONHAND
+
+    %% ── Extraction ──
+    RUN["<b>Extraction Run</b><br/>Consume lots (lbs)<br/>Decrements remaining<br/>weight<br/><i>(approved lots only)</i>"]
+    THCA["<b>THCA Output</b><br/>Wet &amp; dry grams<br/>Yield % calculated"]
+    HTE["<b>HTE Output</b><br/>Wet &amp; dry grams<br/>Yield % calculated"]
+
+    ONHAND --> RUN
+    RUN --> THCA
+    RUN --> HTE
+
+    %% ── HTE Pipeline ──
+    AWAIT["<b>Awaiting Lab</b><br/>Sent for COA"]
+    CLEAN["<b>Lab Clean</b><br/>Passes testing"]
+    DIRTY["<b>Lab Dirty</b><br/>Queued for strip"]
+    STRIP["<b>Terp Stripped</b><br/>Terpenes recovered<br/>+ retail distillate"]
+
+    HTE --> AWAIT
+    AWAIT --> CLEAN
+    AWAIT --> DIRTY
+    DIRTY --> STRIP
+
+    %% ── Finished Products ──
+    FINTHCA(["<b>Finished THCA</b>"])
+    FINHTE(["<b>Finished HTE</b><br/>(clean)"])
+    TERPS(["<b>Terpenes</b><br/>Recovered"])
+    DIST(["<b>Retail Distillate</b>"])
+
+    THCA --> FINTHCA
+    CLEAN --> FINHTE
+    STRIP --> TERPS
+    STRIP --> DIST
+
+    %% ── Styling ──
+    classDef sourcing fill:#fdf3d8,stroke:#d4a843,color:#6b5218
+    classDef purchasing fill:#dceee4,stroke:#5b8a72,color:#2d5a3f
+    classDef inventory fill:#dbe8f4,stroke:#4a7fb5,color:#2a4f70
+    classDef extraction fill:#edddf3,stroke:#8b5e9b,color:#4a2d5a
+    classDef hte fill:#fce4d1,stroke:#c0703b,color:#6b3a18
+    classDef finished fill:#e8e8e8,stroke:#888,color:#333
+    classDef alert fill:#fdd,stroke:#c44,color:#711
+    classDef gate fill:#fff3cd,stroke:#c9302c,color:#8a1d1d,stroke-width:3px
+
+    class SUP,DEC,TEST sourcing
+    class CANCEL,BLOCKED,WAITING alert
+    class COMMIT,DELIV,FIELD,IMPORT,SLACK_IMP,BUDGET,BUDGETOK,APPROVED purchasing
+    class LOTS,INTRANSIT,ONHAND inventory
+    class RUN,THCA,HTE extraction
+    class AWAIT,CLEAN,DIRTY,STRIP hte
+    class FINTHCA,FINHTE,TERPS,DIST finished
+    class APPROVE gate
+    </pre>
+  </div>
+
+  <!-- Cost & analytics side flow -->
+  <div class="chart-container">
+    <h2>Cost Allocation & Analytics</h2>
+    <pre class="mermaid">
+flowchart LR
+    %% ── Cost inputs ──
+    BIO_COST["<b>Biomass Cost</b><br/>Input lbs x $/lb<br/>from Purchase"]
+    OP_COST["<b>Operational Costs</b><br/>Solvent, Personnel,<br/>Overhead<br/>(by date range)"]
+    ALLOC{"Allocation<br/>Method"}
+    UNIFORM["Uniform<br/>(same $/g)"]
+    SPLIT["50/50 Split"]
+    CUSTOM["Custom %<br/>THCA / HTE"]
+
+    RUN_COST["<b>Run Cost per Gram</b><br/>Biomass + Operational<br/>= combined $/g"]
+
+    BIO_COST --> RUN_COST
+    OP_COST --> ALLOC
+    ALLOC --> UNIFORM
+    ALLOC --> SPLIT
+    ALLOC --> CUSTOM
+    UNIFORM --> RUN_COST
+    SPLIT --> RUN_COST
+    CUSTOM --> RUN_COST
+
+    %% ── Analytics ──
+    DASH["<b>Dashboard KPIs</b><br/>Yield, $/g, Days<br/>of Supply, Budget"]
+    SUPP_PERF["<b>Supplier<br/>Performance</b><br/>90-day &amp; all-time"]
+    STRAIN_PERF["<b>Strain<br/>Performance</b><br/>Yield by strain"]
+    DEPT["<b>Department<br/>Views</b><br/>10 focused lenses"]
+
+    RUN_COST --> DASH
+    RUN_COST --> SUPP_PERF
+    RUN_COST --> STRAIN_PERF
+    RUN_COST --> DEPT
+
+    classDef cost fill:#f0f0f0,stroke:#888,color:#333
+    classDef analytics fill:#e8edf4,stroke:#5577aa,color:#2a3f5f
+    classDef method fill:#fafafa,stroke:#bbb,color:#555
+
+    class BIO_COST,OP_COST,RUN_COST cost
+    class ALLOC,UNIFORM,SPLIT,CUSTOM method
+    class DASH,SUPP_PERF,STRAIN_PERF,DEPT analytics
+    </pre>
+  </div>
+
+  <!-- Notes -->
+  <div class="notes">
+    <h2>Key Notes</h2>
+    <ul>
+      <li><strong>Single Purchase entity:</strong> A Purchase record tracks the full lifecycle from supplier declaration through delivery. Status flow: Declared &rarr; In Testing (optional) &rarr; Committed &rarr; Delivered. Old uncommitted records age out automatically based on configurable day thresholds.</li>
+      <li><strong>Entry points:</strong> Purchases can be created from the biomass pipeline form, field intake (mobile), Slack import, spreadsheet import, or direct entry. All entry points create Purchase records.</li>
+      <li><strong>Pipeline auto-approval:</strong> When a Purchase moves to Committed via the biomass pipeline, it is <strong>automatically approved</strong> (since commitment requires approver permissions). Field submission approvals also auto-approve.</li>
+      <li><strong style="color:#c9302c;">Purchase Approval Gate:</strong> Purchases created via Slack import, spreadsheet import, or manual entry are <strong>not approved by default</strong>. An authorized user must explicitly approve before lots become visible in inventory or available for extraction runs.</li>
+      <li><strong>Inventory split:</strong> In-Transit = committed/ordered/in-transit purchases. On-Hand = delivered/available/processing purchases <strong>that are approved</strong>. Days of Supply = approved on-hand lbs &divide; daily throughput target.</li>
+      <li><strong>Extraction runs:</strong> Consume inventory lots from <strong>approved purchases only</strong> (decrements remaining weight) and produce THCA + HTE outputs. Yields and cost-per-gram auto-calculate.</li>
+      <li><strong>HTE post-processing:</strong> Runs with HTE output move through a lab pipeline: Awaiting Lab &rarr; Lab Clean (finished) or Lab Dirty &rarr; Terp Stripped (produces terpenes + retail distillate).</li>
+      <li><strong>Cost allocation:</strong> Biomass cost comes from purchase $/lb. Operational costs (solvent, personnel, overhead) are allocated by date-range overlap with runs. Three split methods available for THCA vs HTE.</li>
+      <li><strong>Analytics feedback loop:</strong> Dashboard KPIs, Supplier Performance, Strain Performance, and Department Views all draw from run yield and cost data to inform future sourcing decisions.</li>
+    </ul>
+  </div>
+
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'base',
+    themeVariables: {
+      fontFamily: '"Segoe UI", system-ui, sans-serif',
+      fontSize: '13px',
+      primaryColor: '#f0f0f0',
+      primaryBorderColor: '#ccc',
+      lineColor: '#999',
+    },
+    flowchart: {
+      htmlLabels: true,
+      curve: 'basis',
+      nodeSpacing: 40,
+      rankSpacing: 50,
+      padding: 12,
+    }
+  });
+</script>
+</body>
+</html>

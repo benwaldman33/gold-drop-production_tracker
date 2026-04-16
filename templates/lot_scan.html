@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block title %}Scanned Lot{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Scanned Lot</h2>
+  <a href="{{ url_for('inventory') }}" class="btn btn-secondary">Back to Inventory</a>
+</div>
+
+<div class="card floor-scan-hero">
+  <div class="floor-scan-hero-top">
+    <div>
+      <div class="text-sm cell-muted">Floor execution target</div>
+      <div class="text-mono floor-scan-id">{{ lot.tracking_id or lot.id[:8] }}</div>
+      <div class="floor-scan-subtitle">{{ lot.strain_name }} &middot; {{ lot.supplier_name }} &middot; {{ purchase.batch_id or purchase.id[:8] }}</div>
+    </div>
+    <a href="{{ url_for('lot_label', lot_id=lot.id) }}" class="btn btn-secondary">Print Label</a>
+  </div>
+
+  <div class="floor-scan-metrics">
+    <div class="floor-scan-metric">
+      <div class="text-sm cell-muted">Remaining</div>
+      <div class="floor-scan-metric-value">{{ "{:,.1f}".format(lot.remaining_weight_lbs or 0) }} lbs</div>
+    </div>
+    <div class="floor-scan-metric">
+      <div class="text-sm cell-muted">Allocated</div>
+      <div class="floor-scan-metric-value">{{ "{:,.1f}".format(lot.allocated_weight_lbs or 0) }} lbs</div>
+    </div>
+    <div class="floor-scan-metric">
+      <div class="text-sm cell-muted">Potency</div>
+      <div class="floor-scan-metric-value">{% if lot.potency_pct is not none %}{{ "{:.2f}".format(lot.potency_pct) }}%{% else %}-{% endif %}</div>
+    </div>
+    <div class="floor-scan-metric">
+      <div class="text-sm cell-muted">Testing</div>
+      <div class="floor-scan-metric-value">{{ purchase.testing_status.replace('_', ' ') if purchase.testing_status else '-' }}</div>
+    </div>
+    <div class="floor-scan-metric">
+      <div class="text-sm cell-muted">Floor State</div>
+      <div class="floor-scan-metric-value">
+        {% if lot.floor_state == 'vault' %}Vault
+        {% elif lot.floor_state == 'reactor_staging' %}Reactor staging
+        {% elif lot.floor_state == 'quarantine' %}Quarantine
+        {% elif lot.floor_state == 'custom' %}Custom
+        {% else %}In inventory{% endif %}
+      </div>
+    </div>
+    <div class="floor-scan-metric">
+      <div class="text-sm cell-muted">Prep</div>
+      <div class="floor-scan-metric-value">{% if lot.milled %}Milled{% else %}Not milled{% endif %}</div>
+    </div>
+  </div>
+
+  <div class="floor-action-grid">
+    <form method="POST" action="{{ url_for('scan_lot_start_run', tracking_id=lot.tracking_id) }}" class="floor-action-card floor-action-card-primary">
+      <div class="floor-action-title">Guided Run Start</div>
+      <div class="floor-action-copy">Choose whether the operator is using the full lot, a partial amount, or a scale-first flow before opening the run form.</div>
+
+      <div class="floor-run-mode-group">
+        <label class="floor-run-mode-option">
+          <input type="radio" name="run_start_mode" value="blank" checked>
+          <span>Blank run form</span>
+        </label>
+        <label class="floor-run-mode-option">
+          <input type="radio" name="run_start_mode" value="full_remaining">
+          <span>Use full remaining lot</span>
+        </label>
+        <label class="floor-run-mode-option">
+          <input type="radio" name="run_start_mode" value="partial">
+          <span>Use partial amount</span>
+        </label>
+        <div class="form-group" style="margin:0;">
+          <input type="number" step="0.1" min="0" max="{{ lot.remaining_weight_lbs or 0 }}" name="requested_weight_lbs" placeholder="Partial lbs">
+        </div>
+        <label class="floor-run-mode-option">
+          <input type="radio" name="run_start_mode" value="scale_capture">
+          <span>Scale capture first</span>
+        </label>
+        <div class="form-group" style="margin:0;">
+          <select name="scale_device_id">
+            <option value="">Select scale (optional)</option>
+            {% for device in scale_devices %}
+            <option value="{{ device.id }}">{{ device.name }}{% if device.location %} &middot; {{ device.location }}{% endif %}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary floor-action-button">Start Run From This Lot</button>
+    </form>
+
+    <a href="{{ url_for('purchases_bp.purchase_journey', purchase_id=purchase.id, lot=lot.tracking_id) }}" class="floor-action-card">
+      <div class="floor-action-title">Trace Journey</div>
+      <div class="floor-action-copy">See where this lot came from and which runs have consumed it.</div>
+      <span class="btn btn-secondary floor-action-button">View Journey</span>
+    </a>
+
+    <a href="{{ url_for('purchase_edit', purchase_id=purchase.id) }}" class="floor-action-card">
+      <div class="floor-action-title">Open Record</div>
+      <div class="floor-action-copy">Jump into the purchase record for deeper edits and review.</div>
+      <span class="btn btn-secondary floor-action-button">Open Purchase</span>
+    </a>
+  </div>
+</div>
+
+<div class="floor-execution-grid">
+  <div class="card">
+    <div class="form-section" style="padding-top:0;">
+      <h4>Guided Movement</h4>
+      <p class="text-sm cell-muted">Use a standard floor action for vault, reactor staging, quarantine, or a custom location.</p>
+      <form method="POST" action="{{ url_for('scan_lot_confirm_movement', tracking_id=lot.tracking_id) }}">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Movement action</label>
+            <select name="movement_code">
+              {% for option in movement_options %}
+              <option value="{{ option.code }}">{{ option.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Location detail</label>
+            <input type="text" name="location" value="{{ lot.location or '' }}" placeholder="Optional detail, e.g. Vault A / Shelf 2">
+          </div>
+        </div>
+        <div class="form-actions" style="justify-content:flex-start;">
+          <button type="submit" class="btn btn-secondary">Confirm Movement</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="form-section" style="padding-top:0;">
+      <h4>Confirm Prep</h4>
+      <p class="text-sm cell-muted">Record whether this lot has been milled and is physically ready for the next extraction step.</p>
+      <form method="POST" action="{{ url_for('scan_lot_confirm_milled', tracking_id=lot.tracking_id) }}">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Prep state</label>
+            <select name="milled_state">
+              <option value="not_milled" {% if not lot.milled %}selected{% endif %}>Not milled</option>
+              <option value="milled" {% if lot.milled %}selected{% endif %}>Milled</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-actions" style="justify-content:flex-start;">
+          <button type="submit" class="btn btn-secondary">Confirm Prep</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="form-section" style="padding-top:0;">
+      <h4>Confirm Testing</h4>
+      <p class="text-sm cell-muted">Update the testing state directly from the scanned lot without opening the purchase form.</p>
+      <form method="POST" action="{{ url_for('scan_lot_confirm_testing', tracking_id=lot.tracking_id) }}">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Testing status</label>
+            <select name="testing_status">
+              <option value="pending" {% if purchase.testing_status == 'pending' %}selected{% endif %}>Pending</option>
+              <option value="completed" {% if purchase.testing_status == 'completed' %}selected{% endif %}>Completed</option>
+              <option value="not_needed" {% if purchase.testing_status == 'not_needed' %}selected{% endif %}>Not Needed</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-actions" style="justify-content:flex-start;">
+          <button type="submit" class="btn btn-secondary">Confirm Testing</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:16px;">
+  <div class="form-section" style="padding-top:0;">
+    <h4>Recent Scan Activity</h4>
+    {% if recent_events %}
+    <div class="floor-event-list">
+      {% for event in recent_events %}
+      {% set context = event.context or {} %}
+      <div class="floor-event-row">
+        <div class="text-sm">
+          <strong>
+            {% if event.action == 'confirm_movement' and context.movement_label %}
+              {{ context.movement_label }}
+            {% elif event.action == 'start_run' and context.run_start_mode == 'partial' and context.planned_weight_lbs %}
+              Start run &middot; {{ "{:,.1f}".format(context.planned_weight_lbs) }} lbs
+            {% elif event.action == 'start_run' and context.run_start_mode == 'full_remaining' %}
+              Start run &middot; full remaining lot
+            {% elif event.action == 'start_run' and context.run_start_mode == 'scale_capture' %}
+              Start run &middot; scale capture first
+            {% else %}
+              {{ event.action.replace('_', ' ') }}
+            {% endif %}
+          </strong>
+          <span class="cell-muted"> &middot; {{ event.created_at.strftime('%Y-%m-%d %H:%M') if event.created_at else 'Unknown time' }}</span>
+        </div>
+        <div class="text-sm cell-muted" style="margin-top:4px;">
+          {% if event.user and event.user.display_name %}{{ event.user.display_name }}{% else %}System{% endif %}
+          {% if context.floor_state %} &middot; state={{ context.floor_state.replace('_', ' ') }}{% endif %}
+          {% if context.milled is not none %} &middot; prep={{ 'milled' if context.milled else 'not milled' }}{% endif %}
+          {% if context.location %} &middot; location={{ context.location }}{% endif %}
+          {% if context.testing_status %} &middot; testing={{ context.testing_status }}{% endif %}
+          {% if context.scale_device_id %} &middot; scale selected{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-sm cell-muted">No scan events recorded for this lot yet.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

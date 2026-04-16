@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Lot labels{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Lot labels{% if purchase %} - {{ purchase.batch_id or purchase.id }}{% endif %}</h2>
+  {% if purchase %}
+  <a href="{{ url_for('purchases_bp.purchase_journey', purchase_id=purchase.id) }}" class="btn btn-secondary">Back to journey</a>
+  {% endif %}
+  <button type="button" class="btn btn-primary" onclick="window.print()">Print</button>
+</div>
+
+<div class="summary-row" style="margin-bottom:16px;">
+  <div class="summary-card">
+    <div class="summary-label">Labels</div>
+    <div class="summary-value">{{ labels|length }}</div>
+    <div class="summary-footnote">One per physical inventory lot</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-label">Purchase</div>
+    <div class="summary-value">{{ purchase.batch_id if purchase else 'Lot label' }}</div>
+    <div class="summary-footnote">{{ purchase.supplier.name if purchase and purchase.supplier else 'Inventory tracking' }}</div>
+  </div>
+</div>
+
+<div class="floor-label-grid">
+  {% for label in labels %}
+  <div class="card floor-label-card">
+    <div class="floor-label-head">
+      <div>
+        <div class="text-sm cell-muted">Tracking ID</div>
+        <div class="text-mono floor-label-id">{{ label.tracking_id }}</div>
+      </div>
+      <div style="text-align:right;">
+        <div class="text-sm cell-muted">Label version</div>
+        <div>{{ label.label_version }}</div>
+      </div>
+    </div>
+
+    <div class="floor-label-meta">
+      <div><strong>Batch:</strong> {{ label.batch_id or '-' }}</div>
+      <div><strong>Supplier:</strong> {{ label.supplier_name or '-' }}</div>
+      <div><strong>Strain:</strong> {{ label.strain_name or '-' }}</div>
+      <div><strong>Testing:</strong> {{ label.testing_status or '-' }}</div>
+    </div>
+
+    <div class="floor-label-stats">
+      <div class="summary-card" style="margin:0;">
+        <div class="summary-label">Lot lbs</div>
+        <div class="summary-value">{{ '%.1f'|format(label.weight_lbs or 0) }}</div>
+      </div>
+      <div class="summary-card" style="margin:0;">
+        <div class="summary-label">Remaining lbs</div>
+        <div class="summary-value">{{ '%.1f'|format(label.remaining_weight_lbs or 0) }}</div>
+      </div>
+    </div>
+
+    <div class="floor-barcode-block">
+      <div class="text-sm cell-muted">Barcode payload</div>
+      <div class="text-mono floor-payload-copy">{{ label.barcode_value }}</div>
+      <div class="floor-barcode-svg">{{ label.barcode_svg|safe }}</div>
+      <div class="text-sm cell-muted" style="margin-top:8px;">Format: {{ label.barcode_format|upper }}</div>
+    </div>
+
+    <div class="floor-scan-strip">
+      <div class="text-sm cell-muted">QR scan</div>
+      <div class="floor-qr-shell">
+        <img src="{{ label.qr_image_url }}" alt="QR code for {{ label.tracking_id }}" class="floor-qr-image">
+      </div>
+      <div class="text-mono floor-payload-copy">{{ label.scan_url or label.qr_value }}</div>
+      <div class="floor-scan-instruction">Use the QR on tablets or phones, or the barcode on hardware scanners, to open this lot's floor execution page.</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -59,6 +59,17 @@
  <a href="{{ url_for('purchase_edit', purchase_id=c.id) }}" target="_blank" rel="noopener">open</a>
       </label>
       {% endfor %}
+      <div class="form-group" style="margin-top:10px;max-width:40rem;">
+        <label>Canonical strain</label>
+        <select name="intake_canonical_strain" style="max-width:100%;">
+          <option value="">â€” Keep parsed / typed strain â€”</option>
+          {% for candidate in strain_candidates %}
+          <option value="{{ candidate.name }}" {% if candidate.name == default_canonical_strain %}selected{% endif %}>{{ candidate.name }}{% if candidate.supplier_names %} â€” {{ candidate.supplier_names | join(', ') }}{% endif %} ({{ candidate.match_reason }}, {{ candidate.score }}%)</option>
+          {% endfor %}
+        </select>
+        <input type="text" name="intake_strain_name" value="{{ default_canonical_strain or strain_raw }}" placeholder="Strain name" style="margin-top:6px;max-width:100%;">
+        <label class="text-sm" style="display:block;margin-top:6px;"><input type="checkbox" name="intake_confirm_fuzzy_strain" value="1"> Confirm canonical strain mapping when using a near match</label>
+      </div>
       <button type="submit" class="btn btn-primary" style="margin-top:10px;">Update selected purchase</button>
     </form>
     {% else %}
@@ -68,19 +79,39 @@
     <h4 style="font-size:0.95rem;margin:16px 0 8px 0;">Create new purchase</h4>
     <form method="post" action="{{ url_for('settings_slack_import_apply_intake', msg_id=row.id) }}" class="text-sm" style="max-width:40rem;">
       <input type="hidden" name="intake_action" value="create">
+      <input type="hidden" name="intake_source_raw" value="{{ source_raw }}">
+      {% if supplier_candidates %}
+      <p class="text-sm" style="margin-bottom:8px;"><strong>Suggested suppliers</strong>:
+        {% for candidate in supplier_candidates %}
+        <span class="text-mono">{{ candidate.name }}</span> <span class="cell-muted">({{ candidate.match_reason }}, {{ candidate.score }}%)</span>{% if not loop.last %}; {% endif %}
+        {% endfor %}
+      </p>
+      {% endif %}
       <label class="text-sm" style="display:block;margin-bottom:6px;"><input type="radio" name="intake_supplier_mode" value="existing" checked> Existing supplier</label>
       <div class="form-group" style="margin-left:1.25rem;margin-bottom:12px;">
         <select name="intake_supplier_id" style="max-width:100%;">
           <option value="">— Select —</option>
           {% for s in supplier_all %}
-          <option value="{{ s.id }}">{{ s.name }}</option>
+          <option value="{{ s.id }}" {% if s.id == default_supplier_id %}selected{% endif %}>{{ s.name }}</option>
           {% endfor %}
         </select>
+        <label class="text-sm" style="display:block;margin-top:6px;"><input type="checkbox" name="intake_confirm_fuzzy_supplier" value="1"> Confirm supplier mapping when using a near match</label>
       </div>
       <label class="text-sm" style="display:block;margin-bottom:6px;"><input type="radio" name="intake_supplier_mode" value="create"> New supplier (farm)</label>
       <div class="form-group" style="margin-left:1.25rem;margin-bottom:12px;">
         <input type="text" name="intake_new_supplier_name" value="{{ derived.get('source') or '' }}" placeholder="Name from Source: line" style="max-width:100%;">
         <label class="text-sm" style="display:block;margin-top:6px;"><input type="checkbox" name="intake_confirm_create_supplier" value="1"> Confirm creating this supplier</label>
+      </div>
+      <div class="form-group" style="margin-bottom:12px;">
+        <label>Canonical strain</label>
+        <select name="intake_canonical_strain" style="max-width:100%;">
+          <option value="">â€” Keep parsed / typed strain â€”</option>
+          {% for candidate in strain_candidates %}
+          <option value="{{ candidate.name }}" {% if candidate.name == default_canonical_strain %}selected{% endif %}>{{ candidate.name }}{% if candidate.supplier_names %} â€” {{ candidate.supplier_names | join(', ') }}{% endif %} ({{ candidate.match_reason }}, {{ candidate.score }}%)</option>
+          {% endfor %}
+        </select>
+        <input type="text" name="intake_strain_name" value="{{ default_canonical_strain or strain_raw }}" placeholder="Strain name" style="margin-top:6px;max-width:100%;">
+        <label class="text-sm" style="display:block;margin-top:6px;"><input type="checkbox" name="intake_confirm_fuzzy_strain" value="1"> Confirm canonical strain mapping when using a near match</label>
       </div>
       <button type="submit" class="btn btn-primary">Create purchase from intake</button>
       <p class="text-sm cell-muted" style="margin-top:10px;">Batch ID will be set to <span class="text-mono">{{ intake_manifest_key or '—' }}</span>; purchase status <strong>delivered</strong>; one lot for strain/weight.</p>
@@ -97,13 +128,18 @@
   <p class="text-sm" style="margin-bottom:14px;color:var(--text-muted);">
     Parsed <strong>source</strong>: {{ source_raw or '—' }} · <strong>strain</strong>: {{ strain_raw or '—' }}
   </p>
-  <form method="post" action="{{ url_for('settings_slack_import_apply_run', msg_id=row.id) }}" class="text-sm" style="max-width:52rem;">
+  <form method="post" action="{{ url_for('settings_slack_import_apply_run', msg_id=row.id) }}" class="text-sm" style="max-width:52rem;" id="slack-run-apply-form" onsubmit="return prepareSlackLotAllocations(this);">
+    <input type="hidden" name="slack_selected_allocations_json" value="{{ suggested_allocations_json or '[]' }}">
     <div class="form-section" style="margin-bottom:16px;">
       <h4 style="margin:0 0 10px 0;font-size:1rem;">Supplier</h4>
       {% if source_raw %}
       <p class="text-sm cell-muted" style="margin-bottom:10px;">Slack included a supplier line. Link it to an existing record or confirm a new supplier (audit + notes reference this Slack message).</p>
       {% if supplier_candidates %}
-      <p class="text-sm" style="margin-bottom:8px;"><strong>Suggested matches</strong> (substring / name search — not automatic): {{ supplier_candidates | map(attribute='name') | join(', ') }}</p>
+      <p class="text-sm" style="margin-bottom:8px;"><strong>Suggested matches</strong>:
+        {% for candidate in supplier_candidates %}
+        <span class="text-mono">{{ candidate.name }}</span> <span class="cell-muted">({{ candidate.match_reason }}, {{ candidate.score }}%)</span>{% if not loop.last %}; {% endif %}
+        {% endfor %}
+      </p>
       {% endif %}
       {% else %}
       <p class="text-sm cell-muted" style="margin-bottom:10px;">No <code>source:</code> line parsed. Choose a supplier only if you are adding a declared biomass row below.</p>
@@ -114,7 +150,7 @@
         <select name="slack_supplier_id" class="text-sm" style="max-width:100%;">
           <option value="">— Select —</option>
           {% for s in supplier_all %}
-          <option value="{{ s.id }}">{{ s.name }}</option>
+          <option value="{{ s.id }}" {% if s.id == default_supplier_id %}selected{% endif %}>{{ s.name }}</option>
           {% endfor %}
         </select>
       </div>
@@ -130,12 +166,29 @@
 
     <div class="form-section" style="margin-bottom:16px;">
       <h4 style="margin:0 0 10px 0;font-size:1rem;">Biomass pipeline (optional)</h4>
-      <p class="text-sm cell-muted" style="margin-bottom:8px;">Adds a <strong>declared</strong> <code>BiomassAvailability</code> row (not a Purchase / lot). Requires strain text and a resolved supplier.</p>
+      <p class="text-sm cell-muted" style="margin-bottom:8px;">Adds a <strong>declared</strong> Purchase in the biomass pipeline. Requires strain text and a resolved supplier.</p>
       <label class="text-sm" style="display:block;margin-bottom:8px;"><input type="checkbox" name="slack_biomass_declared" value="1" {% if strain_raw %}checked{% endif %}> Add declared biomass row from this message</label>
+      {% if strain_candidates %}
+      <p class="text-sm cell-muted" style="margin-bottom:8px;">Canonical strain suggestions:
+        {% for candidate in strain_candidates %}
+        <span class="text-mono">{{ candidate.name }}</span>{% if candidate.supplier_names %} <span class="cell-muted">({{ candidate.supplier_names | join(', ') }})</span>{% endif %} <span class="cell-muted">[{{ candidate.match_reason }}, {{ candidate.score }}%]</span>{% if not loop.last %}; {% endif %}
+        {% endfor %}
+      </p>
+      {% endif %}
       <div class="form-row" style="gap:12px;flex-wrap:wrap;">
         <div class="form-group">
+          <label>Canonical strain match</label>
+          <select name="slack_canonical_strain" style="max-width:100%;">
+            <option value="">â€” Keep parsed / typed strain â€”</option>
+            {% for candidate in strain_candidates %}
+            <option value="{{ candidate.name }}" {% if candidate.name == default_canonical_strain %}selected{% endif %}>{{ candidate.name }}{% if candidate.supplier_names %} â€” {{ candidate.supplier_names | join(', ') }}{% endif %} ({{ candidate.match_reason }}, {{ candidate.score }}%)</option>
+            {% endfor %}
+          </select>
+          <label class="text-sm" style="display:block;margin-top:6px;"><input type="checkbox" name="slack_confirm_fuzzy_strain" value="1"> Confirm canonical strain mapping when using a near match</label>
+        </div>
+        <div class="form-group">
           <label>Strain</label>
-          <input type="text" name="slack_biomass_strain" value="{{ strain_raw }}" placeholder="Strain name">
+          <input type="text" name="slack_biomass_strain" value="{{ default_canonical_strain or strain_raw }}" placeholder="Strain name">
         </div>
         <div class="form-group">
           <label>Declared weight (lbs)</label>
@@ -154,8 +207,9 @@
     {% endif %}
   </form>
   {% else %}
-  <form method="post" action="{{ url_for('settings_slack_import_apply_run', msg_id=row.id) }}" style="display:inline;">
+  <form method="post" action="{{ url_for('settings_slack_import_apply_run', msg_id=row.id) }}" style="display:inline;" id="slack-run-apply-form" onsubmit="return prepareSlackLotAllocations(this);">
     <input type="hidden" name="slack_supplier_mode" value="skip">
+    <input type="hidden" name="slack_selected_allocations_json" value="{{ suggested_allocations_json or '[]' }}">
     <button type="submit" class="btn btn-primary">Create run from Slack</button>
   </form>
   {% if duplicate_run %}
@@ -164,6 +218,53 @@
   <p class="text-sm cell-muted" style="margin-top:12px;">This message has no parsed <code>source:</code> or <code>strain:</code> line — optional supplier/biomass controls are skipped.</p>
   {% endif %}
 </div>
+
+{% if lot_candidates %}
+<div class="card" style="margin-bottom:16px;">
+  <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;margin-bottom:8px;">Candidate source lots</h4>
+  <p class="text-sm cell-muted" style="margin-bottom:12px;">
+    Ranked candidates for the parsed run quantity{% if requested_run_lbs %} ({{ requested_run_lbs }} lbs){% endif %}. Enter lot weights here to carry a manual or split allocation into the run form.
+  </p>
+  <div style="display:grid;gap:10px;">
+    {% for candidate in lot_candidates %}
+    <div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;background:rgba(255,255,255,0.01);">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;">
+        <strong>{{ candidate.tracking_id or candidate.lot_id[:8] }}{% if candidate.batch_id %} · {{ candidate.batch_id }}{% endif %}</strong>
+        <span class="badge {% if candidate.sufficient_weight %}badge-green{% else %}badge-gold{% endif %}">{{ candidate.remaining_weight_lbs }} lbs remaining</span>
+      </div>
+      <div class="text-sm cell-muted" style="margin-top:6px;">
+        {{ candidate.supplier_name }} · {{ candidate.strain_name }}
+        {% if candidate.received_date %} · received {{ candidate.received_date }}{% endif %}
+        {% if candidate.clean_or_dirty %} · {{ candidate.clean_or_dirty }}{% endif %}
+        {% if candidate.testing_status %} · {{ candidate.testing_status }}{% endif %}
+      </div>
+      <div class="text-sm cell-muted" style="margin-top:4px;">{{ candidate.match_reason }} · score {{ candidate.score }}</div>
+      <div class="form-group" style="margin-top:8px;max-width:220px;">
+        <label>Allocate from this lot (lbs)</label>
+        <input
+          type="number"
+          step="0.1"
+          min="0"
+          value="{% for item in suggested_allocations %}{% if item.lot_id == candidate.lot_id %}{{ item.weight_lbs }}{% endif %}{% endfor %}"
+          data-slack-lot-weight="1"
+          data-lot-id="{{ candidate.lot_id }}"
+          form="slack-run-apply-form"
+        >
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% if suggested_allocations %}
+  <p class="text-sm" style="margin-top:12px;color:var(--green);">
+    A single best lot was identified and prefilled. You can override it here or split the allocation before opening the run form.
+  </p>
+  {% else %}
+  <p class="text-sm" style="margin-top:12px;color:var(--text-muted);">
+    No single lot was clear enough to prefill automatically. Enter one or more weights here to carry a manual selection into the run form.
+  </p>
+  {% endif %}
+</div>
+{% endif %}
 
 <div class="card" style="margin-bottom:16px;">
   <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;margin-bottom:8px;">Parsed derived fields</h4>
@@ -231,4 +332,28 @@
   <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;margin-bottom:8px;">Raw text (trimmed)</h4>
   <pre class="text-sm" style="white-space:pre-wrap;word-break:break-word;color:var(--text-secondary);max-height:240px;overflow:auto;">{{ (row.raw_text or '')[:4000] }}{% if row.raw_text and row.raw_text|length > 4000 %}…{% endif %}</pre>
 </div>
+{% endblock %}
+{% block scripts %}
+{{ super() }}
+<script>
+function prepareSlackLotAllocations(form) {
+  if (!form) return true;
+  const hidden = form.querySelector('input[name="slack_selected_allocations_json"]');
+  if (!hidden) return true;
+  const rows = Array.from(document.querySelectorAll('[data-slack-lot-weight][form="' + form.id + '"]'));
+  const payload = [];
+  for (const input of rows) {
+    const raw = (input.value || '').trim();
+    if (!raw) continue;
+    const weight = parseFloat(raw);
+    if (!Number.isFinite(weight) || weight <= 0) continue;
+    payload.push({
+      lot_id: input.getAttribute('data-lot-id'),
+      weight_lbs: weight
+    });
+  }
+  hidden.value = JSON.stringify(payload);
+  return true;
+}
+</script>
 {% endblock %}

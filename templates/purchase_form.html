@@ -3,11 +3,61 @@
 {% block content %}
 <div class="page-header">
   <h2>{% if purchase %}Edit Purchase{% else %}New Purchase{% endif %}</h2>
-  <a href="{{ url_for('purchases_list') }}" class="btn btn-secondary">← Back</a>
+  <div class="btn-group">
+    <button type="submit" form="purchase-main-form" class="btn btn-primary">Save Purchase</button>
+    {% if purchase %}
+    <a href="{{ url_for('purchases_bp.purchase_journey', purchase_id=purchase.id) }}" class="btn btn-secondary">View Journey</a>
+    {% endif %}
+    {% if purchase and not purchase.is_approved and current_user.can_approve_purchase %}
+    <form method="POST" action="{{ url_for('purchase_approve', purchase_id=purchase.id) }}" style="display:inline">
+      <button type="submit" class="btn btn-success" onclick="return confirm('Approve this purchase? This allows its material to be used in extraction runs.')">Approve Purchase</button>
+    </form>
+    {% endif %}
+    <a href="{{ url_for('purchases_list') }}" class="btn btn-secondary">← Back</a>
+  </div>
 </div>
 
+{% if purchase %}
+<div style="margin-bottom:16px;padding:10px 16px;border-radius:8px;font-size:14px;{% if purchase.is_approved %}background:#e6f4ea;border:1px solid #5b8a72;color:#2d5a3f{% else %}background:#fef3cd;border:1px solid #d4a843;color:#6b5218{% endif %}">
+  {% if purchase.is_approved %}
+    Approved {{ purchase.purchase_approved_at.strftime('%b %d, %Y %I:%M %p') }}{% if purchase.purchase_approved_by %} by {{ purchase.purchase_approved_by.display_name }}{% endif %}
+  {% else %}
+    Not yet approved — material from this purchase cannot be used in extraction runs until approved.
+    {% if not current_user.can_approve_purchase %}Contact a purchase approver or super admin.{% endif %}
+  {% endif %}
+</div>
+{% endif %}
+
+{% if purchase and purchase_origin_summary %}
+<div class="card" style="margin-bottom:12px;">
+  <div class="card-header"><h3>Submission Origin</h3></div>
+  <div class="summary-row" style="margin-bottom:0;">
+    <div class="summary-stat">
+      <div class="label">Source</div>
+      <div class="value">{{ purchase_origin_summary.source_label }}</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Created By</div>
+      <div class="value">{{ purchase_origin_summary.created_by_name or 'Unknown' }}</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Opportunity Photos</div>
+      <div class="value">{{ purchase_origin_summary.opportunity_photo_count }}</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Delivery Photos</div>
+      <div class="value">{{ purchase_origin_summary.delivery_photo_count }}</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Delivery Recorded By</div>
+      <div class="value">{{ purchase_origin_summary.delivery_recorded_by_name or 'Not yet' }}</div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <div class="card">
-  <form method="POST" enctype="multipart/form-data">
+  <form id="purchase-main-form" method="POST" enctype="multipart/form-data">
     <div class="form-section">
       <h4>Purchase Details</h4>
       <div class="form-row-3">
@@ -264,7 +314,7 @@
 
 {% if purchase and purchase_audit_photos %}
 <div class="card">
-  <div class="card-header"><h3>Field intake audit photos</h3></div>
+  <div class="card-header"><h3>Opportunity intake photos</h3></div>
   <div style="display:flex;gap:8px;flex-wrap:wrap;">
     {% for a in purchase_audit_photos %}
     <a href="{{ url_for('static', filename=a.file_path) }}" target="_blank" rel="noopener"
@@ -275,7 +325,25 @@
     {% endfor %}
   </div>
   <p class="text-sm" style="color:var(--text-muted);margin-top:8px;">
-    These come from approved field submissions (biomass/COA/supplier shots). They stay attached for traceability; remove or replace them from the field submission workflow, not here.
+    These come from the mobile buyer flow or approved field submissions. They stay attached for traceability; remove or replace them from the originating workflow, not here.
+  </p>
+</div>
+{% endif %}
+
+{% if purchase and purchase_delivery_photos %}
+<div class="card">
+  <div class="card-header"><h3>Delivery confirmation photos</h3></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+    {% for a in purchase_delivery_photos %}
+    <a href="{{ url_for('static', filename=a.file_path) }}" target="_blank" rel="noopener"
+       title="{{ a.category }}{% if a.tags %} Â· {{ a.tags }}{% endif %}">
+      <img src="{{ url_for('static', filename=a.file_path) }}" alt="delivery confirmation photo"
+           style="width:90px;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--dark-border);">
+    </a>
+    {% endfor %}
+  </div>
+  <p class="text-sm" style="color:var(--text-muted);margin-top:8px;">
+    These photos were uploaded when delivery was recorded from the standalone purchasing app.
   </p>
 </div>
 {% endif %}

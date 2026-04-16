@@ -5,6 +5,11 @@
   <h2>Biomass Availability Pipeline</h2>
   <div class="btn-group">
     {% if current_user.can_edit %}
+    <div class="btn-group" data-batch-toolbar="1" data-batch-entity="biomass" data-table-selector="#biomass-table" data-return-to="{{ request.full_path }}">
+      <button type="button" class="btn btn-secondary btn-sm" data-batch-select-all>Select all</button>
+      <button type="button" class="btn btn-secondary btn-sm" data-batch-select-none>Select none</button>
+      <button type="button" class="btn btn-primary btn-sm" data-batch-edit disabled>Batch edit…</button>
+    </div>
     <a href="{{ url_for('biomass_new') }}" class="btn btn-primary">+ New Availability</a>
     {% endif %}
     <a href="{{ url_for('export_csv', entity='biomass', status=stage_filter, supplier_id=supplier_filter, start_date=start_date, end_date=end_date, strain=strain_filter, bucket=bucket_filter) }}" class="btn btn-secondary">Export CSV</a>
@@ -36,7 +41,12 @@
     </div>
     <input type="hidden" name="stage" value="{{ stage_filter }}">
     <input type="hidden" name="bucket" value="{{ bucket_filter }}">
-    <button type="submit" class="btn btn-secondary">Apply Filters</button>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;">
+      <button type="submit" class="btn btn-secondary">Apply Filters</button>
+      {% if list_filters_active %}
+      <a href="{{ clear_filters_url }}" class="btn btn-secondary btn-sm">Remove filters</a>
+      {% endif %}
+    </div>
   </form>
 </div>
 
@@ -63,10 +73,12 @@
   </div>
 </div>
 
+{% set status_to_stage = {'declared': 'declared', 'in_testing': 'testing', 'committed': 'committed', 'delivered': 'delivered', 'cancelled': 'cancelled'} %}
 <div class="table-wrap">
-  <table>
+  <table id="biomass-table">
     <thead>
       <tr>
+        {% if current_user.can_edit %}<th class="text-center" style="width:36px;"></th>{% endif %}
         <th>Supplier</th>
         <th>Batch</th>
         <th>Strain</th>
@@ -82,66 +94,73 @@
       </tr>
     </thead>
     <tbody>
-      {% for b in items %}
+      {% for p in items %}
+      {% set stage_name = status_to_stage.get(p.status, p.status) %}
+      {% set first_lot = p.lots.first() %}
       <tr>
-        <td><strong>{{ b.supplier_name }}</strong></td>
+        {% if current_user.can_edit %}
+        <td class="text-center"><input type="checkbox" class="batch-select-cb" data-batch-entity="biomass" value="{{ p.id }}" aria-label="Select row"></td>
+        {% endif %}
+        <td><strong>{{ p.supplier_name }}</strong></td>
         <td class="text-mono">
-          {% if b.purchase %}
-            <a href="{{ url_for('purchase_edit', purchase_id=b.purchase.id) }}">{{ b.purchase.batch_id or '—' }}</a>
-          {% else %}
-            —
-          {% endif %}
+          <a href="{{ url_for('purchase_edit', purchase_id=p.id) }}">{{ p.batch_id or '—' }}</a>
         </td>
-        <td>{{ b.strain_name or '—' }}</td>
+        <td>{{ first_lot.strain_name if first_lot else '—' }}</td>
         <td>
           {% set stage_class = 'badge-gray' %}
-          {% if b.stage == 'declared' %}{% set stage_class = 'badge-yellow' %}{% endif %}
-          {% if b.stage == 'testing' %}{% set stage_class = 'badge-gold' %}{% endif %}
-          {% if b.stage in ('committed','delivered') %}{% set stage_class = 'badge-green' %}{% endif %}
-          {% if b.stage == 'cancelled' %}{% set stage_class = 'badge-red' %}{% endif %}
-          <span class="badge {{ stage_class }}">{{ b.stage.replace('_',' ') }}</span>
+          {% if stage_name == 'declared' %}{% set stage_class = 'badge-yellow' %}{% endif %}
+          {% if stage_name == 'testing' %}{% set stage_class = 'badge-gold' %}{% endif %}
+          {% if stage_name in ('committed','delivered') %}{% set stage_class = 'badge-green' %}{% endif %}
+          {% if stage_name == 'cancelled' %}{% set stage_class = 'badge-red' %}{% endif %}
+          <span class="badge {{ stage_class }}">{{ stage_name.replace('_',' ') }}</span>
+          {% if not p.is_approved %}<span class="badge" style="background:#d4a843;color:#fff;margin-left:4px" title="Not yet approved">Unapproved</span>{% endif %}
         </td>
-        <td>{{ b.availability_date.strftime('%m/%d/%y') if b.availability_date else '—' }}</td>
-        <td class="text-right text-mono">{{ "{:,.0f}".format(b.declared_weight_lbs) if b.declared_weight_lbs else '—' }}</td>
-        <td class="text-right text-mono">{{ "${:,.2f}".format(b.declared_price_per_lb) if b.declared_price_per_lb else '—' }}</td>
-        <td class="text-right text-mono">{{ "{:.1f}".format(b.estimated_potency_pct) if b.estimated_potency_pct else '—' }}</td>
+        <td>{{ p.availability_date.strftime('%m/%d/%y') if p.availability_date else '—' }}</td>
+        <td class="text-right text-mono">{{ "{:,.0f}".format(p.declared_weight_lbs) if p.declared_weight_lbs else '—' }}</td>
+        <td class="text-right text-mono">{{ "${:,.2f}".format(p.declared_price_per_lb) if p.declared_price_per_lb else '—' }}</td>
+        <td class="text-right text-mono">{{ "{:.1f}".format(p.stated_potency_pct) if p.stated_potency_pct else '—' }}</td>
         <td>
           <div class="text-sm" style="color:var(--text-muted);">
-            {{ b.testing_timing.replace('_',' ') if b.testing_timing else '—' }} • {{ b.testing_status.replace('_',' ') if b.testing_status else '—' }}
+            {{ p.testing_timing.replace('_',' ') if p.testing_timing else '—' }} • {{ p.testing_status.replace('_',' ') if p.testing_status else '—' }}
           </div>
           <div class="text-sm">
-            {% if b.testing_date %}{{ b.testing_date.strftime('%m/%d/%y') }}{% else %}—{% endif %}
-            {% if b.tested_potency_pct %} • {{ "{:.1f}".format(b.tested_potency_pct) }}%{% endif %}
+            {% if p.testing_date %}{{ p.testing_date.strftime('%m/%d/%y') }}{% else %}—{% endif %}
+            {% if p.tested_potency_pct %} • {{ "{:.1f}".format(p.tested_potency_pct) }}%{% endif %}
           </div>
         </td>
         <td>
           <div class="text-sm">
-            {% if b.committed_on %}<span class="text-mono">{{ b.committed_on.strftime('%m/%d/%y') }}</span>{% else %}—{% endif %}
-            {% if b.committed_delivery_date %} → <span class="text-mono">{{ b.committed_delivery_date.strftime('%m/%d/%y') }}</span>{% endif %}
+            {% if p.purchase_date %}<span class="text-mono">{{ p.purchase_date.strftime('%m/%d/%y') }}</span>{% else %}—{% endif %}
+            {% if p.delivery_date %} → <span class="text-mono">{{ p.delivery_date.strftime('%m/%d/%y') }}</span>{% endif %}
           </div>
           <div class="text-sm" style="color:var(--text-muted);">
-            {% if b.committed_weight_lbs %}{{ "{:,.0f}".format(b.committed_weight_lbs) }} lbs{% endif %}
-            {% if b.committed_price_per_lb %}{% if b.committed_weight_lbs %} • {% endif %}{{ "${:,.2f}".format(b.committed_price_per_lb) }}/lb{% endif %}
+            {% if p.stated_weight_lbs %}{{ "{:,.0f}".format(p.stated_weight_lbs) }} lbs{% endif %}
+            {% if p.price_per_lb %}{% if p.stated_weight_lbs %} • {% endif %}{{ "${:,.2f}".format(p.price_per_lb) }}/lb{% endif %}
           </div>
         </td>
         <td>
-          {% if b.deleted_at %}
+          {% if p.deleted_at %}
             <span class="badge badge-red">yes</span>
           {% else %}
             <span class="badge badge-gray">—</span>
           {% endif %}
         </td>
         <td>
+          {% if not p.is_approved and current_user.can_approve_purchase %}
+          <form method="POST" action="{{ url_for('purchase_approve', purchase_id=p.id) }}" style="display:inline;" onsubmit="return confirm('Approve this purchase? This allows its material to be used in extraction runs.');">
+            <input type="hidden" name="return_to" value="{{ request.full_path }}">
+            <button type="submit" class="btn btn-success btn-sm">Approve</button>
+          </form>
+          {% endif %}
           {% if current_user.can_edit %}
-          <a href="{{ url_for('biomass_edit', item_id=b.id) }}" class="btn btn-secondary btn-sm">Edit</a>
+          <a href="{{ url_for('biomass_edit', item_id=p.id) }}" class="btn btn-secondary btn-sm">Edit</a>
           {% endif %}
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="12" class="text-center cell-muted" style="padding:40px;">No biomass availability records in this view.</td></tr>
+      <tr><td colspan="{% if current_user.can_edit %}13{% else %}12{% endif %}" class="text-center cell-muted" style="padding:40px;">No biomass availability records in this view.</td></tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
 {% endblock %}
-

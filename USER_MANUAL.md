@@ -4,6 +4,10 @@ This guide explains how to use the Gold Drop web app day-to-day. It intentionall
 
 **Other documents:** `FAQ.md` (quick answers), `PRD.md` (product requirements), `ENGINEERING.md` (technical implementation notes for developers).
 
+**Current release note:** the app has now been split internally across dedicated route modules for dashboard, field intake, runs, purchases, biomass, costs, inventory, batch edit, suppliers/photos, purchase import, strains, settings, and Slack integration. The workflows in this manual are still the ones you should test: routes, page names, approvals, list screens, and Slack import behavior are intended to work the same as before.
+
+**Operator-facing additions in the current release:** Purchases and Inventory are more status-first, the Journey page is richer, Slack imports now includes inbox buckets, lot labels now print with scannable barcodes, `Floor Ops` gives operators a recent activity surface, and the data model supports live smart-scale capture.
+
 ---
 
 ## Getting started
@@ -16,19 +20,66 @@ This guide explains how to use the Gold Drop web app day-to-day. It intentionall
 
 ### Navigation overview
 Use the left sidebar:
-- **Dashboard**: KPIs + quick actions
+- **Extraction** (labeled on the home dashboard card): KPIs + quick actions
+- **Biomass purchasing**: buyer weekly snapshot, field submission queues, and reviewed history
 - **Departments**: hub of department-focused pages (same data as the rest of the app; quick links and rollups per team—finance, purchasing, intake, extraction, THCA/HTE/Liquid Diamonds, terpenes, testing, bulk sales)
 - **Runs**: extraction runs log + cost/yield outputs
-- **Inventory**: on-hand lots + in-transit purchases
-- **Purchases**: batch-level purchase records + batch IDs
+- **Inventory**: on-hand lots + in-transit purchases, including lot tracking IDs and remaining pounds
+- **Purchases**: batch-level purchase records + batch IDs (same underlying rows as **Biomass Pipeline**); **Approve purchase** when your role allows; **Import spreadsheet** for bulk purchase upload; row **batch edit** on the list
 - **Costs**: operational cost entries (solvent/personnel/overhead)
-- **Biomass Pipeline**: pre-purchase pipeline tracking (declared → testing → committed → delivered/cancelled)
+- **Biomass Pipeline**: pipeline view of **purchases** in early/procurement stages (**Declared** → **Testing** → **Committed** → **Delivered** / **Cancelled**); one **Batch ID** per row end-to-end
 - **Suppliers**: supplier performance analytics
 - **Strains**: strain performance analytics
 - **Photo Library**: searchable media across supplier/purchase/field contexts; editors can upload and remove certain attachment types here (see **Photo Library** section)
-- **Slack imports** (Slack Importer capability or Super Admin): triage synced Slack messages, preview mapped Run fields, **create run from Slack** (prefilled form)
+- **Slack imports** (Slack Importer capability or Super Admin): triage synced Slack messages, preview mapped Run fields, review candidate source lots, optionally split a run across multiple lots, then **create run from Slack** (prefilled form)
 - **Settings** (Super Admin only): system parameters, KPIs, users, maintenance actions
-- **Import**: CSV import review + confirm
+- **Cross-Site Ops** (only when enabled by Super Admin): cached local + remote-site rollups for multi-site reporting
+- **Fresh operational reset** (server-side admin task): clears operational business data while keeping users, passwords, settings, KPI targets, Slack sync config, and cost entries
+- **Import**: CSV import for **historical runs** (run-style exports)—not the same as **Purchases → Import spreadsheet**
+
+---
+
+## Saved filters, sorts, and list state
+Many **list screens** remember the filters and sort options you last used **for your current login session**, so you can **move freely between sections** (Dashboard, Runs, Purchases, Slack imports, etc.) and **come back without redoing your work**.
+
+**Where this applies:** **Runs** (including search, date range, supplier, potency, HTE pipeline, and column sort), **Purchases** (filters, status, date range, potency, optional **Hide complete & cancelled**), **Biomass Pipeline**, **Costs**, **Inventory**, **Strains** (e.g. All time vs last 90 days), and **Slack imports** (date range, channels, promotion/coverage, text filters, and related toggles).
+
+**How to clear:** When a list has active saved filters, use **Remove filters** to drop saved state for that page and return to the default “show everything” view (exact defaults vary by screen).
+
+**Pagination:** After you **Apply filters** or change **Purchases** status chips, the list returns to **page 1** so a smaller result set is not hidden on an empty later page.
+
+**Session limits:** Saved list state lives in your **session** (browser cookie). It is meant for **day-to-day navigation**, not permanent storage—**signing out**, **closing the browser** (depending on settings), or **clearing cookies** may reset it.
+
+**Small UX notes:** Date fields use a **high-contrast calendar control** on dark backgrounds. On **New / Edit Purchase**, **Save Purchase** appears at both the **top** and **bottom** of the form.
+
+---
+
+## Batch editing from list screens
+
+On several lists, if you can **Edit** a single row, you can often update **many rows at once**:
+
+1. Use the checkboxes on the left of each row (where shown).
+2. Use **Select all** or **Select none** to toggle every row on the **current page** of the table (pagination: if you use page 2, only page 2 rows are selected).
+3. When **at least two** rows are checked, **Batch edit…** (or **Batch rename…** on **Strains**) becomes available.
+
+You’ll see a page where only the fields you fill in are applied to **every selected record**; leave something blank or on “no change” to skip it.
+
+**Where it works (and who):**
+
+| Screen | What you’re editing | Typical access |
+|--------|---------------------|----------------|
+| **Runs** | Run type, HTE pipeline stage, rollover/decarb flags, load source (optional), append notes | **User** / **Super Admin** |
+| **Purchases** | Status, delivery date, queue placement, append notes | Anyone with **purchase edit** (includes **Super Buyer** where enabled) |
+| **Inventory** — On Hand | Lot strain, location, milled, potency, append lot notes | Purchase editors |
+| **Inventory** — In Transit | Same kinds of fields as **Purchases** (these rows are purchases) | Purchase editors |
+| **Biomass Pipeline** | Stage (maps to purchase **status**), testing status/timing, append notes | **User** / **Super Admin** (moving to/from **Committed** still needs a **purchase approver** on the form—see **Biomass Pipeline** section) |
+| **Costs** | Cost type, append notes | **User** / **Super Admin** |
+| **Suppliers** | Set suppliers active/inactive, append supplier notes | **User** / **Super Admin** |
+| **Strains** | **Batch rename…** — one new strain name applied to all **purchase lots** matching each selected strain+supplier pair | **User** / **Super Admin** |
+
+**Purchases batch edit** uses the same rules as saving one purchase: inventory lots and **weekly biomass budget** limits still apply. If the batch would break a limit, you may see an error and **no** row from that batch save is kept—fix the selection or values and try again.
+
+**Strain batch rename** is powerful: it changes **lot** strain names everywhere they match the table row you selected. Use it when you are standardizing spelling or labels, not for routine tweaks to a single lot (use **Edit** on the purchase/lot instead).
 
 ---
 
@@ -41,10 +92,23 @@ The Dashboard shows:
 ### Analytics filter banner (optional)
 If you see a banner saying analytics are excluding runs missing biomass pricing ($/lb), your admin has enabled a data-quality filter in **Settings**. Supplier/strain KPIs will ignore runs with missing purchase pricing on any input lot.
 
+### Cross-Site Ops (optional)
+This area is hidden unless a **Super Admin** enables **Cross-Site Ops UI** in **Settings -> Operational Parameters**.
+
+When enabled, the sidebar exposes:
+- **Cross-Site Ops**: local + cached remote site rollup
+- **Supplier Comparison**: compare supplier performance across sites
+- **Strain Comparison**: compare strain performance across sites
+- **Reconciliation**: compare exception and Slack-import pressure across sites
+
+These pages use the cached remote-site data already managed under **Settings -> Remote Sites**. They do not push changes back to remote sites.
+
 ---
 
 ## Runs (Extraction Runs)
 The Runs page is the core production log.
+
+Use the filter bar (**Start / end date**, supplier, THCA % range, **HTE pipeline**) and **Search** to narrow the list; **sort** by clicking column headers (e.g. **Date**). Your choices are **saved for your session**—see **Saved filters, sorts, and list state** above. **Apply filters** / search returns you to **page 1** of results when pagination is in use.
 
 ### What a run records
 Typical fields include:
@@ -71,14 +135,26 @@ On the **Runs** list, use the **HTE pipeline** filter to see only runs in a give
 3. Add **input lots** (the biomass lots consumed by this run) and the weight used from each lot.
 4. Save.
 
+Before you save, the form now shows a live allocation summary:
+- **Total allocated**
+- **Target Lbs in Reactor**
+- **Delta** (over / under / exact)
+
+Each lot row also shows a projected remaining balance so you can see the impact before committing the run. The run will not save unless the selected lot weights add up exactly to **Lbs in Reactor**.
+
 ### Creating a run from Slack (optional)
 If your account has **Slack Importer** access (or you are a Super Admin), you can promote a synced channel message into a **prefilled** new run:
 
 1. Open **Slack imports** in the sidebar (or **Settings → View Slack imports** if you are a Super Admin).
-2. Use **filters** (message date, channel, promotion status, mapping coverage) to find the row you want.
-3. Click **Preview** to see mapped Run fields, or **Create run** / **Create run from Slack** on the preview page.
-4. The app opens **New Run** with values filled from your active **Slack → Run** mapping rules. Review everything; add input lots if needed.
-5. **Save** the run to store it. Nothing is written to Runs until you save.
+2. Use **filters** (message date, channel, promotion status, mapping coverage) to find the row you want. Filter choices **persist while your session is active** when you navigate away and return—see **Saved filters, sorts, and list state**. Use **Remove filters** to reset. Rows that cannot be assigned a calendar date from the Slack timestamp are **not removed** solely because you set a date range (they still appear alongside in-range messages).
+3. Click **Preview** to see mapped Run fields, ranked candidate source lots, and any suggested lot allocation.
+4. If the Slack message refers to biomass going into a run, you can:
+   - accept the suggested lot,
+   - manually assign one lot, or
+   - split the run across multiple candidate lots before leaving the preview page.
+5. Click **Create run** / **Create run from Slack**.
+6. The app opens **New Run** with values filled from your active **Slack → Run** mapping rules and with your selected lot rows prefilled. Review everything before saving.
+7. **Save** the run to store it. Nothing is written to Runs until you save.
 
 **Roles:** Opening the Slack imports UI and the apply flow requires the **Slack Importer** flag (Settings → Users) or **Super Admin**. **Saving** the run still requires **User** or **Super Admin** (edit access). If you are a **Viewer** with Slack Importer, you can review the prefilled form, but Save stays disabled until an editor saves the run (or your role is upgraded).
 
@@ -87,6 +163,8 @@ If your account has **Slack Importer** access (or you are a Super Admin), you ca
 **Traceability:** When you save a new run started from Slack apply, the run stores a **backlink** to that Slack message (`slack_channel_id`, `slack_message_ts`, and applied timestamp). The Slack imports list shows **Promotion** (not promoted vs linked runs) and **Coverage** (how completely mapping rules used the parsed payload—heuristic, not a guarantee of what you typed on the form).
 
 ### What happens on save
+- **Approved lots only:** you cannot allocate weight from a lot whose purchase is **not approved**; the app shows an error naming the batch. Approve the purchase on **Edit Purchase** (or complete the **Committed** approval path on **Biomass Pipeline**) first.
+- **Exact allocation required:** the sum of your selected lot rows must match **Lbs in Reactor** exactly. If the total is over or under, fix the lot weights before saving.
 - **Yields** are recalculated automatically (overall, THCA, HTE).
 - **Lot remaining weights** are automatically decreased based on the input weights.
 - **Cost per gram** is recalculated based on:
@@ -104,6 +182,9 @@ These badges help identify runs that may skew cost analytics.
 - **Edit**: updates calculations again on save.
 - **Delete**: restores lot remaining weights (so inventory stays correct).
 - **Hard Delete (Super Admin)**: permanently removes run records for sandbox cleanup.
+
+### Batch editing runs
+From the **Runs** list, select two or more runs and use **Batch edit…** to change shared fields (see **Batch editing from list screens**). Yields and cost per gram are recalculated when relevant fields change.
 
 ---
 
@@ -124,8 +205,10 @@ Use **Departments** for day-to-day orientation; all underlying data is the same 
 ## Inventory
 Inventory shows the current biomass position.
 
+**Supplier** and **strain** filters are **saved for your session** while you work elsewhere; use **Remove filters** to clear them (see **Saved filters, sorts, and list state**).
+
 ### Summary tiles (top of the page)
-- **On Hand**: total **remaining** pounds on lots from purchases that have arrived (operational statuses such as delivered, in testing, available, processing, complete).
+- **On Hand**: total **remaining** pounds on lots from purchases that are **approved** and in statuses the app treats as on-hand (**delivered**, **in testing**, **available**, **processing**). Purchases still in **ordered** / **committed** / **in transit** (or not yet approved) do not contribute here.
 - **In Transit**: total **stated** pounds on purchases that are committed, ordered, or in transit—not yet treated as on-hand inventory.
 - **Total**: **On Hand + In Transit**—your combined pounds in-house and on the way.
 - **Days of Supply**: how many days the **On Hand** amount would last at your configured **Daily Throughput Target** (Settings). **In-transit weight is not included** in this number; it only reflects material already on hand.
@@ -139,12 +222,77 @@ This table lists lots with remaining weight, including:
 - Potency (if recorded on the lot)
 - Milled flag and location
 
+Purchase editors see **Select all**, **Select none**, and **Batch edit…** above this table to change strain name, location, milled, potency, or notes on **multiple lots** at once (see **Batch editing from list screens**).
+
+Lots may also show a **tracking ID**. This is the permanent machine-readable identity for that physical lot and now drives the printed barcode and scan route for that lot.
+
+Where available, use the **Label** action from Inventory, Purchases, or Journey to print a lot-facing label page. The label now renders a printable **Code 39 barcode**, a **QR code**, and the scan route for that exact lot.
+
+### Floor Ops
+Use **Floor Ops** from the left navigation when you want a quick operator view of:
+- recent barcode scans
+- recent smart-scale captures
+- open lot count
+- active scale devices
+- lots already staged and ready for extraction
+- open lots still pending prep or testing
+
+The page also rolls open lots up by floor state:
+- in inventory
+- in vault
+- in reactor staging
+- in quarantine
+- custom movement
+
+Each recent scan row includes an **Open Scan Page** shortcut back into the lot execution workflow.
+
+### Scan Center
+Use **Floor Ops -> Open Scan Center** when you want to scan with a tablet or phone camera.
+
+The scan center supports:
+- browser-camera scanning on supported devices and browsers
+- manual tracking ID entry
+- Bluetooth barcode scanners that type into the input field
+
+When the browser detects a supported barcode or QR code, it opens the scanned lot page automatically.
+
+Camera notes:
+- `http://localhost` works for local desktop testing
+- tablets usually require HTTPS for camera access
+- if camera scanning is not supported in the browser, use the manual field or a paired scanner
+
+### Scanned lot execution
+When the app opens `/scan/lot/<tracking_id>`, the page is optimized for floor execution.
+
+Use **Start Run From This Lot** to choose one of these guided run-start modes:
+- **Blank run form**: preselect the lot and open a normal new run
+- **Use full remaining lot**: prefill the run with the lot's full remaining lbs and matching source allocation
+- **Use partial amount**: enter a partial lbs amount and prefill both reactor weight and source allocation
+- **Scale capture first**: preselect the lot but direct the operator to capture reactor weight from a configured scale before saving
+
+Use **Confirm Movement** to record a standard movement action:
+- move to vault
+- move to reactor staging
+- move to quarantine
+- move back to inventory
+- or store a custom location detail
+
+Use **Confirm Testing** to update testing state without opening the purchase form.
+
+The **Recent Scan Activity** section records these floor actions with context, including:
+- guided run-start mode
+- planned partial lbs
+- movement action and location
+- testing confirmations
+
 ### In Transit / On Order
 This table lists purchases that are not yet fully received, including:
 - Supplier and status
 - Stated weight
 - Order date and expected delivery
 - Price per lb (if known)
+
+Purchase editors see **Select all**, **Select none**, and **Batch edit…** above this table to update several in-transit purchases at once (same as batch edit on **Purchases**).
 
 ### Days of Supply (detail)
 Same as the **Days of Supply** summary tile: **on-hand lbs ÷ Daily Throughput Target**. It does not add in-transit pounds. If the target is zero or unset in a way that makes it zero, the app shows **0** days.
@@ -154,6 +302,8 @@ Same as the **Days of Supply** summary tile: **on-hand lbs ÷ Daily Throughput T
 ## Purchases (Batches)
 Purchases are batch-level records used for pricing, receiving, and inventory creation.
 
+On the **Purchases** list, use **Apply filters** for supplier, **purchase date range**, potency range, and optional **Hide complete & cancelled**. Status chips (**All**, **Committed**, **Ordered**, …) keep your other filters where possible. Filter and status choices **persist for your session** when you leave the page and come back—see **Saved filters, sorts, and list state**. **Remove filters** clears saved list state for Purchases.
+
 ### Batch IDs
 Each purchase has a **unique Batch ID** (human-readable). You can:
 - **Leave it blank** to auto-generate, or
@@ -161,11 +311,53 @@ Each purchase has a **unique Batch ID** (human-readable). You can:
 
 Batch IDs are used across the app to make batches easy to identify and to link into the Biomass Pipeline.
 
+### Batch Journey (purchase timeline)
+You can open a per-batch timeline from:
+- **Purchases** list → **Journey** button on the row
+- **Edit Purchase** → **View Journey** button
+
+The Journey page shows derived lifecycle stages:
+- declared, testing, committed, delivered, inventory, extraction, post-processing, sales
+
+Each stage includes:
+- status badge
+- timestamps (when known)
+- key metrics
+- links back to source records
+
+The Journey page now also shows:
+- **Inventory lots** for the purchase, including remaining weight, allocated weight, potency, clean/dirty state, testing state, and tracking ID when available
+- **Run allocations** showing which runs consumed which lots and how much weight was allocated into each run
+
+Exports:
+- **Export JSON**
+- **Export CSV**
+- If a bad export format is requested (for example, from a copied/custom URL), the app returns a clear error instead of silently changing formats.
+
+Archived rows:
+- Super Admin can include archived data using the **Include archived** toggle.
+
 ### Creating a new purchase
 1. Go to **Purchases** → **+ New Purchase**
 2. Choose supplier, purchase date, status, and weight/pricing fields.
 3. (Optional) add lots/strains for the purchase at creation time.
 4. Save.
+
+When a lot is created or later approved into active inventory, the app now assigns it machine-readable tracking fields so it is ready for future labels and scan-based workflows.
+
+### Importing purchases from a spreadsheet
+Use **Purchases** → **Import spreadsheet** when you have many purchases in Excel or CSV (for example accounting exports with **Vendor**, **Purchase Date**, **Invoice Weight**, **Actual Weight**, **Manifest**, **Amount**, **Paid Date**, **Payment Method**, **Week**).
+
+1. Drag a **.csv**, **.xlsx**, or **.xlsm** file onto the drop zone (or click to browse). Upload starts automatically after you pick a file.
+2. The app finds a header row and maps familiar column names. Fix any problems shown on the **preview** (missing date or weight, duplicate manifest/batch ID, etc.).
+3. Choose which valid rows to import. You can turn on **Create missing suppliers** so new vendor names become supplier records (matched case-insensitively by name).
+4. Confirm import.
+
+**Tips:** A **Download sample CSV** link on the import page shows expected-style headers. If **purchase date** is empty but **paid date** is filled, the app may use paid date as the purchase date. If **invoice weight** is empty but **actual weight** is present, actual weight can stand in for stated weight. **Amount** is stored as **total cost**; **Week** / paid date / payment method are added to **notes** for traceability.
+
+**Approval:** Imported rows are created **without** automatic approval. If a row’s status would normally put material **on hand**, the app stores a non-on-hand status (typically **ordered**) until someone **Approves** the purchase and sets the correct status on **Edit Purchase**.
+
+This path is **only for purchases**. The sidebar **Import** screen is for **run** history from Google Sheets—see **Import (CSV)** below.
 
 ### Potency-based pricing and true-up
 Purchases support:
@@ -173,10 +365,10 @@ Purchases support:
 - Price per lb (can be entered directly)
 - True-up amount calculation when potency changes and actual weight is known
 
-### Editing purchase status
-Purchase status affects:
-- Whether it is treated as in-transit vs on-hand inventory views
-- If the purchase is linked to a Biomass Pipeline record, the pipeline stage is kept in sync
+### Purchase approval and status
+- **Approve purchase** (top of **Edit Purchase**, and now inline on **Purchases** and **Biomass Pipeline** list rows for eligible approvers): sets **Approved** with a timestamp. Until then, a yellow banner explains that material **cannot** be used in extraction runs or appear in **On Hand** inventory.
+- You **cannot** set on-hand statuses (**Delivered**, **In testing**, **Available**, **Processing**) until the purchase is approved; try **Approve purchase** first, then change status.
+- **Biomass Pipeline** and **Purchases** are the **same records**: changing status on either screen is changing that purchase.
 
 ### Purchase deletion
 - **Delete Purchase** performs a safe (soft) delete.
@@ -191,21 +383,30 @@ On **New Purchase** and **Edit Purchase**, use the **Supporting documentation** 
 - **Who can upload:** **User** or **Super Admin** (same as saving purchases). Viewers cannot upload.
 - **Formats:** JPG, JPEG, PNG, WEBP, HEIC, HEIF, and PDF.
 - **Size limit:** up to **50 MB per file**.
-- Choose a **category**, optional **title**, and optional **tags** (comma-separated) for the batch you are uploading; then click **Save Purchase** to store the files.
+- Choose a **category**, optional **title**, and optional **tags** (comma-separated) for the batch you are uploading; then click **Save Purchase** (at the **top** or **bottom** of the form) to store the files.
 - After save, files appear under **Supporting documents on file** on the purchase (with **Delete** for editors) and in the **Photo Library** (filter by purchase if needed).
 - **Field intake audit photos** (from approved biomass/purchase field forms) are listed separately on the purchase; those are not replaced by this upload area and are managed through the field submission workflow.
+
+### Batch editing purchases from the list
+Select two or more rows on the **Purchases** list, then **Batch edit…**, to set **status**, **delivery date**, **queue placement**, or **append notes** for all selected purchases at once. See **Batch editing from list screens** for limits (current page only, weekly budget rules).
 
 ---
 
 ## Biomass Pipeline
-The Biomass Pipeline tracks farm availability before it becomes a purchase.
+The Biomass Pipeline is a **view of the same purchase batches** you see under **Purchases**. Early work uses statuses **Declared** and **Testing** (stored as **`declared`** and **`in_testing`**); later stages match normal purchasing (**Committed**, **Delivered**, **Cancelled**). Each row has a **Batch ID** and optional **lots** for strain tracking.
 
-### Stages
-- **Declared**: supplier declares availability (date/weight/price/potency)
-- **Testing**: testing step (timing + status + results)
-- **Committed**: you commit to purchase (delivery date, $/lb, committed weight)
-- **Delivered**: arrived (or close-out stage if you use it that way)
-- **Cancelled**: batch is cancelled
+List **filters** (supplier, **availability date range**, strain text) and bucket/stage context are **saved for your session** when you navigate elsewhere—see **Saved filters, sorts, and list state**. Use **Remove filters** to clear.
+
+**Buckets:** **Current** / **Old Lots** / **All** / (Super Admin) **Archived** control how **Declared** and **Testing** rows age out; **Committed** and later stages normally stay on **Current**. See on-screen help text for the day thresholds (settings: **potential lot** aging).
+
+Editors can use **Select all** / **Select none** and **Batch edit…** on the pipeline list to change **stage**, **testing** fields, or **notes** on multiple rows (see **Batch editing from list screens**). Batch edit updates **`Purchase`** records directly.
+
+### Stages (UI → system)
+- **Declared** — early declaration (`declared`): availability date, declared weight/price, estimated potency, optional strain/lot
+- **Testing** — in-pipeline testing (`in_testing`): timing, status, optional tested potency and date
+- **Committed** — firm buy (`committed`): committed dates/weight/price; **requires a purchase approver** (or **Super Admin**); approval is recorded when you enter this stage
+- **Delivered** — must follow **Committed**; same rules as purchases for receiving
+- **Cancelled** — batch cancelled
 
 ### Creating a pipeline record
 1. Go to **Biomass Pipeline** → **+ New Availability**
@@ -213,18 +414,18 @@ The Biomass Pipeline tracks farm availability before it becomes a purchase.
 3. Optionally fill Step 2 (Testing) and Step 3 (Commitment)
 4. Set the Stage and Save
 
-### Linking to Purchases (sync behavior)
-- When a pipeline record is moved to **Committed** (or Delivered), the app will create a linked Purchase if one does not already exist.
-- If a linked Purchase exists, key fields stay synchronized (supplier/date/weights/potency/$/lb/status).
-- The pipeline list shows the linked Batch ID (when present) and links directly to the Purchase.
+You can open the same batch anytime from **Purchases** (search by **Batch ID** or supplier). There is **no separate “link” step**—one row serves both screens.
+
+### Approvers and Committed
+Only **Super Admin** or users with **purchase approval** permission may move a batch **into** or **out of** **Committed** (and therefore control the approval stamp tied to that transition). If you lack permission, ask an approver to edit the batch or adjust your user flag in **Settings**. If you do have permission, you can approve directly from the **Biomass Pipeline** row without opening the form first.
 
 ### Adding field photos
-Both field intake forms (biomass and purchase request) support optional photo uploads.
+Field intake for biomass declarations (and purchase requests) still supports optional photo uploads; stored paths attach to the resulting **purchase** record.
 
 What users can do:
 - Attach multiple photos from camera or gallery before submitting.
 - On the **Potential Purchase** form there are three separate buckets: **Supplier / License**, **Biomass**, and **Testing / COA**—each can hold many photos, independently.
-- On **Biomass Availability**, there is one photo bucket for the declaration.
+- On the **biomass declaration** field form, there is one photo bucket for the declaration.
 - **Mobile / in-app browser:** each photo uses its own native file control (not a merged list), so submission works reliably on iPhone and embedded webviews. Tap **Add photo**, then on the new row tap **Take or choose photo** (camera or gallery). Repeat **Add photo** for more images.
 - **Remove before submit:** each row has **Remove** to unselect that photo before you send the form (empty rows are discarded on submit).
 - Each section allows up to **30** images by default (configurable by your administrator via `FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET`).
@@ -253,6 +454,8 @@ If something is missing or invalid (bad date, negative weight, invalid stage), y
 ## Costs (Operational Costs)
 Use Costs to capture operating expenses that should be included in run $/g.
 
+**Cost type** chips and the **start/end date** filters on the list are **saved for your session** while you work in other sections—see **Saved filters, sorts, and list state**. **Remove filters** clears them.
+
 ### What a cost entry represents
 Each entry has:
 - Type: **solvent**, **personnel**, or **overhead**
@@ -269,6 +472,8 @@ Operational costs are allocated as:
 1. Go to **Costs** → **+ New Cost Entry**
 2. Choose type, name, date range, and total cost
 3. Save
+
+Editors can **Batch edit…** from the **Costs** list to change **cost type** or **append notes** on multiple entries (see **Batch editing from list screens**).
 
 ---
 
@@ -287,12 +492,20 @@ Supplier profiles also include:
 
 If the “exclude runs missing $/lb” setting is enabled, these analytics ignore runs with incomplete biomass pricing.
 
+Editors can use **Select all** / **Select none** and **Batch edit…** from the supplier cards area to **activate/deactivate** suppliers or **append notes** (see **Batch editing from list screens**). Checkboxes appear next to each supplier card title.
+
+Super Admins can also open a supplier record and use **Merge Supplier** to combine duplicates safely. The merge screen shows an impact summary first, then archives the source supplier, moves linked records to the target supplier, and keeps lineage and audit history intact.
+
 ---
 
 ## Strains (Performance)
 Strains compares yield/cost metrics grouped by strain + supplier.
 
+Your **All time / Last 90 days** choice **persists for your session** when you navigate away and return—see **Saved filters, sorts, and list state**. **Remove filters** restores the default (All time).
+
 If the “exclude runs missing $/lb” setting is enabled, these analytics ignore runs with incomplete biomass pricing.
+
+Editors can select two or more rows and use **Batch rename…** to set one **new strain name** on all **purchase lots** that match each selected strain+supplier combination. Read the warning on the batch screen—this is a bulk rename, not the same as editing a single lot (see **Batch editing from list screens**).
 
 ---
 
@@ -332,6 +545,12 @@ Includes:
 - Throughput targets
 - Optional analytics filter: **Exclude runs missing biomass pricing ($/lb)**
 - Cost allocation method: **Uniform**, **Split 50/50**, or **Custom split**
+- Site identity for internal API consumers:
+  - `site_code`
+  - `site_name`
+  - `site_timezone`
+  - `site_region`
+  - `site_environment`
 
 ### KPI Targets
 Set KPI targets and green/yellow thresholds to match operational goals.
@@ -339,6 +558,66 @@ Set KPI targets and green/yellow thresholds to match operational goals.
 ### Users
 Admins can create users and assign roles. (This manual does not include any credentials.)
 - Disabled users can be reactivated.
+
+### Internal API Clients
+Super Admin can manage bearer-token clients for the internal read-only API under **Settings -> Internal API Clients**.
+- Create a named client and choose its read scopes.
+- The raw bearer token is shown only once when the client is created.
+- Clients can be revoked, reactivated, and deleted later from the same table.
+- The table also shows **Last Used** plus the last endpoint/scope the token touched, which helps with internal audit and troubleshooting.
+- The same section now shows a **Recent API Request Log** so you can quickly see which client hit which endpoint, with method, scope, status, and timestamp.
+
+### Remote Sites
+Super Admin can manage cross-site cache registrations under **Settings -> Remote Sites**.
+- Register a remote site with its base URL, optional bearer token, and notes.
+- Pull an individual site on demand to cache its current site identity, manifest, and summary payloads locally.
+- Remote pulls now also cache supplier-performance and strain-performance payloads for cross-site comparison.
+- Disable a site without deleting it.
+- Delete only after it has been disabled.
+
+### Maintenance: Pull all remote sites
+Use **Pull all remote sites** in **Settings -> Maintenance** to refresh the local cache from every active remote-site registration at once.
+
+Server-side equivalent:
+
+```bash
+source venv/bin/activate
+python scripts/pull_remote_sites.py
+```
+
+### Fresh start / operational reset
+
+If you want to start over with a clean operating database but still keep login access and financial settings, use the server-side reset script instead of deleting the database file manually.
+
+The supported reset keeps:
+- users and passwords
+- system settings and KPI targets
+- Slack sync configuration
+- cost entries
+- scale-device configuration
+
+It clears:
+- purchases, lots, runs, and run inputs
+- Slack imports
+- field submissions and field access tokens
+- suppliers, related attachments/tests/photos
+- audit/history rows
+
+Run from the project root on the server:
+
+```bash
+source venv/bin/activate
+python scripts/reset_operational_data.py --yes
+sudo systemctl restart golddrop
+```
+
+If you explicitly want demo/historical data in a fresh environment, seed it separately:
+
+```bash
+source venv/bin/activate
+python scripts/seed_demo_data.py --yes
+sudo systemctl restart golddrop
+```
 - Permanent delete is available only when no historical audit activity exists.
 - **Slack Importer:** For accounts that are not Super Admin, you can grant **Slack import** (sidebar **Slack imports**, preview, and apply-to-new-run). Super Admins always have this capability. Optionally check **Slack Importer** when creating a user. Editors with this flag can complete the full apply flow; **Viewer + Slack Importer** can review prefilled runs but cannot save them.
 
@@ -352,7 +631,7 @@ Admins can create users and assign roles. (This manual does not include any cred
 - **Inbound:** Slash commands and interactivity use `/api/slack/command` and `/api/slack/interactivity`.
 - **Event Subscriptions:** In the Slack app, set the Request URL to `https://your-site/api/slack/events` (HTTPS). The app answers Slack’s URL challenge and accepts `event_callback` pings (extend later for channel messages). The **Signing Secret** in Slack must match the value saved in Settings.
 - **Channel history sync:** Under **Settings → Slack Integration → Channel history sync**, configure up to **six** channels (`#name` or channel ID), then use **Settings → Maintenance → Sync Slack channel history**. The **Days back** value applies to the **first** sync of each channel; after that, each channel keeps its own cursor (last message timestamp) so only newer messages are scanned. The bot must be **invited** to every channel and have `channels:history` + `channels:read` (and for private channels, `groups:history` + `groups:read`). Each message is stored once (deduped by channel + Slack timestamp).
-- **Slack imports & apply (Phase 2):** Sync **stores messages only**—it does not create Runs. Users with **Slack Importer** (or Super Admin) use **Slack imports** to filter/triage rows, open **Run preview**, and **Create run from Slack** so the normal Run form opens prefilled from **Settings → Slack → field mappings** (Run destination rules). Runs are created only when someone **saves** the Run form. Mapping rules for non-Run destinations remain preview/storage for future modules. Super Admins edit mappings at **`/settings/slack-run-mappings`**; the imports list is at **`/settings/slack-imports`** and is also linked from the sidebar for importers.
+- **Slack imports & apply:** Sync **stores messages only**—it does not create Runs. Users with **Slack Importer** (or Super Admin) use **Slack imports** to filter/triage rows, open **Run preview**, review candidate source lots, optionally assign or split lot weights, and **Create run from Slack** so the normal Run form opens prefilled from **Settings → Slack → field mappings** (Run destination rules). Runs are created only when someone **saves** the Run form. Mapping rules for non-Run destinations remain preview/storage for future modules. Super Admins edit mappings at **`/settings/slack-run-mappings`**; the imports list is at **`/settings/slack-imports`** and is also linked from the sidebar for importers.
 
 ### Maintenance: Recalculate all run costs
 Use **Recalculate All Run Costs** after:
@@ -372,8 +651,8 @@ What it does:
 
 ---
 
-## Import (CSV)
-Import supports loading historical data via CSV with a review step.
+## Import (CSV) — runs and run-style history
+The sidebar **Import** screen is for **extraction run** history exported from Google Sheets (run reports, kief/LD tabs, etc.). It is **not** for loading **purchase** batches—use **Purchases → Import spreadsheet** for those.
 
 ### Import flow
 1. Go to **Import**
@@ -398,7 +677,7 @@ Most list screens include **Export CSV**. Exports available include:
 - Strains
 - Costs
 
-Exports support criteria filters (depending on tab), including date range, supplier/status, strain text, potency range, and on **Runs** the **HTE pipeline** stage filter.
+Exports support criteria filters (depending on tab), including date range, supplier/status, strain text, potency range, on **Runs** the **HTE pipeline** stage filter, and on **Purchases** the **Hide complete & cancelled** option when it is active on the list.
 
 Use exports for reporting, reconciliation, or offline analysis.
 
@@ -411,7 +690,41 @@ Use exports for reporting, reconciliation, or offline analysis.
 - **A pipeline record didn’t create a purchase**: set stage to **Committed** (or Delivered) and save; ensure required fields are valid.
 - **I don’t see Slack imports in the sidebar**: ask a Super Admin to enable **Slack Importer** on your user (Super Admins always have access).
 - **Slack prefilled run won’t save**: you need **User** or **Super Admin** to save Runs; Viewer accounts can only review the prefilled form.
+- **Slack prefilled run won’t save because the lot total is wrong**: the selected lot rows must add up exactly to **Lbs in Reactor**. Use the live allocation summary on the Run form to find the difference.
+- **What do the inbox buckets on Slack imports mean?**: they separate rows into **Auto-ready**, **Needs confirmation**, **Needs manual match**, **Blocked**, and **Processed** so operators can work the safest rows first.
 - **Slack says this message is already linked to a run**: expected after a successful apply; confirm only if you intentionally need a second run from the same Slack message.
 - **Upload rejected (file too large or wrong type)**: field intake photos allow **images only** up to **50 MB** each; Photo Library uploads, purchase supporting docs, and supplier lab/attachment uploads allow **images or PDF** up to **50 MB** each. Compress or split large PDFs if needed.
 - **Field intake says too many photos in one section**: each category has a cap (default **30** images per supplier/biomass/COA bucket on the purchase form, and **30** on the biomass form). Remove extras in the list before submitting, or ask your administrator to raise `FIELD_INTAKE_MAX_PHOTOS_PER_BUCKET` if policy allows.
+## Scanner workflow
 
+- Print or open a lot label from **Purchases**.
+- Scan the lot QR / tracking link or open `/scan/lot/<tracking_id>`.
+- On the scanned lot page you can:
+  - use **Start Run From This Lot** to preselect that lot on a new run
+  - use **Confirm Movement** to update the lot storage location
+  - use **Confirm Testing** to update the purchase testing status
+  - review **Recent Scan Activity** for that lot
+
+## Smart scales
+
+- Go to **Settings -> Smart Scales** to register a device.
+- Use **Test ingest** with a raw payload such as `ST,GS, 124.6 lb` to confirm the parser and save a capture.
+- On **Runs -> New Run**, use **Capture from Scale** to prefill **Lbs in Reactor** from a live payload before saving the run.
+- The saved run keeps the linked device capture for later audit and analytics.
+
+## Standalone Purchasing Agent App
+
+- The standalone purchasing app is intended for buyer and intake workflows on phone or tablet.
+- Approvers should review mobile-created opportunities from the main app:
+  - `Purchases` list shows when a line originated from the `Mobile app`
+  - purchase edit pages surface submission origin, created-by user, delivery-recorded-by user, opportunity photos, and delivery photos
+- Supplier duplicates created from fast mobile entry can be corrected from `Suppliers -> Edit -> Merge Supplier`.
+
+## Standalone Receiving Intake App
+
+- The standalone receiving app is intended for receiving and intake staff on phone or tablet.
+- It shows approved or committed purchases that are ready to receive.
+- Receiving confirmation updates the purchase to `delivered`, records the receiving user, and can attach delivery photos.
+- Delivery photos and receiving metadata are visible from the main purchase review screen.
+- `Settings -> Operational Parameters` can enable or disable the standalone purchasing and receiving workflows independently.
+- `Settings -> Internal API Clients` now also shows recent mobile workflow activity for audit visibility.

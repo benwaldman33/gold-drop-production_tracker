@@ -1,0 +1,19 @@
+---
+description: Keep USER_MANUAL.md aligned when editing project documentation (README, FAQ, PRD, ENGINEERING).
+alwaysApply: true
+---
+
+# Documentation and user manual stay in sync
+
+When you **add or materially change** operator-facing behavior documented in any of:
+
+- `README.md`
+- `FAQ.md`
+- `PRD.md`
+- `ENGINEERING.md`
+
+also update **`USER_MANUAL.md`** with the equivalent **end-user / operator** steps and wording (what to click, permissions, limits, and cautions). Skip only if the change is **purely internal** (e.g. refactor with no UX impact) and no manual text would change.
+
+When creating **new** top-level product docs in this repo that describe user-visible features, consider whether `USER_MANUAL.md` needs a matching section or cross-link.
+
+This project treats the manual as part of the same documentation set as README/FAQ/PRD/ENGINEERING.

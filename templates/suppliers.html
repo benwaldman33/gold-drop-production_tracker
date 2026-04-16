@@ -7,6 +7,13 @@
 <div class="page-header">
   <h2>Supplier Performance</h2>
   <div class="btn-group">
+    {% if current_user.can_edit %}
+    <div class="btn-group" data-batch-toolbar="1" data-batch-entity="suppliers" data-batch-scope="#supplier-batch-scope" data-table-selector="" data-return-to="{{ request.full_path }}">
+      <button type="button" class="btn btn-secondary btn-sm" data-batch-select-all>Select all</button>
+      <button type="button" class="btn btn-secondary btn-sm" data-batch-select-none>Select none</button>
+      <button type="button" class="btn btn-primary btn-sm" data-batch-edit disabled>Batch edit…</button>
+    </div>
+    {% endif %}
     <a href="{{ url_for('export_csv', entity='suppliers') }}" class="btn btn-secondary">Export Suppliers CSV</a>
     <a href="{{ url_for('export_csv', entity='strains') }}" class="btn btn-secondary">Export Strains CSV</a>
   {% if current_user.can_edit %}
@@ -30,19 +37,34 @@
 </div>
 {% endif %}
 
+<div id="supplier-batch-scope">
 {% for ss in supplier_stats %}
 <div class="card supplier-hover-card" data-profile-incomplete="{{ '1' if ss.profile_incomplete else '0' }}" data-supplier-name="{{ ss.supplier.name|e }}">
   <div class="supplier-hover-card__header" tabindex="0">
+    {% if current_user.can_edit %}
+    <span style="margin-right:10px;display:inline-flex;align-items:center;" onclick="event.stopPropagation();">
+      <input type="checkbox" class="batch-select-cb" data-batch-entity="suppliers" value="{{ ss.supplier.id }}" aria-label="Select {{ ss.supplier.name }}">
+    </span>
+    {% endif %}
     <h3 class="supplier-hover-card__title">
       {{ ss.supplier.name }}
       {% if not ss.supplier.is_active %}<span class="badge badge-gray">Inactive</span>{% endif %}
+      {% if ss.supplier.is_merged %}<span class="badge badge-gray">Merged</span>{% endif %}
     </h3>
     <span class="text-sm supplier-hover-card__meta">{{ ss.all_time.runs }} runs · {{ "{:,.0f}".format(ss.all_time.lbs) }} lbs processed</span>
   </div>
   <div class="supplier-hover-card__body">
+    {% if ss.supplier.is_merged and ss.supplier.merged_into_supplier %}
+    <div class="text-sm cell-muted" style="margin-bottom:10px;">
+      Archived duplicate. Canonical supplier: <strong style="color:var(--text-primary);">{{ ss.supplier.merged_into_supplier.name }}</strong>
+    </div>
+    {% endif %}
     {% if current_user.can_edit %}
     <div class="btn-group" style="margin-bottom:10px;">
       <a href="{{ url_for('supplier_edit', sid=ss.supplier.id) }}" class="btn btn-secondary btn-sm">Edit</a>
+      {% if current_user.is_super_admin and not ss.supplier.is_merged %}
+      <a href="{{ url_for('supplier_edit', sid=ss.supplier.id) }}#supplier-merge" class="btn btn-secondary btn-sm">Merge</a>
+      {% endif %}
     </div>
     {% endif %}
 
@@ -111,6 +133,7 @@
   </div>
 </div>
 {% endfor %}
+</div>
 {% endblock %}
 {% block scripts %}
 <script>
