@@ -397,10 +397,18 @@ async function handleLogout() {
 }
 
 async function handleSearchInput(event) {
+  const inputId = event.currentTarget.id;
   const query = event.currentTarget.value;
+  const selectionStart = event.currentTarget.selectionStart ?? query.length;
+  const selectionEnd = event.currentTarget.selectionEnd ?? query.length;
   state.supplierQuery = query;
   state.suppliers = await api.listSuppliers(query);
   render();
+  const nextInput = app.querySelector(`#${inputId}`);
+  if (nextInput) {
+    nextInput.focus();
+    nextInput.setSelectionRange(selectionStart, selectionEnd);
+  }
 }
 
 async function submitOpportunityDraft(draft) {
@@ -776,7 +784,7 @@ function renderSupplierDetail() {
       <div class="topbar">
         <div><h2>${escapeHtml(supplier.name)}</h2><div class="meta">Supplier context for buyer workflows.</div></div>
         <div class="actions">
-          <a class="btn btn-secondary" href="#/suppliers?q=${encodeURIComponent(supplier.name)}">Back to search</a>
+          <a class="btn btn-secondary" href="#/suppliers">Back to search</a>
           <a class="btn btn-primary" href="#/opportunities/new">New Opportunity</a>
         </div>
       </div>
