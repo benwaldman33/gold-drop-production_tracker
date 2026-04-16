@@ -62,9 +62,12 @@
     </div>
 
     <div class="floor-scan-strip">
-      <div class="text-sm cell-muted">Scan route</div>
+      <div class="text-sm cell-muted">QR scan</div>
+      <div class="floor-qr-shell">
+        <img src="{{ label.qr_image_url }}" alt="QR code for {{ label.tracking_id }}" class="floor-qr-image">
+      </div>
       <div class="text-mono floor-payload-copy">{{ label.scan_url or label.qr_value }}</div>
-      <div class="floor-scan-instruction">Scan the barcode to open the floor execution page for this exact lot.</div>
+      <div class="floor-scan-instruction">Use the QR on tablets or phones, or the barcode on hardware scanners, to open this lot's floor execution page.</div>
     </div>
   </div>
   {% endfor %}

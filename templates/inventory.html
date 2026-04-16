@@ -106,7 +106,8 @@
           </td>
           <td class="text-sm">
             <div>{{ lot._material_state }}</div>
-            <div class="cell-muted">Milled: {% if lot.milled %}Yes{% else %}No{% endif %}</div>
+            <div class="cell-muted">Floor: {{ lot._floor_state_label }}</div>
+            <div class="cell-muted">Prep: {% if lot.milled %}Milled{% else %}Not milled{% endif %}</div>
           </td>
           <td class="text-sm">
             {% if lot._exceptions %}

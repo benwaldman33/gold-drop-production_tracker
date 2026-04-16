@@ -49,6 +49,7 @@ Operations needs a single system to answer:
 - **Allocation integrity**: every reactor input must resolve to a **specific source lot**; the product must never silently guess between multiple viable lots from the same supplier.
 - **Physical-state visibility**: operators must be able to see **weight, remaining weight, potency, testing state, clean/dirty, and cost** anywhere material is reviewed or matched.
 - **Automation readiness**: lots must support live **barcode execution**, scan-history capture, and **connected scale** workflows without changing the core data model later.
+- **Guided floor execution**: after a lot is scanned, the operator should be able to start a run, confirm movement, and confirm testing through standardized floor actions rather than a generic record-edit workflow.
 - **Internal data access**: each site deployment must expose a stable, read-only internal API so trusted internal consumers, future site rollups, and future read-only MCP / AI tools can access detailed operational data without querying the database directly.
 - **Accurate $/g**: include biomass $/lb inputs and allocated operational costs.
 - **Configurable allocation**: choose how total run dollars are distributed between THCA and HTE.
@@ -171,6 +172,7 @@ Authorization should use **named capabilities per user** (flags or equivalent), 
 ### Internal API & site-local deployment
 - Each facility deployment is its own **site-local system of record**.
 - Sites are intentionally **separate deployments first**, with the option to be **rolled up / aggregated later** through a separate reporting or integration layer.
+- Cross-site operator/admin UI should remain **hidden by default** on a normal site. A **Super Admin** must explicitly enable cross-site visibility for that deployment before any cross-site pages appear in the web app.
 - The product should expose a **read-only internal API** for trusted internal consumers, future aggregation services, and future read-only MCP / AI tooling.
 - This internal API is **not** a customer-facing public API.
 - `/api/v1/*` uses **bearer-token auth** via internal API clients rather than web-login redirects.
@@ -235,6 +237,12 @@ These endpoints:
 - expose a site sync manifest so future aggregation services can identify the site, dataset counts, and basic freshness markers before pulling deeper data
 - expose a cached rollup layer for registered remote sites so one site can summarize other site deployments without live fan-out on every read
 - expose cached cross-site supplier and strain comparison reads so internal analytics and future AI tooling can compare site performance without direct access to every remote instance
+- expose a gated cross-site UI on top of that cached layer:
+  - `/cross-site`
+  - `/cross-site/suppliers`
+  - `/cross-site/strains`
+  - `/cross-site/reconciliation`
+  while keeping those pages invisible until the site-level visibility flag is enabled
 - expose a cross-entity search / lookup surface so internal tools and future MCP clients can find suppliers, purchases, lots, and runs without hard-coding separate list queries first
 - expose semantic, tool-oriented read endpoints so future MCP / AI clients can ask for inventory snapshots, open-lot resolution, canonical journeys, and reconciliation posture without stitching together multiple low-level API calls themselves
 - now include summary-oriented read models for inventory posture, Slack-import triage posture, and reconciliation posture
@@ -917,9 +925,10 @@ Some **potential** purchase / pipeline lines will never be approved. The product
 - **Lot allocation integrity + UX:** make `PurchaseLot` and `RunInput` the explicit `Purchase -> Lot -> Allocation -> Run -> Output` chain; add guided resolution when multiple same-supplier lots exist.
 - **Batch Journey upgrade:** evolve the current purchase timeline into a true graph/timeline view with lot nodes, allocation edges, physical descriptors, and exception states.
 - **Slack inbox redesign:** move from raw import review to confidence buckets, candidate-lot resolution, and simple manual allocation/split workflows.
-- **Lot identity + labels:** generate `tracking_id`, barcode, and QR for each lot at purchase authorization / lot creation; support printable labels with live barcode rendering and `/scan/lot/<tracking_id>` execution.
-- **Operator floor UX:** expose a dedicated floor surface for recent scan activity, recent scale captures, and quick handoff back into lot execution workflows.
+- **Lot identity + labels:** generate `tracking_id`, barcode, and QR for each lot at purchase authorization / lot creation; support printable labels with live barcode + QR rendering and `/scan/lot/<tracking_id>` execution.
+- **Operator floor UX:** expose a dedicated floor surface for recent scan activity, recent scale captures, floor-state rollups, extraction-readiness counts, and quick handoff back into lot execution workflows.
 - **Tablet scan center:** provide an in-browser `/scan` workflow for supported tablet/phone cameras, with manual and hardware-scanner fallback when camera barcode detection is unavailable.
+- **Guided scanned-lot execution:** when `/scan/lot/<tracking_id>` opens, operators can choose a run-start mode (blank form, full remaining lot, partial lbs, or scale-capture-first), record standardized movement actions (vault, reactor staging, quarantine, inventory return, or custom), confirm testing status, confirm prep state, and review recent floor activity with structured context.
 - **Connected scale readiness:** add device-backed weight capture as a future structured input channel without changing the operator-facing material model. The current delivery already includes `ScaleDevice` and `WeightCapture` as the persistence layer for that later workflow.
 - **Department UIs + governance:** **capabilities**, **purchase approval**, **Old Lots** + **soft delete**, and **`/dept` department hub + per-department pages** are implemented; continue to deepen per-department workflows (e.g. explicit “on stripper” stage, richer testing integrations) per **Operational departments & shared data model**.
 - **Explicit close-out reasons** for potential lines (declined, lost, withdrawn) — optional enhancement beyond aging; supports analytics such as win rate by supplier without relying on soft-delete alone.
@@ -928,3 +937,34 @@ Some **potential** purchase / pipeline lines will never be approved. The product
 - Add richer analytics screens (time series, variance by reactor/operator).
 - Add COA upload + parsing, and stronger validation rules around potency/pricing.
 - Add automated alerts for “missing $/lb” purchases linked to recent runs.
+## Standalone Purchasing Agent App Pilot Hardening
+
+Current pilot-hardening requirements now include:
+
+- local proxy-based standalone app development so session auth works cleanly against the main backend
+- purchase review visibility for mobile-created opportunities
+- deployment/runbook documentation for the standalone app
+- a pilot QA checklist covering buyer, approver, and supplier-merge workflows
+
+## Standalone Receiving Intake App
+
+The standalone app family now extends beyond the buyer workflow to a dedicated receiving / intake app.
+
+Requirements:
+
+- operate on existing approved or committed purchases
+- provide a receiving queue and receiving detail screen
+- allow dock staff to confirm receipt, set location / floor state, and upload delivery photos
+- keep delivery subordinate to the purchase lifecycle rather than creating a second intake object
+
+## Controlled Write Platform Hardening
+
+As standalone apps expand, the session-auth write surface now needs shared platform rules rather than one-off endpoint behavior.
+
+Current hardening requirements:
+
+- workflow-specific site toggles for standalone buying and receiving
+- same-origin enforcement on unsafe mobile writes
+- write-side audit visibility for mobile-origin mutations
+- machine-readable mobile capabilities discovery
+- upload limits for delivery and opportunity photo writes

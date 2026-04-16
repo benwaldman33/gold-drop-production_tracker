@@ -7,6 +7,14 @@ from gold_drop.purchases import biomass_budget_snapshot_for_purchase, enforce_we
 from gold_drop.uploads import save_purchase_support_docs
 from services.lot_labels import build_lot_label_payload, build_purchase_label_payloads
 from services.lot_allocation import ensure_lot_tracking_fields, ensure_purchase_lot_tracking
+
+MOVEMENT_OPTIONS = [
+    {"code": "vault", "label": "Move to vault", "default_location": "Vault", "floor_state": "vault"},
+    {"code": "reactor_staging", "label": "Move to reactor staging", "default_location": "Reactor staging", "floor_state": "reactor_staging"},
+    {"code": "quarantine", "label": "Move to quarantine", "default_location": "Quarantine", "floor_state": "quarantine"},
+    {"code": "inventory_return", "label": "Return to inventory", "default_location": "Inventory return", "floor_state": "inventory"},
+    {"code": "custom", "label": "Custom location", "default_location": "", "floor_state": "custom"},
+]
 from services.purchase_helpers import (
     create_photo_asset,
     ensure_unique_batch_id,
@@ -62,6 +70,10 @@ def register_routes(app, root):
     def scan_lot_confirm_testing(tracking_id):
         return scan_lot_confirm_testing_view(root, tracking_id)
 
+    @root.editor_required
+    def scan_lot_confirm_milled(tracking_id):
+        return scan_lot_confirm_milled_view(root, tracking_id)
+
     @root.purchase_editor_required
     def purchase_delete(purchase_id):
         return purchase_delete_view(root, purchase_id)
@@ -91,6 +103,12 @@ def register_routes(app, root):
         view_func=scan_lot_confirm_testing,
         methods=["POST"],
     )
+    app.add_url_rule(
+        "/scan/lot/<tracking_id>/confirm-milled",
+        endpoint="scan_lot_confirm_milled",
+        view_func=scan_lot_confirm_milled,
+        methods=["POST"],
+    )
     app.add_url_rule("/purchases/<purchase_id>/delete", endpoint="purchase_delete", view_func=purchase_delete, methods=["POST"])
     app.add_url_rule(
         "/purchases/<purchase_id>/hard_delete",
@@ -104,23 +122,40 @@ def _purchase_form_context(root, purchase):
     suppliers = root.Supplier.query.filter_by(is_active=True).order_by(root.Supplier.name).all()
     rate = root.SystemSetting.get_float("potency_rate", 1.50)
     purchase_audit_photos = []
+    purchase_delivery_photos = []
     purchase_support_docs = []
+    purchase_origin_summary = None
     if purchase:
         purchase_audit_photos = root.PhotoAsset.query.filter(
             root.PhotoAsset.purchase_id == purchase.id,
-            root.PhotoAsset.source_type == "field_submission",
+            root.PhotoAsset.source_type.in_(("field_submission", "mobile_api")),
+            root.or_(root.PhotoAsset.photo_context.is_(None), root.PhotoAsset.photo_context == "opportunity"),
+        ).order_by(root.PhotoAsset.uploaded_at.desc()).all()
+        purchase_delivery_photos = root.PhotoAsset.query.filter(
+            root.PhotoAsset.purchase_id == purchase.id,
+            root.PhotoAsset.source_type == "mobile_api",
+            root.PhotoAsset.photo_context == "delivery",
         ).order_by(root.PhotoAsset.uploaded_at.desc()).all()
         purchase_support_docs = root.PhotoAsset.query.filter(
             root.PhotoAsset.purchase_id == purchase.id,
             root.PhotoAsset.source_type == "purchase_upload",
         ).order_by(root.PhotoAsset.uploaded_at.desc()).all()
+        purchase_origin_summary = {
+            "source_label": "Mobile app" if purchase.created_by_user_id else "Back office",
+            "created_by_name": purchase.created_by_user.display_name if purchase.created_by_user else None,
+            "delivery_recorded_by_name": purchase.delivery_recorded_by.display_name if purchase.delivery_recorded_by else None,
+            "opportunity_photo_count": len(purchase_audit_photos),
+            "delivery_photo_count": len(purchase_delivery_photos),
+        }
     return {
         "purchase": purchase,
         "suppliers": suppliers,
         "rate": rate,
         "today": date.today(),
         "purchase_audit_photos": purchase_audit_photos,
+        "purchase_delivery_photos": purchase_delivery_photos,
         "purchase_support_docs": purchase_support_docs,
+        "purchase_origin_summary": purchase_origin_summary,
     }
 
 
@@ -166,6 +201,9 @@ def _annotate_purchase_row(purchase):
     purchase._total_allocated = total_allocated
     purchase._total_remaining = total_remaining
     purchase._exceptions = exceptions
+    purchase._intake_origin_label = "Mobile app" if purchase.created_by_user_id else "Back office"
+    purchase._created_by_name = purchase.created_by_user.display_name if purchase.created_by_user else None
+    purchase._delivery_recorded_by_name = purchase.delivery_recorded_by.display_name if purchase.delivery_recorded_by else None
     if not purchase.is_approved:
         purchase._next_action = "Approve purchase"
     elif state_key == "no_lots":
@@ -527,7 +565,14 @@ def scan_lot_view(root, tracking_id):
     )
     root.db.session.commit()
     recent_events = lot.scan_events.order_by(root.LotScanEvent.created_at.desc()).limit(8).all()
-    return root.render_template("lot_scan.html", lot=lot, purchase=lot.purchase, recent_events=recent_events)
+    return root.render_template(
+        "lot_scan.html",
+        lot=lot,
+        purchase=lot.purchase,
+        recent_events=recent_events,
+        movement_options=MOVEMENT_OPTIONS,
+        scale_devices=root.ScaleDevice.query.filter_by(is_active=True).order_by(root.ScaleDevice.name.asc()).all(),
+    )
 
 
 def scan_lot_start_run_view(root, tracking_id):
@@ -535,12 +580,47 @@ def scan_lot_start_run_view(root, tracking_id):
     if not lot:
         root.flash("Tracked lot not found.", "error")
         return root.redirect(root.url_for("inventory"))
+    remaining_weight_lbs = float(lot.remaining_weight_lbs or 0)
+    run_start_mode = (root.request.form.get("run_start_mode") or "blank").strip()
+    requested_weight_raw = (root.request.form.get("requested_weight_lbs") or "").strip()
+    scale_device_id = (root.request.form.get("scale_device_id") or "").strip()
+    suggested_allocations = [{"lot_id": lot.id, "weight_lbs": ""}]
+    planned_weight_lbs = None
+
+    if run_start_mode == "full_remaining":
+        planned_weight_lbs = remaining_weight_lbs
+        suggested_allocations = [{"lot_id": lot.id, "weight_lbs": remaining_weight_lbs}]
+    elif run_start_mode == "partial":
+        try:
+            planned_weight_lbs = float(requested_weight_raw)
+        except ValueError:
+            root.flash("Enter a valid partial amount before starting the run.", "error")
+            return root.redirect(root.url_for("scan_lot", tracking_id=tracking_id))
+        if planned_weight_lbs <= 0:
+            root.flash("Partial run amount must be greater than zero.", "error")
+            return root.redirect(root.url_for("scan_lot", tracking_id=tracking_id))
+        if planned_weight_lbs > remaining_weight_lbs + 1e-9:
+            root.flash(f"Partial run amount cannot exceed the lot's {remaining_weight_lbs:.1f} lbs remaining.", "error")
+            return root.redirect(root.url_for("scan_lot", tracking_id=tracking_id))
+        suggested_allocations = [{"lot_id": lot.id, "weight_lbs": planned_weight_lbs}]
+    elif run_start_mode == "scale_capture":
+        planned_weight_lbs = None
+        suggested_allocations = [{"lot_id": lot.id, "weight_lbs": ""}]
+    else:
+        run_start_mode = "blank"
+
     _record_lot_scan_event(
         root,
         lot,
         "start_run",
-        context={"purchase_id": lot.purchase.id},
+        context={
+            "purchase_id": lot.purchase.id,
+            "run_start_mode": run_start_mode,
+            "planned_weight_lbs": planned_weight_lbs,
+            "scale_device_id": scale_device_id or None,
+        },
     )
+
     root.session[root.SCAN_RUN_PREFILL_SESSION_KEY] = {
         "lot_id": lot.id,
         "purchase_id": lot.purchase.id,
@@ -548,11 +628,24 @@ def scan_lot_start_run_view(root, tracking_id):
         "batch_id": lot.purchase.batch_id,
         "supplier_name": lot.supplier_name,
         "strain_name": lot.strain_name,
-        "remaining_weight_lbs": float(lot.remaining_weight_lbs or 0),
-        "suggested_allocations": [{"lot_id": lot.id, "weight_lbs": ""}],
+        "remaining_weight_lbs": remaining_weight_lbs,
+        "suggested_allocations": suggested_allocations,
+        "run_start_mode": run_start_mode,
+        "planned_weight_lbs": planned_weight_lbs,
+        "scale_device_id": scale_device_id,
     }
     root.db.session.commit()
-    root.flash(f"Scanned lot {lot.tracking_id or lot.id[:8]} preselected for a new run.", "success")
+    if run_start_mode == "full_remaining":
+        root.flash(f"Scanned lot {lot.tracking_id or lot.id[:8]} prefilled for a full-lot run.", "success")
+    elif run_start_mode == "partial":
+        root.flash(
+            f"Scanned lot {lot.tracking_id or lot.id[:8]} prefilled for {planned_weight_lbs:.1f} lbs.",
+            "success",
+        )
+    elif run_start_mode == "scale_capture":
+        root.flash("Scanned lot preselected. Capture the reactor weight from the scale before saving the run.", "success")
+    else:
+        root.flash(f"Scanned lot {lot.tracking_id or lot.id[:8]} preselected for a new run.", "success")
     return root.redirect(root.url_for("run_new"))
 
 
@@ -561,19 +654,30 @@ def scan_lot_confirm_movement_view(root, tracking_id):
     if not lot:
         root.flash("Tracked lot not found.", "error")
         return root.redirect(root.url_for("inventory"))
-    new_location = (root.request.form.get("location") or "").strip()
+    movement_code = (root.request.form.get("movement_code") or "custom").strip()
+    option_map = {item["code"]: item for item in MOVEMENT_OPTIONS}
+    selected = option_map.get(movement_code, option_map["custom"])
+    location_detail = (root.request.form.get("location") or "").strip()
+    new_location = location_detail or (selected.get("default_location") or "").strip()
     if not new_location:
         root.flash("Enter a storage location before confirming movement.", "error")
         return root.redirect(root.url_for("scan_lot", tracking_id=tracking_id))
     lot.location = new_location
+    lot.floor_state = selected.get("floor_state") or "inventory"
     _record_lot_scan_event(
         root,
         lot,
         "confirm_movement",
-        context={"purchase_id": lot.purchase.id, "location": new_location},
+        context={
+            "purchase_id": lot.purchase.id,
+            "movement_code": movement_code,
+            "movement_label": selected["label"],
+            "floor_state": lot.floor_state,
+            "location": new_location,
+        },
     )
     root.db.session.commit()
-    root.flash(f"Location updated to {new_location}.", "success")
+    root.flash(f"{selected['label']} confirmed: {new_location}.", "success")
     return root.redirect(root.url_for("scan_lot", tracking_id=tracking_id))
 
 
@@ -600,6 +704,30 @@ def scan_lot_confirm_testing_view(root, tracking_id):
     )
     root.db.session.commit()
     root.flash(f"Testing status updated to {testing_status.replace('_', ' ')}.", "success")
+    return root.redirect(root.url_for("scan_lot", tracking_id=tracking_id))
+
+
+def scan_lot_confirm_milled_view(root, tracking_id):
+    lot = _get_scannable_lot(root, tracking_id)
+    if not lot:
+        root.flash("Tracked lot not found.", "error")
+        return root.redirect(root.url_for("inventory"))
+    milled_state = (root.request.form.get("milled_state") or "").strip().lower()
+    if milled_state not in {"milled", "not_milled"}:
+        root.flash("Choose a valid prep state.", "error")
+        return root.redirect(root.url_for("scan_lot", tracking_id=tracking_id))
+    lot.milled = milled_state == "milled"
+    _record_lot_scan_event(
+        root,
+        lot,
+        "confirm_milled",
+        context={
+            "purchase_id": lot.purchase.id,
+            "milled": bool(lot.milled),
+        },
+    )
+    root.db.session.commit()
+    root.flash(f"Lot prep updated to {'milled' if lot.milled else 'not milled'}.", "success")
     return root.redirect(root.url_for("scan_lot", tracking_id=tracking_id))
 
 

@@ -89,6 +89,16 @@ It is a machine-readable site summary for future internal rollups. It reports th
 **What are the new `/api/v1/aggregation/*` endpoints for?**
 They expose the locally cached cross-site rollup layer. `/api/v1/aggregation/sites` shows registered remote sites and their latest cached payloads, `/api/v1/aggregation/summary` combines the local site with cached remote summaries for higher-level internal reporting, and the supplier/strain aggregation endpoints compare performance across cached sites without live fan-out.
 
+**Why don't I see Cross-Site Ops in the sidebar?**
+Because the UI is site-gated. A **Super Admin** must enable **Cross-Site Ops UI** in **Settings -> Operational Parameters** before the cross-site pages appear.
+
+**What do the Cross-Site Ops pages show when enabled?**
+They expose cached multi-site reporting views:
+- `/cross-site` for overall site rollup
+- `/cross-site/suppliers` for supplier comparisons
+- `/cross-site/strains` for strain comparisons
+- `/cross-site/reconciliation` for exception and Slack-import pressure across sites
+
 **How do I know what sort order and filters an internal API list actually used?**
 Look at the response `meta`. List and search endpoints now return `count`, `limit`, `offset`, plus `sort` and `filters`. `sort` tells you the applied ordering, and `filters` echoes the normalized filter values the endpoint actually used after validation/defaulting.
 
@@ -146,7 +156,7 @@ Days of supply uses on-hand pounds only, divided by your **Daily Throughput Targ
 It is the permanent machine-readable identity for that physical lot. The app now uses it directly for printed lot barcodes and scan execution.
 
 **Can I print a lot label already?**  
-Yes. Label pages are available from Purchases, Inventory, and Journey surfaces. They now render a printable **Code 39 barcode**, the tracking ID, and the scan path for that lot.
+Yes. Label pages are available from Purchases, Inventory, and Journey surfaces. They now render a printable **Code 39 barcode**, a **QR code**, the tracking ID, and the scan path for that lot.
 
 **What are the new `/api/v1/tools/*` endpoints for?**
 They are read-only semantic endpoints for internal automation and future MCP / AI tooling. They provide higher-level answers like inventory snapshots, open-lot lookup, canonical journey resolution, and reconciliation overview without stitching together several low-level API calls first.
@@ -199,6 +209,11 @@ Use the **HTE pipeline** dropdown on **Runs** or the quick links from **Departme
 **Does export include HTE fields?**  
 Yes. Runs export includes pipeline label, terp/distillate grams, and lab file paths when present, and respects the active HTE pipeline filter.
 
+## Supplier duplicates
+
+**What happens if two supplier records refer to the same farm?**  
+Super Admins can merge duplicates from the supplier record page. The merge screen previews the impact first, then archives the source supplier, moves linked records to the chosen target supplier, and keeps an audit trail so the lineage stays visible.
+
 ## Git and deploy
 
 **How do I put new code on the server?**  
@@ -216,6 +231,11 @@ Yes. Scanning the lot barcode now opens a dedicated scanned-lot execution page w
 - review recent scan activity
 
 There is also a top-level **Floor Ops** page that summarizes recent scan and scale activity for the floor team.
+It now also shows:
+- floor-state counts
+- lots ready for extraction
+- open lots still pending prep
+- open lots still pending testing
 
 **Can I use an iPad or Android tablet camera to scan labels?**
 Yes. Use the in-app **Scan Center** at `/scan` or open it from **Floor Ops**.
@@ -232,6 +252,24 @@ Yes. The scanner workflow now opens a dedicated scanned-lot page at `/scan/lot/<
 - confirm the purchase testing status
 - review recent scan activity for that lot
 
+**What does "Start Run From This Lot" do now?**
+It is now a guided floor action. The operator can choose:
+- a blank run form
+- full remaining lot
+- a partial lbs amount
+- a scale-capture-first flow
+
+Those choices carry into the run form so reactor lbs and suggested source allocation can be prefilled when appropriate.
+
+**What movement actions are standardized on the scanned-lot page?**
+Operators can confirm:
+- move to vault
+- move to reactor staging
+- move to quarantine
+- move back to inventory
+
+They can also add a custom location detail. The scan history records the movement label and location so floor activity is easier to audit later.
+
 ## Can the app take live scale readings?
 
 Yes. The current smart-scale workflow supports:
@@ -240,3 +278,35 @@ Yes. The current smart-scale workflow supports:
 - capturing a live payload on the run form to prefill `Lbs in Reactor`
 
 The live parser currently supports generic ASCII payloads first, which is the safest starting point for serial/USB scale integrations.
+## How do I review submissions from the standalone purchasing app?
+
+Open the record in the main app under `Purchases`.
+
+Pilot-hardening now surfaces:
+
+- `Mobile app` origin in the purchase list
+- creator and delivery recorder on the purchase review page
+- opportunity intake photos
+- delivery confirmation photos
+
+## How do I deploy the standalone purchasing app?
+
+Use the runbook in:
+
+- `standalone-purchasing-agent-app/DEPLOYMENT.md`
+
+For local development, the standalone dev server already proxies `/api/*` to the Gold Drop backend.
+
+## How do I deploy the standalone receiving intake app?
+
+Use the runbook in:
+
+- `standalone-receiving-intake-app/DEPLOYMENT.md`
+
+The receiving app uses the same proxy pattern locally and the same session-auth mobile API family in production.
+
+## Can I disable a standalone workflow without removing the code?
+
+Yes.
+
+Use `Settings -> Operational Parameters` to turn the standalone purchasing or receiving workflow on or off for that site. The workflow remains coded, but the corresponding mobile write endpoints return `workflow_disabled` until the setting is turned back on.

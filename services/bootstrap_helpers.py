@@ -29,6 +29,10 @@ def ensure_sqlite_schema(root) -> None:
         cols = column_names("purchases")
         if "batch_id" not in cols:
             root.db.session.execute(text("ALTER TABLE purchases ADD COLUMN batch_id VARCHAR(80)"))
+        if "created_by_user_id" not in cols:
+            root.db.session.execute(text("ALTER TABLE purchases ADD COLUMN created_by_user_id VARCHAR(36)"))
+        if "delivery_recorded_by_user_id" not in cols:
+            root.db.session.execute(text("ALTER TABLE purchases ADD COLUMN delivery_recorded_by_user_id VARCHAR(36)"))
         if "storage_note" not in cols:
             root.db.session.execute(text("ALTER TABLE purchases ADD COLUMN storage_note TEXT"))
         if "license_info" not in cols:
@@ -37,6 +41,10 @@ def ensure_sqlite_schema(root) -> None:
             root.db.session.execute(text("ALTER TABLE purchases ADD COLUMN queue_placement VARCHAR(20)"))
         if "coa_status_text" not in cols:
             root.db.session.execute(text("ALTER TABLE purchases ADD COLUMN coa_status_text TEXT"))
+        if "testing_notes" not in cols:
+            root.db.session.execute(text("ALTER TABLE purchases ADD COLUMN testing_notes TEXT"))
+        if "delivery_notes" not in cols:
+            root.db.session.execute(text("ALTER TABLE purchases ADD COLUMN delivery_notes TEXT"))
         if "deleted_at" not in cols:
             root.db.session.execute(text("ALTER TABLE purchases ADD COLUMN deleted_at DATETIME"))
         if "deleted_by" not in cols:
@@ -79,6 +87,17 @@ def ensure_sqlite_schema(root) -> None:
             root.db.session.execute(text("ALTER TABLE users ADD COLUMN is_slack_importer BOOLEAN DEFAULT 0"))
         if "is_purchase_approver" not in cols:
             root.db.session.execute(text("ALTER TABLE users ADD COLUMN is_purchase_approver BOOLEAN DEFAULT 0"))
+
+    if has_table("suppliers"):
+        cols = column_names("suppliers")
+        if "merged_into_supplier_id" not in cols:
+            root.db.session.execute(text("ALTER TABLE suppliers ADD COLUMN merged_into_supplier_id VARCHAR(36)"))
+        if "merged_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE suppliers ADD COLUMN merged_at DATETIME"))
+        if "merged_by_user_id" not in cols:
+            root.db.session.execute(text("ALTER TABLE suppliers ADD COLUMN merged_by_user_id VARCHAR(36)"))
+        if "merge_notes" not in cols:
+            root.db.session.execute(text("ALTER TABLE suppliers ADD COLUMN merge_notes TEXT"))
 
     if has_table("api_clients"):
         cols = column_names("api_clients")
@@ -169,6 +188,8 @@ def ensure_sqlite_schema(root) -> None:
             root.db.session.execute(text("ALTER TABLE purchase_lots ADD COLUMN label_generated_at DATETIME"))
         if "label_version" not in cols:
             root.db.session.execute(text("ALTER TABLE purchase_lots ADD COLUMN label_version INTEGER"))
+        if "floor_state" not in cols:
+            root.db.session.execute(text("ALTER TABLE purchase_lots ADD COLUMN floor_state VARCHAR(40)"))
         if "deleted_at" not in cols:
             root.db.session.execute(text("ALTER TABLE purchase_lots ADD COLUMN deleted_at DATETIME"))
         if "deleted_by" not in cols:
@@ -254,6 +275,7 @@ def ensure_sqlite_schema(root) -> None:
             "supplier_id VARCHAR(36), "
             "purchase_id VARCHAR(36), "
             "submission_id VARCHAR(36), "
+            "photo_context VARCHAR(32), "
             "source_type VARCHAR(50) NOT NULL, "
             "category VARCHAR(50) NOT NULL, "
             "title VARCHAR(200), "
@@ -263,6 +285,10 @@ def ensure_sqlite_schema(root) -> None:
             "uploaded_by VARCHAR(36)"
             ")"
         ))
+    if has_table("photo_assets"):
+        cols = column_names("photo_assets")
+        if "photo_context" not in cols:
+            root.db.session.execute(text("ALTER TABLE photo_assets ADD COLUMN photo_context VARCHAR(32)"))
     if not has_table("slack_ingested_messages"):
         root.db.session.execute(text(
             "CREATE TABLE slack_ingested_messages ("
@@ -319,6 +345,20 @@ def ensure_postgres_slack_ingested_columns(root) -> None:
     root.db.session.execute(text(
         "ALTER TABLE slack_ingested_messages ADD COLUMN IF NOT EXISTS hidden_from_imports BOOLEAN NOT NULL DEFAULT FALSE"
     ))
+    root.db.session.commit()
+
+
+def ensure_postgres_mobile_columns(root) -> None:
+    if root.db.engine.dialect.name != "postgresql":
+        return
+    for stmt in (
+        "ALTER TABLE purchases ADD COLUMN IF NOT EXISTS created_by_user_id VARCHAR(36)",
+        "ALTER TABLE purchases ADD COLUMN IF NOT EXISTS delivery_recorded_by_user_id VARCHAR(36)",
+        "ALTER TABLE purchases ADD COLUMN IF NOT EXISTS testing_notes TEXT",
+        "ALTER TABLE purchases ADD COLUMN IF NOT EXISTS delivery_notes TEXT",
+        "ALTER TABLE photo_assets ADD COLUMN IF NOT EXISTS photo_context VARCHAR(32)",
+    ):
+        root.db.session.execute(text(stmt))
     root.db.session.commit()
 
 

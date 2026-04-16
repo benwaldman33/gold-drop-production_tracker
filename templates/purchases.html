@@ -122,7 +122,13 @@
         <td>{{ p.purchase_date.strftime('%m/%d/%y') if p.purchase_date else '—' }}</td>
         <td class="text-mono">
           <div><strong>{{ p.batch_id if p.batch_id else '—' }}</strong></div>
-          <div class="text-sm cell-muted">{{ p.status.replace('_', ' ') }}</div>
+          <div class="text-sm cell-muted">
+            {{ p.status.replace('_', ' ') }}
+            {% if p.created_by_user_id %} &middot; {{ p._intake_origin_label }}{% endif %}
+          </div>
+          {% if p._created_by_name %}
+          <div class="text-sm cell-muted">Created by {{ p._created_by_name }}</div>
+          {% endif %}
         </td>
         <td><strong>{{ p.supplier_name }}</strong></td>
         <td>
@@ -167,6 +173,9 @@
           <span class="badge badge-green">No open exceptions</span>
           {% endif %}
           <div class="cell-muted" style="margin-top:6px;">Next: {{ p._next_action }}</div>
+          {% if p._delivery_recorded_by_name %}
+          <div class="cell-muted" style="margin-top:4px;">Delivered by {{ p._delivery_recorded_by_name }}</div>
+          {% endif %}
           {% if p.true_up_amount %}
           <div class="{% if p.true_up_amount > 0 %}cell-red{% elif p.true_up_amount < 0 %}cell-green{% else %}cell-muted{% endif %}" style="margin-top:4px;">
             True-up {{ "${:,.2f}".format(p.true_up_amount) }}

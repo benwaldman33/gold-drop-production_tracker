@@ -28,6 +28,34 @@
 </div>
 {% endif %}
 
+{% if purchase and purchase_origin_summary %}
+<div class="card" style="margin-bottom:12px;">
+  <div class="card-header"><h3>Submission Origin</h3></div>
+  <div class="summary-row" style="margin-bottom:0;">
+    <div class="summary-stat">
+      <div class="label">Source</div>
+      <div class="value">{{ purchase_origin_summary.source_label }}</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Created By</div>
+      <div class="value">{{ purchase_origin_summary.created_by_name or 'Unknown' }}</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Opportunity Photos</div>
+      <div class="value">{{ purchase_origin_summary.opportunity_photo_count }}</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Delivery Photos</div>
+      <div class="value">{{ purchase_origin_summary.delivery_photo_count }}</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Delivery Recorded By</div>
+      <div class="value">{{ purchase_origin_summary.delivery_recorded_by_name or 'Not yet' }}</div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <div class="card">
   <form id="purchase-main-form" method="POST" enctype="multipart/form-data">
     <div class="form-section">
@@ -286,7 +314,7 @@
 
 {% if purchase and purchase_audit_photos %}
 <div class="card">
-  <div class="card-header"><h3>Field intake audit photos</h3></div>
+  <div class="card-header"><h3>Opportunity intake photos</h3></div>
   <div style="display:flex;gap:8px;flex-wrap:wrap;">
     {% for a in purchase_audit_photos %}
     <a href="{{ url_for('static', filename=a.file_path) }}" target="_blank" rel="noopener"
@@ -297,7 +325,25 @@
     {% endfor %}
   </div>
   <p class="text-sm" style="color:var(--text-muted);margin-top:8px;">
-    These come from approved field submissions (biomass/COA/supplier shots). They stay attached for traceability; remove or replace them from the field submission workflow, not here.
+    These come from the mobile buyer flow or approved field submissions. They stay attached for traceability; remove or replace them from the originating workflow, not here.
+  </p>
+</div>
+{% endif %}
+
+{% if purchase and purchase_delivery_photos %}
+<div class="card">
+  <div class="card-header"><h3>Delivery confirmation photos</h3></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+    {% for a in purchase_delivery_photos %}
+    <a href="{{ url_for('static', filename=a.file_path) }}" target="_blank" rel="noopener"
+       title="{{ a.category }}{% if a.tags %} Â· {{ a.tags }}{% endif %}">
+      <img src="{{ url_for('static', filename=a.file_path) }}" alt="delivery confirmation photo"
+           style="width:90px;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--dark-border);">
+    </a>
+    {% endfor %}
+  </div>
+  <p class="text-sm" style="color:var(--text-muted);margin-top:8px;">
+    These photos were uploaded when delivery was recorded from the standalone purchasing app.
   </p>
 </div>
 {% endif %}

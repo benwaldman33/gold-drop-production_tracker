@@ -33,6 +33,7 @@ Use the left sidebar:
 - **Photo Library**: searchable media across supplier/purchase/field contexts; editors can upload and remove certain attachment types here (see **Photo Library** section)
 - **Slack imports** (Slack Importer capability or Super Admin): triage synced Slack messages, preview mapped Run fields, review candidate source lots, optionally split a run across multiple lots, then **create run from Slack** (prefilled form)
 - **Settings** (Super Admin only): system parameters, KPIs, users, maintenance actions
+- **Cross-Site Ops** (only when enabled by Super Admin): cached local + remote-site rollups for multi-site reporting
 - **Fresh operational reset** (server-side admin task): clears operational business data while keeping users, passwords, settings, KPI targets, Slack sync config, and cost entries
 - **Import**: CSV import for **historical runs** (run-style exports)—not the same as **Purchases → Import spreadsheet**
 
@@ -90,6 +91,17 @@ The Dashboard shows:
 
 ### Analytics filter banner (optional)
 If you see a banner saying analytics are excluding runs missing biomass pricing ($/lb), your admin has enabled a data-quality filter in **Settings**. Supplier/strain KPIs will ignore runs with missing purchase pricing on any input lot.
+
+### Cross-Site Ops (optional)
+This area is hidden unless a **Super Admin** enables **Cross-Site Ops UI** in **Settings -> Operational Parameters**.
+
+When enabled, the sidebar exposes:
+- **Cross-Site Ops**: local + cached remote site rollup
+- **Supplier Comparison**: compare supplier performance across sites
+- **Strain Comparison**: compare strain performance across sites
+- **Reconciliation**: compare exception and Slack-import pressure across sites
+
+These pages use the cached remote-site data already managed under **Settings -> Remote Sites**. They do not push changes back to remote sites.
 
 ---
 
@@ -214,7 +226,7 @@ Purchase editors see **Select all**, **Select none**, and **Batch edit…** abov
 
 Lots may also show a **tracking ID**. This is the permanent machine-readable identity for that physical lot and now drives the printed barcode and scan route for that lot.
 
-Where available, use the **Label** action from Inventory, Purchases, or Journey to print a lot-facing label page. The label now renders a printable **Code 39 barcode** plus the scan route for that exact lot.
+Where available, use the **Label** action from Inventory, Purchases, or Journey to print a lot-facing label page. The label now renders a printable **Code 39 barcode**, a **QR code**, and the scan route for that exact lot.
 
 ### Floor Ops
 Use **Floor Ops** from the left navigation when you want a quick operator view of:
@@ -222,6 +234,15 @@ Use **Floor Ops** from the left navigation when you want a quick operator view o
 - recent smart-scale captures
 - open lot count
 - active scale devices
+- lots already staged and ready for extraction
+- open lots still pending prep or testing
+
+The page also rolls open lots up by floor state:
+- in inventory
+- in vault
+- in reactor staging
+- in quarantine
+- custom movement
 
 Each recent scan row includes an **Open Scan Page** shortcut back into the lot execution workflow.
 
@@ -239,6 +260,30 @@ Camera notes:
 - `http://localhost` works for local desktop testing
 - tablets usually require HTTPS for camera access
 - if camera scanning is not supported in the browser, use the manual field or a paired scanner
+
+### Scanned lot execution
+When the app opens `/scan/lot/<tracking_id>`, the page is optimized for floor execution.
+
+Use **Start Run From This Lot** to choose one of these guided run-start modes:
+- **Blank run form**: preselect the lot and open a normal new run
+- **Use full remaining lot**: prefill the run with the lot's full remaining lbs and matching source allocation
+- **Use partial amount**: enter a partial lbs amount and prefill both reactor weight and source allocation
+- **Scale capture first**: preselect the lot but direct the operator to capture reactor weight from a configured scale before saving
+
+Use **Confirm Movement** to record a standard movement action:
+- move to vault
+- move to reactor staging
+- move to quarantine
+- move back to inventory
+- or store a custom location detail
+
+Use **Confirm Testing** to update testing state without opening the purchase form.
+
+The **Recent Scan Activity** section records these floor actions with context, including:
+- guided run-start mode
+- planned partial lbs
+- movement action and location
+- testing confirmations
 
 ### In Transit / On Order
 This table lists purchases that are not yet fully received, including:
@@ -448,6 +493,8 @@ Supplier profiles also include:
 If the “exclude runs missing $/lb” setting is enabled, these analytics ignore runs with incomplete biomass pricing.
 
 Editors can use **Select all** / **Select none** and **Batch edit…** from the supplier cards area to **activate/deactivate** suppliers or **append notes** (see **Batch editing from list screens**). Checkboxes appear next to each supplier card title.
+
+Super Admins can also open a supplier record and use **Merge Supplier** to combine duplicates safely. The merge screen shows an impact summary first, then archives the source supplier, moves linked records to the target supplier, and keeps lineage and audit history intact.
 
 ---
 
@@ -664,3 +711,20 @@ Use exports for reporting, reconciliation, or offline analysis.
 - Use **Test ingest** with a raw payload such as `ST,GS, 124.6 lb` to confirm the parser and save a capture.
 - On **Runs -> New Run**, use **Capture from Scale** to prefill **Lbs in Reactor** from a live payload before saving the run.
 - The saved run keeps the linked device capture for later audit and analytics.
+
+## Standalone Purchasing Agent App
+
+- The standalone purchasing app is intended for buyer and intake workflows on phone or tablet.
+- Approvers should review mobile-created opportunities from the main app:
+  - `Purchases` list shows when a line originated from the `Mobile app`
+  - purchase edit pages surface submission origin, created-by user, delivery-recorded-by user, opportunity photos, and delivery photos
+- Supplier duplicates created from fast mobile entry can be corrected from `Suppliers -> Edit -> Merge Supplier`.
+
+## Standalone Receiving Intake App
+
+- The standalone receiving app is intended for receiving and intake staff on phone or tablet.
+- It shows approved or committed purchases that are ready to receive.
+- Receiving confirmation updates the purchase to `delivered`, records the receiving user, and can attach delivery photos.
+- Delivery photos and receiving metadata are visible from the main purchase review screen.
+- `Settings -> Operational Parameters` can enable or disable the standalone purchasing and receiving workflows independently.
+- `Settings -> Internal API Clients` now also shows recent mobile workflow activity for audit visibility.

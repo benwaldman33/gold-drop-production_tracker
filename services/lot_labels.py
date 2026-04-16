@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 
 CODE39_PATTERNS = {
@@ -109,6 +109,9 @@ def build_lot_label_payload(lot, *, external_scan_base: str | None = None) -> di
     tracking_id = getattr(lot, "tracking_id", None) or getattr(lot, "id", "")
     scan_path = f"/scan/lot/{quote(tracking_id)}"
     scan_url = f"{external_scan_base.rstrip('/')}{scan_path}" if external_scan_base else scan_path
+    qr_image_url = "https://api.qrserver.com/v1/create-qr-code/?" + urlencode(
+        {"size": "220x220", "qzone": "1", "data": scan_url}
+    )
     return {
         "lot_id": getattr(lot, "id", None),
         "tracking_id": tracking_id,
@@ -116,6 +119,7 @@ def build_lot_label_payload(lot, *, external_scan_base: str | None = None) -> di
         "qr_value": getattr(lot, "qr_value", None) or scan_path,
         "scan_path": scan_path,
         "scan_url": scan_url,
+        "qr_image_url": qr_image_url,
         "batch_id": getattr(getattr(lot, "purchase", None), "batch_id", None),
         "supplier_name": getattr(lot, "supplier_name", None),
         "strain_name": getattr(lot, "strain_name", None),

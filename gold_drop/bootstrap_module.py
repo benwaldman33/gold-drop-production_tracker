@@ -8,6 +8,7 @@ from services.bootstrap_helpers import (
     backfill_default_inventory_lots,
     backfill_purchase_approval,
     ensure_postgres_run_hte_columns,
+    ensure_postgres_mobile_columns,
     ensure_postgres_slack_ingested_columns,
     ensure_sqlite_schema,
     migrate_biomass_to_purchase,
@@ -26,6 +27,7 @@ def init_db(root):
             raise
     ensure_sqlite_schema(root)
     ensure_postgres_run_hte_columns(root)
+    ensure_postgres_mobile_columns(root)
     ensure_postgres_slack_ingested_columns(root)
     reconcile_closed_purchase_inventory_lots(root)
     backfill_default_inventory_lots(root)
@@ -51,6 +53,9 @@ def init_db(root):
         "site_timezone": ("America/Los_Angeles", "IANA timezone for this site"),
         "site_region": ("", "Optional site region for future rollup and aggregation"),
         "site_environment": ("production", "Deployment environment label for internal API metadata"),
+        "cross_site_ops_enabled": ("0", "Enable cross-site operations UI surfaces for this site"),
+        "standalone_purchasing_enabled": ("1", "Enable standalone purchasing app workflow"),
+        "standalone_receiving_enabled": ("1", "Enable standalone receiving intake app workflow"),
         "potency_rate": ("1.50", "Potency Rate ($/lb/%pt)"),
         "num_reactors": ("2", "Number of Reactors"),
         "reactor_capacity": ("100", "Reactor Capacity (lbs)"),

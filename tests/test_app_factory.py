@@ -10,6 +10,7 @@ import gold_drop.dashboard_module as dashboard_module
 import gold_drop.field_intake_module as field_intake_module
 import gold_drop.inventory_module as inventory_module
 import gold_drop.batch_edit_module as batch_edit_module
+import gold_drop.mobile_module as mobile_module
 import gold_drop.purchases_module as purchases_module
 import gold_drop.purchase_import_module as purchase_import_module
 import gold_drop.runs_module as runs_module
@@ -41,6 +42,10 @@ class AppFactorySmokeTest(unittest.TestCase):
         self.assertIn("/", rules)
         self.assertIn("/field", rules)
         self.assertIn("/biomass-purchasing", rules)
+        self.assertIn("/cross-site", rules)
+        self.assertIn("/cross-site/suppliers", rules)
+        self.assertIn("/cross-site/strains", rules)
+        self.assertIn("/cross-site/reconciliation", rules)
         self.assertIn("/suppliers", rules)
         self.assertIn("/photos", rules)
         self.assertIn("/purchases/import", rules)
@@ -68,6 +73,8 @@ class AppFactorySmokeTest(unittest.TestCase):
         self.assertIn("/api/v1/purchases", rules)
         self.assertIn("/api/v1/runs", rules)
         self.assertIn("/api/v1/suppliers", rules)
+        self.assertIn("/api/mobile/v1/auth/login", rules)
+        self.assertIn("/api/mobile/v1/opportunities", rules)
         self.assertIn("/api/v1/strains", rules)
         self.assertIn("/api/v1/lots", rules)
         self.assertIn("/api/v1/lots/<lot_id>/journey", rules)
@@ -107,6 +114,7 @@ class AppFactorySmokeTest(unittest.TestCase):
         self.assertTrue(hasattr(costs_module, "costs_list_view"))
         self.assertTrue(hasattr(inventory_module, "inventory_view"))
         self.assertTrue(hasattr(batch_edit_module, "batch_edit_view"))
+        self.assertTrue(hasattr(mobile_module, "register_routes"))
         self.assertTrue(hasattr(suppliers_module, "suppliers_list_view"))
         self.assertTrue(hasattr(purchase_import_module, "purchase_import_view"))
         self.assertTrue(hasattr(strains_module, "strains_list_view"))

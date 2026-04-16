@@ -30,6 +30,11 @@
         <a href="{{ url_for('floor_ops') }}" class="{% if request.endpoint in ('floor_ops', 'scan_center', 'scan_lot') %}active{% endif %}">
           <span class="icon">ðŸ“±</span><span>Floor Ops</span>
         </a>
+        {% if current_user.is_authenticated and cross_site_ops_enabled %}
+        <a href="{{ url_for('cross_site_ops') }}" class="{% if request.endpoint == 'cross_site_ops' %}active{% endif %}">
+          <span class="icon">🌐</span><span>Cross-Site Ops</span>
+        </a>
+        {% endif %}
         <a href="{{ url_for('inventory') }}" class="{% if request.endpoint == 'inventory' %}active{% endif %}">
           <span class="icon">📦</span><span>Inventory</span>
         </a>

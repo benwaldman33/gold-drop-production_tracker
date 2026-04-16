@@ -228,6 +228,10 @@ class Supplier(db.Model):
     notes = db.Column(db.Text)
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=utc_now)
+    merged_into_supplier_id = db.Column(db.String(36), db.ForeignKey("suppliers.id"))
+    merged_at = db.Column(db.DateTime)
+    merged_by_user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
+    merge_notes = db.Column(db.Text)
 
     purchases = db.relationship("Purchase", backref="supplier", lazy="dynamic")
     biomass_availabilities = db.relationship(
@@ -236,6 +240,13 @@ class Supplier(db.Model):
         lazy="dynamic",
         cascade="all, delete-orphan",
     )
+    merged_into_supplier = db.relationship(
+        "Supplier",
+        remote_side=[id],
+        foreign_keys=[merged_into_supplier_id],
+        post_update=True,
+    )
+    merged_by_user = db.relationship("User", foreign_keys=[merged_by_user_id])
 
     def avg_yield(self, days=None):
         """Calculate average overall yield for this supplier."""
@@ -263,6 +274,8 @@ class Purchase(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
     batch_id = db.Column(db.String(80), unique=True, index=True)
     supplier_id = db.Column(db.String(36), db.ForeignKey("suppliers.id"), nullable=False)
+    created_by_user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
+    delivery_recorded_by_user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
     purchase_date = db.Column(db.Date, nullable=False)
     delivery_date = db.Column(db.Date)
     status = db.Column(db.String(20), nullable=False, default="ordered")
@@ -282,6 +295,8 @@ class Purchase(db.Model):
     clean_or_dirty = db.Column(db.String(10))
     indoor_outdoor = db.Column(db.String(20))
     notes = db.Column(db.Text)
+    testing_notes = db.Column(db.Text)
+    delivery_notes = db.Column(db.Text)
     deleted_at = db.Column(db.DateTime)
     deleted_by = db.Column(db.String(36), db.ForeignKey("users.id"))
     created_at = db.Column(db.DateTime, default=utc_now)
@@ -291,6 +306,8 @@ class Purchase(db.Model):
     purchase_approved_at = db.Column(db.DateTime)
     purchase_approved_by_user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
     purchase_approved_by = db.relationship("User", foreign_keys=[purchase_approved_by_user_id])
+    created_by_user = db.relationship("User", foreign_keys=[created_by_user_id])
+    delivery_recorded_by = db.relationship("User", foreign_keys=[delivery_recorded_by_user_id])
 
     # Biomass pipeline fields (merged from BiomassAvailability)
     availability_date = db.Column(db.Date)  # when biomass first became available from supplier
@@ -310,6 +327,10 @@ class Purchase(db.Model):
     @property
     def supplier_name(self):
         return self.supplier.name if self.supplier else "Unknown"
+
+    @property
+    def is_merged(self):
+        return self.merged_into_supplier_id is not None
 
 
 class BiomassAvailability(db.Model):
@@ -387,6 +408,7 @@ class PurchaseLot(db.Model):
     potency_pct = db.Column(db.Float)
     micro_pot_test = db.Column(db.String(100))
     milled = db.Column(db.Boolean, default=False)
+    floor_state = db.Column(db.String(40), default="inventory")
     location = db.Column(db.String(200))
     notes = db.Column(db.Text)
     deleted_at = db.Column(db.DateTime)
@@ -860,6 +882,7 @@ class PhotoAsset(db.Model):
     supplier_id = db.Column(db.String(36), db.ForeignKey("suppliers.id"))
     purchase_id = db.Column(db.String(36), db.ForeignKey("purchases.id"))
     submission_id = db.Column(db.String(36), db.ForeignKey("field_purchase_submissions.id"))
+    photo_context = db.Column(db.String(32))
     source_type = db.Column(db.String(50), nullable=False, default="manual")  # field_submission, supplier_attachment, lab_test, purchase_upload
     category = db.Column(db.String(50), nullable=False, default="other")  # supplier_license, biomass, coa, lab_result, supplier_doc
     title = db.Column(db.String(200))

@@ -6,9 +6,10 @@ from unittest.mock import patch
 
 import app as app_module
 import gold_drop.bootstrap_module as bootstrap_module
-from models import ApiClient, FieldAccessToken, FieldPurchaseSubmission, LotScanEvent, Purchase, PurchaseLot, RemoteSite, ScaleDevice, SlackIngestedMessage, Supplier, SystemSetting, User, WeightCapture, db, gen_uuid
+from models import ApiClient, AuditLog, BiomassAvailability, FieldAccessToken, FieldPurchaseSubmission, LabTest, LotScanEvent, PhotoAsset, Purchase, PurchaseLot, RemoteSite, ScaleDevice, SlackIngestedMessage, Supplier, SupplierAttachment, SystemSetting, User, WeightCapture, db, gen_uuid
 from flask_login import login_user
 from services.scale_ingest import create_weight_capture
+from services.supplier_merge import supplier_merge_preview
 
 
 def _login(client, username: str, password: str = "golddrop2026"):
@@ -104,6 +105,46 @@ def test_settings_route_renders_smart_scales_section():
     assert b"Smart Scales" in page.data
     assert b"Add Scale Device" in page.data
     assert b"Recent Weight Captures" in page.data
+
+
+def test_cross_site_ops_is_hidden_until_enabled():
+    app = app_module.app
+    with app.app_context():
+        original = SystemSetting.get("cross_site_ops_enabled", "0")
+        setting = db.session.get(SystemSetting, "cross_site_ops_enabled")
+        if setting is None:
+            setting = SystemSetting(key="cross_site_ops_enabled", value="0", description="Enable cross-site operations UI surfaces for this site")
+            db.session.add(setting)
+        setting.value = "0"
+        db.session.commit()
+
+    client = app.test_client()
+    _login(client, "admin")
+    hidden = client.get("/cross-site", follow_redirects=False)
+    assert hidden.status_code == 404
+
+    try:
+        with app.app_context():
+            db.session.get(SystemSetting, "cross_site_ops_enabled").value = "1"
+            db.session.commit()
+        visible = client.get("/", follow_redirects=True)
+        assert b"Cross-Site Ops" in visible.data
+        page = client.get("/cross-site", follow_redirects=False)
+        assert page.status_code == 200
+        assert b"Cross-Site Ops" in page.data
+        suppliers = client.get("/cross-site/suppliers", follow_redirects=False)
+        assert suppliers.status_code == 200
+        assert b"Cross-Site Supplier Comparison" in suppliers.data
+        strains = client.get("/cross-site/strains", follow_redirects=False)
+        assert strains.status_code == 200
+        assert b"Cross-Site Strain Comparison" in strains.data
+        reconciliation = client.get("/cross-site/reconciliation", follow_redirects=False)
+        assert reconciliation.status_code == 200
+        assert b"Cross-Site Reconciliation" in reconciliation.data
+    finally:
+        with app.app_context():
+            db.session.get(SystemSetting, "cross_site_ops_enabled").value = original
+            db.session.commit()
 
 
 def test_admin_can_create_and_revoke_api_client_from_settings():
@@ -464,6 +505,7 @@ def test_purchase_label_routes_and_scan_route_render_and_resolve():
             assert b"Barcode payload" in multi.data
             assert b"Format: CODE39" in multi.data
             assert b"<svg" in multi.data
+            assert b"api.qrserver.com" in multi.data
 
             scan = client.get(f"/scan/lot/{tracking_id}")
             assert scan.status_code == 200
@@ -536,6 +578,7 @@ def test_scanned_lot_can_prefill_new_run():
                 assert prefill is not None
                 assert prefill["tracking_id"] == tracking_id
                 assert prefill["suggested_allocations"] == [{"lot_id": lot_id, "weight_lbs": ""}]
+                assert prefill["run_start_mode"] == "blank"
 
             run_new = client.get("/runs/new")
             assert run_new.status_code == 200
@@ -548,6 +591,88 @@ def test_scanned_lot_can_prefill_new_run():
                     for event in LotScanEvent.query.filter_by(lot_id=lot_id).order_by(LotScanEvent.created_at.asc()).all()
                 ]
                 assert actions == ["start_run"]
+    finally:
+        with app.app_context():
+            LotScanEvent.query.filter_by(lot_id=lot_id).delete()
+            lot_obj = db.session.get(PurchaseLot, lot_id)
+            if lot_obj:
+                db.session.delete(lot_obj)
+            purchase_obj = db.session.get(Purchase, purchase_id)
+            if purchase_obj:
+                db.session.delete(purchase_obj)
+            supplier_obj = db.session.get(Supplier, supplier_id)
+            if supplier_obj:
+                db.session.delete(supplier_obj)
+            db.session.commit()
+
+
+def test_scanned_lot_guided_run_start_supports_partial_and_full_modes():
+    app = app_module.app
+    with app.app_context():
+        supplier = Supplier(name="Scan Guided Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = Purchase(
+            supplier_id=supplier.id,
+            purchase_date=date(2026, 4, 12),
+            delivery_date=date(2026, 4, 12),
+            status="delivered",
+            stated_weight_lbs=125,
+            purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            clean_or_dirty="clean",
+            testing_status="completed",
+            batch_id=f"SCANG-{app_module.gen_uuid()[:6]}",
+        )
+        db.session.add(purchase)
+        db.session.flush()
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Guided Dream",
+            weight_lbs=125,
+            remaining_weight_lbs=100,
+        )
+        db.session.add(lot)
+        db.session.commit()
+        tracking_id = lot.tracking_id
+        lot_id = lot.id
+        purchase_id = purchase.id
+        supplier_id = supplier.id
+
+    try:
+        with app.test_client() as client:
+            _login(client, "admin")
+
+            partial = client.post(
+                f"/scan/lot/{tracking_id}/start-run",
+                data={"run_start_mode": "partial", "requested_weight_lbs": "42.5"},
+                follow_redirects=False,
+            )
+            assert partial.status_code in (302, 303)
+            with client.session_transaction() as sess:
+                prefill = sess.get(app_module.SCAN_RUN_PREFILL_SESSION_KEY)
+                assert prefill["run_start_mode"] == "partial"
+                assert prefill["planned_weight_lbs"] == 42.5
+                assert prefill["suggested_allocations"] == [{"lot_id": lot_id, "weight_lbs": 42.5}]
+
+            run_new = client.get("/runs/new")
+            assert run_new.status_code == 200
+            assert b"Partial run selected for 42.5 lbs" in run_new.data
+
+            full = client.post(
+                f"/scan/lot/{tracking_id}/start-run",
+                data={"run_start_mode": "full_remaining"},
+                follow_redirects=False,
+            )
+            assert full.status_code in (302, 303)
+            with client.session_transaction() as sess:
+                prefill = sess.get(app_module.SCAN_RUN_PREFILL_SESSION_KEY)
+                assert prefill["run_start_mode"] == "full_remaining"
+                assert prefill["planned_weight_lbs"] == 100.0
+                assert prefill["suggested_allocations"] == [{"lot_id": lot_id, "weight_lbs": 100.0}]
+
+            run_new = client.get("/runs/new")
+            assert run_new.status_code == 200
+            assert b"Full remaining lot selected" in run_new.data
     finally:
         with app.app_context():
             LotScanEvent.query.filter_by(lot_id=lot_id).delete()
@@ -601,7 +726,7 @@ def test_scanned_lot_can_confirm_movement_and_testing():
             _login(client, "admin")
             movement = client.post(
                 f"/scan/lot/{tracking_id}/confirm-movement",
-                data={"location": "Vault A / Shelf 2"},
+                data={"movement_code": "vault", "location": "Vault A / Shelf 2"},
                 follow_redirects=False,
             )
             assert movement.status_code in (302, 303)
@@ -615,19 +740,32 @@ def test_scanned_lot_can_confirm_movement_and_testing():
             assert testing.status_code in (302, 303)
             assert movement.headers["Location"].endswith(f"/scan/lot/{tracking_id}")
 
+            milled = client.post(
+                f"/scan/lot/{tracking_id}/confirm-milled",
+                data={"milled_state": "milled"},
+                follow_redirects=False,
+            )
+            assert milled.status_code in (302, 303)
+
             with app.app_context():
                 lot = db.session.get(PurchaseLot, lot_id)
                 purchase = db.session.get(Purchase, purchase_id)
                 assert lot is not None
                 assert purchase is not None
                 assert lot.location == "Vault A / Shelf 2"
+                assert lot.floor_state == "vault"
+                assert lot.milled is True
                 assert purchase.testing_status == "completed"
                 assert purchase.testing_date == app_module.date.today()
-                actions = [
-                    event.action
-                    for event in LotScanEvent.query.filter_by(lot_id=lot_id).order_by(LotScanEvent.created_at.asc()).all()
-                ]
-                assert actions == ["confirm_movement", "confirm_testing"]
+                events = LotScanEvent.query.filter_by(lot_id=lot_id).order_by(LotScanEvent.created_at.asc()).all()
+                actions = [event.action for event in events]
+                assert actions == ["confirm_movement", "confirm_testing", "confirm_milled"]
+                movement_context = events[0].context or {}
+                assert movement_context["movement_code"] == "vault"
+                assert movement_context["movement_label"] == "Move to vault"
+                assert movement_context["floor_state"] == "vault"
+                milled_context = events[2].context or {}
+                assert milled_context["milled"] is True
     finally:
         with app.app_context():
             LotScanEvent.query.filter_by(lot_id=lot_id).delete()
@@ -667,6 +805,8 @@ def test_floor_ops_page_shows_recent_scans_and_scale_captures():
             strain_name="Floor Dream",
             weight_lbs=55,
             remaining_weight_lbs=40,
+            floor_state="reactor_staging",
+            milled=True,
         )
         db.session.add(lot)
         db.session.flush()
@@ -700,6 +840,9 @@ def test_floor_ops_page_shows_recent_scans_and_scale_captures():
             assert b"Floor Ops" in resp.data
             assert b"Recent Scan Activity" in resp.data
             assert b"Recent Scale Captures" in resp.data
+            assert b"Ready For Extraction" in resp.data
+            assert b"Reactor staging" in resp.data
+            assert b"40.0 lbs staged, milled, and test-ready" in resp.data
             assert b"Open Scan Page" in resp.data
             assert b"Floor Scale" in resp.data
     finally:
@@ -734,6 +877,7 @@ def test_scan_center_page_renders_for_authenticated_user():
         assert b"Scan Center" in resp.data
         assert b"Start Camera Scan" in resp.data
         assert b"tracking_id" in resp.data
+        assert b"Recent Floor Scans" in resp.data or b"Bluetooth scanner" in resp.data
 
 
 def test_run_form_scale_capture_prefills_reactor_weight_and_links_capture():
@@ -998,6 +1142,204 @@ def test_field_submission_approve_creates_purchase_and_lots():
             db.session.commit()
 
 
+def test_supplier_merge_preview_and_execute_rehomes_records():
+    app = app_module.app
+    with app.app_context():
+        source = Supplier(
+            name="Merge Source Supplier",
+            contact_name="Source Contact",
+            contact_phone="555-111-2222",
+            is_active=True,
+        )
+        target = Supplier(
+            name="Merge Target Supplier",
+            contact_name="Target Contact",
+            contact_phone="555-333-4444",
+            is_active=True,
+        )
+        db.session.add_all([source, target])
+        db.session.flush()
+
+        purchase = Purchase(
+            supplier_id=source.id,
+            purchase_date=date(2026, 4, 11),
+            delivery_date=date(2026, 4, 12),
+            status="delivered",
+            stated_weight_lbs=10.0,
+            batch_id=f"MERGE-{gen_uuid()[:8]}",
+        )
+        db.session.add(purchase)
+        db.session.flush()
+
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Merge Strain",
+            weight_lbs=10.0,
+            remaining_weight_lbs=10.0,
+        )
+        biomass = BiomassAvailability(
+            supplier_id=source.id,
+            availability_date=date(2026, 4, 10),
+            declared_weight_lbs=4.0,
+            notes="Merge test biomass row",
+        )
+        lab_test = LabTest(
+            supplier_id=source.id,
+            test_date=date(2026, 4, 9),
+            test_type="coa",
+            status_text="passed",
+            notes="Merge test lab row",
+        )
+        attachment = SupplierAttachment(
+            supplier_id=source.id,
+            document_type="coa",
+            title="Merge COA",
+            file_path="uploads/supplier-merge-test.pdf",
+        )
+        photo = PhotoAsset(
+            supplier_id=source.id,
+            source_type="manual",
+            category="supplier_doc",
+            title="Merge photo",
+            tags="merge,test",
+            file_path="uploads/library/supplier-merge-test.jpg",
+        )
+        submission = FieldPurchaseSubmission(
+            supplier_id=source.id,
+            purchase_date=date(2026, 4, 8),
+            status="pending",
+            lots_json=json.dumps([{"strain": "Merge Strain", "weight_lbs": 3.0}]),
+            notes="Merge test field submission",
+        )
+        db.session.add_all([lot, biomass, lab_test, attachment, photo, submission])
+        db.session.commit()
+
+        source_id = source.id
+        target_id = target.id
+        purchase_id = purchase.id
+        biomass_id = biomass.id
+        lab_test_id = lab_test.id
+        attachment_id = attachment.id
+        photo_id = photo.id
+        submission_id = submission.id
+        lot_id = lot.id
+
+    try:
+        preview = _call_view_as_user(
+            f"/suppliers/{source_id}/edit",
+            "supplier_edit",
+            "admin",
+            method="POST",
+            data={
+                "form_type": "merge",
+                "merge_target_supplier_id": target_id,
+                "merge_action": "preview",
+                "merge_notes": "duplicate supplier",
+            },
+            sid=source_id,
+        )
+        assert preview.status_code == 200
+        assert b"Impact Summary" in preview.data
+        assert b"Purchases (and linked lots)" in preview.data
+
+        merge = _call_view_as_user(
+            f"/suppliers/{source_id}/edit",
+            "supplier_edit",
+            "admin",
+            method="POST",
+            data={
+                "form_type": "merge",
+                "merge_target_supplier_id": target_id,
+                "merge_action": "execute",
+                "merge_confirm": "1",
+                "merge_notes": "duplicate supplier",
+            },
+            sid=source_id,
+        )
+        assert merge.status_code in (302, 303)
+        assert merge.headers["Location"].endswith(f"/suppliers/{target_id}/edit")
+
+        with app.app_context():
+            source = db.session.get(Supplier, source_id)
+            target = db.session.get(Supplier, target_id)
+            purchase = db.session.get(Purchase, purchase_id)
+            biomass = db.session.get(BiomassAvailability, biomass_id)
+            lab_test = db.session.get(LabTest, lab_test_id)
+            attachment = db.session.get(SupplierAttachment, attachment_id)
+            photo = db.session.get(PhotoAsset, photo_id)
+            submission = db.session.get(FieldPurchaseSubmission, submission_id)
+            audit = AuditLog.query.filter_by(entity_type="supplier", entity_id=source_id, action="merge").first()
+
+            assert source is not None
+            assert target is not None
+            assert source.is_active is False
+            assert source.merged_into_supplier_id == target_id
+            assert source.merged_by_user_id is not None
+            assert source.merged_at is not None
+            assert purchase is not None and purchase.supplier_id == target_id
+            assert biomass is not None and biomass.supplier_id == target_id
+            assert lab_test is not None and lab_test.supplier_id == target_id
+            assert attachment is not None and attachment.supplier_id == target_id
+            assert photo is not None and photo.supplier_id == target_id
+            assert submission is not None and submission.supplier_id == target_id
+            assert audit is not None
+            assert target.name in (audit.details or "")
+    finally:
+        with app.app_context():
+            for model, obj_id in (
+                (FieldPurchaseSubmission, submission_id),
+                (PhotoAsset, photo_id),
+                (SupplierAttachment, attachment_id),
+                (LabTest, lab_test_id),
+                (BiomassAvailability, biomass_id),
+            ):
+                obj = db.session.get(model, obj_id)
+                if obj is not None:
+                    db.session.delete(obj)
+            lot = db.session.get(PurchaseLot, lot_id)
+            if lot is not None:
+                db.session.delete(lot)
+            purchase = db.session.get(Purchase, purchase_id)
+            if purchase is not None:
+                db.session.delete(purchase)
+            audit = AuditLog.query.filter_by(entity_type="supplier", entity_id=source_id, action="merge").first()
+            if audit is not None:
+                db.session.delete(audit)
+            source = db.session.get(Supplier, source_id)
+            if source is not None:
+                db.session.delete(source)
+            target = db.session.get(Supplier, target_id)
+            if target is not None:
+                db.session.delete(target)
+            db.session.commit()
+
+
+def test_supplier_merge_preview_rejects_self_merge():
+    app = app_module.app
+    with app.app_context():
+        supplier = Supplier(name="Merge Self Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.commit()
+        supplier_id = supplier.id
+
+    try:
+        with app.app_context():
+            supplier = db.session.get(Supplier, supplier_id)
+            assert supplier is not None
+            try:
+                supplier_merge_preview(app_module, supplier, supplier)
+            except ValueError as exc:
+                assert "different" in str(exc).lower()
+            else:
+                raise AssertionError("Expected self-merge preview to fail")
+    finally:
+        with app.app_context():
+            supplier = db.session.get(Supplier, supplier_id)
+            if supplier is not None:
+                db.session.delete(supplier)
+                db.session.commit()
+
+
 def test_batch_edit_purchase_path_runs_inventory_and_budget_side_effects():
     touched_purchase = object()
     with (
@@ -1069,6 +1411,92 @@ def test_purchase_approve_respects_inline_return_target():
             supplier = db.session.get(Supplier, supplier_id)
             if supplier is not None:
                 db.session.delete(supplier)
+            db.session.commit()
+
+
+def test_mobile_created_purchase_review_surfaces_origin_and_photos():
+    app = app_module.app
+    with app.app_context():
+        admin = User.query.filter_by(username="admin").first()
+        assert admin is not None
+        supplier = Supplier(name="Mobile Review Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = Purchase(
+            supplier_id=supplier.id,
+            purchase_date=date.today(),
+            delivery_date=date.today(),
+            status="delivered",
+            stated_weight_lbs=10.0,
+            actual_weight_lbs=9.5,
+            batch_id=f"MOBILE-REVIEW-{gen_uuid()[:6]}",
+            created_by_user_id=admin.id,
+            delivery_recorded_by_user_id=admin.id,
+            purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            purchase_approved_by_user_id=admin.id,
+        )
+        db.session.add(purchase)
+        db.session.flush()
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Blue Dream",
+            weight_lbs=10.0,
+            remaining_weight_lbs=10.0,
+        )
+        db.session.add(lot)
+        db.session.flush()
+        opp_photo = PhotoAsset(
+            purchase_id=purchase.id,
+            supplier_id=supplier.id,
+            source_type="mobile_api",
+            category="biomass",
+            photo_context="opportunity",
+            file_path="uploads/library/mobile-opportunity-test.jpg",
+            title="Opportunity photo",
+            uploaded_by=admin.id,
+        )
+        delivery_photo = PhotoAsset(
+            purchase_id=purchase.id,
+            supplier_id=supplier.id,
+            source_type="mobile_api",
+            category="biomass",
+            photo_context="delivery",
+            file_path="uploads/library/mobile-delivery-test.jpg",
+            title="Delivery photo",
+            uploaded_by=admin.id,
+        )
+        db.session.add_all([opp_photo, delivery_photo])
+        db.session.commit()
+        purchase_id = purchase.id
+        supplier_id = supplier.id
+        lot_id = lot.id
+        opp_photo_id = opp_photo.id
+        delivery_photo_id = delivery_photo.id
+
+    try:
+        listing = _call_view_as_user("/purchases", "purchases_list", "admin")
+        assert listing.status_code == 200
+        assert b"Mobile app" in listing.data
+        assert b"Created by VP Operations" in listing.data
+
+        detail = _call_view_as_user(f"/purchases/{purchase_id}/edit", "purchase_edit", "admin", purchase_id=purchase_id)
+        assert detail.status_code == 200
+        assert b"Submission Origin" in detail.data
+        assert b"Delivery Recorded By" in detail.data
+        assert b"Opportunity intake photos" in detail.data
+        assert b"Delivery confirmation photos" in detail.data
+    finally:
+        with app.app_context():
+            for model, obj_id in (
+                (PhotoAsset, opp_photo_id),
+                (PhotoAsset, delivery_photo_id),
+                (PurchaseLot, lot_id),
+                (Purchase, purchase_id),
+                (Supplier, supplier_id),
+            ):
+                obj = db.session.get(model, obj_id)
+                if obj is not None:
+                    db.session.delete(obj)
             db.session.commit()
 
 

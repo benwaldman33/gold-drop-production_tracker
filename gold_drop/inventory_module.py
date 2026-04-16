@@ -30,6 +30,15 @@ def _annotate_inventory_lot(root, lot):
         exceptions.append("Approval required")
     lot._allocation_state_key = state_key
     lot._allocation_state_label = state_label
+    lot._floor_state_key = (getattr(lot, "floor_state", None) or "inventory").strip() or "inventory"
+    floor_labels = {
+        "inventory": "In inventory",
+        "vault": "In vault",
+        "reactor_staging": "Reactor staging",
+        "quarantine": "Quarantine",
+        "custom": "Custom movement",
+    }
+    lot._floor_state_label = floor_labels.get(lot._floor_state_key, lot._floor_state_key.replace("_", " ").title())
     lot._exceptions = exceptions
     lot._material_state = " / ".join(
         [part for part in [getattr(lot.purchase, "clean_or_dirty", None), getattr(lot.purchase, "testing_status", None)] if part]

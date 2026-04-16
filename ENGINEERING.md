@@ -19,23 +19,31 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
   - **`gold_drop/costs_module.py`** - cost entry list/form/delete routes delegated from `app.py`
   - **`gold_drop/inventory_module.py`** - inventory list/filter route delegated from `app.py`
   - **`gold_drop/batch_edit_module.py`** - batch edit route and return-url guard delegated from `app.py`
-  - **`gold_drop/suppliers_module.py`** - suppliers, supplier attachments/lab tests, and photos library routes delegated from `app.py`
+  - **`gold_drop/suppliers_module.py`** - suppliers, supplier attachments/lab tests, photos library routes, and super-admin supplier merge/correction UI delegated from `app.py`
   - **`gold_drop/purchase_import_module.py`** - purchase spreadsheet import staging/validation/commit flow delegated from `app.py`
   - **`gold_drop/strains_module.py`** - strain performance route delegated from `app.py`
   - **`gold_drop/bootstrap_module.py`** - startup database initialization and baseline seed logic delegated from `init_db()`; historical/demo seeding is now explicit, not automatic
   - **`gold_drop/settings_module.py`** - extracted settings/admin view logic called by the `/settings` route; also normalizes legacy field-token datetimes before render so Settings can compare token expiry against aware UTC safely
   - **`gold_drop/uploads.py`** - upload validation, save helpers, and JSON path normalization
   - **`services/lot_allocation.py`** - lot tracking backfill, lot candidate ranking, and run allocation apply / release logic
-  - **`services/lot_labels.py`** - lot label payload generation plus offline Code 39 barcode SVG rendering for print workflows
+  - **`services/lot_labels.py`** - lot label payload generation plus Code 39 barcode rendering and QR image generation for print workflows
   - **`services/scale_ingest.py`** - future manual / device weight-capture service boundary
+  - **`services/supplier_merge.py`** - supplier merge preview / execute service that preserves lineage and audits source-to-target remaps
   - **`gold_drop/api_v1_module.py`** - token-authenticated internal read-only API routes under `/api/v1`
-  - **`gold_drop/floor_module.py`** - operator floor activity page for recent scans and recent scale captures
+  - **`gold_drop/mobile_module.py`** - user-authenticated mobile write API routes under `/api/mobile/v1`
+  - **`services/mobile_write_api.py`** - shared standalone/mobile write helpers for workflow enablement, same-origin enforcement, capabilities, and audit metadata
+  - **`gold_drop/floor_module.py`** - operator floor activity page for recent scans, recent scale captures, floor-state rollups, and extraction-readiness rollups
   - **`static/js/scan_camera.js`** - in-browser camera scanning client for `/scan`, with `BarcodeDetector` support plus manual/scanner fallback
   - **`services/api_auth.py`** - bearer-token generation, hashing, lookup, and scope enforcement
   - **`services/api_site.py`** - site identity + shared API response metadata
   - **`services/api_serializers.py`** - JSON serializers and response envelopes for API resources
   - **`services/api_queries.py`** - reusable filtered read queries for lots and on-hand inventory
 - `app.py` still re-exports some extracted helpers, but the active dashboard, field intake, runs, purchases, biomass, costs, inventory, batch edit, suppliers/photos, purchase import, strains, settings, and Slack surfaces are now registered from package modules with `add_url_rule`, and startup init delegates through `gold_drop/bootstrap_module.py`.
+- `gold_drop/dashboard_module.py` now also owns the gated cross-site UI routes:
+  - `/cross-site`
+  - `/cross-site/suppliers`
+  - `/cross-site/strains`
+  - `/cross-site/reconciliation`
 - `tests/test_app_factory.py` provides a minimal factory + route-registration smoke check so future extractions are verified against a real app object, not just imports.
 
 ## Reset + seeding operations
@@ -60,6 +68,7 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
   - inspect last used timestamp, scope, and endpoint
   - inspect the recent API request log (client, method, path, scope, status, timestamp)
 - These scripts now prepend the repo root to `sys.path`, so they work from the project root without manual `PYTHONPATH` setup.
+- **Cross-site UI flag:** `SystemSetting.cross_site_ops_enabled` controls whether cross-site operator/admin pages are visible. The cached aggregation API and remote-site settings remain available even when the sidebar/UI is hidden.
 
 ## Internal API (`/api/v1`)
 
@@ -137,6 +146,53 @@ Phase 1 internal API is read-only and site-local.
 - `GET /api/v1/summary/scanner`
 - `GET /api/v1/inventory/on-hand`
 
+## Mobile Workflow API (`/api/mobile/v1`)
+
+This surface is separate from `/api/v1`.
+
+- User-authenticated session API for the standalone Purchasing Agent App
+- Supports opportunity creation/editing, delivery entry, supplier creation, and photo uploads
+- Enforces the opportunity -> delivery lifecycle boundary in the backend
+- Reuses current read endpoints where practical instead of duplicating read models
+- Local standalone frontend development uses a small proxying dev server so `/api/*` requests stay same-origin from the browser and can reuse Gold Drop session cookies cleanly
+
+Mobile routes currently registered:
+- `POST /api/mobile/v1/auth/login`
+- `POST /api/mobile/v1/auth/logout`
+- `GET /api/mobile/v1/auth/me`
+- `GET /api/mobile/v1/capabilities`
+- `GET /api/mobile/v1/suppliers`
+- `GET /api/mobile/v1/suppliers/<supplier_id>`
+- `POST /api/mobile/v1/opportunities`
+- `GET /api/mobile/v1/opportunities/mine`
+- `GET /api/mobile/v1/opportunities/<id>`
+- `PATCH /api/mobile/v1/opportunities/<id>`
+- `POST /api/mobile/v1/opportunities/<id>/delivery`
+- `POST /api/mobile/v1/opportunities/<id>/photos`
+- `POST /api/mobile/v1/suppliers`
+- `GET /api/mobile/v1/receiving/queue`
+- `GET /api/mobile/v1/receiving/queue/<id>`
+- `POST /api/mobile/v1/receiving/queue/<id>/receive`
+- `POST /api/mobile/v1/receiving/queue/<id>/photos`
+
+The standalone app now uses the mobile surface for:
+- auth
+- writes
+- supplier reads
+
+That avoids mixing a user-cookie mobile session with the bearer-token-only `/api/v1` read API.
+
+Pilot-hardening additions:
+- main-app purchase review now surfaces mobile-origin metadata and mobile-uploaded photos for approvers
+- standalone app deployment/runbook and pilot QA docs live under `standalone-purchasing-agent-app/`, including a production rollout runbook and sample Nginx site config
+- the receiving/intake companion app lives under `standalone-receiving-intake-app/` and reuses the same session-auth mobile surface with a receiving-specific queue and receive-confirm flow
+- controlled write-platform hardening now adds:
+  - per-workflow site toggles for standalone buying and receiving
+  - same-origin checks for unsafe mobile writes
+  - mobile workflow audit entries in `audit_log`
+  - delivery-photo upload limits
+- the standalone purchasing app consumes mobile `capabilities` so production users see a clear unavailable state when standalone buying is disabled or the user lacks access
+
 ### Response contract
 
 Every response uses a standard envelope:
@@ -192,6 +248,7 @@ This keeps each deployed facility self-identifying for future aggregation withou
 - Admin control surfaces:
   - `Settings -> Remote Sites` for per-site create/update/pull/toggle/delete
   - `Settings -> Maintenance -> Pull all remote sites` for one-shot refresh of all active registrations
+  - `Settings -> Operational Parameters -> Enable Cross-Site Ops UI` for site-level visibility of the cross-site dashboards
 - CLI control surface:
 - `python scripts/pull_remote_sites.py`
 
@@ -254,6 +311,18 @@ This keeps each deployed facility self-identifying for future aggregation withou
   - New lots receive tracking / label fields on insert.
   - `services/bootstrap_helpers.py` extends SQLite schema compatibility for the new `purchase_lots` and `run_inputs` columns.
   - Purchase approval and inventory-lot maintenance backfill missing lot tracking fields so legacy rows are upgraded without a manual migration step.
+- **Scanner execution flows**
+  - `gold_drop/purchases_module.py` now owns the scanned-lot execution actions:
+    - guided run-start modes: `blank`, `full_remaining`, `partial`, `scale_capture`
+    - standardized movement codes: `vault`, `reactor_staging`, `quarantine`, `inventory_return`, `custom`
+    - testing confirmation from the scanned-lot page
+  - The scanned-lot run-start flow writes a richer session prefill payload (`SCAN_RUN_PREFILL_SESSION_KEY`) that can include:
+    - `run_start_mode`
+    - `planned_weight_lbs`
+    - `scale_device_id`
+    - `suggested_allocations`
+  - `gold_drop/runs_module.py` consumes those fields so the new-run form can prefill reactor lbs, source allocations, and scanner guidance text.
+  - `LotScanEvent.context_json` now carries richer floor context for movement labels, locations, run-start mode, and planned partial weight so activity history is auditable without parsing free-text notes.
 - **Service boundary**
   - `services/lot_allocation.py`
     - `ensure_lot_tracking_fields`

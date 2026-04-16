@@ -19,6 +19,80 @@
   </div>
 </div>
 {% endif %}
+{% if supplier and current_user.is_super_admin %}
+<div class="card" id="supplier-merge" style="margin-bottom:12px;">
+  <div class="card-header"><h3>Merge Supplier</h3></div>
+  <p class="text-sm" style="margin-top:0; color:var(--text-muted);">
+    Merge this supplier into a canonical supplier when a duplicate was created from mobile intake, Slack, or field entry.
+    The source supplier will be archived and linked records will be reassigned.
+  </p>
+  {% if supplier.is_merged %}
+  <div class="card" style="margin:0 0 12px; border-color:rgba(245, 158, 11, 0.45); background:linear-gradient(180deg, rgba(245, 158, 11, 0.10), rgba(245, 158, 11, 0.03));">
+    <div class="card-header"><h3>Merged Supplier</h3></div>
+    <p style="margin:0; color:#fde68a;">
+      This supplier has been merged into
+      {% if supplier.merged_into_supplier %}<strong>{{ supplier.merged_into_supplier.name }}</strong>{% else %}<strong>another supplier</strong>{% endif %}
+      and is archived from active use.
+    </p>
+  </div>
+  {% endif %}
+  <form method="POST">
+    <input type="hidden" name="form_type" value="merge">
+    <div class="form-row">
+      <div class="form-group">
+        <label>Merge into supplier *</label>
+        <select name="merge_target_supplier_id" required>
+          <option value="">Select target supplier</option>
+          {% for s in merge_candidates|default([]) %}
+            <option value="{{ s.id }}" {% if merge_target_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Merge notes</label>
+        <textarea name="merge_notes" rows="3" placeholder="Optional reason or context for the merge">{{ merge_notes or '' }}</textarea>
+      </div>
+    </div>
+    {% if merge_preview %}
+    <div class="card" style="margin:12px 0 0; border-color:rgba(59, 130, 246, 0.35); background:rgba(59, 130, 246, 0.06);">
+      <div class="card-header"><h3>Impact Summary</h3></div>
+      <div class="text-sm" style="color:var(--text-muted); margin-bottom:8px;">
+        Source: <strong>{{ merge_preview.source.name }}</strong> -> Target: <strong>{{ merge_preview.target.name }}</strong>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Linked item</th><th class="text-right">Count</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Purchases (and linked lots)</td><td class="text-right text-mono">{{ merge_preview.counts.purchases }}</td></tr>
+            <tr><td>Biomass availability rows</td><td class="text-right text-mono">{{ merge_preview.counts.biomass_availabilities }}</td></tr>
+            <tr><td>Field purchase submissions</td><td class="text-right text-mono">{{ merge_preview.counts.field_purchase_submissions }}</td></tr>
+            <tr><td>Lab tests</td><td class="text-right text-mono">{{ merge_preview.counts.lab_tests }}</td></tr>
+            <tr><td>Supplier attachments</td><td class="text-right text-mono">{{ merge_preview.counts.supplier_attachments }}</td></tr>
+            <tr><td>Photo assets</td><td class="text-right text-mono">{{ merge_preview.counts.photo_assets }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="text-sm" style="margin:10px 0 0; color:var(--text-muted);">
+        Linked purchase lots move with the purchases. The source supplier is archived, set inactive, and kept for lineage.
+      </p>
+      <label style="display:flex;gap:8px;align-items:flex-start;margin-top:10px;">
+        <input type="checkbox" name="merge_confirm" value="1">
+        <span>I understand this will archive the source supplier and reassign linked records to the target supplier.</span>
+      </label>
+    </div>
+    {% endif %}
+    <div class="form-actions">
+      <a href="{{ url_for('suppliers_list') }}" class="btn btn-secondary">Cancel</a>
+      <button type="submit" name="merge_action" value="preview" class="btn btn-secondary">Preview Merge</button>
+      {% if merge_preview %}
+      <button type="submit" name="merge_action" value="execute" class="btn btn-danger">Run Merge</button>
+      {% endif %}
+    </div>
+  </form>
+</div>
+{% endif %}
 <div class="card">
   <form method="POST">
     <input type="hidden" name="form_type" value="supplier">

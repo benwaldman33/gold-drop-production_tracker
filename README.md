@@ -78,12 +78,19 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 - **Batch IDs** — Unique, readable batch IDs for all purchases (auto-generated if blank)
 - **Biomass Pipeline** — Same **`Purchase`** rows as **Purchases**: early statuses **`declared`** / **`in_testing`** (UI label *Testing*), then **`committed`**, **`delivered`**, **`cancelled`**, with pipeline fields on the purchase (`availability_date`, declared weight/price, testing metadata, field photos). No separate `BiomassAvailability` sync—one record end-to-end. **Super Admin** or **`is_purchase_approver`** must approve when moving **to or from Committed** on the pipeline form (stamps `purchase_approved_at`). Unapproved rows now also expose an inline **Approve** button directly in the Biomass Pipeline list for eligible approvers.
 - **Purchase approval gate** — On-hand inventory, dashboard on-hand, run lot pickers, and saving runs that consume lots require **`purchase_approved_at`**. You cannot set on-hand statuses (**delivered**, **in_testing**, **available**, **processing**) on **Edit Purchase** until approved. Existing on-hand purchases are **backfilled** as approved on startup. Slack **biomass intake** creates purchases as **`ordered`** until reviewed/approved per your process. Eligible approvers can now approve directly from the **Purchases** list or **Biomass Pipeline** list without opening the record first.
-- **Lot tracking IDs** — Purchase lots now receive machine-readable tracking fields (`tracking_id`, barcode payload, QR payload, label metadata) at creation or approval time, and printable labels now render an offline Code 39 barcode for floor execution.
+- **Lot tracking IDs** — Purchase lots now receive machine-readable tracking fields (`tracking_id`, barcode payload, QR payload, label metadata) at creation or approval time, and printable labels now render both a Code 39 barcode and a QR code for floor execution.
 - **Scanner workflows** — Scanned lot labels now open a dedicated lot workflow page with quick actions for **Start Run From This Lot**, **Confirm Movement**, **Confirm Testing**, **Print Label**, and recent scan activity history.
-- **Floor Ops** — A dedicated operator floor page surfaces recent scan activity, recent scale captures, open lot counts, and active device counts in one place, with a direct **Scan Center** launcher.
+- **Guided floor execution** — The scanned-lot page now supports guided run-start modes (**blank**, **full remaining lot**, **partial amount**, **scale capture first**) plus standardized movement actions for **vault**, **reactor staging**, **quarantine**, **inventory return**, or a custom location.
+- **Floor Ops** — A dedicated operator floor page surfaces recent scan activity, recent scale captures, open lot counts, active device counts, floor-state rollups, and extraction-readiness counts in one place, with a direct **Scan Center** launcher.
 - **Tablet camera scanning** — `/scan` provides an in-browser camera scanning page for supported mobile browsers, with manual and Bluetooth-scanner fallback when camera barcode detection is unavailable.
 - **Scanner intelligence** — Scan activity is also exposed through internal API scanner endpoints and MCP tools (`scanner_summary`, `lot_scan_history`) for future floor analytics and AI workflows.
 - **Smart-scale live integration** — Admins can register scale devices, test raw payload ingestion in Settings, capture live allocation weights on the run form, and inspect scale data through internal API and MCP read layers.
+- **Gated cross-site ops UI** — Cross-site dashboards remain hidden until a Super Admin enables **Cross-Site Ops UI** for the site in Settings. When enabled, the app exposes:
+  - `/cross-site`
+  - `/cross-site/suppliers`
+  - `/cross-site/strains`
+  - `/cross-site/reconciliation`
+  backed by the existing cached aggregation layer rather than live multi-site fan-out.
 - **Field Photo Uploads** — Field users can attach multiple photos to biomass and purchase submissions (JPG/JPEG/PNG/WEBP/HEIC/HEIF, max 50 MB each)
 - **Field Purchase Intake Enhancements** — Harvest date, storage note, license info, queue placement, testing/COA status, and categorized photo uploads
 - **Soft Delete + Admin Hard Delete** — Runs and purchases support safe delete plus super-admin permanent cleanup
@@ -97,6 +104,7 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 - **Windows / IANA timezones** — `tzdata` is listed in `requirements.txt` so `zoneinfo` (Slack message dates, display timezone) works on Windows; install dependencies with `pip install -r requirements.txt`.
 - **Slack Integration** — Outbound notifications; inbound slash commands, interactivity, and Events API URL (`/api/slack/events`); optional **channel history sync** for up to six channels with per-channel cursors (`conversations.history` → **Slack imports** triage UI); **Run apply** now includes ranked candidate source lots, manual lot selection or split allocation on preview, prefilled run allocation rows, Run backlink + audit, and **Slack Importer** user flag
 - **Supplier Performance** — All-time, 90-day, and last-batch analytics per farm
+- **Supplier Merge / Correction** — Super Admins can preview and merge duplicate suppliers from the supplier record page; linked purchases, lots, lab tests, attachments, and photos are rehomed while lineage is preserved
 - **Strain Performance** — Compare yields and cost/gram across strains and suppliers
 - **Data Quality Controls** — Flag runs missing $/lb; optionally exclude unpriced runs from analytics
 - **CSV Import/Export** — **Runs** (and related operational history): Import from Google Sheets via **Import** with deduplication; export filtered views from list screens. **Purchases** use the dedicated **Import spreadsheet** flow (see above), not the legacy Import screen.
@@ -111,9 +119,11 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 
 - Purchases and Inventory now emphasize allocation state, exceptions, remaining pounds, tracking readiness, and next actions.
 - Slack imports now behaves more like an inbox, with triage buckets that distinguish auto-ready rows from rows needing confirmation, manual matching, or exception handling.
-- Printable lot label pages now render a scannable offline barcode and route into `/scan/lot/<tracking_id>` for direct floor execution.
+- Printable lot label pages now render both a scannable barcode and QR code and route into `/scan/lot/<tracking_id>` for direct floor execution.
+- The scanned-lot page now records richer operator activity context, including guided run-start mode, planned partial weight, movement action, and location/testing confirmations.
 - Tablet/mobile operators can also open `/scan` to use the browser camera and route directly into `/scan/lot/<tracking_id>` when barcode detection is supported.
 - The data model now includes `ScaleDevice` and `WeightCapture` for future smart-scale integration work.
+- Cross-site operator/admin UI is now feature-gated by a site-level setting so non-multi-site deployments do not see those surfaces by default.
 
 The app still starts from `app.py`, but the active route surface now lives across focused package modules in `gold_drop/`. `app.py` remains the entrypoint, app-factory host, and compatibility layer while route registration and startup bootstrap delegate into extracted modules.
 
@@ -335,6 +345,9 @@ sudo systemctl restart golddrop
 
 This app now exposes a read-only internal API under `/api/v1` for trusted internal consumers.
 
+Formal reference:
+- [API_REFERENCE.md](API_REFERENCE.md)
+
 Current endpoints:
 - `/api/v1/site`
 - `/api/v1/capabilities`
@@ -494,6 +507,31 @@ The MCP layer is intentionally:
 - aggregation-aware through cached remote-site payloads
 
 ---
+
+## Standalone Purchasing App
+
+The separate mobile-first buyer app lives in:
+
+- [standalone-purchasing-agent-app](standalone-purchasing-agent-app)
+- [standalone-receiving-intake-app](standalone-receiving-intake-app)
+
+For local development:
+
+1. Start the main Gold Drop app on `http://127.0.0.1:5050`
+2. Start the standalone app dev server from `standalone-purchasing-agent-app`
+
+The standalone dev server proxies `/api/*` to the Gold Drop backend by default so login and other session-based mobile endpoints work without browser CORS or cookie issues.
+
+System Settings can now enable or disable the standalone buying and receiving workflows independently, and recent mobile workflow activity is visible in `Settings`.
+
+Standalone app pilot docs:
+
+- [standalone-purchasing-agent-app/DEPLOYMENT.md](standalone-purchasing-agent-app/DEPLOYMENT.md)
+- [standalone-purchasing-agent-app/PILOT_QA_CHECKLIST.md](standalone-purchasing-agent-app/PILOT_QA_CHECKLIST.md)
+- [standalone-purchasing-agent-app/PRODUCTION_ROLLOUT.md](standalone-purchasing-agent-app/PRODUCTION_ROLLOUT.md)
+- [standalone-purchasing-agent-app/deploy/nginx-site.conf](standalone-purchasing-agent-app/deploy/nginx-site.conf)
+- [standalone-receiving-intake-app/DEPLOYMENT.md](standalone-receiving-intake-app/DEPLOYMENT.md)
+- [standalone-receiving-intake-app/PILOT_QA_CHECKLIST.md](standalone-receiving-intake-app/PILOT_QA_CHECKLIST.md)
 
 ## Importing Historical Data from Google Sheets
 

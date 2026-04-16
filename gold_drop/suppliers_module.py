@@ -6,6 +6,7 @@ from flask import current_app, request, url_for
 
 from gold_drop.uploads import json_paths, save_lab_files, save_photo_library_files
 from services.photo_assets import create_photo_asset, normalize_photo_category
+from services.supplier_merge import execute_supplier_merge, supplier_merge_preview
 
 
 def remove_upload_if_unreferenced(root, file_path: str) -> None:
@@ -271,6 +272,11 @@ def supplier_edit_view(root, sid):
     if not supplier:
         root.flash("Supplier not found.", "error")
         return root.redirect(root.url_for("suppliers_list"))
+    merge_candidates = root.Supplier.query.filter(
+        root.Supplier.id != supplier.id,
+        root.Supplier.is_active.is_(True),
+        root.Supplier.merged_into_supplier_id.is_(None),
+    ).order_by(root.Supplier.name.asc()).all()
     if root.request.method == "POST":
         form_type = (root.request.form.get("form_type") or "supplier").strip()
         if form_type == "supplier":
@@ -288,6 +294,57 @@ def supplier_edit_view(root, sid):
                 root.flash("Supplier updated, but some profile fields are still incomplete. See the red dialog and highlighted fields.", "warning")
             else:
                 root.flash("Supplier updated.", "success")
+        elif form_type == "merge":
+            if not root.current_user.is_super_admin:
+                root.flash("Admin access required.", "error")
+                return root.redirect(root.url_for("supplier_edit", sid=supplier.id))
+            target_id = (root.request.form.get("merge_target_supplier_id") or "").strip()
+            if not target_id:
+                root.flash("Choose a target supplier to merge into.", "error")
+                return root.redirect(root.url_for("supplier_edit", sid=supplier.id))
+            target = root.db.session.get(root.Supplier, target_id)
+            if not target:
+                root.flash("Target supplier not found.", "error")
+                return root.redirect(root.url_for("supplier_edit", sid=supplier.id))
+            try:
+                preview = supplier_merge_preview(root, supplier, target)
+            except ValueError as exc:
+                root.flash(str(exc), "error")
+                return root.redirect(root.url_for("supplier_edit", sid=supplier.id))
+            merge_action = (root.request.form.get("merge_action") or "preview").strip()
+            merge_notes = (root.request.form.get("merge_notes") or "").strip() or None
+            if merge_action == "execute":
+                if root.request.form.get("merge_confirm") != "1":
+                    root.flash("Confirm the merge before running it.", "error")
+                    return root.redirect(root.url_for("supplier_edit", sid=supplier.id))
+                try:
+                    summary = execute_supplier_merge(
+                        root,
+                        supplier,
+                        target,
+                        merged_by_user_id=root.current_user.id,
+                        merge_notes=merge_notes,
+                    )
+                except ValueError as exc:
+                    root.flash(str(exc), "error")
+                    return root.redirect(root.url_for("supplier_edit", sid=supplier.id))
+                root.flash(
+                    f"Supplier merged into {target.name}. Reassigned {summary['counts']['purchases']} purchase(s) and archived the duplicate supplier.",
+                    "success",
+                )
+                return root.redirect(root.url_for("supplier_edit", sid=target.id))
+            return root.render_template(
+                "supplier_form.html",
+                supplier=supplier,
+                purchases=root.Purchase.query.filter(root.Purchase.deleted_at.is_(None), root.Purchase.supplier_id == supplier.id).order_by(root.Purchase.purchase_date.desc()).all(),
+                lab_tests=root.LabTest.query.filter_by(supplier_id=supplier.id).order_by(root.LabTest.test_date.desc()).all(),
+                attachments=root.SupplierAttachment.query.filter_by(supplier_id=supplier.id).order_by(root.SupplierAttachment.uploaded_at.desc()).all(),
+                supplier_incomplete_fields=supplier_incomplete_profile_fields(root, supplier),
+                merge_candidates=merge_candidates,
+                merge_preview=preview,
+                merge_target_id=target.id,
+                merge_notes=merge_notes,
+            )
         elif form_type == "lab_test":
             td = (root.request.form.get("test_date") or "").strip()
             if not td:
@@ -348,7 +405,18 @@ def supplier_edit_view(root, sid):
         except Exception:
             test.file_paths = []
     attachments = root.SupplierAttachment.query.filter_by(supplier_id=supplier.id).order_by(root.SupplierAttachment.uploaded_at.desc()).all()
-    return root.render_template("supplier_form.html", supplier=supplier, purchases=purchases, lab_tests=lab_tests, attachments=attachments, supplier_incomplete_fields=supplier_incomplete_profile_fields(root, supplier))
+    return root.render_template(
+        "supplier_form.html",
+        supplier=supplier,
+        purchases=purchases,
+        lab_tests=lab_tests,
+        attachments=attachments,
+        supplier_incomplete_fields=supplier_incomplete_profile_fields(root, supplier),
+        merge_candidates=merge_candidates,
+        merge_preview=None,
+        merge_target_id="",
+        merge_notes="",
+    )
 
 
 def supplier_lab_test_delete_view(root, sid, test_id):

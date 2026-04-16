@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Cross-Site Strain Comparison{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>Cross-Site Strain Comparison</h2>
+    <p class="text-sm cell-muted" style="margin:6px 0 0 0;">Compare local strain performance against cached remote-site analytics by strain and supplier.</p>
+  </div>
+  <a href="{{ url_for('cross_site_ops') }}" class="btn btn-secondary">Back to Cross-Site Ops</a>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <form method="GET" class="filter-form">
+    <div class="form-row-3">
+      <div class="form-group">
+        <label>Strain search</label>
+        <input type="text" name="q" value="{{ query_text }}" placeholder="Filter strain name">
+      </div>
+      <div class="form-group">
+        <label>Supplier filter</label>
+        <input type="text" name="supplier_name" value="{{ supplier_name }}" placeholder="Optional supplier name">
+      </div>
+      <div class="form-group" style="align-self:end;">
+        <button type="submit" class="btn btn-primary">Apply</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-card-label">Compared rows</div>
+    <div class="stat-card-value">{{ rows|length }}</div>
+    <div class="stat-card-detail">Strain + supplier combinations across enabled sites</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-label">Best avg yield</div>
+    <div class="stat-card-value">{% if best_row %}{{ "{:.2f}".format(best_row.avg_yield or 0) }}%{% else %}-{% endif %}</div>
+    <div class="stat-card-detail">{% if best_row %}{{ best_row.strain_name }} · {{ best_row.supplier_name }}{% else %}No strain rows{% endif %}</div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:16px;">
+  <div class="table-responsive">
+    <table>
+      <thead>
+        <tr>
+          <th>Strain</th>
+          <th>Supplier</th>
+          <th>Site</th>
+          <th>Avg Yield</th>
+          <th>Avg THCA</th>
+          <th>Avg HTE</th>
+          <th>Cost / g</th>
+          <th>Runs</th>
+          <th>Lbs</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td><strong>{{ row.strain_name or 'Unknown strain' }}</strong></td>
+          <td>{{ row.supplier_name or 'Unknown supplier' }}</td>
+          <td>
+            {{ (row.site or {}).get('site_name') or (row.site or {}).get('site_code') or 'Unknown site' }}
+            <div class="text-sm cell-muted">{{ (row.site or {}).get('site_code') or '—' }}</div>
+          </td>
+          <td>{{ "{:.2f}".format(row.avg_yield or 0) }}%</td>
+          <td>{{ "{:.2f}".format(row.avg_thca or 0) }}%</td>
+          <td>{{ "{:.2f}".format(row.avg_hte or 0) }}%</td>
+          <td>{% if row.avg_cpg is not none %}${{ "{:.2f}".format(row.avg_cpg or 0) }}{% else %}-{% endif %}</td>
+          <td>{{ "{:,.0f}".format(row.run_count or 0) }}</td>
+          <td>{{ "{:,.1f}".format(row.total_lbs or 0) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

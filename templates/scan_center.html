@@ -21,6 +21,12 @@
         <button type="button" class="btn btn-secondary" id="scan-stop-btn" disabled>Stop Camera</button>
       </div>
 
+      <div class="scan-capability-notes">
+        <div class="scan-capability-pill">Camera</div>
+        <div class="scan-capability-pill">Bluetooth scanner</div>
+        <div class="scan-capability-pill">Manual entry</div>
+      </div>
+
       <div class="scan-status-box" id="scan-status-box">
         <div class="text-sm cell-muted">Scanner status</div>
         <div id="scan-status-text">Camera scan is idle.</div>
@@ -30,7 +36,7 @@
         <div class="form-row">
           <div class="form-group">
             <label for="tracking-id-input">Tracking ID</label>
-            <input id="tracking-id-input" name="tracking_id" type="text" placeholder="e.g. LOT-123ABC45" autocomplete="off">
+            <input id="tracking-id-input" name="tracking_id" type="text" placeholder="e.g. LOT-123ABC45" autocomplete="off" autofocus>
           </div>
         </div>
         <div class="form-actions" style="justify-content:flex-start;">
@@ -50,6 +56,31 @@
       </div>
     </div>
   </div>
+
+  {% if recent_scans %}
+  <div class="card" style="margin-top:18px; margin-bottom:0;">
+    <div class="card-header">
+      <h3>Recent Floor Scans</h3>
+      <a href="{{ url_for('floor_ops') }}" class="btn btn-secondary btn-sm">View Floor Ops</a>
+    </div>
+    <div class="floor-event-list">
+      {% for event in recent_scans %}
+      <div class="floor-event-row">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">
+          <div>
+            <div><strong>{{ event.tracking_id_snapshot }}</strong></div>
+            <div class="text-sm cell-muted">{{ event.action.replace('_', ' ') }}</div>
+          </div>
+          <div class="text-sm cell-muted">{{ event.created_at.strftime('%Y-%m-%d %H:%M') if event.created_at else '-' }}</div>
+        </div>
+        <div class="form-actions" style="justify-content:flex-start;margin-top:10px;">
+          <a href="{{ url_for('scan_lot', tracking_id=event.tracking_id_snapshot) }}" class="btn btn-secondary btn-sm">Open Lot</a>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}
 {% block scripts %}

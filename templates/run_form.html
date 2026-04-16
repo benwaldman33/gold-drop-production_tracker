@@ -37,6 +37,19 @@
     {% if scan_meta and scan_meta.tracking_id %}
     <div class="flash flash-success" style="margin-bottom:16px;">
       <strong>Scanner prefill:</strong> lot <strong>{{ scan_meta.tracking_id }}</strong> was selected from a scan.
+      {% if scan_meta.run_start_mode == 'full_remaining' %}
+      <span class="text-sm" style="display:block;margin-top:6px;color:var(--text-muted);">
+        Full remaining lot selected. Reactor weight and source allocation were prefilled.
+      </span>
+      {% elif scan_meta.run_start_mode == 'partial' and scan_meta.planned_weight_lbs %}
+      <span class="text-sm" style="display:block;margin-top:6px;color:var(--text-muted);">
+        Partial run selected for {{ "{:,.1f}".format(scan_meta.planned_weight_lbs or 0) }} lbs. Reactor weight and source allocation were prefilled.
+      </span>
+      {% elif scan_meta.run_start_mode == 'scale_capture' %}
+      <span class="text-sm" style="display:block;margin-top:6px;color:var(--text-muted);">
+        Scale-first flow selected{% if scan_meta.scale_device_id %}; capture from the selected scale before saving this run.{% else %}; capture from a scale before saving this run.{% endif %}
+      </span>
+      {% endif %}
       <span class="text-sm" style="display:block;margin-top:6px;">
         {{ scan_meta.strain_name or 'Unknown strain' }}{% if scan_meta.supplier_name %} / {{ scan_meta.supplier_name }}{% endif %}
         {% if scan_meta.batch_id %} · batch {{ scan_meta.batch_id }}{% endif %}

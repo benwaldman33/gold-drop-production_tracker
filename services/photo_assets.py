@@ -21,6 +21,7 @@ def create_photo_asset(
     *,
     source_type: str,
     category: str,
+    photo_context: str | None = None,
     tags: list[str] | None = None,
     title: str | None = None,
     supplier_id: str | None = None,
@@ -30,6 +31,7 @@ def create_photo_asset(
 ) -> None:
     db.session.add(PhotoAsset(
         file_path=file_path,
+        photo_context=(photo_context or "").strip() or None,
         source_type=source_type,
         category=category,
         tags=",".join([t.strip().lower() for t in (tags or []) if t and t.strip()]) or None,
@@ -51,6 +53,7 @@ def photo_asset_exists(
     file_path: str,
     source_type: str,
     category: str,
+    photo_context: str | None = None,
     submission_id: str | None = None,
     supplier_id: str | None = None,
     purchase_id: str | None = None,
@@ -60,6 +63,8 @@ def photo_asset_exists(
         PhotoAsset.source_type == source_type,
         PhotoAsset.category == category,
     )
+    if photo_context:
+        query = query.filter(PhotoAsset.photo_context == photo_context)
     if submission_id:
         query = query.filter(PhotoAsset.submission_id == submission_id)
     if supplier_id:
