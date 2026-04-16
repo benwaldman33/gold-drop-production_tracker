@@ -342,7 +342,11 @@ def _resolve_mobile_supplier(root, payload: dict[str, Any]) -> tuple[Supplier | 
         return supplier, None
 
     new_supplier = _nested_dict(payload, "new_supplier")
-    new_name = (new_supplier.get("name") if new_supplier else payload.get("new_supplier_name") or "").strip()
+    new_name = (
+        new_supplier.get("name")
+        if new_supplier
+        else payload.get("new_supplier_name") or payload.get("name") or ""
+    ).strip()
     if not new_name:
         raise ValueError("Supplier is required.")
 
@@ -356,11 +360,11 @@ def _resolve_mobile_supplier(root, payload: dict[str, Any]) -> tuple[Supplier | 
 
     supplier = root.Supplier(
         name=new_name,
-        contact_name=((new_supplier.get("contact_name") if new_supplier else payload.get("new_supplier_contact_name")) or "").strip() or None,
-        contact_phone=((new_supplier.get("phone") if new_supplier else payload.get("new_supplier_phone")) or "").strip() or None,
-        contact_email=((new_supplier.get("email") if new_supplier else payload.get("new_supplier_email")) or "").strip() or None,
-        location=((new_supplier.get("location") if new_supplier else payload.get("new_supplier_location")) or "").strip() or None,
-        notes=((new_supplier.get("notes") if new_supplier else payload.get("new_supplier_notes")) or "").strip() or None,
+        contact_name=((new_supplier.get("contact_name") if new_supplier else payload.get("new_supplier_contact_name") or payload.get("contact_name")) or "").strip() or None,
+        contact_phone=((new_supplier.get("phone") if new_supplier else payload.get("new_supplier_phone") or payload.get("phone")) or "").strip() or None,
+        contact_email=((new_supplier.get("email") if new_supplier else payload.get("new_supplier_email") or payload.get("email")) or "").strip() or None,
+        location=((new_supplier.get("location") if new_supplier else payload.get("new_supplier_location") or payload.get("location")) or "").strip() or None,
+        notes=((new_supplier.get("notes") if new_supplier else payload.get("new_supplier_notes") or payload.get("notes")) or "").strip() or None,
         is_active=True,
     )
     root.db.session.add(supplier)

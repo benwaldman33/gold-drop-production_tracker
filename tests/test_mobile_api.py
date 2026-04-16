@@ -108,6 +108,45 @@ def test_mobile_supplier_reads_require_auth_and_return_searchable_rows():
             db.session.commit()
 
 
+def test_mobile_supplier_create_accepts_standalone_form_shape():
+    app = app_module.create_app()
+    created_supplier_id = None
+    try:
+        with app.test_client() as client:
+            _login_mobile(client)
+            response = client.post(
+                "/api/mobile/v1/suppliers",
+                json={
+                    "name": f"Standalone Supplier {gen_uuid()[:6]}",
+                    "contact_name": "Buyer Contact",
+                    "phone": "555-0101",
+                    "email": "buyer@example.com",
+                    "location": "Salinas",
+                    "notes": "created from standalone form",
+                    "confirm_new_supplier": True,
+                },
+            )
+            assert response.status_code == 201
+            payload = response.get_json()["data"]["supplier"]
+            created_supplier_id = payload["id"]
+            assert payload["name"].startswith("Standalone Supplier")
+
+        with app.app_context():
+            supplier = db.session.get(Supplier, created_supplier_id)
+            assert supplier is not None
+            assert supplier.contact_name == "Buyer Contact"
+            assert supplier.contact_phone == "555-0101"
+            assert supplier.contact_email == "buyer@example.com"
+            assert supplier.location == "Salinas"
+            assert supplier.notes == "created from standalone form"
+    finally:
+        with app.app_context():
+            supplier = db.session.get(Supplier, created_supplier_id) if created_supplier_id else None
+            if supplier:
+                db.session.delete(supplier)
+            db.session.commit()
+
+
 def test_mobile_opportunity_edit_delivery_and_photo_flow():
     app = app_module.create_app()
     supplier_id = _create_supplier(app, f"Mobile Supplier {gen_uuid()[:6]}")
