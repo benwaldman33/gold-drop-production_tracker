@@ -433,8 +433,16 @@ What users can do:
 - Max size per image: **50 MB**.
 
 What admins can see:
-- In **Settings**, pending purchase submissions show categorized thumbnails (supplier/license, biomass, testing/COA).
+- In **Settings**, pending field submissions show categorized thumbnails (supplier/license, biomass, testing/COA).
 - Clicking a thumbnail opens the full image in a new tab.
+
+### Office purchase opportunities
+The **Biomass Purchasing** button now creates the same underlying **Purchase opportunity** record used by the standalone buyer app.
+
+What that means:
+- Office-created opportunities no longer create a separate pending submission object.
+- They appear directly in **Purchases** and use the normal purchase approval flow.
+- The older **Field purchase approvals** screens now refer specifically to external or field-intake submissions.
 
 ### Updated mobile purchase form fields
 The field purchase form supports:

@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
+from services.photo_assets import create_photo_asset, photo_asset_exists, supplier_attachment_exists
+from services.lot_allocation import ensure_lot_tracking_fields, ensure_purchase_lot_tracking
 from gold_drop.uploads import save_field_photos, validate_field_intake_photo_bucket
 
 
@@ -195,6 +199,93 @@ def parse_field_purchase_intake_form_to_submission(root, supplier, *, source_tok
     ), lots, all_paths
 
 
+def attach_purchase_intake_photos(root, purchase, supplier, submission_like, *, uploaded_by: str | None, source_type: str) -> None:
+    supplier_photo_paths = []
+    biomass_photo_paths = []
+    coa_photo_paths = []
+    try:
+        supplier_photo_paths = root.json.loads(submission_like.supplier_photos_json or "[]")
+        biomass_photo_paths = root.json.loads(submission_like.biomass_photos_json or "[]")
+        coa_photo_paths = root.json.loads(submission_like.coa_photos_json or "[]")
+        if not supplier_photo_paths and not biomass_photo_paths and not coa_photo_paths:
+            biomass_photo_paths = root.json.loads(submission_like.photos_json or "[]")
+    except Exception:
+        supplier_photo_paths = []
+        biomass_photo_paths = []
+        coa_photo_paths = []
+
+    for path in [p for p in supplier_photo_paths if isinstance(p, str) and p.strip()]:
+        if not supplier_attachment_exists(supplier_id=supplier.id, file_path=path):
+            root.db.session.add(root.SupplierAttachment(
+                supplier_id=supplier.id,
+                document_type="license",
+                title=f"Office intake supplier doc ({purchase.id})",
+                file_path=path,
+                uploaded_by=uploaded_by,
+            ))
+        if not photo_asset_exists(
+            file_path=path,
+            source_type=source_type,
+            category="supplier_license",
+            photo_context="opportunity",
+            supplier_id=supplier.id,
+            purchase_id=purchase.id,
+        ):
+            create_photo_asset(
+                path,
+                source_type=source_type,
+                category="supplier_license",
+                photo_context="opportunity",
+                tags=["purchase", "supplier", "license", "office-intake"],
+                title=f"Supplier license photo ({purchase.id})",
+                supplier_id=supplier.id,
+                purchase_id=purchase.id,
+                uploaded_by=uploaded_by,
+            )
+
+    for path in [p for p in biomass_photo_paths if isinstance(p, str) and p.strip()]:
+        if not photo_asset_exists(
+            file_path=path,
+            source_type=source_type,
+            category="biomass",
+            photo_context="opportunity",
+            supplier_id=supplier.id,
+            purchase_id=purchase.id,
+        ):
+            create_photo_asset(
+                path,
+                source_type=source_type,
+                category="biomass",
+                photo_context="opportunity",
+                tags=["purchase", "biomass", "office-intake"],
+                title=f"Biomass intake photo ({purchase.id})",
+                supplier_id=supplier.id,
+                purchase_id=purchase.id,
+                uploaded_by=uploaded_by,
+            )
+
+    for path in [p for p in coa_photo_paths if isinstance(p, str) and p.strip()]:
+        if not photo_asset_exists(
+            file_path=path,
+            source_type=source_type,
+            category="coa",
+            photo_context="opportunity",
+            supplier_id=supplier.id,
+            purchase_id=purchase.id,
+        ):
+            create_photo_asset(
+                path,
+                source_type=source_type,
+                category="coa",
+                photo_context="opportunity",
+                tags=["purchase", "coa", "office-intake"],
+                title=f"COA intake photo ({purchase.id})",
+                supplier_id=supplier.id,
+                purchase_id=purchase.id,
+                uploaded_by=uploaded_by,
+            )
+
+
 def field_home_view(root, token):
     return root.render_template("field_home.html", token_value=root._get_field_token_value(), token=token)
 
@@ -345,27 +436,83 @@ def desk_field_purchase_submission_view(root):
         try:
             supplier, _created = get_or_create_supplier_from_desk_purchase_form(root)
             submission, lots, all_paths = parse_field_purchase_intake_form_to_submission(root, supplier, source_token_id=None)
-            root.db.session.add(submission)
+            total_weight = sum(float(row.get("weight_lbs") or 0) for row in lots if row.get("weight_lbs") is not None)
+            purchase = root.Purchase(
+                supplier_id=supplier.id,
+                purchase_date=submission.purchase_date,
+                delivery_date=submission.delivery_date,
+                harvest_date=submission.harvest_date,
+                availability_date=submission.purchase_date,
+                status="ordered",
+                stated_weight_lbs=(total_weight if total_weight > 0 else 0.0),
+                declared_weight_lbs=(total_weight if total_weight > 0 else 0.0),
+                stated_potency_pct=submission.estimated_potency_pct,
+                declared_price_per_lb=submission.price_per_lb,
+                price_per_lb=submission.price_per_lb,
+                storage_note=submission.storage_note,
+                license_info=submission.license_info,
+                queue_placement=submission.queue_placement,
+                coa_status_text=submission.coa_status_text,
+                testing_status="pending",
+                testing_timing="before_delivery",
+                notes=submission.notes,
+                field_photo_paths_json=(submission.photos_json if submission.photos_json else None),
+            )
+            root.db.session.add(purchase)
             root.db.session.flush()
+            purchase.batch_id = root._ensure_unique_batch_id(
+                root._generate_batch_id(supplier.name, purchase.delivery_date or purchase.purchase_date, total_weight),
+                exclude_purchase_id=purchase.id,
+            )
+            for lot_row in lots:
+                strain_name = (lot_row.get("strain") or "").strip() or "Unspecified"
+                weight_value = lot_row.get("weight_lbs")
+                weight_lbs = float(weight_value) if weight_value is not None else 0.0
+                if weight_lbs <= 0:
+                    continue
+                lot = root.PurchaseLot(
+                    purchase_id=purchase.id,
+                    strain_name=strain_name,
+                    weight_lbs=weight_lbs,
+                    remaining_weight_lbs=weight_lbs,
+                    potency_pct=submission.estimated_potency_pct,
+                )
+                ensure_lot_tracking_fields(lot)
+                root.db.session.add(lot)
+            ensure_purchase_lot_tracking(purchase)
+            attach_purchase_intake_photos(
+                root,
+                purchase,
+                supplier,
+                SimpleNamespace(
+                    supplier_photos_json=submission.supplier_photos_json,
+                    biomass_photos_json=submission.biomass_photos_json,
+                    coa_photos_json=submission.coa_photos_json,
+                    photos_json=submission.photos_json,
+                ),
+                uploaded_by=root.current_user.id,
+                source_type="desk_purchase_intake",
+            )
             root.log_audit(
                 "create",
-                "field_purchase_submission",
-                submission.id,
+                "purchase",
+                purchase.id,
                 details=root.json.dumps({
                     "source": "desk_purchase_intake",
                     "supplier": supplier.name,
                     "lots_count": len(lots),
                     "photos_count": len(all_paths),
+                    "created_by_user_id": root.current_user.id,
                 }),
                 user_id=root.current_user.id,
             )
             root.db.session.commit()
             root.notify_slack(
-                f"New office purchase submission from {supplier.name} ({root.current_user.display_name}): "
-                f"{len(lots)} lot row(s), pending review."
+                f"New office opportunity from {supplier.name} ({root.current_user.display_name}): "
+                f"{len(lots)} lot row(s), purchase {purchase.batch_id or purchase.id} awaiting approval."
             )
-            root.flash("Purchase proposal submitted for approval.", "success")
-            return root.redirect(root.url_for("biomass_purchasing_dashboard"))
+            root.flash("Opportunity created. It now follows the same purchase approval flow as the standalone buy app.", "success")
+            return root.redirect(root.url_for("purchase_edit", purchase_id=purchase.id))
         except ValueError as exc:
             root.db.session.rollback()
             root.flash(str(exc), "error")

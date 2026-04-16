@@ -1142,6 +1142,78 @@ def test_field_submission_approve_creates_purchase_and_lots():
             db.session.commit()
 
 
+def test_desk_purchase_intake_creates_purchase_opportunity_directly():
+    app = app_module.app
+    with app.app_context():
+        supplier = Supplier(name="Desk Intake Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.commit()
+        supplier_id = supplier.id
+
+    purchase_id = None
+    try:
+        resp = _call_view_as_user(
+            "/biomass-purchasing/new-submission",
+            "desk_field_purchase_submission",
+            "admin",
+            method="POST",
+            data={
+                "supplier_id": supplier_id,
+                "purchase_date": "2026-04-16",
+                "delivery_date": "2026-04-18",
+                "estimated_potency_pct": "18.5",
+                "price_per_lb": "27.25",
+                "queue_placement": "indoor",
+                "storage_note": "Cold room",
+                "license_info": "LIC-123",
+                "coa_status_text": "Pending COA",
+                "notes": "desk intake opportunity",
+                "lot_strains[]": ["Blue Dream"],
+                "lot_weights[]": ["12.5"],
+            },
+        )
+        assert resp.status_code in (302, 303)
+        assert "/purchases/" in resp.headers["Location"]
+
+        with app.app_context():
+            purchase = Purchase.query.filter(
+                Purchase.supplier_id == supplier_id,
+                Purchase.notes == "desk intake opportunity",
+            ).order_by(Purchase.created_at.desc()).first()
+            assert purchase is not None
+            purchase_id = purchase.id
+            assert purchase.status == "ordered"
+            assert purchase.purchase_approved_at is None
+            assert float(purchase.stated_weight_lbs or 0) == 12.5
+            assert float(purchase.declared_weight_lbs or 0) == 12.5
+            assert float(purchase.price_per_lb or 0) == 27.25
+            assert purchase.queue_placement == "indoor"
+            assert purchase.coa_status_text == "Pending COA"
+            assert FieldPurchaseSubmission.query.filter_by(supplier_id=supplier_id, notes="desk intake opportunity").count() == 0
+
+            lots = PurchaseLot.query.filter_by(purchase_id=purchase.id).all()
+            assert len(lots) == 1
+            assert lots[0].strain_name == "Blue Dream"
+            assert float(lots[0].weight_lbs or 0) == 12.5
+    finally:
+        with app.app_context():
+            if purchase_id:
+                for photo in PhotoAsset.query.filter_by(purchase_id=purchase_id).all():
+                    db.session.delete(photo)
+                for attachment in SupplierAttachment.query.filter_by(supplier_id=supplier_id).all():
+                    if attachment.title and purchase_id in attachment.title:
+                        db.session.delete(attachment)
+                for lot in PurchaseLot.query.filter_by(purchase_id=purchase_id).all():
+                    db.session.delete(lot)
+                purchase = db.session.get(Purchase, purchase_id)
+                if purchase:
+                    db.session.delete(purchase)
+            supplier = db.session.get(Supplier, supplier_id)
+            if supplier:
+                db.session.delete(supplier)
+            db.session.commit()
+
+
 def test_supplier_merge_preview_and_execute_rehomes_records():
     app = app_module.app
     with app.app_context():

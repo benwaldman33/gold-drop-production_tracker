@@ -1,7 +1,7 @@
 {# Expects: field_submissions, reviewed_field_submissions, submission_return_to, show_submission_approval_buttons, pending_submissions_total_lbs, reviewed_approved_total_lbs, reviewed_rejected_total_lbs #}
 <div class="card" id="dashboard-field-submissions-pending" style="margin-bottom:16px;">
   <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-    <h3 style="margin:0;">Pending purchase submissions</h3>
+    <h3 style="margin:0;">Pending field intake submissions</h3>
     <div class="text-mono" style="font-size:0.95rem;color:var(--gold);">
       Total: <strong>{{ "{:,.1f}".format(pending_submissions_total_lbs) }} lbs</strong>
     </div>
@@ -87,7 +87,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="10" class="text-center cell-muted" style="padding:20px;">No pending submissions.</td></tr>
+        <tr><td colspan="10" class="text-center cell-muted" style="padding:20px;">No pending field submissions.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -96,7 +96,7 @@
 
 <div class="card" id="dashboard-field-submissions-reviewed" style="margin-bottom:16px;">
   <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-    <h3 style="margin:0;">Reviewed submissions</h3>
+    <h3 style="margin:0;">Reviewed field submissions</h3>
     <div class="text-sm" style="color:var(--text-secondary);">
       <span class="text-mono" style="color:var(--green);">Approved: <strong>{{ "{:,.1f}".format(reviewed_approved_total_lbs) }} lbs</strong></span>
       <span style="margin:0 10px;color:var(--dark-border);">|</span>

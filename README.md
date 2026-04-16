@@ -64,7 +64,7 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 
 - **Docs update (Apr 2026)** — Journey endpoints now share one validation path for missing/archived purchases, and Journey export rejects unsupported formats with an explicit `400` JSON error (`{"error":"Unsupported export format","supported_formats":["csv","json"]}`) instead of silently defaulting.
 - **Dashboard** — KPI cards with configurable green/yellow/red traffic lights (on-hand biomass and days-of-supply use **approved** purchases only; see **Purchases** below)
-- **Biomass purchasing** — Landing page (`/biomass-purchasing`) for weekly buyer targets vs actuals, field submission queues, and reviewed history (first sidebar item after **Extraction**)
+- **Biomass purchasing** — Landing page (`/biomass-purchasing`) for weekly buyer targets vs actuals, office-created purchase opportunities, field submission queues, and reviewed history (first sidebar item after **Extraction**)
 - **Run Logging** — Log extraction runs with source lots, wet/dry HTE & THCA output, and live source-lot allocation status against **Lbs in Reactor**; optional **HTE post-extraction pipeline** (lab staging, clean vs dirty, COA file attachments, terp-strip queue, terpenes + retail distillate grams after Prescott strip)
 - **Departments** — Focused lenses (`/dept`, `/dept/<slug>`) on the same data: quick links, rollups, and filtered run lists (e.g. HTE pipeline stage) for finance, purchasing, intake, extraction, THCA/HTE/LD, terpenes, testing, bulk sales
 - **Auto-Calculations** — Yield %, cost per gram, true-up amounts calculated automatically

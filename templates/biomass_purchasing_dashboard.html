@@ -5,7 +5,7 @@
   <h2>Biomass purchasing dashboard</h2>
   <div class="btn-group">
     {% if current_user.can_edit_purchases %}
-    <a href="{{ url_for('desk_field_purchase_submission') }}" class="btn btn-primary">+ New purchase proposal</a>
+    <a href="{{ url_for('desk_field_purchase_submission') }}" class="btn btn-primary">+ New opportunity</a>
     {% endif %}
     <a href="{{ url_for('purchases_list') }}" class="btn btn-secondary">Purchases</a>
   </div>
@@ -14,7 +14,7 @@
 <p class="text-sm" style="color:var(--text-muted);max-width:920px;margin:-8px 0 20px;">
   Weeks run <strong>Monday–Sunday</strong> (purchase date). Actuals include purchases from <strong>committed</strong> through <strong>complete</strong> only. Spend uses recorded <strong>total cost</strong>, or lbs × price/lb when total cost is missing.
   Weekly targets below are set in {% if current_user.is_super_admin %}<a href="{{ url_for('settings') }}#settings-biomass-budget">Settings → Biomass purchasing</a>{% else %}Settings (Super Admin){% endif %}.
-  {% if current_user.can_edit_purchases %}Use <strong>New purchase proposal</strong> above to enter lots like mobile field intake (pending until approved).{% endif %}
+  {% if current_user.can_edit_purchases %}Use <strong>New opportunity</strong> above to create the same purchase opportunity record used by the standalone buyer app; it stays pending until approved.{% endif %}
 </p>
 
 <div class="card" style="margin-bottom:16px;">

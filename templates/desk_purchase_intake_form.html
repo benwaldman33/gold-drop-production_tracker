@@ -1,12 +1,12 @@
 {% extends "base.html" %}
-{% block title %}New purchase proposal{% endblock %}
+{% block title %}New opportunity{% endblock %}
 {% block content %}
 <div class="page-header">
-  <h2>New purchase proposal</h2>
+  <h2>New opportunity</h2>
   <a href="{{ url_for('biomass_purchasing_dashboard') }}" class="btn btn-secondary">← Biomass purchasing</a>
 </div>
 <p class="text-sm" style="color:var(--text-muted);max-width:860px;margin:-8px 0 20px;">
-  Same fields as mobile <strong>field intake</strong>. Submissions go to <strong>pending approval</strong>; Super Buyers and Super Admins can approve from the biomass purchasing dashboard or field approvals.
+  This creates the same underlying <strong>purchase opportunity</strong> record as the standalone buyer app. It enters the normal purchase approval flow and can be approved from Purchases or the standard approval views.
 </p>
 
 <div class="card" style="max-width:900px;">
@@ -145,7 +145,7 @@
 
       <div class="form-actions" style="justify-content:space-between;margin-top:8px;">
         <a class="btn btn-secondary" href="{{ url_for('biomass_purchasing_dashboard') }}">Cancel</a>
-        <button type="submit" class="btn btn-primary">Submit for approval</button>
+        <button type="submit" class="btn btn-primary">Create opportunity</button>
       </div>
     </div>
   </form>
