@@ -12,6 +12,7 @@ export function parseRoute(hash) {
   if (parts[0] === "opportunities" && parts[1]) return { name: "opportunity", id: parts[1] };
   if (parts[0] === "opportunities") return { name: "opportunities", status: query.get("status") || "" };
   if (parts[0] === "suppliers" && parts[1] === "new") return { name: "supplier-new" };
+  if (parts[0] === "suppliers" && parts[1]) return { name: "supplier", id: parts[1] };
   if (parts[0] === "suppliers") return { name: "suppliers", query: query.get("q") || "" };
   return { name: "home" };
 }

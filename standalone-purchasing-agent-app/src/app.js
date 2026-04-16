@@ -13,6 +13,7 @@ const state = {
   loading: false,
   toast: "",
   suppliers: [],
+  supplier: null,
   opportunities: [],
   opportunity: null,
   duplicateContext: null,
@@ -85,6 +86,13 @@ async function loadRoute() {
   }
   if (["opportunity", "edit", "delivery"].includes(state.route.name)) {
     state.opportunity = await api.getOpportunity(state.route.id);
+  } else {
+    state.opportunity = null;
+  }
+  if (state.route.name === "supplier") {
+    state.supplier = await api.getSupplier(state.route.id);
+  } else {
+    state.supplier = null;
   }
 }
 
@@ -142,7 +150,7 @@ function shell(content) {
             <a href="#/home" class="${state.route.name === "home" ? "active" : ""}">Home <small>Dashboard</small></a>
             <a href="#/opportunities/new" class="${state.route.name === "opportunity-new" ? "active" : ""}">New Opportunity <small>Create</small></a>
             <a href="#/opportunities" class="${state.route.name === "opportunities" ? "active" : ""}">My Opportunities <small>Track</small></a>
-            <a href="#/suppliers" class="${state.route.name === "suppliers" || state.route.name === "supplier-new" ? "active" : ""}">Suppliers <small>Search</small></a>
+            <a href="#/suppliers" class="${["suppliers", "supplier", "supplier-new"].includes(state.route.name) ? "active" : ""}">Suppliers <small>Search</small></a>
           </nav>
           <div class="actions"><button class="btn btn-secondary" data-action="logout">Log out</button></div>
           `
@@ -167,6 +175,7 @@ function renderContent() {
   if (state.route.name === "home") return renderHome();
   if (state.route.name === "opportunities") return renderOpportunityList();
   if (state.route.name === "suppliers") return renderSuppliers();
+  if (state.route.name === "supplier") return renderSupplierDetail();
   if (state.route.name === "supplier-new") return renderSupplierForm();
   if (state.route.name === "opportunity-new") return renderOpportunityForm("create");
   if (state.route.name === "opportunity") return renderOpportunityDetail();
@@ -278,7 +287,7 @@ function renderSupplierCard(supplier) {
         <h3>${escapeHtml(supplier.name)}</h3>
         <p>${escapeHtml(supplier.location || "No location")} - ${escapeHtml(String(supplier.opportunity_count || 0))} opportunities</p>
       </div>
-      <a class="btn btn-ghost" href="#/suppliers?q=${encodeURIComponent(supplier.name)}">View</a>
+      <a class="btn btn-ghost" href="#/suppliers/${encodeURIComponent(supplier.id)}">Open</a>
     </div>
   `;
 }
@@ -755,6 +764,43 @@ function renderSuppliers() {
       <div class="topbar"><div><h2>Suppliers</h2><div class="meta">Search context before submitting an opportunity.</div></div><div class="actions"><a class="btn btn-primary" href="#/opportunities/new">New Opportunity</a><a class="btn btn-secondary" href="#/suppliers/new">Create Supplier</a></div></div>
       <section class="panel"><div class="field"><label for="supplier-search-page">Search suppliers</label><input id="supplier-search-page" name="q" placeholder="Search supplier name, location, email, or phone" value="${escapeHtml(state.supplierQuery)}" /></div></section>
       <section class="card">${state.suppliers.length ? `<div class="list">${state.suppliers.map(renderSupplierCard).join("")}</div>` : `<div class="empty">No suppliers match your search.</div>`}</section>
+    </div>
+  `;
+}
+
+function renderSupplierDetail() {
+  const supplier = state.supplier;
+  if (!supplier) return `<div class="empty">Supplier not found.</div>`;
+  return `
+    <div class="layout-grid">
+      <div class="topbar">
+        <div><h2>${escapeHtml(supplier.name)}</h2><div class="meta">Supplier context for buyer workflows.</div></div>
+        <div class="actions">
+          <a class="btn btn-secondary" href="#/suppliers?q=${encodeURIComponent(supplier.name)}">Back to search</a>
+          <a class="btn btn-primary" href="#/opportunities/new">New Opportunity</a>
+        </div>
+      </div>
+      <section class="grid-2">
+        <div class="card">
+          <h3 style="margin-top:0;">Supplier profile</h3>
+          <div class="stack">
+            ${rowLabel("Name", supplier.name)}
+            ${rowLabel("Location", supplier.location || "Not set")}
+            ${rowLabel("Contact", supplier.contact_name || "Not set")}
+            ${rowLabel("Phone", supplier.phone || "Not set")}
+            ${rowLabel("Email", supplier.email || "Not set")}
+            ${rowLabel("Notes", supplier.notes || "None")}
+          </div>
+        </div>
+        <div class="card">
+          <h3 style="margin-top:0;">Context</h3>
+          <div class="stack">
+            ${rowLabel("Opportunities", String(supplier.opportunity_count || 0))}
+            ${rowLabel("Open opportunities", String(supplier.open_count || 0))}
+            ${rowLabel("Profile completeness", supplier.profile_incomplete ? "Needs follow-up" : "Complete enough")}
+          </div>
+        </div>
+      </section>
     </div>
   `;
 }

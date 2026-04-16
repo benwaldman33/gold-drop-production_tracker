@@ -12,6 +12,7 @@ test("parseRoute handles opportunity paths", () => {
 test("parseRoute handles supplier search paths", () => {
   assert.deepEqual(parseRoute("#/suppliers?q=Farmlane"), { name: "suppliers", query: "Farmlane" });
   assert.deepEqual(parseRoute("#/suppliers/new"), { name: "supplier-new" });
+  assert.deepEqual(parseRoute("#/suppliers/sup-1"), { name: "supplier", id: "sup-1" });
 });
 
 test("buildOpportunityPayload extracts form data", () => {
