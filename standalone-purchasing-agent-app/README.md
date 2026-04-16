@@ -10,6 +10,7 @@ Included:
 - login
 - home
 - supplier search/context
+- supplier detail view from search results
 - create opportunity
 - my opportunities
 - opportunity detail
@@ -111,6 +112,7 @@ node --test --experimental-test-isolation=none tests/api.test.mjs tests/domain.t
 
 - delivery is not a separate sibling object
 - supplier creation allows fuzzy duplicate detection and user verification
+- supplier search results open a real supplier detail screen, and returning to search resets to a clean supplier list
 - photo upload is in scope for v1
 - the current live app uses `/api/mobile/v1` for auth, writes, and supplier reads
 
