@@ -1,7 +1,7 @@
 import { createApiClient } from "./api.js";
 import { canRecordDelivery, isOpportunityEditable, opportunityTitle } from "./domain.js";
 import { getAppConfig } from "./config.js";
-import { parseRoute, shortDate, shortDateTime } from "./ui-helpers.js";
+import { buildOpportunityPayload, buildSupplierPayload, parseRoute, shortDate, shortDateTime } from "./ui-helpers.js";
 
 const config = getAppConfig();
 const api = createApiClient(config);
