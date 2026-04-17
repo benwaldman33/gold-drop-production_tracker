@@ -19,6 +19,10 @@ const state = {
   opportunity: null,
   duplicateContext: null,
   supplierQuery: "",
+  pendingFiles: {
+    photo_upload: [],
+    delivery_photos: [],
+  },
 };
 
 const OPPORTUNITY_DRAFT_KEY = "gold-drop-purchasing-agent-opportunity-draft-v1";
@@ -78,6 +82,10 @@ function buyingWorkflowMessage() {
 
 async function onRouteChange() {
   state.route = parseRoute(window.location.hash || "#/login");
+  if (!["opportunity-new", "edit", "delivery"].includes(state.route.name)) {
+    state.pendingFiles.photo_upload = [];
+    state.pendingFiles.delivery_photos = [];
+  }
   await loadRoute();
   render();
 }
@@ -111,6 +119,32 @@ async function loadOpportunities(status = "") {
 
 function navigate(hash) {
   window.location.hash = hash;
+}
+
+function pendingFilesFor(fieldName) {
+  return [...(state.pendingFiles[fieldName] || [])];
+}
+
+function clearPendingFiles(fieldName) {
+  state.pendingFiles[fieldName] = [];
+}
+
+function fileFingerprint(file) {
+  return `${file?.name || ""}:${file?.size || 0}:${file?.lastModified || 0}`;
+}
+
+function queueFiles(fieldName, files) {
+  const existing = state.pendingFiles[fieldName] || [];
+  const seen = new Set(existing.map(fileFingerprint));
+  for (const file of files || []) {
+    const fingerprint = fileFingerprint(file);
+    if (!seen.has(fingerprint)) {
+      existing.push(file);
+      seen.add(fingerprint);
+    }
+  }
+  state.pendingFiles[fieldName] = existing;
+  return existing;
 }
 
 function opportunityDraftDefaults() {
@@ -516,10 +550,13 @@ async function handleOpportunityCreate(event) {
   try {
     persistOpportunityDraftFromForm(event.currentTarget);
     const payload = buildOpportunityPayload(new FormData(event.currentTarget));
-    const files = selectedFilesFromForm(event.currentTarget, "photo_upload");
+    const files = pendingFilesFor("photo_upload").length
+      ? pendingFilesFor("photo_upload")
+      : selectedFilesFromForm(event.currentTarget, "photo_upload");
     const result = await submitOpportunityDraft({ kind: "opportunity", payload, files, formId: "create-opportunity" });
     if (result) {
       removeValue(OPPORTUNITY_DRAFT_KEY);
+      clearPendingFiles("photo_upload");
       navigate(`#/opportunities/${encodeURIComponent(result.id)}`);
       await loadOpportunities();
       showToast("Opportunity created.");
@@ -538,7 +575,12 @@ async function handleOpportunityEdit(event, id) {
   setLoading(true);
   try {
     await api.patchOpportunity(id, buildOpportunityPayload(new FormData(event.currentTarget)));
-    await uploadFiles(id, selectedFilesFromForm(event.currentTarget, "photo_upload"), "opportunity");
+    await uploadFiles(
+      id,
+      pendingFilesFor("photo_upload").length ? pendingFilesFor("photo_upload") : selectedFilesFromForm(event.currentTarget, "photo_upload"),
+      "opportunity",
+    );
+    clearPendingFiles("photo_upload");
     state.opportunity = await api.getOpportunity(id);
     navigate(`#/opportunities/${encodeURIComponent(id)}`);
     await loadOpportunities();
@@ -565,7 +607,12 @@ async function handleDeliverySubmit(event, id) {
       clean_or_dirty: String(form.get("clean_or_dirty") || "clean"),
       delivery_notes: String(form.get("delivery_notes") || ""),
     });
-    await uploadFiles(id, selectedFilesFromForm(event.currentTarget, "delivery_photos"), "delivery");
+    await uploadFiles(
+      id,
+      pendingFilesFor("delivery_photos").length ? pendingFilesFor("delivery_photos") : selectedFilesFromForm(event.currentTarget, "delivery_photos"),
+      "delivery",
+    );
+    clearPendingFiles("delivery_photos");
     state.opportunity = await api.getOpportunity(id);
     navigate(`#/opportunities/${encodeURIComponent(id)}`);
     await loadOpportunities();
@@ -729,8 +776,10 @@ function bind() {
 
   app.querySelectorAll('input[type="file"]').forEach((input) => {
     input.addEventListener("change", () => {
+      const files = queueFiles(input.name, [...(input.files || [])]);
       const helper = input.closest(".field")?.querySelector(".helper");
-      if (helper) helper.textContent = `${input.files?.length || 0} file(s) selected. They will attach on save.`;
+      if (helper) helper.textContent = `${files.length} file(s) selected. Additional picks will be added, not replaced.`;
+      input.value = "";
     });
   });
 }
