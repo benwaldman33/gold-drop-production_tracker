@@ -59,6 +59,7 @@ export function buildSupplierPayload(form) {
 }
 
 export function selectedFilesFromForm(form, fieldName) {
+  if (!form || typeof form.querySelector !== "function") return [];
   const input = form.querySelector(`input[type="file"][name="${fieldName}"]`);
   return [...(input?.files || [])];
 }
