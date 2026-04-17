@@ -2,6 +2,7 @@ import { createApiClient } from "./api.js";
 import { canRecordDelivery, isOpportunityEditable, opportunityTitle } from "./domain.js";
 import { getAppConfig } from "./config.js";
 import { buildOpportunityPayload, buildSupplierPayload, parseRoute, selectedFilesFromForm, shortDate, shortDateTime } from "./ui-helpers.js";
+import { readJson, removeValue, writeJson } from "./storage.js";
 
 const config = getAppConfig();
 const api = createApiClient(config);
@@ -19,6 +20,9 @@ const state = {
   duplicateContext: null,
   supplierQuery: "",
 };
+
+const OPPORTUNITY_DRAFT_KEY = "gold-drop-purchasing-agent-opportunity-draft-v1";
+const SUPPLIER_DRAFT_KEY = "gold-drop-purchasing-agent-supplier-draft-v1";
 
 window.addEventListener("hashchange", onRouteChange);
 
@@ -81,7 +85,7 @@ async function onRouteChange() {
 async function loadRoute() {
   if (!state.auth.authenticated) return;
   if (!buyingWorkflowState().enabled || !buyingWorkflowState().allowed) return;
-  if (["home", "opportunities", "suppliers"].includes(state.route.name)) {
+  if (["home", "opportunities", "suppliers", "opportunity-new", "supplier-new"].includes(state.route.name)) {
     await Promise.all([loadSuppliers(state.route.query || state.supplierQuery || ""), loadOpportunities(state.route.status || "")]);
   }
   if (["opportunity", "edit", "delivery"].includes(state.route.name)) {
@@ -107,6 +111,87 @@ async function loadOpportunities(status = "") {
 
 function navigate(hash) {
   window.location.hash = hash;
+}
+
+function opportunityDraftDefaults() {
+  return {
+    supplier_id: "",
+    new_supplier_name: "",
+    new_supplier_contact_name: "",
+    new_supplier_phone: "",
+    new_supplier_email: "",
+    new_supplier_location: "",
+    strain_name: "",
+    expected_weight_lbs: "",
+    expected_potency_pct: "",
+    offered_price_per_lb: "",
+    availability_date: "",
+    clean_or_dirty: "clean",
+    testing_notes: "",
+    notes: "",
+    confirm_new_supplier: false,
+  };
+}
+
+function supplierDraftDefaults() {
+  return {
+    name: "",
+    location: "",
+    contact_name: "",
+    phone: "",
+    email: "",
+    notes: "",
+    confirm_new_supplier: false,
+  };
+}
+
+function currentOpportunityDraft() {
+  const stored = readJson(OPPORTUNITY_DRAFT_KEY, opportunityDraftDefaults()) || {};
+  const draft = { ...opportunityDraftDefaults(), ...stored };
+  const routeSupplierId = state.route.name === "opportunity-new" ? String(state.route.supplier_id || "") : "";
+  if (routeSupplierId) {
+    draft.supplier_id = routeSupplierId;
+    draft.new_supplier_name = "";
+    draft.new_supplier_contact_name = "";
+    draft.new_supplier_phone = "";
+    draft.new_supplier_email = "";
+    draft.new_supplier_location = "";
+  }
+  return draft;
+}
+
+function persistOpportunityDraftFromForm(form) {
+  const formData = new FormData(form);
+  writeJson(OPPORTUNITY_DRAFT_KEY, {
+    supplier_id: String(formData.get("supplier_id") || ""),
+    new_supplier_name: String(formData.get("new_supplier_name") || ""),
+    new_supplier_contact_name: String(formData.get("new_supplier_contact_name") || ""),
+    new_supplier_phone: String(formData.get("new_supplier_phone") || ""),
+    new_supplier_email: String(formData.get("new_supplier_email") || ""),
+    new_supplier_location: String(formData.get("new_supplier_location") || ""),
+    strain_name: String(formData.get("strain_name") || ""),
+    expected_weight_lbs: String(formData.get("expected_weight_lbs") || ""),
+    expected_potency_pct: String(formData.get("expected_potency_pct") || ""),
+    offered_price_per_lb: String(formData.get("offered_price_per_lb") || ""),
+    availability_date: String(formData.get("availability_date") || ""),
+    clean_or_dirty: String(formData.get("clean_or_dirty") || "clean"),
+    testing_notes: String(formData.get("testing_notes") || ""),
+    notes: String(formData.get("notes") || ""),
+    confirm_new_supplier: formData.get("confirm_new_supplier") === "on",
+  });
+}
+
+function persistSupplierDraftFromForm(form) {
+  const formData = new FormData(form);
+  writeJson(SUPPLIER_DRAFT_KEY, {
+    name: String(formData.get("name") || ""),
+    location: String(formData.get("location") || ""),
+    contact_name: String(formData.get("contact_name") || ""),
+    phone: String(formData.get("phone") || ""),
+    email: String(formData.get("email") || ""),
+    notes: String(formData.get("notes") || ""),
+    confirm_new_supplier: formData.get("confirm_new_supplier") === "on",
+  });
 }
 
 function setLoading(value) {
@@ -429,10 +514,12 @@ async function handleOpportunityCreate(event) {
   event.preventDefault();
   setLoading(true);
   try {
+    persistOpportunityDraftFromForm(event.currentTarget);
     const payload = buildOpportunityPayload(new FormData(event.currentTarget));
     const files = selectedFilesFromForm(event.currentTarget, "photo_upload");
     const result = await submitOpportunityDraft({ kind: "opportunity", payload, files, formId: "create-opportunity" });
     if (result) {
+      removeValue(OPPORTUNITY_DRAFT_KEY);
       navigate(`#/opportunities/${encodeURIComponent(result.id)}`);
       await loadOpportunities();
       showToast("Opportunity created.");
@@ -496,6 +583,7 @@ async function handleSupplierCreate(event) {
   event.preventDefault();
   setLoading(true);
   try {
+    persistSupplierDraftFromForm(event.currentTarget);
     const payload = buildSupplierPayload(new FormData(event.currentTarget));
     const result = await api.createSupplier(payload);
     if (result.requires_confirmation) {
@@ -505,6 +593,7 @@ async function handleSupplierCreate(event) {
       return;
     }
     state.duplicateContext = null;
+    removeValue(SUPPLIER_DRAFT_KEY);
     showToast(`Supplier created: ${result.supplier?.name || payload.name}`);
     navigate("#/suppliers");
     await loadSuppliers();
@@ -609,7 +698,11 @@ function bind() {
   if (searchInput) searchInput.addEventListener("input", handleSearchInput);
 
   const createForm = app.querySelector('[data-form="create-opportunity"]');
-  if (createForm) createForm.addEventListener("submit", handleOpportunityCreate);
+  if (createForm) {
+    createForm.addEventListener("submit", handleOpportunityCreate);
+    createForm.addEventListener("input", () => persistOpportunityDraftFromForm(createForm));
+    createForm.addEventListener("change", () => persistOpportunityDraftFromForm(createForm));
+  }
 
   const editForm = app.querySelector('[data-form="edit-opportunity"]');
   if (editForm) {
@@ -624,7 +717,11 @@ function bind() {
   }
 
   const supplierForm = app.querySelector('[data-form="create-supplier"]');
-  if (supplierForm) supplierForm.addEventListener("submit", handleSupplierCreate);
+  if (supplierForm) {
+    supplierForm.addEventListener("submit", handleSupplierCreate);
+    supplierForm.addEventListener("input", () => persistSupplierDraftFromForm(supplierForm));
+    supplierForm.addEventListener("change", () => persistSupplierDraftFromForm(supplierForm));
+  }
 
   app.querySelectorAll('[data-action="use-existing-supplier"], [data-action="confirm-new-record"], [data-action="dismiss-duplicate-warning"]').forEach((button) => {
     button.addEventListener("click", handleDuplicateAction);
@@ -696,9 +793,14 @@ function renderOpportunityDetail() {
 
 function renderOpportunityForm(mode, opportunity = null) {
   const isEdit = mode === "edit";
-  const source = isEdit ? opportunity : state.duplicateContext?.kind === "opportunity" ? state.duplicateContext.payload : {};
+  const source = isEdit
+    ? opportunity
+    : state.duplicateContext?.kind === "opportunity"
+      ? state.duplicateContext.payload
+      : currentOpportunityDraft();
+  const selectedSupplierId = String(source?.supplier?.id || source?.supplier_id || "");
   const supplierOptions = state.suppliers
-    .map((supplier) => `<option value="${escapeHtml(supplier.id)}" ${source?.supplier?.id === supplier.id ? "selected" : ""}>${escapeHtml(supplier.name)}${supplier.location ? ` - ${escapeHtml(supplier.location)}` : ""}</option>`)
+    .map((supplier) => `<option value="${escapeHtml(supplier.id)}" ${selectedSupplierId === supplier.id ? "selected" : ""}>${escapeHtml(supplier.name)}${supplier.location ? ` - ${escapeHtml(supplier.location)}` : ""}</option>`)
     .join("");
   return `
     <div class="layout-grid">
@@ -785,7 +887,7 @@ function renderSupplierDetail() {
         <div><h2>${escapeHtml(supplier.name)}</h2><div class="meta">Supplier context for buyer workflows.</div></div>
         <div class="actions">
           <a class="btn btn-secondary" href="#/suppliers">Back to search</a>
-          <a class="btn btn-primary" href="#/opportunities/new">New Opportunity</a>
+          <a class="btn btn-primary" href="#/opportunities/new?supplier_id=${encodeURIComponent(supplier.id)}">New Opportunity</a>
         </div>
       </div>
       <section class="grid-2">
@@ -814,6 +916,7 @@ function renderSupplierDetail() {
 }
 
 function renderSupplierForm() {
+  const draft = state.duplicateContext?.payload || readJson(SUPPLIER_DRAFT_KEY, supplierDraftDefaults()) || supplierDraftDefaults();
   return `
     <div class="layout-grid">
       <div class="topbar"><div><h2>Create Supplier</h2><div class="meta">Duplicates will be flagged for verification.</div></div></div>
@@ -821,16 +924,16 @@ function renderSupplierForm() {
       <section class="panel">
         <form class="form" data-form="create-supplier">
           <div class="grid-2">
-            <div class="field"><label for="name">Name</label><input id="name" name="name" required value="${escapeHtml(state.duplicateContext?.payload?.name || "")}" /></div>
-            <div class="field"><label for="location">Location</label><input id="location" name="location" value="${escapeHtml(state.duplicateContext?.payload?.location || "")}" /></div>
+            <div class="field"><label for="name">Name</label><input id="name" name="name" required autocomplete="organization" value="${escapeHtml(draft.name || "")}" /></div>
+            <div class="field"><label for="location">Location</label><input id="location" name="location" autocomplete="address-level2" value="${escapeHtml(draft.location || "")}" /></div>
           </div>
           <div class="grid-2">
-            <div class="field"><label for="contact_name">Contact</label><input id="contact_name" name="contact_name" value="${escapeHtml(state.duplicateContext?.payload?.contact_name || "")}" /></div>
-            <div class="field"><label for="phone">Phone</label><input id="phone" name="phone" value="${escapeHtml(state.duplicateContext?.payload?.phone || "")}" /></div>
+            <div class="field"><label for="contact_name">Contact</label><input id="contact_name" name="contact_name" autocomplete="name" value="${escapeHtml(draft.contact_name || "")}" /></div>
+            <div class="field"><label for="phone">Phone</label><input id="phone" name="phone" autocomplete="tel" value="${escapeHtml(draft.phone || "")}" /></div>
           </div>
-          <div class="field"><label for="email">Email</label><input id="email" name="email" value="${escapeHtml(state.duplicateContext?.payload?.email || "")}" /></div>
-          <div class="field"><label for="notes">Notes</label><textarea id="notes" name="notes">${escapeHtml(state.duplicateContext?.payload?.notes || "")}</textarea></div>
-          <div class="field"><label><input type="checkbox" name="confirm_new_supplier" ${state.duplicateContext?.payload?.confirm_new_supplier ? "checked" : ""} /> Confirm new supplier if a duplicate is flagged</label></div>
+          <div class="field"><label for="email">Email</label><input id="email" name="email" autocomplete="email" value="${escapeHtml(draft.email || "")}" /></div>
+          <div class="field"><label for="notes">Notes</label><textarea id="notes" name="notes">${escapeHtml(draft.notes || "")}</textarea></div>
+          <div class="field"><label><input type="checkbox" name="confirm_new_supplier" ${draft.confirm_new_supplier ? "checked" : ""} /> Confirm new supplier if a duplicate is flagged</label></div>
           <div class="actions"><button class="btn btn-primary" type="submit">${state.loading ? "Creating..." : "Create supplier"}</button><a class="btn btn-secondary" href="#/suppliers">Cancel</a></div>
         </form>
       </section>
