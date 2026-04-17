@@ -19,6 +19,7 @@ const state = {
   opportunity: null,
   duplicateContext: null,
   supplierQuery: "",
+  opportunityPrefillSupplier: null,
   pendingFiles: {
     photo_upload: [],
     delivery_photos: [],
@@ -106,6 +107,15 @@ async function loadRoute() {
   } else {
     state.supplier = null;
   }
+  if (state.route.name === "opportunity-new" && state.route.supplier_id) {
+    const supplierId = String(state.route.supplier_id);
+    state.opportunityPrefillSupplier =
+      state.supplier?.id === supplierId
+        ? state.supplier
+        : state.suppliers.find((supplier) => supplier.id === supplierId) || await api.getSupplier(supplierId);
+  } else {
+    state.opportunityPrefillSupplier = null;
+  }
 }
 
 async function loadSuppliers(query = "") {
@@ -184,12 +194,13 @@ function currentOpportunityDraft() {
   const draft = { ...opportunityDraftDefaults(), ...stored };
   const routeSupplierId = state.route.name === "opportunity-new" ? String(state.route.supplier_id || "") : "";
   if (routeSupplierId) {
+    const supplier = state.opportunityPrefillSupplier;
     draft.supplier_id = routeSupplierId;
     draft.new_supplier_name = "";
-    draft.new_supplier_contact_name = "";
-    draft.new_supplier_phone = "";
-    draft.new_supplier_email = "";
-    draft.new_supplier_location = "";
+    draft.new_supplier_contact_name = draft.new_supplier_contact_name || supplier?.contact_name || "";
+    draft.new_supplier_phone = draft.new_supplier_phone || supplier?.phone || "";
+    draft.new_supplier_email = draft.new_supplier_email || supplier?.email || "";
+    draft.new_supplier_location = draft.new_supplier_location || supplier?.location || "";
   }
   return draft;
 }
