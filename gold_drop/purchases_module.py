@@ -128,7 +128,7 @@ def _purchase_form_context(root, purchase):
     if purchase:
         purchase_audit_photos = root.PhotoAsset.query.filter(
             root.PhotoAsset.purchase_id == purchase.id,
-            root.PhotoAsset.source_type.in_(("field_submission", "mobile_api")),
+            root.PhotoAsset.source_type.in_(("field_submission", "mobile_api", "desk_purchase_intake")),
             root.or_(root.PhotoAsset.photo_context.is_(None), root.PhotoAsset.photo_context == "opportunity"),
         ).order_by(root.PhotoAsset.uploaded_at.desc()).all()
         purchase_delivery_photos = root.PhotoAsset.query.filter(

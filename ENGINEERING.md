@@ -15,7 +15,7 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
   - **`gold_drop/biomass_module.py`** - biomass pipeline list/form/archive route logic delegated from `app.py`
   - **`gold_drop/runs_module.py`** - run list/form/delete route logic delegated from `app.py`
   - **`gold_drop/dashboard_module.py`** - dashboard, department, and biomass purchasing dashboard routes delegated from `app.py`
-  - **`gold_drop/field_intake_module.py`** - field/mobile intake and office purchase submission flows delegated from `app.py`
+  - **`gold_drop/field_intake_module.py`** - field/mobile intake and office purchase opportunity flows delegated from `app.py`
   - **`gold_drop/costs_module.py`** - cost entry list/form/delete routes delegated from `app.py`
   - **`gold_drop/inventory_module.py`** - inventory list/filter route delegated from `app.py`
   - **`gold_drop/batch_edit_module.py`** - batch edit route and return-url guard delegated from `app.py`
@@ -170,6 +170,10 @@ Mobile routes currently registered:
 - `POST /api/mobile/v1/opportunities/<id>/delivery`
 - `POST /api/mobile/v1/opportunities/<id>/photos`
 - `POST /api/mobile/v1/suppliers`
+
+Office intake note:
+- The Biomass Purchasing `New opportunity` form now creates the same `Purchase` opportunity object as `/api/mobile/v1/opportunities`.
+- External field-token intake still lands first as `FieldPurchaseSubmission` and is approved separately.
 - `GET /api/mobile/v1/receiving/queue`
 - `GET /api/mobile/v1/receiving/queue/<id>`
 - `POST /api/mobile/v1/receiving/queue/<id>/receive`
