@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { buildOpportunityPayload, buildSupplierPayload, parseRoute } from "../src/ui-helpers.js";
 
 test("parseRoute handles opportunity paths", () => {
-  assert.deepEqual(parseRoute("#/opportunities/new"), { name: "opportunity-new" });
+  assert.deepEqual(parseRoute("#/opportunities/new"), { name: "opportunity-new", supplier_id: "" });
+  assert.deepEqual(parseRoute("#/opportunities/new?supplier_id=sup-1"), { name: "opportunity-new", supplier_id: "sup-1" });
   assert.deepEqual(parseRoute("#/opportunities/opp-1"), { name: "opportunity" , id: "opp-1" });
   assert.deepEqual(parseRoute("#/opportunities/opp-1/edit"), { name: "edit", id: "opp-1" });
   assert.deepEqual(parseRoute("#/opportunities/opp-1/delivery"), { name: "delivery", id: "opp-1" });
