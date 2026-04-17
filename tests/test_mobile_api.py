@@ -246,6 +246,61 @@ def test_mobile_opportunity_edit_delivery_and_photo_flow():
             db.session.commit()
 
 
+def test_mobile_opportunity_create_enriches_existing_supplier_blank_fields():
+    app = app_module.create_app()
+    supplier_id = _create_supplier(app, f"Existing Supplier {gen_uuid()[:6]}")
+    purchase_id = None
+    try:
+        with app.app_context():
+            supplier = db.session.get(Supplier, supplier_id)
+            supplier.contact_name = None
+            supplier.contact_phone = None
+            supplier.contact_email = None
+            supplier.location = None
+            db.session.commit()
+
+        with app.test_client() as client:
+            _login_mobile(client)
+            create_res = client.post(
+                "/api/mobile/v1/opportunities",
+                json={
+                    "supplier_id": supplier_id,
+                    "new_supplier_contact_name": "Maya Ortiz",
+                    "new_supplier_phone": "555-2000",
+                    "new_supplier_email": "maya@example.com",
+                    "new_supplier_location": "Salinas",
+                    "strain_name": "Blue Dream",
+                    "expected_weight_lbs": 120,
+                    "expected_potency_pct": 23.5,
+                    "offered_price_per_lb": 280,
+                    "availability_date": "2026-04-15",
+                    "testing_notes": "test notes",
+                    "notes": "standalone opportunity",
+                },
+            )
+            assert create_res.status_code == 201
+            purchase_id = create_res.get_json()["data"]["opportunity"]["id"]
+
+        with app.app_context():
+            supplier = db.session.get(Supplier, supplier_id)
+            assert supplier is not None
+            assert supplier.contact_name == "Maya Ortiz"
+            assert supplier.contact_phone == "555-2000"
+            assert supplier.contact_email == "maya@example.com"
+            assert supplier.location == "Salinas"
+    finally:
+        with app.app_context():
+            purchase = db.session.get(Purchase, purchase_id) if purchase_id else None
+            if purchase:
+                for photo in PhotoAsset.query.filter_by(purchase_id=purchase.id).all():
+                    db.session.delete(photo)
+                db.session.delete(purchase)
+            supplier = db.session.get(Supplier, supplier_id)
+            if supplier:
+                db.session.delete(supplier)
+            db.session.commit()
+
+
 def test_mobile_endpoints_require_auth():
     app = app_module.create_app()
     with app.test_client() as client:

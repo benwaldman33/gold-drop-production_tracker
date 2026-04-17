@@ -339,6 +339,18 @@ def _resolve_mobile_supplier(root, payload: dict[str, Any]) -> tuple[Supplier | 
         supplier = root.db.session.get(root.Supplier, supplier_id)
         if not supplier:
             raise ValueError("Selected supplier was not found.")
+        contact_name = (payload.get("new_supplier_contact_name") or payload.get("contact_name") or "").strip()
+        contact_phone = (payload.get("new_supplier_phone") or payload.get("phone") or "").strip()
+        contact_email = (payload.get("new_supplier_email") or payload.get("email") or "").strip()
+        location = (payload.get("new_supplier_location") or payload.get("location") or "").strip()
+        if contact_name and not (supplier.contact_name or "").strip():
+            supplier.contact_name = contact_name
+        if contact_phone and not (supplier.contact_phone or "").strip():
+            supplier.contact_phone = contact_phone
+        if contact_email and not (supplier.contact_email or "").strip():
+            supplier.contact_email = contact_email
+        if location and not (supplier.location or "").strip():
+            supplier.location = location
         return supplier, None
 
     new_supplier = _nested_dict(payload, "new_supplier")
