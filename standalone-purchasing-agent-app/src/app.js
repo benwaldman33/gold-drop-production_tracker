@@ -859,6 +859,12 @@ function renderOpportunityForm(mode, opportunity = null) {
       ? state.duplicateContext.payload
       : currentOpportunityDraft();
   const selectedSupplierId = String(source?.supplier?.id || source?.supplier_id || "");
+  const supplierNameValue = source?.new_supplier?.name || source?.new_supplier_name || "";
+  const supplierContactValue = source?.new_supplier?.contact_name || source?.new_supplier_contact_name || "";
+  const supplierPhoneValue = source?.new_supplier?.phone || source?.new_supplier_phone || "";
+  const supplierEmailValue = source?.new_supplier?.email || source?.new_supplier_email || "";
+  const supplierLocationValue = source?.new_supplier?.location || source?.new_supplier_location || "";
+  const confirmNewSupplierValue = Boolean(source?.new_supplier?.confirm_new_supplier || source?.confirm_new_supplier);
   const supplierOptions = state.suppliers
     .map((supplier) => `<option value="${escapeHtml(supplier.id)}" ${selectedSupplierId === supplier.id ? "selected" : ""}>${escapeHtml(supplier.name)}${supplier.location ? ` - ${escapeHtml(supplier.location)}` : ""}</option>`)
     .join("");
@@ -870,15 +876,15 @@ function renderOpportunityForm(mode, opportunity = null) {
         <form class="form" data-form="${isEdit ? "edit-opportunity" : "create-opportunity"}" ${isEdit ? `data-id="${escapeHtml(opportunity.id)}"` : ""}>
           <div class="grid-2">
             <div class="field"><label for="supplier_id">Existing supplier</label><select id="supplier_id" name="supplier_id"><option value="">Choose existing supplier</option>${supplierOptions}</select><div class="helper">Use this if the supplier already exists.</div></div>
-            <div class="field"><label for="new_supplier_name">Or create supplier</label><input id="new_supplier_name" name="new_supplier_name" placeholder="Farmlane" value="${escapeHtml(source?.new_supplier?.name || "")}" /><div class="helper">If no supplier matches, create one here.</div></div>
+            <div class="field"><label for="new_supplier_name">Or create supplier</label><input id="new_supplier_name" name="new_supplier_name" placeholder="Farmlane" value="${escapeHtml(supplierNameValue)}" /><div class="helper">If no supplier matches, create one here.</div></div>
           </div>
           <div class="two-col">
-            <div class="field"><label for="new_supplier_contact_name">Supplier contact</label><input id="new_supplier_contact_name" name="new_supplier_contact_name" placeholder="Contact name" value="${escapeHtml(source?.new_supplier?.contact_name || "")}" /></div>
-            <div class="field"><label for="new_supplier_phone">Supplier phone</label><input id="new_supplier_phone" name="new_supplier_phone" placeholder="555-0123" value="${escapeHtml(source?.new_supplier?.phone || "")}" /></div>
+            <div class="field"><label for="new_supplier_contact_name">Supplier contact</label><input id="new_supplier_contact_name" name="new_supplier_contact_name" placeholder="Contact name" value="${escapeHtml(supplierContactValue)}" /></div>
+            <div class="field"><label for="new_supplier_phone">Supplier phone</label><input id="new_supplier_phone" name="new_supplier_phone" placeholder="555-0123" value="${escapeHtml(supplierPhoneValue)}" /></div>
           </div>
           <div class="two-col">
-            <div class="field"><label for="new_supplier_email">Supplier email</label><input id="new_supplier_email" name="new_supplier_email" placeholder="sales@example.com" value="${escapeHtml(source?.new_supplier?.email || "")}" /></div>
-            <div class="field"><label for="new_supplier_location">Supplier location</label><input id="new_supplier_location" name="new_supplier_location" placeholder="Salinas, CA" value="${escapeHtml(source?.new_supplier?.location || "")}" /></div>
+            <div class="field"><label for="new_supplier_email">Supplier email</label><input id="new_supplier_email" name="new_supplier_email" placeholder="sales@example.com" value="${escapeHtml(supplierEmailValue)}" /></div>
+            <div class="field"><label for="new_supplier_location">Supplier location</label><input id="new_supplier_location" name="new_supplier_location" placeholder="Salinas, CA" value="${escapeHtml(supplierLocationValue)}" /></div>
           </div>
           <div class="field"><label for="strain_name">Strain</label><input id="strain_name" name="strain_name" required value="${escapeHtml(source?.strain_name || "")}" /></div>
           <div class="grid-3">
@@ -893,7 +899,7 @@ function renderOpportunityForm(mode, opportunity = null) {
           <div class="field"><label for="testing_notes">Testing notes</label><textarea id="testing_notes" name="testing_notes">${escapeHtml(source?.testing_notes || "")}</textarea></div>
           <div class="field"><label for="notes">Notes</label><textarea id="notes" name="notes">${escapeHtml(source?.notes || "")}</textarea></div>
           <div class="field"><label for="photo_upload">Photos</label><input id="photo_upload" type="file" name="photo_upload" accept="image/*" multiple /><div class="helper">Photos are attached in one collection and tagged by context.</div></div>
-          ${isEdit ? "" : `<div class="field"><label><input type="checkbox" name="confirm_new_supplier" ${source?.new_supplier?.confirm_new_supplier ? "checked" : ""} /> Confirm new supplier if duplicate is flagged</label></div>`}
+          ${isEdit ? "" : `<div class="field"><label><input type="checkbox" name="confirm_new_supplier" ${confirmNewSupplierValue ? "checked" : ""} /> Confirm new supplier if duplicate is flagged</label></div>`}
           <div class="actions"><button class="btn btn-primary" type="submit">${state.loading ? "Saving..." : isEdit ? "Save changes" : "Submit opportunity"}</button><a class="btn btn-secondary" href="#/opportunities${opportunity?.id ? `/${encodeURIComponent(opportunity.id)}` : ""}">Cancel</a></div>
         </form>
       </section>
