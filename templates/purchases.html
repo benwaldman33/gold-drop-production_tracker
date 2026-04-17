@@ -123,7 +123,7 @@
         <td class="text-mono">
           <div><strong>{{ p.batch_id if p.batch_id else '—' }}</strong></div>
           <div class="text-sm cell-muted">
-            {{ p.status.replace('_', ' ') }}
+            {{ p._display_status_label }}
             {% if p.created_by_user_id %} &middot; {{ p._intake_origin_label }}{% endif %}
           </div>
           {% if p._created_by_name %}
@@ -133,8 +133,8 @@
         <td><strong>{{ p.supplier_name }}</strong></td>
         <td>
           <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
-            <span class="badge status-{{ p.status }}">{{ p.status.replace('_', ' ') }}</span>
-            <span class="badge {% if p._allocation_state_key == 'fully_allocated' %}badge-gray{% elif p._allocation_state_key == 'partially_allocated' %}badge-gold{% elif p._allocation_state_key == 'no_lots' %}badge-red{% else %}badge-green{% endif %}">
+            <span class="badge status-{{ p._display_status_key or p.status }}">{{ p._display_status_label }}</span>
+            <span class="badge {% if p._allocation_state_key == 'fully_allocated' %}badge-gray{% elif p._allocation_state_key == 'partially_allocated' %}badge-gold{% elif p._allocation_state_key in ('no_lots', 'pending_approval') %}badge-red{% else %}badge-green{% endif %}">
               {{ p._allocation_state_label }}
             </span>
             {% if not p.is_approved %}<span class="badge" style="background:#d4a843;color:#fff;" title="Not yet approved — material cannot be used in runs">Unapproved</span>{% endif %}

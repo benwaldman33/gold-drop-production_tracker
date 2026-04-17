@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import app as app_module
 import gold_drop.bootstrap_module as bootstrap_module
+import gold_drop.purchases_module as purchases_module
 from models import ApiClient, AuditLog, BiomassAvailability, FieldAccessToken, FieldPurchaseSubmission, LabTest, LotScanEvent, PhotoAsset, Purchase, PurchaseLot, RemoteSite, ScaleDevice, SlackIngestedMessage, Supplier, SupplierAttachment, SystemSetting, User, WeightCapture, db, gen_uuid
 from flask_login import login_user
 from services.scale_ingest import create_weight_capture
@@ -1660,3 +1661,59 @@ def test_scale_readiness_models_and_weight_capture_persist():
         if device is not None:
             db.session.delete(device)
         db.session.commit()
+
+
+def test_unapproved_opportunity_purchase_displays_pending_labels():
+    app = app_module.app
+    with app.app_context():
+        supplier = Supplier(name="Opportunity Label Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+
+        purchase = Purchase(
+            supplier_id=supplier.id,
+            purchase_date=date(2026, 4, 16),
+            status="ordered",
+            stated_weight_lbs=80,
+            batch_id=f"OPP-LABEL-{app_module.gen_uuid()[:6]}",
+        )
+        db.session.add(purchase)
+        db.session.flush()
+
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Opportunity Label Strain",
+            weight_lbs=80,
+            remaining_weight_lbs=80,
+        )
+        db.session.add(lot)
+        db.session.commit()
+
+        purchase_id = purchase.id
+        lot_id = lot.id
+        supplier_id = supplier.id
+
+        db.session.refresh(purchase)
+        purchases_module._annotate_purchase_row(purchase)
+        assert purchase._display_status_key == "opportunity"
+        assert purchase._display_status_label == "Opportunity"
+        assert purchase._allocation_state_key == "pending_approval"
+        assert purchase._allocation_state_label == "Pending approval"
+
+    try:
+        listing = _call_view_as_user("/purchases", "purchases_list", "admin")
+        assert listing.status_code == 200
+        assert b"Opportunity" in listing.data
+        assert b"Pending approval" in listing.data
+    finally:
+        with app.app_context():
+            lot = db.session.get(PurchaseLot, lot_id)
+            if lot is not None:
+                db.session.delete(lot)
+            purchase = db.session.get(Purchase, purchase_id)
+            if purchase is not None:
+                db.session.delete(purchase)
+            supplier = db.session.get(Supplier, supplier_id)
+            if supplier is not None:
+                db.session.delete(supplier)
+            db.session.commit()

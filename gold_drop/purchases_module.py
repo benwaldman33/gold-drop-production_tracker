@@ -184,6 +184,7 @@ def _annotate_purchase_row(purchase):
     state_key, state_label, total_weight, total_allocated, total_remaining = _purchase_allocation_state(purchase)
     active_lots = [lot for lot in purchase.lots if getattr(lot, "deleted_at", None) is None]
     tracking_ready = sum(1 for lot in active_lots if getattr(lot, "tracking_id", None))
+    is_opportunity = not purchase.is_approved and (purchase.status or "").strip().lower() == "ordered"
     exceptions: list[str] = []
     if not purchase.is_approved:
         exceptions.append("Approval required")
@@ -193,8 +194,10 @@ def _annotate_purchase_row(purchase):
         exceptions.append("Tracking incomplete")
     if purchase.price_per_lb in (None, 0):
         exceptions.append("Missing price")
-    purchase._allocation_state_key = state_key
-    purchase._allocation_state_label = state_label
+    purchase._display_status_key = "opportunity" if is_opportunity else (purchase.status or "")
+    purchase._display_status_label = "Opportunity" if is_opportunity else (purchase.status or "").replace("_", " ")
+    purchase._allocation_state_key = "pending_approval" if is_opportunity else state_key
+    purchase._allocation_state_label = "Pending approval" if is_opportunity else state_label
     purchase._lot_count = len(active_lots)
     purchase._tracking_ready_count = tracking_ready
     purchase._total_weight = total_weight
@@ -204,7 +207,9 @@ def _annotate_purchase_row(purchase):
     purchase._intake_origin_label = "Mobile app" if purchase.created_by_user_id else "Back office"
     purchase._created_by_name = purchase.created_by_user.display_name if purchase.created_by_user else None
     purchase._delivery_recorded_by_name = purchase.delivery_recorded_by.display_name if purchase.delivery_recorded_by else None
-    if not purchase.is_approved:
+    if is_opportunity:
+        purchase._next_action = "Approve opportunity"
+    elif not purchase.is_approved:
         purchase._next_action = "Approve purchase"
     elif state_key == "no_lots":
         purchase._next_action = "Add lots"
