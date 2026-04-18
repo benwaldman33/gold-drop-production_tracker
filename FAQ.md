@@ -305,8 +305,26 @@ Use the runbook in:
 
 The receiving app uses the same proxy pattern locally and the same session-auth mobile API family in production.
 
+## Can receiving staff correct a receipt after it was submitted?
+
+Yes, but only while the purchase's lots have not been used downstream.
+
+The standalone receiving app exposes `Edit Receipt` after confirmation so staff can correct delivered weight, delivery date, testing state, notes, location, floor state, and lot notes. Once one of the lots is consumed by a run, the record becomes read-only and the API returns `receiving_locked`.
+
 ## Can I disable a standalone workflow without removing the code?
 
 Yes.
 
 Use `Settings -> Operational Parameters` to turn the standalone purchasing or receiving workflow on or off for that site. The workflow remains coded, but the corresponding mobile write endpoints return `workflow_disabled` until the setting is turned back on.
+
+## Why does the standalone app sometimes show "workflow unavailable" even though the code is deployed?
+
+Because workflow availability is controlled separately from deployment.
+
+If `Settings -> Operational Parameters` has standalone buying or standalone receiving turned off, the mobile `capabilities` response reports that disabled state and the workflow endpoints reject access with `workflow_disabled`.
+
+## Why would a mobile write request be blocked even for a valid user?
+
+Unsafe mobile writes now enforce same-origin browser requests.
+
+If a browser sends an `Origin` header for a different host than the Gold Drop app, the request is rejected before saving. This is intentional hardening for the standalone buying and receiving surfaces.

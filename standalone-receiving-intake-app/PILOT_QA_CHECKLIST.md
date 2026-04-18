@@ -24,6 +24,21 @@
 - submit receipt
 - verify status changes to `delivered`
 
+## Edit Receipt
+
+- after confirming receipt, use `Edit Receipt`
+- change delivered weight, delivery date, or receiving location
+- save the correction
+- verify the updated values render on the receiving detail screen
+- verify the main app purchase review shows the updated receiving metadata
+
+## Lock After Downstream Use
+
+- consume the same lot in a downstream run from the main app
+- reopen the receiving detail
+- verify `Edit Receipt` is no longer available
+- verify a lock reason is shown explaining downstream processing has started
+
 ## Delivery Photos
 
 - upload one or more photos from the receive form

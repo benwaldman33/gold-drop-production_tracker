@@ -16,3 +16,6 @@ static/uploads/
 Thumbs.db
 .vscode/
 
+# Local agent/runtime artifacts
+.claude/
+

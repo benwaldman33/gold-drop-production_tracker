@@ -6,7 +6,7 @@ This guide explains how to use the Gold Drop web app day-to-day. It intentionall
 
 **Current release note:** the app has now been split internally across dedicated route modules for dashboard, field intake, runs, purchases, biomass, costs, inventory, batch edit, suppliers/photos, purchase import, strains, settings, and Slack integration. The workflows in this manual are still the ones you should test: routes, page names, approvals, list screens, and Slack import behavior are intended to work the same as before.
 
-**Operator-facing additions in the current release:** Purchases and Inventory are more status-first, the Journey page is richer, Slack imports now includes inbox buckets, lot labels now print with scannable barcodes, `Floor Ops` gives operators a recent activity surface, and the data model supports live smart-scale capture.
+**Operator-facing additions in the current release:** Purchases and Inventory are more status-first, the Journey page is richer, Slack imports now includes inbox buckets, lot labels now print with scannable barcodes, `Floor Ops` gives operators a recent activity surface, the standalone receiving app can now correct a confirmed receipt before downstream lot consumption, and the data model supports live smart-scale capture.
 
 ---
 
@@ -36,6 +36,11 @@ Use the left sidebar:
 - **Cross-Site Ops** (only when enabled by Super Admin): cached local + remote-site rollups for multi-site reporting
 - **Fresh operational reset** (server-side admin task): clears operational business data while keeping users, passwords, settings, KPI targets, Slack sync config, and cost entries
 - **Import**: CSV import for **historical runs** (run-style exports)—not the same as **Purchases → Import spreadsheet**
+
+Related mobile workflows:
+- the standalone purchasing app is intended for buyer/intake users on phone or tablet
+- the standalone receiving app is intended for dock / receiving users on phone or tablet
+- both workflows can be enabled or disabled independently by a Super Admin in **Settings -> Operational Parameters**
 
 ---
 
@@ -738,3 +743,18 @@ Use exports for reporting, reconciliation, or offline analysis.
 - Delivery photos and receiving metadata are visible from the main purchase review screen.
 - `Settings -> Operational Parameters` can enable or disable the standalone purchasing and receiving workflows independently.
 - `Settings -> Internal API Clients` now also shows recent mobile workflow activity for audit visibility.
+
+### Typical receiving flow
+
+1. Sign into the standalone receiving app with your normal Gold Drop user account.
+2. Open a queue item that is already approved or committed.
+3. Confirm delivered weight, delivery date, location, floor state, testing status, and notes.
+4. Upload any delivery photos needed for the record.
+5. Submit the receipt.
+6. If the dock count or receiving details need correction before the lot is consumed in a run, use `Edit Receipt`.
+
+### When `Edit Receipt` is available
+
+- You can edit a confirmed receipt while none of that purchase's lots have been used in downstream processing.
+- Once one of the lots is consumed by a run, the receiving record locks automatically.
+- When locked, the receiving detail and the main purchase review screen show the lock reason instead of allowing more edits.

@@ -524,6 +524,14 @@ The standalone dev server proxies `/api/*` to the Gold Drop backend by default s
 
 System Settings can now enable or disable the standalone buying and receiving workflows independently, and recent mobile workflow activity is visible in `Settings`.
 
+Current mobile write-platform behavior:
+
+- both standalone apps use the shared session-auth `/api/mobile/v1` surface
+- standalone receiving works against existing approved or committed purchases rather than creating a second receiving object
+- receiving can confirm receipt, upload delivery photos, and then edit the receipt until downstream lot usage exists
+- once a lot is consumed by a run, receipt edits are locked and the API reports the lock reason
+- unsafe browser writes enforce same-origin checks, and mobile-origin mutations are tagged in `audit_log`
+
 Standalone app pilot docs:
 
 - [standalone-purchasing-agent-app/DEPLOYMENT.md](standalone-purchasing-agent-app/DEPLOYMENT.md)
