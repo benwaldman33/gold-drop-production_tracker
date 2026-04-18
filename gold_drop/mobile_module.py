@@ -703,7 +703,10 @@ def mobile_suppliers_view(root):
         offset = max(0, int(request.args.get("offset") or 0))
     except ValueError:
         offset = 0
-    query = root.Supplier.query
+    query = root.Supplier.query.filter(
+        root.Supplier.is_active.is_(True),
+        root.Supplier.merged_into_supplier_id.is_(None),
+    )
     if query_text:
         query = query.filter(root.Supplier.name.ilike(f"%{query_text}%"))
     query = query.order_by(root.Supplier.name.asc(), root.Supplier.id.asc())
@@ -720,7 +723,7 @@ def mobile_supplier_detail_view(root, supplier_id: str):
     if auth_error:
         return auth_error
     supplier = root.db.session.get(root.Supplier, supplier_id)
-    if not supplier:
+    if not supplier or not bool(supplier.is_active) or getattr(supplier, "merged_into_supplier_id", None):
         return _json_error("Supplier not found.", status_code=404, code="not_found")
     return jsonify({"meta": build_meta(), "data": _mobile_supplier_payload(supplier)})
 

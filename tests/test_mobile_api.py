@@ -108,6 +108,37 @@ def test_mobile_supplier_reads_require_auth_and_return_searchable_rows():
             db.session.commit()
 
 
+def test_mobile_supplier_reads_hide_inactive_and_merged_suppliers():
+    app = app_module.create_app()
+    active_id = _create_supplier(app, f"Active Supplier {gen_uuid()[:6]}")
+    hidden_id = _create_supplier(app, f"Hidden Supplier {gen_uuid()[:6]}")
+    try:
+        with app.app_context():
+            hidden = db.session.get(Supplier, hidden_id)
+            hidden.is_active = False
+            hidden.merged_into_supplier_id = active_id
+            db.session.commit()
+
+        with app.test_client() as client:
+            _login_mobile(client)
+            listing = client.get("/api/mobile/v1/suppliers")
+            assert listing.status_code == 200
+            rows = listing.get_json()["data"]
+            ids = {row["id"] for row in rows}
+            assert active_id in ids
+            assert hidden_id not in ids
+
+            detail = client.get(f"/api/mobile/v1/suppliers/{hidden_id}")
+            assert detail.status_code == 404
+    finally:
+        with app.app_context():
+            for supplier_id in (hidden_id, active_id):
+                supplier = db.session.get(Supplier, supplier_id)
+                if supplier:
+                    db.session.delete(supplier)
+            db.session.commit()
+
+
 def test_mobile_supplier_create_accepts_standalone_form_shape():
     app = app_module.create_app()
     created_supplier_id = None

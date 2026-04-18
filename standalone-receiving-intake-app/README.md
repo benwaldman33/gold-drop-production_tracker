@@ -11,6 +11,7 @@ This app is intentionally narrow:
 - open one receiving item
 - confirm receipt
 - upload delivery photos
+- queue multiple delivery photos across repeated picks before saving receipt
 
 It does not create suppliers or opportunities. It operates on existing `Purchase` rows that are already approved or committed.
 

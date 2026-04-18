@@ -112,7 +112,9 @@ node --test --experimental-test-isolation=none tests/api.test.mjs tests/domain.t
 
 - delivery is not a separate sibling object
 - supplier creation allows fuzzy duplicate detection and user verification
+- supplier search hides inactive or merged suppliers by default so archived duplicates do not leak back into the buyer flow
 - supplier search results open a real supplier detail screen, and returning to search resets to a clean supplier list
+- editing an existing opportunity now rehydrates supplier contact details from the selected supplier record
 - photo upload is in scope for v1
 - the current live app uses `/api/mobile/v1` for auth, writes, and supplier reads
 

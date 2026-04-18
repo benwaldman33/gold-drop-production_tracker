@@ -4,7 +4,7 @@
 <div class="page-header">
   <h2>Lot labels{% if purchase %} - {{ purchase.batch_id or purchase.id }}{% endif %}</h2>
   {% if purchase %}
-  <a href="{{ url_for('purchases_bp.purchase_journey', purchase_id=purchase.id) }}" class="btn btn-secondary">Back to journey</a>
+  <a href="{{ return_to or url_for('purchase_edit', purchase_id=purchase.id) }}" class="btn btn-secondary">{{ return_label or 'Back to purchase' }}</a>
   {% endif %}
   <button type="button" class="btn btn-primary" onclick="window.print()">Print</button>
 </div>
