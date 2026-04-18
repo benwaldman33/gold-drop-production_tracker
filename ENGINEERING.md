@@ -35,7 +35,9 @@ This is a review checklist, not a rule to make no-op edits. Update only the docu
   - **`gold_drop/list_state.py`** - session filter persistence, timezone helpers, Slack channel labels
   - **`gold_drop/slack.py`** - Slack parsing, mapping, preview, and coverage helpers
   - **`gold_drop/purchases.py`** - weekly biomass budget / on-hand purchase helpers
-  - **`gold_drop/purchases_module.py`** - purchases list/form/approval route logic delegated from `app.py`; inline list approvals in Purchases and Biomass Pipeline post through this module and preserve `return_to`
+- **`gold_drop/purchases_module.py`** - purchases list/form/approval route logic delegated from `app.py`; inline list approvals in Purchases and Biomass Pipeline post through this module and preserve `return_to`
+  - purchase save now also persists shared pipeline/mobile fields such as `availability_date` and `testing_notes`
+  - purchase routes now include lot splitting from the main purchase form (`POST /lots/<lot_id>/split`) for confirmed inventory adjustments
   - **`gold_drop/biomass_module.py`** - biomass pipeline list/form/archive route logic delegated from `app.py`
   - **`gold_drop/runs_module.py`** - run list/form/delete route logic delegated from `app.py`
   - **`gold_drop/dashboard_module.py`** - dashboard, department, and biomass purchasing dashboard routes delegated from `app.py`
@@ -672,3 +674,16 @@ Implemented baseline: clickable journey page + JSON API + JSON/CSV export for a 
 - Include “last updated” and “include archived” toggles for audit contexts.
 - Include direct **Export JSON** / **Export CSV** actions on the journey page.
 - `templates/purchase_journey.html` now includes dedicated **Inventory Lots** and **Run Allocations** sections rather than only stage summaries.
+
+## Purchase form parity + lot splitting
+
+- `templates/purchase_form.html` now surfaces `availability_date` and `testing_notes` on the main purchase form so mobile opportunity edits round-trip through the same `Purchase` row.
+- `gold_drop/purchases_module.py` purchase save logic persists those shared fields from the main form instead of leaving them mobile-only.
+- Confirmed-lot splitting is handled by `lot_split_view(...)` plus `POST /lots/<lot_id>/split`.
+- Split rules:
+  - source lot must exist and have remaining inventory
+  - split weight must be greater than zero
+  - split weight must be strictly less than current remaining inventory
+  - original lot weight and remaining weight are reduced
+  - new child lot copies base metadata, can accept form overrides for strain/location/potency/notes, and receives fresh tracking fields through `ensure_lot_tracking_fields(...)`
+  - audit writes action `split` with child-lot details so later review can trace lineage

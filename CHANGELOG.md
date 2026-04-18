@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-04-18
+
+### Added
+- Confirmed purchases can now split an existing lot from remaining inventory on the main purchase form, creating a traced child lot with its own tracking fields and audit history.
+
+### Changed
+- Purchase edit now round-trips `availability_date` and `testing_notes` so values saved from the mobile opportunity flow remain visible and editable in the main app.
+- Standalone buying copy now uses clearer "ready to record delivery" wording instead of the older "delivery capture" phrasing.
+
+### Tests
+- Added regression coverage for purchase edit round-trip of mobile opportunity fields and for confirmed-lot splitting from remaining inventory (`tests/test_refactor_safety.py`).
+
 ## 2026-04-11
 
 ### Added

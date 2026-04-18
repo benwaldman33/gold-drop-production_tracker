@@ -395,7 +395,7 @@ function renderHome() {
       </section>
       <section class="grid-3">
         <div class="card stat"><div class="label">Pending</div><div class="value">${stats.pending}</div><div class="hint">Awaiting review or approval</div></div>
-        <div class="card stat"><div class="label">Approved</div><div class="value">${stats.approved}</div><div class="hint">Ready for receiving</div></div>
+        <div class="card stat"><div class="label">Approved</div><div class="value">${stats.approved}</div><div class="hint">Approved or committed and ready to record delivery</div></div>
         <div class="card stat"><div class="label">Delivered</div><div class="value">${stats.delivered}</div><div class="hint">Completed opportunities</div></div>
       </section>
       <section class="grid-2">
@@ -844,7 +844,7 @@ function renderOpportunityDetail() {
           <h3 style="margin-top:0;">Status and delivery</h3>
           <div class="stack">
             ${rowLabel("Editable", canEdit ? "Yes, before approval" : "Locked")}
-            ${rowLabel("Delivery allowed", deliveryAllowed ? "Yes" : "No")}
+            ${rowLabel("Ready to record delivery", deliveryAllowed ? "Yes" : "No")}
             ${rowLabel("Submitted", shortDateTime(item.submitted_at))}
             ${rowLabel("Updated", shortDateTime(item.updated_at))}
             ${rowLabel("Approved at", item.approval?.approved_at ? shortDateTime(item.approval.approved_at) : "Not yet")}

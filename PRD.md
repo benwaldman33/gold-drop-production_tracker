@@ -307,6 +307,7 @@ Represents procurement from first touch through delivery (and optional pipeline-
 - Supplier, purchase/delivery dates
 - **Status** — full lifecycle including pipeline values **`declared`**, **`in_testing`**, **`committed`**, plus **`ordered`**, **`in_transit`**, **`delivered`**, **`available`**, **`processing`**, **`complete`**, **`cancelled`**, etc.
 - **Approval** — **`purchase_approved_at`**, **`purchase_approved_by_user_id`** (gate for on-hand treatment and runs)
+- Pipeline/shared fields such as **`availability_date`** and **testing notes** that must remain visible and editable from both the standalone buyer workflow and the main purchase form
 - Weights, potency (stated/tested), $/lb
 - Total cost + true-up values
 - **Batch ID** (unique, human-readable)
@@ -318,6 +319,12 @@ Represents strains within a purchase with:
 - Location / milled flag
 
 This is the **physical inventory bucket** that can actually be consumed by extraction. A purchase may create one or more lots, and lots may be split or created manually after approval as operations require.
+
+Lot-management requirements:
+- The main purchase workflow must support adding a new lot after purchase creation.
+- The main purchase workflow must also support splitting an existing confirmed lot from its current remaining inventory into a new child lot.
+- A split must reduce the original lot, create a new child lot with preserved lineage, and generate fresh tracking fields for the child lot.
+- Split actions must be audited.
 
 Each lot must eventually support:
 - A permanent **tracking identity** (`tracking_id`)
@@ -421,6 +428,9 @@ Fields (still the same purchase row):
 - Delivery Date → **`delivery_date`**
 - Committed Weight → **`stated_weight_lbs`** (falls back to declared weight when blank)
 - Committed $/lb → **`price_per_lb`** (falls back to declared $/lb)
+
+Cross-surface consistency requirement:
+- If the buyer workflow edits shared purchase fields such as **availability date** or **testing notes**, the main purchase form must render the same values and saving from either surface must preserve them on the same `Purchase` row.
 
 Rules:
 - **Delivered** is rejected unless the batch was **Committed** first (or already delivered).
@@ -969,6 +979,7 @@ Current delivered behavior:
 - receiving detail exposes whether the receipt is still editable plus the lock reason when it is not
 - the standalone receiving UI can upload delivery photos across repeated picks before the final receipt save
 - the main purchase form shows mobile/receiving origin metadata, receiving editor visibility, and mobile-uploaded photos for approvers
+- approved or committed queue items should use clear **ready to record delivery** language so operators understand the step means entering actual delivery details, not a separate abstract status
 
 ## Controlled Write Platform Hardening
 
