@@ -22,6 +22,14 @@
   </div>
 </div>
 
+<div class="view-toggle">
+  <div class="btn-group">
+    <a href="{{ url_for('suppliers_list', visibility='active') }}" class="btn {% if (visibility or 'active') == 'active' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">Active</a>
+    <a href="{{ url_for('suppliers_list', visibility='inactive') }}" class="btn {% if visibility == 'inactive' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">Inactive / Merged</a>
+    <a href="{{ url_for('suppliers_list', visibility='all') }}" class="btn {% if visibility == 'all' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">All</a>
+  </div>
+</div>
+
 {% if best_supplier_mom %}
 <div class="card" style="margin-bottom:12px; border-color:rgba(245, 158, 11, 0.5); background:linear-gradient(180deg, rgba(245, 158, 11, 0.08), rgba(245, 158, 11, 0.02));">
   <div class="card-header"><h3>Best Yielding Supplier (Current Month)</h3></div>

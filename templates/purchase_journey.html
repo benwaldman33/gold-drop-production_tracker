@@ -6,7 +6,7 @@
   <div class="btn-group">
     <a href="{{ url_for('purchases_bp.purchase_journey_export', purchase_id=purchase.id, format='json', include_archived=1 if include_archived else 0) }}" class="btn btn-secondary btn-sm">Export JSON</a>
     <a href="{{ url_for('purchases_bp.purchase_journey_export', purchase_id=purchase.id, format='csv', include_archived=1 if include_archived else 0) }}" class="btn btn-secondary btn-sm">Export CSV</a>
-    <a href="{{ url_for('purchase_labels', purchase_id=purchase.id) }}" class="btn btn-secondary btn-sm">Print Labels</a>
+    <a href="{{ url_for('purchase_labels', purchase_id=purchase.id, return_to=request.full_path) }}" class="btn btn-secondary btn-sm">Print Labels</a>
     {% if current_user.is_super_admin %}
     <a href="{{ url_for('purchases_bp.purchase_journey', purchase_id=purchase.id, include_archived=1 if not include_archived else 0) }}" class="btn btn-secondary btn-sm">
       {% if include_archived %}Hide archived{% else %}Include archived{% endif %}

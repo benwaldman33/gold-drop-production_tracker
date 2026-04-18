@@ -94,7 +94,7 @@ async function onRouteChange() {
 async function loadRoute() {
   if (!state.auth.authenticated) return;
   if (!buyingWorkflowState().enabled || !buyingWorkflowState().allowed) return;
-  if (["home", "opportunities", "suppliers", "opportunity-new", "supplier-new"].includes(state.route.name)) {
+  if (["home", "opportunities", "suppliers", "opportunity-new", "supplier-new", "edit"].includes(state.route.name)) {
     await Promise.all([loadSuppliers(state.route.query || state.supplierQuery || ""), loadOpportunities(state.route.status || "")]);
   }
   if (["opportunity", "edit", "delivery"].includes(state.route.name)) {
@@ -107,12 +107,17 @@ async function loadRoute() {
   } else {
     state.supplier = null;
   }
-  if (state.route.name === "opportunity-new" && state.route.supplier_id) {
-    const supplierId = String(state.route.supplier_id);
+  const routeSupplierId =
+    state.route.name === "opportunity-new"
+      ? String(state.route.supplier_id || "")
+      : state.route.name === "edit"
+        ? String(state.opportunity?.supplier?.id || "")
+        : "";
+  if (routeSupplierId) {
     state.opportunityPrefillSupplier =
-      state.supplier?.id === supplierId
+      state.supplier?.id === routeSupplierId
         ? state.supplier
-        : state.suppliers.find((supplier) => supplier.id === supplierId) || await api.getSupplier(supplierId);
+        : state.suppliers.find((supplier) => supplier.id === routeSupplierId) || await api.getSupplier(routeSupplierId);
   } else {
     state.opportunityPrefillSupplier = null;
   }
@@ -203,6 +208,16 @@ function currentOpportunityDraft() {
     draft.new_supplier_location = draft.new_supplier_location || supplier?.location || "";
   }
   return draft;
+}
+
+function supplierPrefillFromState(selectedSupplierId, source) {
+  if (!selectedSupplierId) return null;
+  return (
+    state.opportunityPrefillSupplier ||
+    state.suppliers.find((supplier) => supplier.id === selectedSupplierId) ||
+    source?.supplier ||
+    null
+  );
 }
 
 function persistOpportunityDraftFromForm(form) {
@@ -380,7 +395,7 @@ function renderHome() {
       </section>
       <section class="grid-3">
         <div class="card stat"><div class="label">Pending</div><div class="value">${stats.pending}</div><div class="hint">Awaiting review or approval</div></div>
-        <div class="card stat"><div class="label">Approved</div><div class="value">${stats.approved}</div><div class="hint">Ready for delivery capture</div></div>
+        <div class="card stat"><div class="label">Approved</div><div class="value">${stats.approved}</div><div class="hint">Ready for receiving</div></div>
         <div class="card stat"><div class="label">Delivered</div><div class="value">${stats.delivered}</div><div class="hint">Completed opportunities</div></div>
       </section>
       <section class="grid-2">
@@ -859,11 +874,12 @@ function renderOpportunityForm(mode, opportunity = null) {
       ? state.duplicateContext.payload
       : currentOpportunityDraft();
   const selectedSupplierId = String(source?.supplier?.id || source?.supplier_id || "");
-  const supplierNameValue = source?.new_supplier?.name || source?.new_supplier_name || "";
-  const supplierContactValue = source?.new_supplier?.contact_name || source?.new_supplier_contact_name || "";
-  const supplierPhoneValue = source?.new_supplier?.phone || source?.new_supplier_phone || "";
-  const supplierEmailValue = source?.new_supplier?.email || source?.new_supplier_email || "";
-  const supplierLocationValue = source?.new_supplier?.location || source?.new_supplier_location || "";
+  const selectedSupplier = supplierPrefillFromState(selectedSupplierId, source);
+  const supplierNameValue = source?.new_supplier?.name || source?.new_supplier_name || selectedSupplier?.name || "";
+  const supplierContactValue = source?.new_supplier?.contact_name || source?.new_supplier_contact_name || selectedSupplier?.contact_name || "";
+  const supplierPhoneValue = source?.new_supplier?.phone || source?.new_supplier_phone || selectedSupplier?.phone || "";
+  const supplierEmailValue = source?.new_supplier?.email || source?.new_supplier_email || selectedSupplier?.email || "";
+  const supplierLocationValue = source?.new_supplier?.location || source?.new_supplier_location || selectedSupplier?.location || "";
   const confirmNewSupplierValue = Boolean(source?.new_supplier?.confirm_new_supplier || source?.confirm_new_supplier);
   const supplierOptions = state.suppliers
     .map((supplier) => `<option value="${escapeHtml(supplier.id)}" ${selectedSupplierId === supplier.id ? "selected" : ""}>${escapeHtml(supplier.name)}${supplier.location ? ` - ${escapeHtml(supplier.location)}` : ""}</option>`)

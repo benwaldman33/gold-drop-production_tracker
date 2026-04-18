@@ -532,7 +532,17 @@ def purchase_labels_view(root, purchase_id):
     if not labels:
         root.flash("This purchase does not have any active lots to label.", "warning")
         return root.redirect(root.url_for("purchase_edit", purchase_id=purchase.id))
-    return root.render_template("lot_label_print.html", labels=labels, purchase=purchase)
+    raw_return_to = root.request.args.get("return_to") or ""
+    return_to = _safe_purchase_return_url(root, raw_return_to, default_endpoint="purchases_list")
+    if not raw_return_to.strip():
+        return_to = root.url_for("purchase_edit", purchase_id=purchase.id)
+    journey_url = root.url_for("purchases_bp.purchase_journey", purchase_id=purchase.id)
+    return_label = "Back to journey" if return_to == journey_url else "Back to purchase"
+    if return_to == root.url_for("purchase_edit", purchase_id=purchase.id):
+        return_label = "Back to purchase"
+    elif return_to == root.url_for("purchases_list") or return_to.startswith(f"{root.url_for('purchases_list')}?"):
+        return_label = "Back to purchases"
+    return root.render_template("lot_label_print.html", labels=labels, purchase=purchase, return_to=return_to, return_label=return_label)
 
 
 def _get_scannable_lot(root, tracking_id):

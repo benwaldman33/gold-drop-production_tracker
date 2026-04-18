@@ -12,6 +12,9 @@ const state = {
   auth: { authenticated: false, user: null, permissions: {}, site: null },
   queue: [],
   item: null,
+  pendingFiles: {
+    delivery_photos: [],
+  },
   loading: false,
   toast: "",
 };
@@ -49,6 +52,9 @@ async function bootstrapAuth() {
 
 async function onRouteChange() {
   state.route = parseRoute(window.location.hash || "#/login");
+  if (state.route.name !== "receive") {
+    state.pendingFiles.delivery_photos = [];
+  }
   await loadRoute();
   render();
 }
@@ -65,6 +71,32 @@ async function loadRoute() {
 
 function navigate(hash) {
   window.location.hash = hash;
+}
+
+function pendingFilesFor(fieldName) {
+  return [...(state.pendingFiles[fieldName] || [])];
+}
+
+function clearPendingFiles(fieldName) {
+  state.pendingFiles[fieldName] = [];
+}
+
+function fileFingerprint(file) {
+  return `${file?.name || ""}:${file?.size || 0}:${file?.lastModified || 0}`;
+}
+
+function queueFiles(fieldName, files) {
+  const existing = state.pendingFiles[fieldName] || [];
+  const seen = new Set(existing.map(fileFingerprint));
+  for (const file of files || []) {
+    const fingerprint = fileFingerprint(file);
+    if (!seen.has(fingerprint)) {
+      existing.push(file);
+      seen.add(fingerprint);
+    }
+  }
+  state.pendingFiles[fieldName] = existing;
+  return existing;
 }
 
 function showToast(message) {
@@ -294,7 +326,7 @@ function renderReceiveForm() {
             <div class="field"><label for="lot_notes">Lot notes</label><input id="lot_notes" name="lot_notes" value="" placeholder="Seal broken, staged in cage 2..." /></div>
           </div>
           <div class="field"><label for="delivery_notes">Delivery notes</label><textarea id="delivery_notes" name="delivery_notes" rows="4" placeholder="Condition, count discrepancy, paperwork notes...">${escapeHtml(item.delivery?.delivery_notes || "")}</textarea></div>
-          <div class="field"><label for="delivery-photo">Delivery photos</label><input id="delivery-photo" name="delivery-photo" type="file" accept="image/*" multiple /></div>
+          <div class="field"><label for="delivery-photo">Delivery photos</label><input id="delivery-photo" name="delivery-photo" type="file" accept="image/*" multiple /><div class="helper">Photos are queued across multiple picks before save.</div></div>
           <div class="actions">
             <button class="btn btn-primary" type="submit">${state.loading ? "Saving..." : "Confirm Receipt"}</button>
             <a class="btn btn-secondary" href="#/queue/${encodeURIComponent(item.id)}">Cancel</a>
@@ -341,7 +373,9 @@ function bind() {
     const formEl = event.currentTarget;
     const payload = buildReceivePayload(new FormData(formEl));
     const id = formEl.getAttribute("data-id");
-    const photos = selectedFilesFromForm(formEl, "delivery-photo");
+    const photos = pendingFilesFor("delivery-photo").length
+      ? pendingFilesFor("delivery-photo")
+      : selectedFilesFromForm(formEl, "delivery-photo");
     state.loading = true;
     render();
     try {
@@ -349,6 +383,7 @@ function bind() {
       for (const file of photos) {
         await api.uploadPhoto(id, { file, photo_context: "delivery" });
       }
+      clearPendingFiles("delivery-photo");
       state.item = await api.getReceivingItem(item.id);
       state.queue = await api.listReceivingQueue("ready");
       navigate(`#/queue/${encodeURIComponent(item.id)}`);
@@ -359,6 +394,15 @@ function bind() {
       state.loading = false;
       render();
     }
+  });
+
+  document.querySelectorAll('input[type="file"]').forEach((input) => {
+    input.addEventListener("change", () => {
+      const files = queueFiles(input.name, [...(input.files || [])]);
+      const helper = input.closest(".field")?.querySelector(".helper");
+      if (helper) helper.textContent = `${files.length} file(s) selected. Additional picks will be added, not replaced.`;
+      input.value = "";
+    });
   });
 }
 

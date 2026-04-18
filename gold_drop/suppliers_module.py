@@ -115,7 +115,21 @@ def supplier_incomplete_profile_fields(root, supplier):
 
 
 def suppliers_list_view(root):
-    suppliers = root.Supplier.query.order_by(root.Supplier.name).all()
+    visibility = (request.args.get("visibility") or "active").strip().lower()
+    suppliers_query = root.Supplier.query
+    if visibility == "active":
+        suppliers_query = suppliers_query.filter(
+            root.Supplier.is_active.is_(True),
+            root.Supplier.merged_into_supplier_id.is_(None),
+        )
+    elif visibility == "inactive":
+        suppliers_query = suppliers_query.filter(
+            root.or_(
+                root.Supplier.is_active.is_(False),
+                root.Supplier.merged_into_supplier_id.is_not(None),
+            )
+        )
+    suppliers = suppliers_query.order_by(root.Supplier.name).all()
     exclude_unpriced = root._exclude_unpriced_batches_enabled()
     supplier_stats = []
     for supplier in suppliers:
@@ -242,7 +256,14 @@ def suppliers_list_view(root):
         else:
             best_supplier_mom["pct_change"] = None
 
-    return root.render_template("suppliers.html", supplier_stats=supplier_stats, yield_kpi=yield_kpi, thca_kpi=thca_kpi, best_supplier_mom=best_supplier_mom)
+    return root.render_template(
+        "suppliers.html",
+        supplier_stats=supplier_stats,
+        yield_kpi=yield_kpi,
+        thca_kpi=thca_kpi,
+        best_supplier_mom=best_supplier_mom,
+        visibility=visibility,
+    )
 
 
 def supplier_new_view(root):
