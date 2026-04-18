@@ -6,6 +6,7 @@ test("parseRoute handles receiving queue paths", () => {
   assert.deepEqual(parseRoute("#/queue"), { name: "queue", status: "ready" });
   assert.deepEqual(parseRoute("#/queue/recv-1"), { name: "detail", id: "recv-1" });
   assert.deepEqual(parseRoute("#/queue/recv-1/receive"), { name: "receive", id: "recv-1" });
+  assert.deepEqual(parseRoute("#/queue/recv-1/edit"), { name: "edit", id: "recv-1" });
 });
 
 test("parseRoute handles home status filter", () => {

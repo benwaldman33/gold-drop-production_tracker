@@ -733,6 +733,8 @@ Use exports for reporting, reconciliation, or offline analysis.
 - The standalone receiving app is intended for receiving and intake staff on phone or tablet.
 - It shows approved or committed purchases that are ready to receive.
 - Receiving confirmation updates the purchase to `delivered`, records the receiving user, and can attach delivery photos.
+- After receipt is confirmed, the receiving app now offers `Edit Receipt` until the lot is used in a downstream run.
+- Once downstream processing starts, the receiving record becomes read-only and the main purchase screen shows the locked reason.
 - Delivery photos and receiving metadata are visible from the main purchase review screen.
 - `Settings -> Operational Parameters` can enable or disable the standalone purchasing and receiving workflows independently.
 - `Settings -> Internal API Clients` now also shows recent mobile workflow activity for audit visibility.

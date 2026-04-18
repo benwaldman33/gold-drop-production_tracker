@@ -126,6 +126,17 @@ def _purchase_form_context(root, purchase):
     purchase_support_docs = []
     purchase_origin_summary = None
     if purchase:
+        last_receiving_edit = root.AuditLog.query.filter(
+            root.AuditLog.entity_type == "purchase",
+            root.AuditLog.entity_id == purchase.id,
+            root.AuditLog.action == "receive_edit",
+        ).order_by(root.AuditLog.timestamp.desc()).first()
+        receiving_locked = root.RunInput.query.join(
+            root.PurchaseLot, root.RunInput.lot_id == root.PurchaseLot.id
+        ).filter(
+            root.PurchaseLot.purchase_id == purchase.id,
+            root.PurchaseLot.deleted_at.is_(None),
+        ).count() > 0
         purchase_audit_photos = root.PhotoAsset.query.filter(
             root.PhotoAsset.purchase_id == purchase.id,
             root.PhotoAsset.source_type.in_(("field_submission", "mobile_api", "desk_purchase_intake")),
@@ -146,6 +157,17 @@ def _purchase_form_context(root, purchase):
             "delivery_recorded_by_name": purchase.delivery_recorded_by.display_name if purchase.delivery_recorded_by else None,
             "opportunity_photo_count": len(purchase_audit_photos),
             "delivery_photo_count": len(purchase_delivery_photos),
+            "receiving_editable": bool(
+                purchase.deleted_at is None
+                and (purchase.status or "").strip().lower() == "delivered"
+                and not receiving_locked
+            ),
+            "receiving_locked_reason": (
+                "Locked after downstream processing started." if receiving_locked
+                else ("Receiving is still awaiting confirmation." if (purchase.status or "").strip().lower() != "delivered" else None)
+            ),
+            "last_receiving_edit_at": last_receiving_edit.timestamp if last_receiving_edit else None,
+            "last_receiving_edit_by_name": last_receiving_edit.user.display_name if last_receiving_edit and last_receiving_edit.user else None,
         }
     return {
         "purchase": purchase,

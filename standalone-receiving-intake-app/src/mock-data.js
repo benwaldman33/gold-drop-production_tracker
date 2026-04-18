@@ -25,6 +25,10 @@ export function createSeedState() {
           floor_state: "receiving",
           lot_count: 1,
           photo_count: 0,
+          receiving_editable: true,
+          locked_reason: null,
+          last_receiving_edit_at: null,
+          last_receiving_edit_by: null,
         },
         lots: [
           {
@@ -67,6 +71,10 @@ export function createSeedState() {
           floor_state: "receiving",
           lot_count: 1,
           photo_count: 1,
+          receiving_editable: true,
+          locked_reason: null,
+          last_receiving_edit_at: null,
+          last_receiving_edit_by: null,
         },
         lots: [
           {
@@ -111,11 +119,15 @@ export function createSeedState() {
         delivery_needed: false,
         clean_or_dirty: "clean",
         receiving: {
-          queue_state: "closed",
+          queue_state: "received",
           location: "Receiving Vault",
           floor_state: "receiving",
           lot_count: 1,
           photo_count: 1,
+          receiving_editable: true,
+          locked_reason: null,
+          last_receiving_edit_at: "2026-04-09T18:30:00.000Z",
+          last_receiving_edit_by: "Receiving Lead",
         },
         lots: [
           {

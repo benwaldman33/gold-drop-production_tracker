@@ -217,6 +217,62 @@ export function createApiClient({ mode = "mock", apiBaseUrl = "", fetchImpl = fe
       saveState(state);
       return updated;
     },
+    async updateReceiving(id, payload) {
+      if (mode === "live") {
+        const response = unwrapData(await liveRequest(apiBaseUrl, fetchImpl, `/api/mobile/v1/receiving/queue/${encodeURIComponent(id)}`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        }));
+        return queueItemFromPayload(response?.receiving || response);
+      }
+      ensureMockSession();
+      const state = loadState();
+      const idx = state.receipts.findIndex((row) => row.id === id);
+      if (idx < 0) throw Object.assign(new Error("Receiving item not found"), { status: 404 });
+      const current = state.receipts[idx];
+      const updated = {
+        ...current,
+        status: "delivered",
+        clean_or_dirty: payload.clean_or_dirty || current.clean_or_dirty,
+        delivery: {
+          ...(current.delivery || {}),
+          delivered_weight_lbs: Number(payload.delivered_weight_lbs || current.delivery?.delivered_weight_lbs || current.expected_weight_lbs || 0),
+          delivery_date: payload.delivery_date || current.delivery?.delivery_date || "",
+          testing_status: payload.testing_status || null,
+          actual_potency_pct: payload.actual_potency_pct ? Number(payload.actual_potency_pct) : null,
+          clean_or_dirty: payload.clean_or_dirty || current.clean_or_dirty,
+          delivery_notes: payload.delivery_notes || "",
+          delivered_by_name: current.delivery?.delivered_by_name || state.session?.user?.display_name || "Receiving User",
+        },
+        lots: (current.lots || []).map((lot, index) =>
+          index === 0
+            ? {
+                ...lot,
+                weight_lbs: Number(payload.delivered_weight_lbs || lot.weight_lbs || 0),
+                remaining_weight_lbs: Number(payload.delivered_weight_lbs || lot.remaining_weight_lbs || 0),
+                location: payload.location || lot.location,
+                floor_state: payload.floor_state || lot.floor_state,
+                notes: payload.lot_notes || lot.notes || "",
+              }
+            : lot
+        ),
+        receiving: {
+          ...(current.receiving || {}),
+          queue_state: "received",
+          location: payload.location || current.receiving?.location || "",
+          floor_state: payload.floor_state || current.receiving?.floor_state || "receiving",
+          lot_count: current.receiving?.lot_count || (current.lots || []).length,
+          photo_count: current.receiving?.photo_count || 0,
+          receiving_editable: true,
+          locked_reason: null,
+          last_receiving_edit_at: new Date().toISOString(),
+          last_receiving_edit_by: state.session?.user?.display_name || "Receiving User",
+        },
+      };
+      state.receipts[idx] = updated;
+      saveState(state);
+      return updated;
+    },
     async uploadPhoto(id, { file, photo_context }) {
       if (mode === "live") {
         const form = new FormData();

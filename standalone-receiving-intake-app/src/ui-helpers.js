@@ -7,6 +7,7 @@ export function parseRoute(hash) {
   if (!parts.length || parts[0] === "login") return { name: "login" };
   if (parts[0] === "home") return { name: "home", status: query.get("status") || "ready" };
   if (parts[0] === "queue" && parts[1] && parts[2] === "receive") return { name: "receive", id: parts[1] };
+  if (parts[0] === "queue" && parts[1] && parts[2] === "edit") return { name: "edit", id: parts[1] };
   if (parts[0] === "queue" && parts[1]) return { name: "detail", id: parts[1] };
   if (parts[0] === "queue") return { name: "queue", status: query.get("status") || "ready" };
   return { name: "home" };
