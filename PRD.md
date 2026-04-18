@@ -5,6 +5,7 @@ Gold Drop is an operations tracker for biomass intake → inventory → extracti
 - A **Biomass Pipeline** (farm declarations through testing and commitment),
 - **Purchases** with **unique batch identifiers**,
 - **Inventory lots** consumed by **Runs**,
+- A standalone **receiving intake** workflow on top of existing purchases,
 - **Operational cost entries** allocated into **$/g**,
 - **Analytics controls** to exclude runs missing biomass pricing,
 - **Audit logging** for traceability and compliance.
@@ -955,7 +956,19 @@ Requirements:
 - operate on existing approved or committed purchases
 - provide a receiving queue and receiving detail screen
 - allow dock staff to confirm receipt, set location / floor state, and upload delivery photos
+- allow receipt edits after confirmation while the purchase's lots have not yet been consumed downstream
+- lock receipt edits once downstream `RunInput` usage exists on one of the lots, with a visible lock reason
+- surface receiving metadata and delivery photos back in the main purchase review experience
 - keep delivery subordinate to the purchase lifecycle rather than creating a second intake object
+
+Current delivered behavior:
+
+- queue entries are read from the same `Purchase` record used by the main app
+- receipt confirmation stamps delivered status, actual/delivered weight, delivery date, receiving user, location, floor state, testing fields, and notes
+- post-receipt edits are audited as `receive_edit` events rather than tracked in a separate receiving table
+- receiving detail exposes whether the receipt is still editable plus the lock reason when it is not
+- the standalone receiving UI can upload delivery photos across repeated picks before the final receipt save
+- the main purchase form shows mobile/receiving origin metadata, receiving editor visibility, and mobile-uploaded photos for approvers
 
 ## Controlled Write Platform Hardening
 
@@ -968,3 +981,11 @@ Current hardening requirements:
 - write-side audit visibility for mobile-origin mutations
 - machine-readable mobile capabilities discovery
 - upload limits for delivery and opportunity photo writes
+
+Current delivered behavior:
+
+- `Settings -> Operational Parameters` controls site-level workflow flags for standalone buying and standalone receiving
+- disabled workflows remain deployed but their `/api/mobile/v1/*` workflow endpoints return `workflow_disabled`
+- unsafe mobile writes reject cross-origin browser requests unless the request origin matches the app host
+- mobile-origin mutations write audit rows tagged with `source = "mobile_api"` and the workflow name
+- the mobile `capabilities` surface reports whether buying and receiving are enabled for the current site/user context

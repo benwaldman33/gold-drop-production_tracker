@@ -26,6 +26,7 @@ function resolveFile(urlPath) {
 
 function proxyRequest(req, res) {
   const upstreamPath = req.url || "/";
+  const originalHost = req.headers.host || `127.0.0.1:${port}`;
   const proxy = httpRequest(
     {
       protocol: backendUrl.protocol,
@@ -35,7 +36,9 @@ function proxyRequest(req, res) {
       path: upstreamPath,
       headers: {
         ...req.headers,
-        host: backendUrl.host,
+        // Preserve the browser-facing host so same-origin mobile write checks
+        // treat the proxied request as coming from the standalone app origin.
+        host: originalHost,
       },
     },
     (upstream) => {

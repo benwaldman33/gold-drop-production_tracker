@@ -2,6 +2,30 @@
 
 Developer-facing implementation details. Product behavior belongs in `PRD.md`; operator steps in `USER_MANUAL.md`.
 
+Current documentation note: the standalone buying and standalone receiving surfaces should be treated as one shared mobile write platform. Keep endpoint, toggle, and audit notes aligned across both workflows.
+
+## End-of-sprint closeout
+
+Before closing a coding sprint:
+
+- add or update tests that cover the shipped behavior
+- run the relevant tests and make sure they pass
+- review and update the core docs as needed:
+  - `PRD.md`
+  - `README.md`
+  - `FAQ.md`
+  - `ENGINEERING.md`
+  - `CHANGELOG.md`
+- review and update conditional docs when the change affects them:
+  - `USER_MANUAL.md`
+  - deployment / rollout runbooks
+  - QA checklists
+  - API reference docs such as `API_REFERENCE.md`
+- commit the changes only after tests and docs are in sync
+- push to Git after the commit when the branch/repo state is ready for deployment
+
+This is a review checklist, not a rule to make no-op edits. Update only the documents that the shipped change actually affects.
+
 ## App package layout
 
 - Runtime entrypoint is still **`app.py`**, but it now exposes **`create_app()`** and acts as a compatibility shim.
@@ -199,6 +223,17 @@ Pilot-hardening additions:
   - mobile workflow audit entries in `audit_log`
   - delivery-photo upload limits
 - the standalone purchasing app consumes mobile `capabilities` so production users see a clear unavailable state when standalone buying is disabled or the user lacks access
+- the standalone receiving app also consumes mobile `capabilities` plus per-record `receiving_editable` / `locked_reason` fields so the UI can expose `Edit Receipt` only while no downstream lot usage exists
+
+### Shared mobile write-platform rules
+
+- Workflow toggles are mapped in `services/mobile_write_api.py`:
+  - `buying -> standalone_buying_enabled`
+  - `receiving -> standalone_receiving_enabled`
+- Unsafe mobile writes use same-origin enforcement in `services/mobile_write_api.py`; browser requests with a mismatched `Origin` are rejected before mutation.
+- Mobile workflow audit metadata is normalized through `mobile_workflow_audit_payload(...)`, which stamps `source = "mobile_api"` and the workflow name into `audit_log`.
+- Receiving editability is derived at read time in `gold_drop/mobile_module.py` rather than stored as a persistent boolean field.
+- The main web purchase form reads those audit rows back so approvers can see receiving-origin metadata and the last receiving edit actor without a dedicated receiving table.
 
 ### Response contract
 
