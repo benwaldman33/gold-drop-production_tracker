@@ -4,6 +4,28 @@ Developer-facing implementation details. Product behavior belongs in `PRD.md`; o
 
 Current documentation note: the standalone buying and standalone receiving surfaces should be treated as one shared mobile write platform. Keep endpoint, toggle, and audit notes aligned across both workflows.
 
+## End-of-sprint closeout
+
+Before closing a coding sprint:
+
+- add or update tests that cover the shipped behavior
+- run the relevant tests and make sure they pass
+- review and update the core docs as needed:
+  - `PRD.md`
+  - `README.md`
+  - `FAQ.md`
+  - `ENGINEERING.md`
+  - `CHANGELOG.md`
+- review and update conditional docs when the change affects them:
+  - `USER_MANUAL.md`
+  - deployment / rollout runbooks
+  - QA checklists
+  - API reference docs such as `API_REFERENCE.md`
+- commit the changes only after tests and docs are in sync
+- push to Git after the commit when the branch/repo state is ready for deployment
+
+This is a review checklist, not a rule to make no-op edits. Update only the documents that the shipped change actually affects.
+
 ## App package layout
 
 - Runtime entrypoint is still **`app.py`**, but it now exposes **`create_app()`** and acts as a compatibility shim.
