@@ -350,6 +350,16 @@ Archived rows:
 
 When a lot is created or later approved into active inventory, the app now assigns it machine-readable tracking fields so it is ready for future labels and scan-based workflows.
 
+### Editing purchase details created from iPad / mobile opportunity intake
+The mobile opportunity flow and the main purchase form now save to the same purchase fields.
+
+On **Edit Purchase**, review or update:
+- **Availability Date**
+- **Testing Notes**
+- normal purchase notes, weights, pricing, and status fields
+
+If a buyer created or edited the opportunity on iPad first, those values should now be visible on the main purchase form and stay saved when you save the purchase from the desktop app.
+
 ### Importing purchases from a spreadsheet
 Use **Purchases** → **Import spreadsheet** when you have many purchases in Excel or CSV (for example accounting exports with **Vendor**, **Purchase Date**, **Invoice Weight**, **Actual Weight**, **Manifest**, **Amount**, **Paid Date**, **Payment Method**, **Week**).
 
@@ -381,6 +391,20 @@ Purchases support:
 
 ### Adding lots to an existing purchase
 Open a purchase and use “Add Lot to This Purchase” to add strain lots. Lots create inventory that can be consumed by runs.
+
+### Splitting a confirmed lot
+If a confirmed purchase already has a lot in inventory and you need to break part of it into a second lot, open **Edit Purchase** and use **Split Existing Lot**.
+
+1. Choose the existing lot from the dropdown.
+2. Enter the split weight.
+3. Optionally set a different strain name, location, potency, or notes on the new child lot.
+4. Submit **Split Lot**.
+
+Rules:
+- the split weight must be greater than zero
+- the split weight must be less than the source lot's current remaining inventory
+- the original lot keeps the remaining balance
+- the new child lot gets its own tracking ID and can be used independently in later runs
 
 ### Supporting documentation (photos and scans)
 On **New Purchase** and **Edit Purchase**, use the **Supporting documentation** section to attach files that should stay with the batch record (contracts, scans, invoices, COAs, photos, etc.).
@@ -736,7 +760,7 @@ Use exports for reporting, reconciliation, or offline analysis.
 ## Standalone Receiving Intake App
 
 - The standalone receiving app is intended for receiving and intake staff on phone or tablet.
-- It shows approved or committed purchases that are ready to receive.
+- It shows approved or committed purchases that are ready to record delivery.
 - Receiving confirmation updates the purchase to `delivered`, records the receiving user, and can attach delivery photos.
 - After receipt is confirmed, the receiving app now offers `Edit Receipt` until the lot is used in a downstream run.
 - Once downstream processing starts, the receiving record becomes read-only and the main purchase screen shows the locked reason.
@@ -752,6 +776,13 @@ Use exports for reporting, reconciliation, or offline analysis.
 4. Upload any delivery photos needed for the record.
 5. Submit the receipt.
 6. If the dock count or receiving details need correction before the lot is consumed in a run, use `Edit Receipt`.
+
+### What "ready to record delivery" means
+
+When the standalone app marks a purchase as **ready to record delivery**, it means:
+- the purchase has advanced far enough in approval / commitment that receiving can act on it
+- the receiving team can record the actual delivered weight and delivery date
+- the receiving team can also capture testing state, notes, photos, location, and floor state for the delivered lot
 
 ### When `Edit Receipt` is available
 

@@ -46,6 +46,10 @@ def register_routes(app, root):
     def lot_new(purchase_id):
         return lot_new_view(root, purchase_id)
 
+    @root.purchase_editor_required
+    def lot_split(lot_id):
+        return lot_split_view(root, lot_id)
+
     @root.login_required
     def lot_label(lot_id):
         return lot_label_view(root, lot_id)
@@ -87,6 +91,7 @@ def register_routes(app, root):
     app.add_url_rule("/purchases/<purchase_id>/edit", endpoint="purchase_edit", view_func=purchase_edit, methods=["GET", "POST"])
     app.add_url_rule("/purchases/<purchase_id>/approve", endpoint="purchase_approve", view_func=purchase_approve, methods=["POST"])
     app.add_url_rule("/purchases/<purchase_id>/lots/new", endpoint="lot_new", view_func=lot_new, methods=["POST"])
+    app.add_url_rule("/lots/<lot_id>/split", endpoint="lot_split", view_func=lot_split, methods=["POST"])
     app.add_url_rule("/lots/<lot_id>/label", endpoint="lot_label", view_func=lot_label)
     app.add_url_rule("/purchases/<purchase_id>/labels", endpoint="purchase_labels", view_func=purchase_labels)
     app.add_url_rule("/scan/lot/<tracking_id>", endpoint="scan_lot", view_func=scan_lot)
@@ -378,6 +383,8 @@ def save_purchase(root, existing):
         purchase = existing or root.Purchase()
         purchase.supplier_id = root.request.form["supplier_id"]
         purchase.purchase_date = datetime.strptime(root.request.form["purchase_date"], "%Y-%m-%d").date()
+        availability_date_raw = root.request.form.get("availability_date", "").strip()
+        purchase.availability_date = datetime.strptime(availability_date_raw, "%Y-%m-%d").date() if availability_date_raw else None
         delivery_date_raw = root.request.form.get("delivery_date", "").strip()
         purchase.delivery_date = datetime.strptime(delivery_date_raw, "%Y-%m-%d").date() if delivery_date_raw else None
         new_status = root.request.form.get("status", "ordered")
@@ -403,6 +410,7 @@ def save_purchase(root, existing):
         purchase.coa_status_text = root.request.form.get("coa_status_text", "").strip() or None
         purchase.clean_or_dirty = root.request.form.get("clean_or_dirty") or None
         purchase.indoor_outdoor = root.request.form.get("indoor_outdoor") or None
+        purchase.testing_notes = root.request.form.get("testing_notes", "").strip() or None
         harvest_date_raw = root.request.form.get("harvest_date", "").strip()
         purchase.harvest_date = datetime.strptime(harvest_date_raw, "%Y-%m-%d").date() if harvest_date_raw else None
         purchase.notes = root.request.form.get("notes", "").strip() or None
@@ -529,6 +537,73 @@ def lot_new_view(root, purchase_id):
     root.log_audit("create", "lot", lot.id)
     root.db.session.commit()
     root.flash("Lot added.", "success")
+    return root.redirect(root.url_for("purchase_edit", purchase_id=purchase_id))
+
+
+def lot_split_view(root, lot_id):
+    lot = root.db.session.get(root.PurchaseLot, lot_id)
+    if not lot or lot.deleted_at is not None or not lot.purchase or lot.purchase.deleted_at is not None:
+        root.flash("Lot not found.", "error")
+        return root.redirect(root.url_for("purchases_list"))
+
+    purchase_id = lot.purchase_id
+    try:
+        remaining_weight = float(lot.remaining_weight_lbs or 0)
+        total_weight = float(lot.weight_lbs or 0)
+        split_weight = float(root.request.form.get("split_weight_lbs") or 0)
+        if remaining_weight <= 0:
+            raise ValueError("Only lots with remaining inventory can be split.")
+        if split_weight <= 0:
+            raise ValueError("Split weight must be greater than zero.")
+        if split_weight >= remaining_weight:
+            raise ValueError("Split weight must be less than the lot's remaining weight.")
+
+        strain_name = (root.request.form.get("strain_name") or "").strip() or lot.strain_name
+        location = (root.request.form.get("location") or "").strip() or lot.location
+        notes = (root.request.form.get("notes") or "").strip() or lot.notes
+        potency_raw = (root.request.form.get("potency_pct") or "").strip()
+        potency_pct = float(potency_raw) if potency_raw else lot.potency_pct
+
+        lot.weight_lbs = total_weight - split_weight
+        lot.remaining_weight_lbs = remaining_weight - split_weight
+
+        new_lot = root.PurchaseLot(
+            purchase_id=lot.purchase_id,
+            strain_name=strain_name,
+            weight_lbs=split_weight,
+            remaining_weight_lbs=split_weight,
+            potency_pct=potency_pct,
+            milled=lot.milled,
+            floor_state=lot.floor_state,
+            location=location,
+            notes=notes,
+        )
+        ensure_lot_tracking_fields(new_lot)
+        root.db.session.add(new_lot)
+        root.db.session.flush()
+        root.log_audit(
+            "split",
+            "lot",
+            lot.id,
+            details=root.json.dumps(
+                {
+                    "new_lot_id": new_lot.id,
+                    "purchase_id": purchase_id,
+                    "split_weight_lbs": split_weight,
+                    "original_tracking_id": lot.tracking_id,
+                    "new_tracking_id": new_lot.tracking_id,
+                }
+            ),
+        )
+        root.db.session.commit()
+        root.flash("Lot split saved.", "success")
+    except ValueError as exc:
+        root.db.session.rollback()
+        root.flash(str(exc), "error")
+    except Exception:
+        root.db.session.rollback()
+        root.app.logger.exception("Error splitting lot")
+        root.flash("Error splitting lot. Please check your inputs and try again.", "error")
     return root.redirect(root.url_for("purchase_edit", purchase_id=purchase_id))
 
 

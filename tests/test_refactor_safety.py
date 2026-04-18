@@ -1487,6 +1487,168 @@ def test_purchase_approve_respects_inline_return_target():
             db.session.commit()
 
 
+def test_purchase_edit_round_trips_mobile_fields():
+    app = app_module.app
+    with app.app_context():
+        supplier = Supplier(name="Mobile Field Roundtrip Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = Purchase(
+            supplier_id=supplier.id,
+            purchase_date=date(2026, 4, 18),
+            availability_date=date(2026, 4, 19),
+            status="ordered",
+            stated_weight_lbs=25.0,
+            declared_weight_lbs=25.0,
+            testing_notes="Initial mobile testing note",
+            notes="Initial mobile note",
+            batch_id=f"ROUNDTRIP-{gen_uuid()[:6]}",
+        )
+        db.session.add(purchase)
+        db.session.commit()
+        purchase_id = purchase.id
+        supplier_id = supplier.id
+
+    try:
+        detail = _call_view_as_user(f"/purchases/{purchase_id}/edit", "purchase_edit", "admin", purchase_id=purchase_id)
+        assert detail.status_code == 200
+        assert b"Availability Date" in detail.data
+        assert b"2026-04-19" in detail.data
+        assert b"Testing Notes" in detail.data
+        assert b"Initial mobile testing note" in detail.data
+
+        resp = _call_view_as_user(
+            f"/purchases/{purchase_id}/edit",
+            "purchase_edit",
+            "admin",
+            method="POST",
+            data={
+                "supplier_id": supplier_id,
+                "purchase_date": "2026-04-18",
+                "availability_date": "2026-04-21",
+                "status": "ordered",
+                "stated_weight_lbs": "25",
+                "actual_weight_lbs": "",
+                "stated_potency_pct": "",
+                "tested_potency_pct": "",
+                "price_per_lb": "",
+                "queue_placement": "",
+                "coa_status_text": "",
+                "clean_or_dirty": "clean",
+                "indoor_outdoor": "",
+                "testing_notes": "Updated from main purchase form",
+                "notes": "Updated main note",
+            },
+            purchase_id=purchase_id,
+        )
+        assert resp.status_code in (302, 303)
+        assert resp.headers["Location"].endswith("/purchases")
+
+        with app.app_context():
+            purchase = db.session.get(Purchase, purchase_id)
+            assert purchase is not None
+            assert purchase.availability_date == date(2026, 4, 21)
+            assert purchase.testing_notes == "Updated from main purchase form"
+            assert purchase.notes == "Updated main note"
+    finally:
+        with app.app_context():
+            for lot in PurchaseLot.query.filter_by(purchase_id=purchase_id).all():
+                db.session.delete(lot)
+            purchase = db.session.get(Purchase, purchase_id)
+            if purchase is not None:
+                db.session.delete(purchase)
+            supplier = db.session.get(Supplier, supplier_id)
+            if supplier is not None:
+                db.session.delete(supplier)
+            db.session.commit()
+
+
+def test_lot_split_creates_new_lot_from_remaining_inventory():
+    app = app_module.app
+    with app.app_context():
+        supplier = Supplier(name="Lot Split Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = Purchase(
+            supplier_id=supplier.id,
+            purchase_date=date(2026, 4, 18),
+            delivery_date=date(2026, 4, 18),
+            status="delivered",
+            stated_weight_lbs=100.0,
+            actual_weight_lbs=100.0,
+            purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            batch_id=f"SPLIT-{gen_uuid()[:6]}",
+        )
+        db.session.add(purchase)
+        db.session.flush()
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Original Strain",
+            weight_lbs=100.0,
+            remaining_weight_lbs=60.0,
+            potency_pct=21.5,
+            location="Vault A",
+            notes="Original note",
+        )
+        db.session.add(lot)
+        db.session.commit()
+        purchase_id = purchase.id
+        supplier_id = supplier.id
+        lot_id = lot.id
+
+    try:
+        resp = _call_view_as_user(
+            f"/lots/{lot_id}/split",
+            "lot_split",
+            "admin",
+            method="POST",
+            data={
+                "split_weight_lbs": "20",
+                "strain_name": "Split Strain",
+                "location": "Vault B",
+                "potency_pct": "22.1",
+                "notes": "Split from original lot",
+            },
+            lot_id=lot_id,
+        )
+        assert resp.status_code in (302, 303)
+        assert resp.headers["Location"].endswith(f"/purchases/{purchase_id}/edit")
+
+        with app.app_context():
+            original = db.session.get(PurchaseLot, lot_id)
+            assert original is not None
+            assert float(original.weight_lbs or 0) == 80.0
+            assert float(original.remaining_weight_lbs or 0) == 40.0
+
+            lots = PurchaseLot.query.filter_by(purchase_id=purchase_id).order_by(PurchaseLot.id.asc()).all()
+            assert len(lots) == 2
+            new_lot = next(l for l in lots if l.id != lot_id)
+            assert new_lot.strain_name == "Split Strain"
+            assert float(new_lot.weight_lbs or 0) == 20.0
+            assert float(new_lot.remaining_weight_lbs or 0) == 20.0
+            assert float(new_lot.potency_pct or 0) == 22.1
+            assert new_lot.location == "Vault B"
+            assert new_lot.notes == "Split from original lot"
+            assert new_lot.tracking_id
+
+            audit = AuditLog.query.filter_by(entity_type="lot", entity_id=lot_id, action="split").first()
+            assert audit is not None
+            assert new_lot.id in (audit.details or "")
+    finally:
+        with app.app_context():
+            for audit in AuditLog.query.filter_by(entity_type="lot", entity_id=lot_id, action="split").all():
+                db.session.delete(audit)
+            for lot in PurchaseLot.query.filter_by(purchase_id=purchase_id).all():
+                db.session.delete(lot)
+            purchase = db.session.get(Purchase, purchase_id)
+            if purchase is not None:
+                db.session.delete(purchase)
+            supplier = db.session.get(Supplier, supplier_id)
+            if supplier is not None:
+                db.session.delete(supplier)
+            db.session.commit()
+
+
 def test_mobile_created_purchase_review_surfaces_origin_and_photos():
     app = app_module.app
     with app.app_context():

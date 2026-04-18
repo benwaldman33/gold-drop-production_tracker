@@ -101,6 +101,10 @@
           <input type="date" name="purchase_date" value="{{ purchase.purchase_date.strftime('%Y-%m-%d') if purchase and purchase.purchase_date else today }}" required>
         </div>
         <div class="form-group">
+          <label>Availability Date</label>
+          <input type="date" name="availability_date" value="{{ purchase.availability_date.strftime('%Y-%m-%d') if purchase and purchase.availability_date else '' }}">
+        </div>
+        <div class="form-group">
           <label>Status</label>
           <select name="status">
             {% for s in ['declared', 'committed', 'ordered', 'in_transit', 'delivered', 'in_testing', 'available', 'processing', 'complete', 'cancelled'] %}
@@ -197,6 +201,10 @@
         <input type="text" name="coa_status_text" value="{{ purchase.coa_status_text if purchase and purchase.coa_status_text else '' }}">
       </div>
       <div class="form-group">
+        <label>Testing Notes</label>
+        <textarea name="testing_notes" rows="2">{{ purchase.testing_notes if purchase and purchase.testing_notes else '' }}</textarea>
+      </div>
+      <div class="form-group">
         <label>Notes</label>
         <textarea name="notes" rows="2">{{ purchase.notes if purchase and purchase.notes else '' }}</textarea>
       </div>
@@ -253,11 +261,12 @@
       <h4>Lots ({{ purchase.lots.count() }})</h4>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Strain</th><th class="text-right">Weight</th><th class="text-right">Remaining</th><th>Milled</th></tr></thead>
+          <thead><tr><th>Strain</th><th>Tracking ID</th><th class="text-right">Weight</th><th class="text-right">Remaining</th><th>Milled</th></tr></thead>
           <tbody>
             {% for lot in purchase.lots %}
             <tr>
               <td>{{ lot.strain_name }}</td>
+              <td class="text-mono">{{ lot.tracking_id or '—' }}</td>
               <td class="text-right text-mono">{{ "{:,.0f}".format(lot.weight_lbs) }}</td>
               <td class="text-right text-mono">{{ "{:,.0f}".format(lot.remaining_weight_lbs) }}</td>
               <td>{% if lot.milled %}Yes{% else %}No{% endif %}</td>
@@ -334,6 +343,45 @@
       <input type="number" name="potency_pct" placeholder="%" step="0.1">
     </div>
     <button type="submit" class="btn btn-primary" style="margin-bottom:0;height:38px;">Add Lot</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-header"><h3>Split Existing Lot</h3></div>
+  <p class="text-sm" style="color:var(--text-muted);margin-top:0;">
+    Use this when a confirmed purchase needs to be broken into smaller inventory lots. The split weight comes from the selected lot's remaining inventory and creates a new tracked lot.
+  </p>
+  <form method="POST" action="{{ url_for('lot_split', lot_id='__LOT__') }}" id="lot-split-form" style="display:grid;grid-template-columns:1.2fr 0.8fr 1fr 1fr auto;gap:8px;align-items:end;" onsubmit="const select=this.querySelector('[name=lot_id]'); this.action='{{ url_for('lot_split', lot_id='__LOT__') }}'.replace('__LOT__', select.value);">
+    <div class="form-group" style="margin:0;">
+      <label>Source Lot</label>
+      <select name="lot_id" required>
+        <option value="">Select a lot...</option>
+        {% for lot in purchase.lots if not lot.deleted_at and (lot.remaining_weight_lbs or 0) > 0 %}
+        <option value="{{ lot.id }}">{{ lot.strain_name }} · {{ "{:,.1f}".format(lot.remaining_weight_lbs) }} lbs remaining{% if lot.tracking_id %} · {{ lot.tracking_id }}{% endif %}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>Split Weight (lbs)</label>
+      <input type="number" name="split_weight_lbs" placeholder="Lbs" step="0.1" min="0.1" required>
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>New Lot Strain</label>
+      <input type="text" name="strain_name" placeholder="Optional">
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>Location</label>
+      <input type="text" name="location" placeholder="Optional">
+    </div>
+    <button type="submit" class="btn btn-primary" style="margin-bottom:0;height:38px;">Split Lot</button>
+    <div class="form-group" style="margin:0;">
+      <label>Potency %</label>
+      <input type="number" name="potency_pct" placeholder="Optional" step="0.1">
+    </div>
+    <div class="form-group" style="margin:0;grid-column:1 / span 4;">
+      <label>Notes</label>
+      <input type="text" name="notes" placeholder="Optional note for the new lot">
+    </div>
   </form>
 </div>
 {% endif %}

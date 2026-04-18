@@ -187,6 +187,15 @@ The UI stage **Testing** maps to purchase status `in_testing`.
 **Why can't I set my purchase to Delivered?**  
 Because on-hand statuses are blocked until approval. Use **Approve purchase** first if you have approver access.
 
+**I changed `Availability Date` or testing notes on the iPad, but where do I see them in the main app?**
+Open the same record in **Purchases -> Edit Purchase**. The main purchase form now shows **Availability Date** and **Testing Notes**, and saving from either the mobile opportunity flow or the main app round-trips those values on the same `Purchase` record.
+
+**How do I split a confirmed lot after the purchase is already saved?**
+Open **Purchases -> Edit Purchase** and use **Split Existing Lot**. Choose the source lot, enter the split weight, and optionally override the child lot's strain, location, potency, or notes. The split amount must be less than the lot's current remaining inventory; the original lot is reduced and the new child lot receives its own tracking ID.
+
+**What does "ready to record delivery" mean?**
+It means the opportunity has been approved or committed enough that receiving staff can record the actual delivery details. In the standalone workflow, that includes delivered weight, delivery date, testing state, notes, photos, location, and floor state.
+
 ## Departments
 
 **What are "Departments" in the sidebar?**  
