@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canConfirmReceipt, isReceiptClosed, normalizeText, receivingTitle } from "../src/domain.js";
+import { canConfirmReceipt, canEditReceipt, isReceiptClosed, normalizeText, receivingTitle } from "../src/domain.js";
 
 test("normalizeText collapses whitespace and lowercases", () => {
   assert.equal(normalizeText("  Dock   A "), "dock a");
@@ -20,4 +20,9 @@ test("closed receipt states are delivered, cancelled, or complete", () => {
 
 test("receivingTitle uses supplier and strain names", () => {
   assert.equal(receivingTitle({ supplier: { name: "Farmlane" }, strain_name: "Blue Dream" }), "Farmlane - Blue Dream");
+});
+
+test("canEditReceipt follows receiving editability from payload", () => {
+  assert.equal(canEditReceipt({ receiving: { receiving_editable: true } }), true);
+  assert.equal(canEditReceipt({ receiving: { receiving_editable: false } }), false);
 });

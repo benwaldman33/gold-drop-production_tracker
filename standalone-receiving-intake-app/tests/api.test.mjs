@@ -44,6 +44,27 @@ test("mock api lists ready receipts and confirms delivery", async () => {
   assert.equal(updated.receiving.location, "Receiving Vault");
 });
 
+test("mock api updates an already received record", async () => {
+  const api = createApiClient({ mode: "mock" });
+  await api.login("receiver1", "secret");
+
+  const updated = await api.updateReceiving("recv-1003", {
+    delivered_weight_lbs: "176.2",
+    delivery_date: "2026-04-10",
+    testing_status: "completed",
+    actual_potency_pct: "24.8",
+    clean_or_dirty: "clean",
+    location: "Vault B",
+    floor_state: "inventory",
+    lot_notes: "Moved after recount",
+    delivery_notes: "Edited after recount",
+  });
+
+  assert.equal(updated.delivery.delivered_weight_lbs, 176.2);
+  assert.equal(updated.receiving.location, "Vault B");
+  assert.equal(updated.receiving.last_receiving_edit_by, "Receiver1");
+});
+
 test("mock api uploads delivery photos", async () => {
   const originalReader = global.FileReader;
   global.FileReader = class {

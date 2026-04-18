@@ -10,6 +10,7 @@ This app is intentionally narrow:
 - view the receiving queue
 - open one receiving item
 - confirm receipt
+- edit a received record while it is still unlocked
 - upload delivery photos
 - queue multiple delivery photos across repeated picks before saving receipt
 
@@ -51,6 +52,7 @@ node scripts/dev-server.mjs
 - `GET /api/mobile/v1/auth/me`
 - `GET /api/mobile/v1/receiving/queue`
 - `GET /api/mobile/v1/receiving/queue/<id>`
+- `PATCH /api/mobile/v1/receiving/queue/<id>`
 - `POST /api/mobile/v1/receiving/queue/<id>/receive`
 - `POST /api/mobile/v1/receiving/queue/<id>/photos`
 

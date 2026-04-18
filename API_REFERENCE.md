@@ -95,6 +95,7 @@ Behavior:
 
 - `GET /api/mobile/v1/receiving/queue`
 - `GET /api/mobile/v1/receiving/queue/<opportunity_id>`
+- `PATCH /api/mobile/v1/receiving/queue/<opportunity_id>`
 - `POST /api/mobile/v1/receiving/queue/<opportunity_id>/receive`
 - `POST /api/mobile/v1/receiving/queue/<opportunity_id>/photos`
 
@@ -103,6 +104,12 @@ Behavior:
 - it is not a separate top-level record type
 - receiving confirmation sets the purchase to `delivered`
 - receiving users can upload delivery-context photos without being the original opportunity creator
+- delivered receipts remain editable from the receiving app until downstream run usage starts
+- receiving detail payloads now include:
+  - `receiving.receiving_editable`
+  - `receiving.locked_reason`
+  - `receiving.last_receiving_edit_at`
+  - `receiving.last_receiving_edit_by`
 
 ### Mobile Write Platform Rules
 

@@ -176,6 +176,7 @@ Office intake note:
 - External field-token intake still lands first as `FieldPurchaseSubmission` and is approved separately.
 - `GET /api/mobile/v1/receiving/queue`
 - `GET /api/mobile/v1/receiving/queue/<id>`
+- `PATCH /api/mobile/v1/receiving/queue/<id>`
 - `POST /api/mobile/v1/receiving/queue/<id>/receive`
 - `POST /api/mobile/v1/receiving/queue/<id>/photos`
 
@@ -190,6 +191,8 @@ Pilot-hardening additions:
 - main-app purchase review now surfaces mobile-origin metadata and mobile-uploaded photos for approvers
 - standalone app deployment/runbook and pilot QA docs live under `standalone-purchasing-agent-app/`, including a production rollout runbook and sample Nginx site config
 - the receiving/intake companion app lives under `standalone-receiving-intake-app/` and reuses the same session-auth mobile surface with a receiving-specific queue and receive-confirm flow
+- receiving can now correct an already confirmed receipt until downstream `RunInput` usage exists on one of that purchase's lots
+- receiving edit metadata is derived from `audit_log` `receive_edit` events rather than a dedicated schema field
 - controlled write-platform hardening now adds:
   - per-workflow site toggles for standalone buying and receiving
   - same-origin checks for unsafe mobile writes

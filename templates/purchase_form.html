@@ -52,7 +52,33 @@
       <div class="label">Delivery Recorded By</div>
       <div class="value">{{ purchase_origin_summary.delivery_recorded_by_name or 'Not yet' }}</div>
     </div>
+    <div class="summary-stat">
+      <div class="label">Receiving Edit State</div>
+      <div class="value">
+        {% if purchase_origin_summary.receiving_editable %}
+          Editable
+        {% elif purchase_origin_summary.receiving_locked_reason %}
+          Locked
+        {% else %}
+          Awaiting receipt
+        {% endif %}
+      </div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Last Receiving Edit</div>
+      <div class="value">
+        {% if purchase_origin_summary.last_receiving_edit_at %}
+          {{ purchase_origin_summary.last_receiving_edit_at.strftime('%b %d, %Y %I:%M %p') }}
+          {% if purchase_origin_summary.last_receiving_edit_by_name %}<br><small>{{ purchase_origin_summary.last_receiving_edit_by_name }}</small>{% endif %}
+        {% else %}
+          Not yet
+        {% endif %}
+      </div>
+    </div>
   </div>
+  {% if purchase_origin_summary.receiving_locked_reason %}
+  <div class="text-sm" style="margin-top:10px;color:var(--text-muted);">{{ purchase_origin_summary.receiving_locked_reason }}</div>
+  {% endif %}
 </div>
 {% endif %}
 

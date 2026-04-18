@@ -7,7 +7,7 @@ from typing import Any
 from flask import current_app, jsonify, request, url_for
 from flask_login import current_user, login_user, logout_user
 
-from models import PhotoAsset, Purchase, PurchaseLot, Supplier, User, db
+from models import AuditLog, PhotoAsset, Purchase, PurchaseLot, RunInput, Supplier, User, db
 from services.api_site import build_meta
 from services.purchase_helpers import (
     create_photo_asset,
@@ -252,16 +252,28 @@ def _mobile_purchase_detail(purchase: Purchase) -> dict[str, Any]:
     }
 
 
-def _mobile_receiving_summary(purchase: Purchase) -> dict[str, Any]:
+def _mobile_receiving_summary(root, purchase: Purchase) -> dict[str, Any]:
     detail = _mobile_purchase_detail(purchase)
     lots = detail.get("lots") or []
     primary_lot = lots[0] if lots else None
+    receiving_editable, receiving_locked_reason = _mobile_receiving_edit_state(root, purchase)
+    last_receiving_edit = _mobile_last_receiving_edit(purchase)
+    if _mobile_delivery_allowed(purchase):
+        queue_state = "ready"
+    elif receiving_editable:
+        queue_state = "received"
+    else:
+        queue_state = "locked"
     detail["receiving"] = {
-        "queue_state": "ready" if _mobile_delivery_allowed(purchase) else "closed",
+        "queue_state": queue_state,
         "location": (primary_lot or {}).get("location"),
         "floor_state": (primary_lot or {}).get("floor_state"),
         "lot_count": len(lots),
         "photo_count": detail.get("delivery_photo_count", 0),
+        "receiving_editable": receiving_editable,
+        "locked_reason": receiving_locked_reason,
+        "last_receiving_edit_at": last_receiving_edit["at"],
+        "last_receiving_edit_by": last_receiving_edit["by"],
     }
     return detail
 
@@ -283,7 +295,43 @@ def _mobile_receiving_query(root):
     )
 
 
-def _mobile_apply_delivery(root, purchase: Purchase, payload: dict[str, Any], *, actor: User) -> None:
+def _mobile_purchase_has_downstream_usage(root, purchase: Purchase) -> bool:
+    return root.RunInput.query.join(
+        root.PurchaseLot, root.RunInput.lot_id == root.PurchaseLot.id
+    ).filter(
+        root.PurchaseLot.purchase_id == purchase.id,
+        root.PurchaseLot.deleted_at.is_(None),
+    ).count() > 0
+
+
+def _mobile_last_receiving_edit(purchase: Purchase) -> dict[str, Any]:
+    audit_row = AuditLog.query.filter(
+        AuditLog.entity_type == "purchase",
+        AuditLog.entity_id == purchase.id,
+        AuditLog.action == "receive_edit",
+    ).order_by(AuditLog.timestamp.desc()).first()
+    return {
+        "at": audit_row.timestamp.isoformat() if audit_row and audit_row.timestamp else None,
+        "by": audit_row.user.display_name if audit_row and audit_row.user else None,
+    }
+
+
+def _mobile_receiving_edit_state(root, purchase: Purchase) -> tuple[bool, str | None]:
+    if purchase.deleted_at is not None:
+        return False, "Receiving record is deleted."
+    status = (purchase.status or "").strip().lower()
+    if status in {"cancelled", "complete"}:
+        return False, "Receiving is locked for closed records."
+    if _mobile_purchase_has_downstream_usage(root, purchase):
+        return False, "Locked after downstream processing started."
+    if _mobile_delivery_allowed(purchase):
+        return True, None
+    if status == "delivered" or purchase.delivery_date is not None:
+        return True, None
+    return False, "Receiving is not available for this record yet."
+
+
+def _mobile_apply_delivery(root, purchase: Purchase, payload: dict[str, Any], *, actor: User, record_delivery_actor: bool = True) -> None:
     delivered_weight = _parse_float(payload.get("delivered_weight_lbs"), "Delivered weight lbs", allow_none=False)
     if delivered_weight is None or delivered_weight <= 0:
         raise ValueError("Delivered weight lbs must be greater than 0.")
@@ -301,7 +349,8 @@ def _mobile_apply_delivery(root, purchase: Purchase, payload: dict[str, Any], *,
         purchase.clean_or_dirty = (payload.get("clean_or_dirty") or "").strip() or None
     purchase.delivery_notes = (payload.get("delivery_notes") or "").strip() or None
     purchase.status = "delivered"
-    purchase.delivery_recorded_by_user_id = actor.id
+    if record_delivery_actor or not purchase.delivery_recorded_by_user_id:
+        purchase.delivery_recorded_by_user_id = actor.id
 
     lot = _mobile_purchase_lot(purchase)
     if lot is None:
@@ -331,6 +380,38 @@ def _mobile_apply_delivery(root, purchase: Purchase, payload: dict[str, Any], *,
 
     if purchase.price_per_lb is not None:
         purchase.total_cost = float(delivered_weight) * float(purchase.price_per_lb)
+
+
+def _mobile_receiving_edit_changes(purchase: Purchase, payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    lot = _mobile_purchase_lot(purchase)
+    before = {
+        "delivered_weight_lbs": float(purchase.actual_weight_lbs) if purchase.actual_weight_lbs is not None else None,
+        "delivery_date": purchase.delivery_date.isoformat() if purchase.delivery_date else None,
+        "testing_status": purchase.testing_status,
+        "actual_potency_pct": float(purchase.tested_potency_pct) if purchase.tested_potency_pct is not None else None,
+        "clean_or_dirty": purchase.clean_or_dirty,
+        "delivery_notes": purchase.delivery_notes,
+        "location": lot.location if lot else None,
+        "floor_state": lot.floor_state if lot else None,
+        "lot_notes": lot.notes if lot else None,
+    }
+    after = {
+        "delivered_weight_lbs": _parse_float(payload.get("delivered_weight_lbs"), "Delivered weight lbs", allow_none=False),
+        "delivery_date": (_parse_date(payload.get("delivery_date"), "Delivery date", default_today=True) or date.today()).isoformat(),
+        "testing_status": (payload.get("testing_status") or "").strip() or None,
+        "actual_potency_pct": _parse_float(payload.get("actual_potency_pct"), "Actual potency pct"),
+        "clean_or_dirty": (payload.get("clean_or_dirty") or "").strip() or None,
+        "delivery_notes": (payload.get("delivery_notes") or "").strip() or None,
+        "location": (payload.get("location") or "").strip() or None,
+        "floor_state": (payload.get("floor_state") or "").strip() or None,
+        "lot_notes": (payload.get("lot_notes") or "").strip() or None,
+    }
+    changes: dict[str, dict[str, Any]] = {}
+    for key, old_value in before.items():
+        new_value = after[key]
+        if old_value != new_value:
+            changes[key] = {"old": old_value, "new": new_value}
+    return changes
 
 
 def _resolve_mobile_supplier(root, payload: dict[str, Any]) -> tuple[Supplier | None, dict[str, Any] | None]:
@@ -453,6 +534,9 @@ def register_routes(app, root):
     def mobile_receiving_detail(opportunity_id):
         return mobile_receiving_detail_view(root, opportunity_id)
 
+    def mobile_receiving_update(opportunity_id):
+        return mobile_receiving_update_view(root, opportunity_id)
+
     def mobile_receiving_receive(opportunity_id):
         return mobile_receiving_receive_view(root, opportunity_id)
 
@@ -482,6 +566,7 @@ def register_routes(app, root):
     app.add_url_rule("/api/mobile/v1/suppliers/<supplier_id>", endpoint="mobile_supplier_detail", view_func=mobile_supplier_detail, methods=["GET"])
     app.add_url_rule("/api/mobile/v1/receiving/queue", endpoint="mobile_receiving_queue", view_func=mobile_receiving_queue, methods=["GET"])
     app.add_url_rule("/api/mobile/v1/receiving/queue/<opportunity_id>", endpoint="mobile_receiving_detail", view_func=mobile_receiving_detail, methods=["GET"])
+    app.add_url_rule("/api/mobile/v1/receiving/queue/<opportunity_id>", endpoint="mobile_receiving_update", view_func=mobile_receiving_update, methods=["PATCH"])
     app.add_url_rule("/api/mobile/v1/receiving/queue/<opportunity_id>/receive", endpoint="mobile_receiving_receive", view_func=mobile_receiving_receive, methods=["POST"])
     app.add_url_rule("/api/mobile/v1/receiving/queue/<opportunity_id>/photos", endpoint="mobile_receiving_photos", view_func=mobile_receiving_photos, methods=["POST"])
 
@@ -645,7 +730,7 @@ def mobile_receiving_queue_view(root):
     ).offset(offset).limit(limit).all()
     return jsonify({
         "meta": build_meta(count=total, limit=limit, offset=offset, extra={"workflow": "receiving", "status_filter": status_filter}),
-        "data": [_mobile_receiving_summary(purchase) for purchase in rows],
+        "data": [_mobile_receiving_summary(root, purchase) for purchase in rows],
     })
 
 
@@ -658,7 +743,42 @@ def mobile_receiving_detail_view(root, opportunity_id: str):
         return _json_error("Receiving item not found.", status_code=404, code="not_found")
     if purchase.purchase_approved_at is None and purchase.status not in {"committed", "delivered"}:
         return _json_error("Receiving item not found.", status_code=404, code="not_found")
-    return jsonify({"meta": build_meta(extra={"workflow": "receiving"}), "data": _mobile_receiving_summary(purchase)})
+    return jsonify({"meta": build_meta(extra={"workflow": "receiving"}), "data": _mobile_receiving_summary(root, purchase)})
+
+
+def mobile_receiving_update_view(root, opportunity_id: str):
+    write_error = _require_mobile_workflow(root, "receiving")
+    if write_error:
+        return write_error
+    purchase = root.db.session.get(root.Purchase, opportunity_id)
+    if not purchase or purchase.deleted_at is not None:
+        return _json_error("Receiving item not found.", status_code=404, code="not_found")
+    receiving_editable, locked_reason = _mobile_receiving_edit_state(root, purchase)
+    if not receiving_editable:
+        return _json_error(locked_reason or "Receiving is locked for this record.", status_code=409, code="receiving_locked")
+
+    payload = _mobile_payload()
+    payload.setdefault("floor_state", _mobile_purchase_lot(purchase).floor_state if _mobile_purchase_lot(purchase) else "receiving")
+    try:
+        changes = _mobile_receiving_edit_changes(purchase, payload)
+        _mobile_apply_delivery(root, purchase, payload, actor=current_user, record_delivery_actor=False)
+    except ValueError as exc:
+        return _json_error(str(exc), status_code=400, code="bad_request")
+
+    audit_mobile_action(
+        root,
+        action="receive_edit",
+        entity_type="purchase",
+        entity_id=purchase.id,
+        workflow="receiving",
+        details={
+            "changed_fields": sorted(changes.keys()),
+            "changes": changes,
+        },
+        user_id=current_user.id,
+    )
+    root.db.session.commit()
+    return jsonify({"meta": build_meta(extra={"workflow": "receiving"}), "data": {"receiving": _mobile_receiving_summary(root, purchase)}})
 
 
 def mobile_opportunity_detail_view(root, opportunity_id: str):
@@ -930,7 +1050,7 @@ def mobile_receiving_receive_view(root, opportunity_id: str):
         user_id=current_user.id,
     )
     root.db.session.commit()
-    return jsonify({"meta": build_meta(extra={"workflow": "receiving"}), "data": {"receiving": _mobile_receiving_summary(purchase)}})
+    return jsonify({"meta": build_meta(extra={"workflow": "receiving"}), "data": {"receiving": _mobile_receiving_summary(root, purchase)}})
 
 
 def mobile_receiving_photos_view(root, opportunity_id: str):

@@ -403,6 +403,7 @@ def test_mobile_receiving_queue_and_receive_flow():
             assert detail.status_code == 200
             detail_payload = detail.get_json()["data"]
             assert detail_payload["receiving"]["queue_state"] == "ready"
+            assert detail_payload["receiving"]["receiving_editable"] is True
 
             receive = client.post(
                 f"/api/mobile/v1/receiving/queue/{purchase_id}/receive",
@@ -420,6 +421,7 @@ def test_mobile_receiving_queue_and_receive_flow():
             receive_payload = receive.get_json()["data"]["receiving"]
             assert receive_payload["status"] == "delivered"
             assert receive_payload["receiving"]["location"] == "Receiving Vault"
+            assert receive_payload["receiving"]["receiving_editable"] is True
 
             photo = client.post(
                 f"/api/mobile/v1/receiving/queue/{purchase_id}/photos",
@@ -446,6 +448,152 @@ def test_mobile_receiving_queue_and_receive_flow():
                 purchase = db.session.get(Purchase, purchase_id)
                 if purchase:
                     db.session.delete(purchase)
+            if receiver_id:
+                receiver = db.session.get(app_module.User, receiver_id)
+                if receiver:
+                    db.session.delete(receiver)
+            supplier = db.session.get(Supplier, supplier_id)
+            if supplier:
+                db.session.delete(supplier)
+            db.session.commit()
+
+
+def test_mobile_receiving_edit_flow_and_lock_after_downstream_usage():
+    app = app_module.create_app()
+    supplier_id = _create_supplier(app, f"Receiving Edit Supplier {gen_uuid()[:6]}")
+    receiver_id = None
+    receiver_username = f"receiver_edit_{gen_uuid()[:6]}"
+    purchase_id = None
+    lot_id = None
+    run_id = None
+    try:
+        with app.app_context():
+            receiver = app_module.User(
+                username=receiver_username,
+                display_name="Receiving Editor",
+                role="user",
+            )
+            receiver.set_password("receiver-pass")
+            db.session.add(receiver)
+            db.session.flush()
+            receiver_id = receiver.id
+
+            purchase = Purchase(
+                supplier_id=supplier_id,
+                purchase_date=app_module.date(2026, 4, 15),
+                availability_date=app_module.date(2026, 4, 15),
+                status="ordered",
+                stated_weight_lbs=95,
+                declared_weight_lbs=95,
+                price_per_lb=245,
+                purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            )
+            db.session.add(purchase)
+            db.session.flush()
+            purchase_id = purchase.id
+
+            lot = app_module.PurchaseLot(
+                purchase_id=purchase.id,
+                strain_name="MAC 1",
+                weight_lbs=95,
+                remaining_weight_lbs=95,
+                floor_state="receiving",
+            )
+            db.session.add(lot)
+            db.session.commit()
+            lot_id = lot.id
+
+        with app.test_client() as client:
+            login = client.post("/api/mobile/v1/auth/login", json={"username": receiver_username, "password": "receiver-pass"})
+            assert login.status_code == 200
+
+            receive = client.post(
+                f"/api/mobile/v1/receiving/queue/{purchase_id}/receive",
+                json={
+                    "delivered_weight_lbs": 92.5,
+                    "delivery_date": "2026-04-16",
+                    "testing_status": "pending",
+                    "clean_or_dirty": "clean",
+                    "delivery_notes": "Received by intake team",
+                    "location": "Receiving Vault",
+                    "floor_state": "receiving",
+                },
+            )
+            assert receive.status_code == 200
+
+            edit = client.patch(
+                f"/api/mobile/v1/receiving/queue/{purchase_id}",
+                json={
+                    "delivered_weight_lbs": 91.0,
+                    "delivery_date": "2026-04-17",
+                    "testing_status": "completed",
+                    "actual_potency_pct": 24.1,
+                    "clean_or_dirty": "clean",
+                    "delivery_notes": "Adjusted after final dock count",
+                    "location": "Vault B",
+                    "floor_state": "inventory",
+                    "lot_notes": "Moved after recount",
+                },
+            )
+            assert edit.status_code == 200
+            edit_payload = edit.get_json()["data"]["receiving"]
+            assert edit_payload["delivery"]["delivered_weight_lbs"] == 91.0
+            assert edit_payload["receiving"]["location"] == "Vault B"
+            assert edit_payload["receiving"]["last_receiving_edit_by"] == "Receiving Editor"
+
+        with app.app_context():
+            purchase = db.session.get(Purchase, purchase_id)
+            lot = db.session.get(app_module.PurchaseLot, lot_id)
+            assert purchase.delivery_recorded_by_user_id == receiver_id
+            assert purchase.actual_weight_lbs == 91.0
+            assert purchase.delivery_notes == "Adjusted after final dock count"
+            assert lot.location == "Vault B"
+            assert lot.floor_state == "inventory"
+            assert lot.notes == "Moved after recount"
+            audit_rows = AuditLog.query.filter_by(entity_type="purchase", entity_id=purchase_id, action="receive_edit").all()
+            assert len(audit_rows) == 1
+            assert '"delivered_weight_lbs"' in (audit_rows[0].details or "")
+
+            run = app_module.Run(
+                run_date=app_module.date(2026, 4, 18),
+                reactor_number=1,
+            )
+            db.session.add(run)
+            db.session.flush()
+            run_id = run.id
+            db.session.add(app_module.RunInput(run_id=run.id, lot_id=lot_id, weight_lbs=15))
+            db.session.commit()
+
+        with app.test_client() as client:
+            login = client.post("/api/mobile/v1/auth/login", json={"username": receiver_username, "password": "receiver-pass"})
+            assert login.status_code == 200
+            detail = client.get(f"/api/mobile/v1/receiving/queue/{purchase_id}")
+            assert detail.status_code == 200
+            assert detail.get_json()["data"]["receiving"]["receiving_editable"] is False
+            assert "downstream processing" in (detail.get_json()["data"]["receiving"]["locked_reason"] or "").lower()
+
+            locked = client.patch(
+                f"/api/mobile/v1/receiving/queue/{purchase_id}",
+                json={
+                    "delivered_weight_lbs": 90.0,
+                    "delivery_date": "2026-04-17",
+                },
+            )
+            assert locked.status_code == 409
+            assert locked.get_json()["error"]["code"] == "receiving_locked"
+    finally:
+        with app.app_context():
+            PhotoAsset.query.filter(PhotoAsset.purchase_id == purchase_id).delete(synchronize_session=False)
+            if run_id:
+                run_input = app_module.RunInput.query.filter_by(run_id=run_id, lot_id=lot_id).first()
+                if run_input:
+                    db.session.delete(run_input)
+                run = db.session.get(app_module.Run, run_id)
+                if run:
+                    db.session.delete(run)
+            purchase = db.session.get(Purchase, purchase_id) if purchase_id else None
+            if purchase:
+                db.session.delete(purchase)
             if receiver_id:
                 receiver = db.session.get(app_module.User, receiver_id)
                 if receiver:

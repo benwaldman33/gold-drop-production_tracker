@@ -1,5 +1,5 @@
 import { createApiClient } from "./api.js";
-import { canConfirmReceipt, receivingTitle } from "./domain.js";
+import { canConfirmReceipt, canEditReceipt, receivingTitle } from "./domain.js";
 import { getAppConfig } from "./config.js";
 import { buildReceivePayload, parseRoute, selectedFilesFromForm, shortDate, shortDateTime } from "./ui-helpers.js";
 
@@ -64,7 +64,7 @@ async function loadRoute() {
   if (["home", "queue"].includes(state.route.name)) {
     state.queue = await api.listReceivingQueue(state.route.status || "ready");
   }
-  if (["detail", "receive"].includes(state.route.name)) {
+  if (["detail", "receive", "edit"].includes(state.route.name)) {
     state.item = await api.getReceivingItem(state.route.id);
   }
 }
@@ -133,7 +133,7 @@ function shell(content) {
             ? `
           <nav class="nav">
             <a href="#/home" class="${state.route.name === "home" ? "active" : ""}">Home <small>Ready queue</small></a>
-            <a href="#/queue" class="${state.route.name === "queue" || state.route.name === "detail" || state.route.name === "receive" ? "active" : ""}">Receiving Queue <small>Dock work</small></a>
+            <a href="#/queue" class="${state.route.name === "queue" || state.route.name === "detail" || state.route.name === "receive" || state.route.name === "edit" ? "active" : ""}">Receiving Queue <small>Dock work</small></a>
           </nav>
           <div class="actions"><button class="btn btn-secondary" data-action="logout">Log out</button></div>
           `
@@ -157,7 +157,7 @@ function renderContent() {
   if (state.route.name === "home") return renderHome();
   if (state.route.name === "queue") return renderQueue();
   if (state.route.name === "detail") return renderDetail();
-  if (state.route.name === "receive") return renderReceiveForm();
+  if (["receive", "edit"].includes(state.route.name)) return renderReceiveForm();
   return `<div class="empty">Page not found.</div>`;
 }
 
@@ -244,6 +244,8 @@ function statusChip(status) {
 function renderDetail() {
   const item = state.item;
   if (!item) return `<div class="empty">Receiving item not found.</div>`;
+  const canConfirm = canConfirmReceipt(item.status);
+  const canEdit = canEditReceipt(item);
   return `
     <div class="layout-grid">
       <div class="topbar">
@@ -252,7 +254,8 @@ function renderDetail() {
           <div class="meta">${escapeHtml(item.batch_id || item.id)} - ${statusChip(item.status)} - Approved ${escapeHtml(shortDateTime(item.approval?.approved_at))}</div>
         </div>
         <div class="actions">
-          ${canConfirmReceipt(item.status) ? `<a class="btn btn-primary" href="#/queue/${encodeURIComponent(item.id)}/receive">Confirm Receipt</a>` : ""}
+          ${canConfirm ? `<a class="btn btn-primary" href="#/queue/${encodeURIComponent(item.id)}/receive">Confirm Receipt</a>` : ""}
+          ${!canConfirm && canEdit ? `<a class="btn btn-primary" href="#/queue/${encodeURIComponent(item.id)}/edit">Edit Receipt</a>` : ""}
         </div>
       </div>
       <section class="grid-2">
@@ -268,6 +271,8 @@ function renderDetail() {
             <dt>Expected Potency</dt><dd>${escapeHtml(item.expected_potency_pct ?? "—")}</dd>
             <dt>Queue State</dt><dd>${escapeHtml(item.receiving?.queue_state || "ready")}</dd>
             <dt>Dock Location</dt><dd>${escapeHtml(item.receiving?.location || "Unassigned")}</dd>
+            <dt>Receiving Edit</dt><dd>${canEdit ? "Editable" : escapeHtml(item.receiving?.locked_reason || "Locked")}</dd>
+            <dt>Last Edit</dt><dd>${escapeHtml(item.receiving?.last_receiving_edit_at ? `${shortDateTime(item.receiving.last_receiving_edit_at)}${item.receiving?.last_receiving_edit_by ? ` by ${item.receiving.last_receiving_edit_by}` : ""}` : "Not yet")}</dd>
           </dl>
         </div>
         <div class="card">
@@ -308,27 +313,29 @@ function renderPhoto(photo) {
 function renderReceiveForm() {
   const item = state.item;
   if (!item) return `<div class="empty">Receiving item not found.</div>`;
+  const isEdit = state.route.name === "edit";
+  const primaryLot = (item.lots || [])[0] || {};
   return `
     <div class="layout-grid">
       <div class="topbar">
-        <div><h2>Confirm Receipt</h2><div class="meta">${escapeHtml(receivingTitle(item))}</div></div>
+        <div><h2>${isEdit ? "Edit Receipt" : "Confirm Receipt"}</h2><div class="meta">${escapeHtml(receivingTitle(item))}</div></div>
       </div>
       <section class="panel" style="max-width: 960px;">
-        <form class="form" data-form="receive" data-id="${escapeHtml(item.id)}">
+        <form class="form" data-form="${isEdit ? "edit-receive" : "receive"}" data-id="${escapeHtml(item.id)}">
           <div class="two-col">
             <div class="field"><label for="delivered_weight_lbs">Delivered weight (lbs)</label><input id="delivered_weight_lbs" name="delivered_weight_lbs" type="number" step="0.1" value="${escapeHtml(item.delivery?.delivered_weight_lbs || item.expected_weight_lbs || "")}" required /></div>
             <div class="field"><label for="delivery_date">Delivery date</label><input id="delivery_date" name="delivery_date" type="date" value="${escapeHtml(item.delivery?.delivery_date || new Date().toISOString().slice(0, 10))}" required /></div>
             <div class="field"><label for="testing_status">Testing status</label><select id="testing_status" name="testing_status"><option value="pending">Pending</option><option value="completed">Completed</option><option value="not_needed">Not Needed</option></select></div>
             <div class="field"><label for="actual_potency_pct">Actual potency %</label><input id="actual_potency_pct" name="actual_potency_pct" type="number" step="0.1" value="${escapeHtml(item.delivery?.actual_potency_pct || "")}" /></div>
             <div class="field"><label for="clean_or_dirty">Material state</label><select id="clean_or_dirty" name="clean_or_dirty"><option value="clean">Clean</option><option value="dirty">Dirty</option></select></div>
-            <div class="field"><label for="location">Receiving location</label><input id="location" name="location" value="${escapeHtml(item.receiving?.location || "")}" placeholder="Dock A, Receiving Vault..." /></div>
-            <div class="field"><label for="floor_state">Floor state</label><select id="floor_state" name="floor_state"><option value="receiving">Receiving</option><option value="inventory">Inventory</option><option value="quarantine">Quarantine</option></select></div>
-            <div class="field"><label for="lot_notes">Lot notes</label><input id="lot_notes" name="lot_notes" value="" placeholder="Seal broken, staged in cage 2..." /></div>
+            <div class="field"><label for="location">Receiving location</label><input id="location" name="location" value="${escapeHtml(item.receiving?.location || primaryLot.location || "")}" placeholder="Dock A, Receiving Vault..." /></div>
+            <div class="field"><label for="floor_state">Floor state</label><select id="floor_state" name="floor_state"><option value="receiving" ${(item.receiving?.floor_state || primaryLot.floor_state) === "receiving" ? "selected" : ""}>Receiving</option><option value="inventory" ${(item.receiving?.floor_state || primaryLot.floor_state) === "inventory" ? "selected" : ""}>Inventory</option><option value="quarantine" ${(item.receiving?.floor_state || primaryLot.floor_state) === "quarantine" ? "selected" : ""}>Quarantine</option></select></div>
+            <div class="field"><label for="lot_notes">Lot notes</label><input id="lot_notes" name="lot_notes" value="${escapeHtml(primaryLot.notes || "")}" placeholder="Seal broken, staged in cage 2..." /></div>
           </div>
           <div class="field"><label for="delivery_notes">Delivery notes</label><textarea id="delivery_notes" name="delivery_notes" rows="4" placeholder="Condition, count discrepancy, paperwork notes...">${escapeHtml(item.delivery?.delivery_notes || "")}</textarea></div>
           <div class="field"><label for="delivery-photo">Delivery photos</label><input id="delivery-photo" name="delivery-photo" type="file" accept="image/*" multiple /><div class="helper">Photos are queued across multiple picks before save.</div></div>
           <div class="actions">
-            <button class="btn btn-primary" type="submit">${state.loading ? "Saving..." : "Confirm Receipt"}</button>
+            <button class="btn btn-primary" type="submit">${state.loading ? "Saving..." : (isEdit ? "Save Receipt Changes" : "Confirm Receipt")}</button>
             <a class="btn btn-secondary" href="#/queue/${encodeURIComponent(item.id)}">Cancel</a>
           </div>
         </form>
@@ -368,9 +375,10 @@ function bind() {
     }
   });
 
-  document.querySelector('[data-form="receive"]')?.addEventListener("submit", async (event) => {
+  document.querySelectorAll('[data-form="receive"], [data-form="edit-receive"]').forEach((formNode) => formNode.addEventListener("submit", async (event) => {
     event.preventDefault();
     const formEl = event.currentTarget;
+    const isEdit = formEl.getAttribute("data-form") === "edit-receive";
     const payload = buildReceivePayload(new FormData(formEl));
     const id = formEl.getAttribute("data-id");
     const photos = pendingFilesFor("delivery-photo").length
@@ -379,7 +387,7 @@ function bind() {
     state.loading = true;
     render();
     try {
-      const item = await api.receive(id, payload);
+      const item = isEdit ? await api.updateReceiving(id, payload) : await api.receive(id, payload);
       for (const file of photos) {
         await api.uploadPhoto(id, { file, photo_context: "delivery" });
       }
@@ -387,14 +395,14 @@ function bind() {
       state.item = await api.getReceivingItem(item.id);
       state.queue = await api.listReceivingQueue("ready");
       navigate(`#/queue/${encodeURIComponent(item.id)}`);
-      showToast("Receipt confirmed.");
+      showToast(isEdit ? "Receipt updated." : "Receipt confirmed.");
     } catch (error) {
-      showToast(error.payload?.error?.message || error.message || "Unable to confirm receipt.");
+      showToast(error.payload?.error?.message || error.message || (isEdit ? "Unable to update receipt." : "Unable to confirm receipt."));
     } finally {
       state.loading = false;
       render();
     }
-  });
+  }));
 
   document.querySelectorAll('input[type="file"]').forEach((input) => {
     input.addEventListener("change", () => {

@@ -88,7 +88,8 @@ def mobile_capabilities(root, user) -> dict[str, Any]:
                 "allowed": perms["can_receive_intake"],
                 "endpoints": [
                     "/api/mobile/v1/receiving/queue",
-                    "/api/mobile/v1/receiving/queue/<id>",
+                    "GET /api/mobile/v1/receiving/queue/<id>",
+                    "PATCH /api/mobile/v1/receiving/queue/<id>",
                     "/api/mobile/v1/receiving/queue/<id>/receive",
                     "/api/mobile/v1/receiving/queue/<id>/photos",
                 ],
