@@ -26,11 +26,12 @@
 - `Open Run` links from `Floor Ops` now carry a return path back to the operator context instead of always dropping users onto a generic `Back to Runs` link.
 - The active reactor board and charge forms now stay aligned with the greater of configured reactor count and observed reactor numbers, so a higher-numbered reactor does not disappear from the board just because settings lag reality.
 - `Floor Ops` now includes board-level reactor filters plus a same-day `Reactor History Today` section so extractors can focus on active/running/completed work and review recent per-reactor activity without opening each run.
+- Slack import preview now includes `Create extraction charge from Slack`, which records a canonical `ExtractionCharge` from the Slack message, tags it with `source_mode="slack"`, and opens `runs/new` with that saved charge attached.
 
 ### Tests
 - Added regression coverage for purchase edit round-trip of mobile opportunity fields, dedicated inventory lot editing, inventory label return paths, and confirmed-lot splitting from remaining inventory (`tests/test_refactor_safety.py`).
 - Added duplicate-supplier regression coverage for mobile supplier create, main supplier create, and standalone buyer duplicate matching.
-- Added extraction-charge, floor-queue, lifecycle-settings, and inventory-action regression coverage for scan-to-charge, charge prefill into new run, charge-to-run linkage, pending/applied reactor queue visibility, active reactor board status rendering, direct inventory lot actions, lifecycle transition enforcement, and cancel resolution redirects; full Python suite now passes with `130` tests.
+- Added extraction-charge, floor-queue, lifecycle-settings, inventory-action, and Slack-charge regression coverage for scan-to-charge, charge prefill into new run, charge-to-run linkage, pending/applied reactor queue visibility, active reactor board status rendering, direct inventory lot actions, lifecycle transition enforcement, cancel resolution redirects, and Slack import charge creation / split-allocation rejection; full Python suite now passes with `134` tests.
 
 ## 2026-04-11
 

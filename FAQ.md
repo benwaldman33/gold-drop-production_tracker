@@ -31,6 +31,12 @@ It ranks candidate lots using supplier, strain, remaining quantity, and received
 **Can I split one Slack run across multiple lots?**  
 Yes. On the Slack preview page, enter per-lot weights on the candidate lot card. The selected split carries into the Run form as prefilled lot rows.
 
+**Can Slack create an extraction charge before the run is saved?**
+Yes. On Slack preview, use **Create extraction charge from Slack** when the message resolves to exactly one lot, one reactor, and one biomass weight. The app records the charge immediately and then opens **New Run** with that saved charge attached.
+
+**Why can’t I create an extraction charge from this Slack message?**
+The charge path is intentionally stricter than the run path. It requires a parsed reactor number, a parsed biomass weight, and exactly one source lot. If you need to split the biomass across multiple lots, use **Create run from Slack** instead.
+
 **Why won’t a Slack-created run save if the lot rows look mostly right?**  
 Because the selected lot weights must add up exactly to **Lbs in Reactor**. The Run form now shows a live allocation summary and projected remaining lot balances so you can fix the difference before saving.
 

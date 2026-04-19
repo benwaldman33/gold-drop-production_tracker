@@ -2146,6 +2146,183 @@ def test_slack_apply_run_carries_manual_lot_selection_into_prefill_session():
             db.session.commit()
 
 
+def test_slack_apply_charge_creates_extraction_charge_and_scan_prefill():
+    app = app_module.app
+    charge_id = None
+    with app.app_context():
+        supplier = Supplier(name="Slack Charge Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = Purchase(
+            supplier_id=supplier.id,
+            purchase_date=date(2026, 4, 10),
+            delivery_date=date(2026, 4, 11),
+            status="delivered",
+            stated_weight_lbs=120,
+            purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            clean_or_dirty="clean",
+            testing_status="completed",
+            batch_id=f"SLKCHG-{app_module.gen_uuid()[:6]}",
+        )
+        db.session.add(purchase)
+        db.session.flush()
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Blue Dream",
+            weight_lbs=120,
+            remaining_weight_lbs=120,
+        )
+        row = SlackIngestedMessage(
+            channel_id="C125",
+            message_ts="1743200002.222222",
+            raw_text="reactor: A\nsource: Slack Charge Supplier\nstrain: Blue Dream\nbio lbs: 100",
+            message_kind="production_log",
+        )
+        db.session.add_all([lot, row])
+        db.session.commit()
+        row_id = row.id
+        lot_id = lot.id
+        purchase_id = purchase.id
+        supplier_id = supplier.id
+
+    try:
+        with app.test_client() as client:
+            _login(client, "admin")
+            resp = client.post(
+                f"/settings/slack-imports/{row_id}/apply-charge",
+                data={
+                    "slack_supplier_mode": "existing",
+                    "slack_supplier_id": supplier_id,
+                    "slack_selected_allocations_json": json.dumps([{"lot_id": lot_id, "weight_lbs": 100.0}]),
+                },
+                follow_redirects=False,
+            )
+            assert resp.status_code in (302, 303)
+            assert resp.headers["Location"].startswith("/runs/new")
+            assert "return_to=" in resp.headers["Location"]
+
+            with client.session_transaction() as sess:
+                prefill = sess.get(app_module.SCAN_RUN_PREFILL_SESSION_KEY)
+                assert prefill is not None
+                charge_id = prefill["charge_id"]
+                assert prefill["planned_weight_lbs"] == 100.0
+                assert prefill["reactor_number"] == 1
+                assert prefill["charge_source_mode"] == "slack"
+
+            with app.app_context():
+                charge = db.session.get(ExtractionCharge, charge_id)
+                assert charge is not None
+                assert charge.purchase_lot_id == lot_id
+                assert float(charge.charged_weight_lbs or 0) == 100.0
+                assert charge.reactor_number == 1
+                assert charge.source_mode == "slack"
+                assert charge.slack_ingested_message_id == row_id
+    finally:
+        with app.app_context():
+            if charge_id:
+                ExtractionCharge.query.filter_by(id=charge_id).delete(synchronize_session=False)
+            row_obj = db.session.get(SlackIngestedMessage, row_id)
+            if row_obj:
+                db.session.delete(row_obj)
+            lot_obj = db.session.get(PurchaseLot, lot_id)
+            if lot_obj:
+                db.session.delete(lot_obj)
+            purchase_obj = db.session.get(Purchase, purchase_id)
+            if purchase_obj:
+                db.session.delete(purchase_obj)
+            supplier_obj = db.session.get(Supplier, supplier_id)
+            if supplier_obj:
+                db.session.delete(supplier_obj)
+            db.session.commit()
+
+
+def test_slack_apply_charge_rejects_split_allocations():
+    app = app_module.app
+    with app.app_context():
+        supplier = Supplier(name="Slack Split Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = Purchase(
+            supplier_id=supplier.id,
+            purchase_date=date(2026, 4, 10),
+            delivery_date=date(2026, 4, 11),
+            status="delivered",
+            stated_weight_lbs=200,
+            purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            clean_or_dirty="clean",
+            testing_status="completed",
+            batch_id=f"SLKSPL-{app_module.gen_uuid()[:6]}",
+        )
+        db.session.add(purchase)
+        db.session.flush()
+        lot_one = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Blue Dream",
+            weight_lbs=120,
+            remaining_weight_lbs=120,
+        )
+        lot_two = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Blue Dream",
+            weight_lbs=120,
+            remaining_weight_lbs=120,
+        )
+        row = SlackIngestedMessage(
+            channel_id="C126",
+            message_ts="1743200003.333333",
+            raw_text="reactor: 2\nsource: Slack Split Supplier\nstrain: Blue Dream\nbio lbs: 100",
+            message_kind="production_log",
+        )
+        db.session.add_all([lot_one, lot_two, row])
+        db.session.commit()
+        row_id = row.id
+        lot_one_id = lot_one.id
+        lot_two_id = lot_two.id
+        purchase_id = purchase.id
+        supplier_id = supplier.id
+
+    try:
+        with app.test_client() as client:
+            _login(client, "admin")
+            resp = client.post(
+                f"/settings/slack-imports/{row_id}/apply-charge",
+                data={
+                    "slack_supplier_mode": "existing",
+                    "slack_supplier_id": supplier_id,
+                    "slack_selected_allocations_json": json.dumps(
+                        [
+                            {"lot_id": lot_one_id, "weight_lbs": 50.0},
+                            {"lot_id": lot_two_id, "weight_lbs": 50.0},
+                        ]
+                    ),
+                },
+                follow_redirects=False,
+            )
+            assert resp.status_code in (302, 303)
+            assert resp.headers["Location"].endswith(f"/settings/slack-imports/{row_id}/preview")
+
+            with app.app_context():
+                assert ExtractionCharge.query.filter_by(slack_ingested_message_id=row_id).count() == 0
+    finally:
+        with app.app_context():
+            row_obj = db.session.get(SlackIngestedMessage, row_id)
+            if row_obj:
+                db.session.delete(row_obj)
+            lot_obj = db.session.get(PurchaseLot, lot_one_id)
+            if lot_obj:
+                db.session.delete(lot_obj)
+            lot_obj = db.session.get(PurchaseLot, lot_two_id)
+            if lot_obj:
+                db.session.delete(lot_obj)
+            purchase_obj = db.session.get(Purchase, purchase_id)
+            if purchase_obj:
+                db.session.delete(purchase_obj)
+            supplier_obj = db.session.get(Supplier, supplier_id)
+            if supplier_obj:
+                db.session.delete(supplier_obj)
+            db.session.commit()
+
+
 def test_field_submission_approve_creates_purchase_and_lots():
     app = app_module.app
     with app.app_context():
