@@ -283,11 +283,14 @@ Yes. On **Purchases -> Edit**, each active lot now has a **Charge Lot** action t
 
 **How do I get from Inventory to the actual lot actions?**
 On **Inventory -> Biomass On Hand**, each lot row now includes direct buttons for:
-- `Edit` to open the parent purchase record
+- `Edit` to open a dedicated lot editor for strain, potency, location, floor state, prep state, and notes
 - `Charge` to open the extraction-charge workflow
 - `Scan` to open the scanned-lot execution page
-- `Label`
-- `Journey`
+- `Label` to open the printable lot label
+- `Journey` to open the purchase journey filtered to that lot
+
+**If I open a lot label from Inventory, where does Back go?**
+Back now returns to the screen you came from. If you opened the label from `Inventory`, the button says `Back to inventory`.
 
 **What movement actions are standardized on the scanned-lot page?**
 Operators can confirm:

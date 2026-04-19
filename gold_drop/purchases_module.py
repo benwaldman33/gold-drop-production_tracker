@@ -57,6 +57,10 @@ def register_routes(app, root):
     def lot_split(lot_id):
         return lot_split_view(root, lot_id)
 
+    @root.editor_required
+    def lot_edit(lot_id):
+        return lot_edit_view(root, lot_id)
+
     @root.login_required
     def lot_label(lot_id):
         return lot_label_view(root, lot_id)
@@ -107,6 +111,7 @@ def register_routes(app, root):
     app.add_url_rule("/purchases/<purchase_id>/approve", endpoint="purchase_approve", view_func=purchase_approve, methods=["POST"])
     app.add_url_rule("/purchases/<purchase_id>/lots/new", endpoint="lot_new", view_func=lot_new, methods=["POST"])
     app.add_url_rule("/lots/<lot_id>/split", endpoint="lot_split", view_func=lot_split, methods=["POST"])
+    app.add_url_rule("/lots/<lot_id>/edit", endpoint="lot_edit", view_func=lot_edit, methods=["GET", "POST"])
     app.add_url_rule("/lots/<lot_id>/label", endpoint="lot_label", view_func=lot_label)
     app.add_url_rule("/lots/<lot_id>/charge", endpoint="lot_charge", view_func=lot_charge, methods=["GET", "POST"])
     app.add_url_rule("/purchases/<purchase_id>/labels", endpoint="purchase_labels", view_func=purchase_labels)
@@ -632,7 +637,59 @@ def lot_label_view(root, lot_id):
     ensure_lot_tracking_fields(lot)
     root.db.session.commit()
     label = build_lot_label_payload(lot)
-    return root.render_template("lot_label_print.html", labels=[label], purchase=lot.purchase)
+    raw_return_to = root.request.args.get("return_to") or ""
+    return_to = _safe_purchase_return_url(root, raw_return_to, default_endpoint="purchases_list")
+    if not raw_return_to.strip():
+        return_to = root.url_for("purchase_edit", purchase_id=lot.purchase.id)
+    if return_to == root.url_for("inventory") or return_to.startswith(f"{root.url_for('inventory')}?"):
+        return_label = "Back to inventory"
+    elif return_to == root.url_for("purchases_list") or return_to.startswith(f"{root.url_for('purchases_list')}?"):
+        return_label = "Back to purchases"
+    else:
+        return_label = "Back to purchase"
+    return root.render_template("lot_label_print.html", labels=[label], purchase=lot.purchase, return_to=return_to, return_label=return_label)
+
+
+def lot_edit_view(root, lot_id):
+    lot = root.db.session.get(root.PurchaseLot, lot_id)
+    if not lot or lot.deleted_at is not None or not lot.purchase or lot.purchase.deleted_at is not None:
+        root.flash("Lot not found.", "error")
+        return root.redirect(root.url_for("inventory"))
+    raw_return_to = root.request.values.get("return_to") or root.request.referrer or ""
+    return_to = _safe_purchase_return_url(root, raw_return_to, default_endpoint="inventory")
+    if root.request.method == "POST":
+        try:
+            lot.strain_name = (root.request.form.get("strain_name") or "").strip() or lot.strain_name
+            potency_raw = (root.request.form.get("potency_pct") or "").strip()
+            lot.potency_pct = float(potency_raw) if potency_raw else None
+            lot.location = (root.request.form.get("location") or "").strip() or None
+            floor_state = (root.request.form.get("floor_state") or "").strip()
+            lot.floor_state = floor_state or "inventory"
+            lot.milled = root.request.form.get("milled_state") == "milled"
+            lot.notes = (root.request.form.get("notes") or "").strip() or None
+            root.log_audit(
+                "update",
+                "lot",
+                lot.id,
+                details=root.json.dumps(
+                    {
+                        "source": "lot_edit",
+                        "purchase_id": lot.purchase_id,
+                        "return_to": return_to,
+                    }
+                ),
+            )
+            root.db.session.commit()
+            root.flash("Lot updated.", "success")
+            return root.redirect(return_to)
+        except ValueError:
+            root.db.session.rollback()
+            root.flash("Enter a valid potency percentage.", "error")
+        except Exception:
+            root.db.session.rollback()
+            root.app.logger.exception("Error updating lot")
+            root.flash("Error updating lot. Please check your inputs and try again.", "error")
+    return root.render_template("lot_edit.html", lot=lot, purchase=lot.purchase, return_to=return_to)
 
 
 def purchase_labels_view(root, purchase_id):

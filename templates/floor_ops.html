@@ -9,49 +9,61 @@
   </div>
 </div>
 
-<div class="summary-row">
-  <div class="summary-card">
-    <div class="summary-label">Scans &middot; 24h</div>
-    <div class="summary-value">{{ scans_last_day }}</div>
-    <div class="summary-footnote">Recent barcode execution activity</div>
+<div class="card" style="margin-bottom:18px;">
+  <div class="card-header">
+    <h3>Floor Snapshot</h3>
+    <span class="text-sm cell-muted">Current scanner, scale, and lot totals</span>
   </div>
-  <div class="summary-card">
-    <div class="summary-label">Scale Captures &middot; 24h</div>
-    <div class="summary-value">{{ captures_last_day }}</div>
-    <div class="summary-footnote">Recent smart-scale reads</div>
-  </div>
-  <div class="summary-card">
-    <div class="summary-label">Open Lots</div>
-    <div class="summary-value">{{ open_lot_count }}</div>
-    <div class="summary-footnote">Lots with remaining inventory</div>
-  </div>
-  <div class="summary-card">
-    <div class="summary-label">Active Scales</div>
-    <div class="summary-value">{{ active_scales }}</div>
-    <div class="summary-footnote">Enabled devices in Settings</div>
+  <div class="summary-row" style="margin-bottom:0;">
+    <div class="summary-stat">
+      <div class="label">Scans &middot; 24h</div>
+      <div class="value">{{ scans_last_day }}</div>
+      <div class="summary-footnote">Recent barcode execution activity</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Scale Captures &middot; 24h</div>
+      <div class="value">{{ captures_last_day }}</div>
+      <div class="summary-footnote">Recent smart-scale reads</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Open Lots</div>
+      <div class="value">{{ open_lot_count }}</div>
+      <div class="summary-footnote">Lots with remaining inventory</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Active Scales</div>
+      <div class="value">{{ active_scales }}</div>
+      <div class="summary-footnote">Enabled devices in Settings</div>
+    </div>
   </div>
 </div>
 
-<div class="summary-row">
-  <div class="summary-card">
-    <div class="summary-label">Ready For Extraction</div>
-    <div class="summary-value">{{ floor_rollups.ready_count }}</div>
-    <div class="summary-footnote">{{ "{:,.1f}".format(floor_rollups.ready_weight_lbs or 0) }} lbs staged, milled, and test-ready</div>
+<div class="card" style="margin-bottom:18px;">
+  <div class="card-header">
+    <h3>Extraction Readiness</h3>
+    <span class="text-sm cell-muted">Prep, testing, and charge status at a glance</span>
   </div>
-  <div class="summary-card">
-    <div class="summary-label">Prep Pending</div>
-    <div class="summary-value">{{ floor_rollups.pending_prep_count }}</div>
-    <div class="summary-footnote">Open lots still marked not milled</div>
-  </div>
-  <div class="summary-card">
-    <div class="summary-label">Testing Pending</div>
-    <div class="summary-value">{{ floor_rollups.pending_testing_count }}</div>
-    <div class="summary-footnote">Open lots waiting on completed or waived testing</div>
-  </div>
-  <div class="summary-card">
-    <div class="summary-label">Pending Charges</div>
-    <div class="summary-value">{{ reactor_charge_view.pending_count }}</div>
-    <div class="summary-footnote">{{ "{:,.1f}".format(reactor_charge_view.pending_weight_lbs or 0) }} lbs recorded but not yet linked to a saved run</div>
+  <div class="summary-row" style="margin-bottom:0;">
+    <div class="summary-stat">
+      <div class="label">Ready For Extraction</div>
+      <div class="value">{{ floor_rollups.ready_count }}</div>
+      <div class="summary-footnote">{{ "{:,.1f}".format(floor_rollups.ready_weight_lbs or 0) }} lbs staged, milled, and test-ready</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Prep Pending</div>
+      <div class="value">{{ floor_rollups.pending_prep_count }}</div>
+      <div class="summary-footnote">Open lots still marked not milled</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Testing Pending</div>
+      <div class="value">{{ floor_rollups.pending_testing_count }}</div>
+      <div class="summary-footnote">Open lots waiting on completed or waived testing</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Pending Charges</div>
+      <div class="value">{{ reactor_charge_view.pending_count }}</div>
+      <div class="summary-footnote">{{ "{:,.1f}".format(reactor_charge_view.pending_weight_lbs or 0) }} lbs recorded but not yet linked to a saved run</div>
+    </div>
   </div>
 </div>
 
@@ -78,7 +90,7 @@
   </div>
   <div class="summary-row">
     {% for card in reactor_charge_view.pending_cards %}
-    <div class="summary-card" style="min-width:260px;flex:1 1 260px;">
+    <div class="card" style="min-width:260px;flex:1 1 260px;margin:0;">
       <div class="summary-label">Reactor {{ card.reactor_number }}</div>
       <div class="summary-value">{{ card.count }}</div>
       <div class="summary-footnote">{{ "{:,.1f}".format(card.total_lbs or 0) }} lbs pending</div>
@@ -193,7 +205,7 @@
   </div>
   <div class="summary-row">
     {% for card in reactor_charge_view.applied_cards %}
-    <div class="summary-card" style="min-width:260px;flex:1 1 260px;">
+    <div class="card" style="min-width:260px;flex:1 1 260px;margin:0;">
       <div class="summary-label">Reactor {{ card.reactor_number }}</div>
       {% if card.charges %}
       <div class="floor-event-list" style="margin-top:8px;">

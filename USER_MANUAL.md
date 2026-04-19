@@ -230,7 +230,7 @@ This table lists lots with remaining weight, including:
 Purchase editors see **Select all**, **Select none**, and **Batch edit…** above this table to change strain name, location, milled, potency, or notes on **multiple lots** at once (see **Batch editing from list screens**).
 
 Each on-hand row now also gives direct action buttons:
-- `Edit` opens the parent purchase record
+- `Edit` opens a dedicated lot editor so you can change strain, potency, location, floor state, prep state, and notes without changing purchase-level status
 - `Charge` opens the extraction-charge workflow
 - `Scan` opens the scanned-lot execution page
 - `Label` opens the printable lot label
@@ -239,6 +239,7 @@ Each on-hand row now also gives direct action buttons:
 Lots may also show a **tracking ID**. This is the permanent machine-readable identity for that physical lot and now drives the printed barcode and scan route for that lot.
 
 Where available, use the **Label** action from Inventory, Purchases, or Journey to print a lot-facing label page. The label now renders a printable **Code 39 barcode**, a **QR code**, and the scan route for that exact lot.
+If you open **Label** from Inventory, the label page now returns you to Inventory instead of defaulting back to Purchases.
 
 ### Floor Ops
 Use **Floor Ops** from the left navigation when you want a quick operator view of:
@@ -250,6 +251,8 @@ Use **Floor Ops** from the left navigation when you want a quick operator view o
 - open lots still pending prep or testing
 - pending extraction charges by reactor
 - recently applied charges already linked to saved runs
+
+The page now uses the same card treatment for the top snapshot metrics, extraction-readiness metrics, floor-state rollups, reactor queues, and recent activity lists so operators can scan it the same way as the rest of the site.
 
 The page also rolls open lots up by floor state:
 - in inventory
