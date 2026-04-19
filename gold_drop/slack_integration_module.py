@@ -8,7 +8,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from gold_drop.slack import (
     _default_slack_run_field_rules,
@@ -17,6 +17,7 @@ from gold_drop.slack import (
     _slack_message_needs_resolution_ui,
     _slack_run_mappings_template_kwargs,
 )
+from services.extraction_charge import build_charge_prefill_payload, create_extraction_charge
 from services.lot_allocation import choose_default_lot_allocation, rank_lot_candidates
 from services.slack_workflow import (
     apply_slack_intake_update_purchase,
@@ -316,6 +317,10 @@ def register_routes(app, root):
         return settings_slack_import_apply_run_view(root, msg_id)
 
     @root.slack_importer_required
+    def settings_slack_import_apply_charge(msg_id):
+        return settings_slack_import_apply_charge_view(root, msg_id)
+
+    @root.slack_importer_required
     def settings_slack_import_apply_intake(msg_id):
         return settings_slack_import_apply_intake_view(root, msg_id)
 
@@ -338,6 +343,7 @@ def register_routes(app, root):
     app.add_url_rule("/settings/slack-imports/<msg_id>/triage-unhide", endpoint="settings_slack_import_triage_unhide", view_func=settings_slack_import_triage_unhide, methods=["POST"])
     app.add_url_rule("/settings/slack-imports/<msg_id>/preview", endpoint="settings_slack_import_preview", view_func=settings_slack_import_preview)
     app.add_url_rule("/settings/slack-imports/<msg_id>/apply-run", endpoint="settings_slack_import_apply_run", view_func=settings_slack_import_apply_run, methods=["GET", "POST"])
+    app.add_url_rule("/settings/slack-imports/<msg_id>/apply-charge", endpoint="settings_slack_import_apply_charge", view_func=settings_slack_import_apply_charge, methods=["POST"])
     app.add_url_rule("/settings/slack-imports/<msg_id>/apply-intake", endpoint="settings_slack_import_apply_intake", view_func=settings_slack_import_apply_intake, methods=["POST"])
     app.add_url_rule("/settings/slack-run-mappings", endpoint="settings_slack_run_mappings", view_func=settings_slack_run_mappings, methods=["GET", "POST"])
     app.add_url_rule("/api/slack/events", endpoint="slack_events", view_func=slack_events, methods=["POST"])
@@ -779,6 +785,33 @@ def settings_slack_import_preview_view(root, msg_id):
     )
 
 
+def _slack_selected_supplier_ids(root, *, derived: dict, resolution: dict | None) -> list[str]:
+    if resolution and (resolution.get("supplier_mode") or "").strip() == "existing":
+        supplier_id = (resolution.get("supplier_id") or "").strip()
+        return [supplier_id] if supplier_id else []
+    if _slack_message_needs_resolution_ui(derived):
+        return []
+    source_raw = (derived.get("source") or "").strip()
+    if not source_raw:
+        return []
+    supplier_candidates = slack_supplier_candidates_for_source(root, source_raw)
+    return [str(candidate["id"]) for candidate in supplier_candidates[:3]]
+
+
+def _slack_lot_candidates_for_run_weight(root, *, derived: dict, resolution: dict | None, requested_run_lbs: float | None) -> list[dict]:
+    if not requested_run_lbs:
+        return []
+    selected_supplier_ids = _slack_selected_supplier_ids(root, derived=derived, resolution=resolution)
+    if not selected_supplier_ids:
+        return []
+    return rank_lot_candidates(
+        root,
+        supplier_ids=selected_supplier_ids,
+        strain_name=(derived.get("strain") or "").strip(),
+        requested_weight_lbs=requested_run_lbs,
+    )
+
+
 def settings_slack_import_apply_run_view(root, msg_id):
     row = root.db.session.get(root.SlackIngestedMessage, msg_id)
     if not row:
@@ -852,22 +885,13 @@ def settings_slack_import_apply_run_view(root, msg_id):
         if selected_allocations_err:
             root.flash(selected_allocations_err, "error")
             return root.redirect(root.url_for("settings_slack_import_preview", msg_id=msg_id))
-        selected_supplier_ids: list[str] = []
-        if resolution and (resolution.get("supplier_mode") or "").strip() == "existing":
-            supplier_id = (resolution.get("supplier_id") or "").strip()
-            if supplier_id:
-                selected_supplier_ids = [supplier_id]
-        elif not _slack_message_needs_resolution_ui(derived):
-            source_raw = (derived.get("source") or "").strip()
-            supplier_candidates = slack_supplier_candidates_for_source(root, source_raw) if source_raw else []
-            selected_supplier_ids = [str(candidate["id"]) for candidate in supplier_candidates[:3]]
-        if selected_supplier_ids:
-            lot_candidates = rank_lot_candidates(
-                root,
-                supplier_ids=selected_supplier_ids,
-                strain_name=(derived.get("strain") or "").strip(),
-                requested_weight_lbs=requested_run_lbs,
-            )
+        lot_candidates = _slack_lot_candidates_for_run_weight(
+            root,
+            derived=derived,
+            resolution=resolution,
+            requested_run_lbs=requested_run_lbs,
+        )
+        if lot_candidates:
             suggested_allocations = selected_allocations or choose_default_lot_allocation(lot_candidates, requested_run_lbs)
     slack_run_prefill_put(
         root.session,
@@ -882,6 +906,105 @@ def settings_slack_import_apply_run_view(root, msg_id):
     )
     root.flash("Opening new run with Slack prefilled fields. Review and save when ready.", "success")
     return root.redirect(root.url_for("run_new"))
+
+
+def settings_slack_import_apply_charge_view(root, msg_id):
+    row = root.db.session.get(root.SlackIngestedMessage, msg_id)
+    if not row:
+        root.flash("Slack import row not found.", "error")
+        return root.redirect(root.url_for("settings_slack_imports"))
+
+    derived = _derive_slack_production_message(row.raw_text or "")
+    if derived.get("message_kind") == "biomass_intake":
+        root.flash("Biomass intake messages cannot create extraction charges.", "error")
+        return root.redirect(root.url_for("settings_slack_import_preview", msg_id=msg_id))
+
+    resolution = None
+    if _slack_message_needs_resolution_ui(derived):
+        resolution, res_err = slack_resolution_from_apply_form(
+            root,
+            root.request.form,
+            derived=derived,
+            message_ts=str(row.message_ts or ""),
+        )
+        if res_err:
+            root.flash(res_err, "error")
+            return root.redirect(root.url_for("settings_slack_import_preview", msg_id=msg_id))
+
+    rules = root._load_slack_run_field_rules()
+    eff_kind = derived.get("message_kind") or row.message_kind
+    preview = _preview_slack_to_run_fields(derived, str(row.message_ts or ""), eff_kind, rules)
+    requested_run_lbs = preview.get("filled", {}).get("bio_in_reactor_lbs")
+    reactor_number = preview.get("filled", {}).get("reactor_number")
+    try:
+        requested_run_lbs = float(requested_run_lbs) if requested_run_lbs not in (None, "") else None
+    except (TypeError, ValueError):
+        requested_run_lbs = None
+    try:
+        reactor_number = int(reactor_number) if reactor_number not in (None, "") else None
+    except (TypeError, ValueError):
+        reactor_number = None
+
+    if requested_run_lbs is None:
+        root.flash("Slack charge creation requires a parsed biomass weight.", "error")
+        return root.redirect(root.url_for("settings_slack_import_preview", msg_id=msg_id))
+    if reactor_number is None:
+        root.flash("Slack charge creation requires a parsed reactor number.", "error")
+        return root.redirect(root.url_for("settings_slack_import_preview", msg_id=msg_id))
+
+    selected_allocations, selected_allocations_err = slack_selected_allocations_from_form(
+        root.request.form,
+        requested_run_lbs=requested_run_lbs,
+    )
+    if selected_allocations_err:
+        root.flash(selected_allocations_err, "error")
+        return root.redirect(root.url_for("settings_slack_import_preview", msg_id=msg_id))
+
+    lot_candidates = _slack_lot_candidates_for_run_weight(
+        root,
+        derived=derived,
+        resolution=resolution,
+        requested_run_lbs=requested_run_lbs,
+    )
+    suggested_allocations = selected_allocations or choose_default_lot_allocation(lot_candidates, requested_run_lbs)
+    if len(suggested_allocations) != 1:
+        root.flash(
+            "Slack charge creation requires exactly one source lot. Use 'Create run from Slack' for split or multi-lot allocations.",
+            "error",
+        )
+        return root.redirect(root.url_for("settings_slack_import_preview", msg_id=msg_id))
+
+    allocation = suggested_allocations[0]
+    lot = root.db.session.get(root.PurchaseLot, allocation["lot_id"])
+    if lot is None or lot.deleted_at is not None:
+        root.flash("Selected source lot was not found.", "error")
+        return root.redirect(root.url_for("settings_slack_import_preview", msg_id=msg_id))
+
+    try:
+        charged_at = datetime.fromtimestamp(float(row.message_ts or "0"), tz=timezone.utc)
+    except (TypeError, ValueError, OSError, OverflowError):
+        charged_at = datetime.now(timezone.utc)
+
+    try:
+        charge = create_extraction_charge(
+            root,
+            lot=lot,
+            charged_weight_lbs=float(allocation["weight_lbs"] or 0),
+            reactor_number=reactor_number,
+            charged_at=charged_at,
+            source_mode="slack",
+            notes=f"Created from Slack import {row.channel_id} @ {row.message_ts}",
+            slack_ingested_message_id=row.id,
+        )
+        root.session[root.SCAN_RUN_PREFILL_SESSION_KEY] = build_charge_prefill_payload(root, lot, charge)
+        root.db.session.commit()
+    except ValueError as exc:
+        root.db.session.rollback()
+        root.flash(str(exc), "error")
+        return root.redirect(root.url_for("settings_slack_import_preview", msg_id=msg_id))
+
+    root.flash("Slack extraction charge recorded. Review the run form and save when ready.", "success")
+    return root.redirect(root.url_for("run_new", return_to=root.url_for("settings_slack_import_preview", msg_id=msg_id)))
 
 
 def settings_slack_import_apply_intake_view(root, msg_id):

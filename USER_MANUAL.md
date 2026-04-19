@@ -157,15 +157,19 @@ If your account has **Slack Importer** access (or you are a Super Admin), you ca
    - accept the suggested lot,
    - manually assign one lot, or
    - split the run across multiple candidate lots before leaving the preview page.
-5. Click **Create run** / **Create run from Slack**.
-6. The app opens **New Run** with values filled from your active **Slack → Run** mapping rules and with your selected lot rows prefilled. Review everything before saving.
-7. **Save** the run to store it. Nothing is written to Runs until you save.
+5. Choose one of these actions:
+   - **Create run / Create run from Slack** when you want a prefilled run and may need a split allocation across multiple lots.
+   - **Create extraction charge from Slack** when the message clearly maps to exactly one source lot, one reactor, and one biomass weight.
+6. If you choose **Create run**, the app opens **New Run** with values filled from your active **Slack → Run** mapping rules and with your selected lot rows prefilled.
+7. If you choose **Create extraction charge from Slack**, the app records the extraction charge immediately, then opens **New Run** with that saved charge attached.
+8. Review everything before saving. Nothing is written to Runs until you save the run form.
 
 **Roles:** Opening the Slack imports UI and the apply flow requires the **Slack Importer** flag (Settings → Users) or **Super Admin**. **Saving** the run still requires **User** or **Super Admin** (edit access). If you are a **Viewer** with Slack Importer, you can review the prefilled form, but Save stays disabled until an editor saves the run (or your role is upgraded).
 
 **Second apply / duplicates:** If a run is already linked to the same Slack message (`channel` + message `ts`), the app warns you and asks for **explicit confirmation** before opening another prefilled run. Saving a second run is allowed after you confirm; use sparingly and soft-delete mistaken duplicates from **Runs** if needed.
 
 **Traceability:** When you save a new run started from Slack apply, the run stores a **backlink** to that Slack message (`slack_channel_id`, `slack_message_ts`, and applied timestamp). The Slack imports list shows **Promotion** (not promoted vs linked runs) and **Coverage** (how completely mapping rules used the parsed payload—heuristic, not a guarantee of what you typed on the form).
+Slack-created extraction charges also keep a backlink to the imported Slack message and show up on **Floor Ops** immediately because they are stored as normal `ExtractionCharge` records with source mode `slack`.
 
 ### What happens on save
 - **Approved lots only:** you cannot allocate weight from a lot whose purchase is **not approved**; the app shows an error naming the batch. Approve the purchase on **Edit Purchase** (or complete the **Committed** approval path on **Biomass Pipeline**) first.

@@ -356,6 +356,9 @@ This keeps each deployed facility self-identifying for future aggregation withou
 - **April 11, 2026:** Modular route extraction now also covers **`gold_drop/costs_module.py`**, **`gold_drop/inventory_module.py`**, **`gold_drop/batch_edit_module.py`**, and **`gold_drop/strains_module.py`**. If work is interrupted again, resume by checking **`app.py`** `_register_extracted_routes()` and **`tests/test_app_factory.py`** to see the current active module surface.
 - `app.py` still contains some Slack compatibility wrappers and lower-level intake/resolution helpers, but Slack route bodies now delegate into the module. If work is interrupted again, resume by checking:
 - **`gold_drop/slack_integration_module.py`** - active Slack integration surface
+- Slack preview now has two apply paths:
+  - `POST /settings/slack-imports/<msg_id>/apply-run` keeps the existing run-prefill behavior and can carry split lot allocations.
+  - `POST /settings/slack-imports/<msg_id>/apply-charge` creates a canonical `ExtractionCharge` with `source_mode="slack"`, requires exactly one lot allocation, writes `SCAN_RUN_PREFILL_SESSION_KEY` via `build_charge_prefill_payload(...)`, and redirects into `runs/new`.
 - **`gold_drop/settings_module.py`** - Settings POST delegates for `form_type=slack`
 - **`tests/test_app_factory.py`** and **`tests/test_slack_mapping_logic.py`** - current smoke and Slack logic coverage
 

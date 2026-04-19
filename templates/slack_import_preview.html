@@ -201,9 +201,17 @@
       </div>
     </div>
 
-    <button type="submit" class="btn btn-primary">Create run from Slack</button>
-    {% if duplicate_run %}
-    <span class="text-sm" style="margin-left:12px;color:var(--yellow);">Already linked — you will confirm before a duplicate apply.</span>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+      <button type="submit" class="btn btn-primary">Create run from Slack</button>
+      {% if preview.filled.get('bio_in_reactor_lbs') and preview.filled.get('reactor_number') %}
+      <button type="submit" class="btn btn-secondary" formaction="{{ url_for('settings_slack_import_apply_charge', msg_id=row.id) }}">Create extraction charge from Slack</button>
+      {% endif %}
+      {% if duplicate_run %}
+      <span class="text-sm" style="color:var(--yellow);">Already linked — you will confirm before a duplicate apply.</span>
+      {% endif %}
+    </div>
+    {% if preview.filled.get('bio_in_reactor_lbs') and preview.filled.get('reactor_number') %}
+    <p class="text-sm cell-muted" style="margin-top:10px;">Charge creation requires exactly one source lot. If you need a split allocation, use <strong>Create run from Slack</strong> instead.</p>
     {% endif %}
   </form>
   {% else %}
@@ -211,11 +219,17 @@
     <input type="hidden" name="slack_supplier_mode" value="skip">
     <input type="hidden" name="slack_selected_allocations_json" value="{{ suggested_allocations_json or '[]' }}">
     <button type="submit" class="btn btn-primary">Create run from Slack</button>
+    {% if preview.filled.get('bio_in_reactor_lbs') and preview.filled.get('reactor_number') %}
+    <button type="submit" class="btn btn-secondary" formaction="{{ url_for('settings_slack_import_apply_charge', msg_id=row.id) }}" style="margin-left:10px;">Create extraction charge from Slack</button>
+    {% endif %}
   </form>
   {% if duplicate_run %}
   <span class="text-sm" style="margin-left:12px;color:var(--yellow);">Already linked — you will be asked to confirm a duplicate.</span>
   {% endif %}
   <p class="text-sm cell-muted" style="margin-top:12px;">This message has no parsed <code>source:</code> or <code>strain:</code> line — optional supplier/biomass controls are skipped.</p>
+  {% if preview.filled.get('bio_in_reactor_lbs') and preview.filled.get('reactor_number') %}
+  <p class="text-sm cell-muted" style="margin-top:10px;">Charge creation requires exactly one source lot. If you need a split allocation, use <strong>Create run from Slack</strong> instead.</p>
+  {% endif %}
   {% endif %}
 </div>
 

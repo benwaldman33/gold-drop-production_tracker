@@ -30,9 +30,9 @@ After logging in as **admin**:
 3. **Journey page (UI)**
    - Open: `http://localhost:5050/purchases/<purchase_id>/journey`
    - Validate stage cards, inventory lots, run allocations, tracking IDs, and drill links.
-4. **Slack preview -> run allocation flow**
+4. **Slack preview -> run allocation / charge flow**
    - Open: `http://localhost:5050/settings/slack-imports`
-   - Preview a synced message, review candidate lots, optionally split lot weights, then open **Create run from Slack**.
+   - Preview a synced message, review candidate lots, optionally split lot weights, then open **Create run from Slack** or **Create extraction charge from Slack**.
 5. **Run form allocation summary**
    - Open: `http://localhost:5050/runs/new`
    - Validate the live allocation summary, projected remaining lot balances, and exact-match requirement against **Lbs in Reactor**.
@@ -113,7 +113,7 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 - **Purchases list** — Optional **Hide complete & cancelled** on the filter row; **Export CSV** can follow the same option when active.
 - **Purchase form** — **Save Purchase** at the top of the screen (same submit as the bottom) for long forms.
 - **Windows / IANA timezones** — `tzdata` is listed in `requirements.txt` so `zoneinfo` (Slack message dates, display timezone) works on Windows; install dependencies with `pip install -r requirements.txt`.
-- **Slack Integration** — Outbound notifications; inbound slash commands, interactivity, and Events API URL (`/api/slack/events`); optional **channel history sync** for up to six channels with per-channel cursors (`conversations.history` → **Slack imports** triage UI); **Run apply** now includes ranked candidate source lots, manual lot selection or split allocation on preview, prefilled run allocation rows, Run backlink + audit, and **Slack Importer** user flag
+- **Slack Integration** — Outbound notifications; inbound slash commands, interactivity, and Events API URL (`/api/slack/events`); optional **channel history sync** for up to six channels with per-channel cursors (`conversations.history` → **Slack imports** triage UI); **Run apply** now includes ranked candidate source lots, manual lot selection or split allocation on preview, prefilled run allocation rows, Run backlink + audit, and **Slack Importer** user flag. Slack preview can also create a canonical extraction charge directly when the message resolves to one lot, one reactor, and one biomass weight.
 - **Supplier Performance** — All-time, 90-day, and last-batch analytics per farm
 - **Supplier Merge / Correction** — Super Admins can preview and merge duplicate suppliers from the supplier record page; linked purchases, lots, lab tests, attachments, and photos are rehomed while lineage is preserved
 - **Supplier duplicate warnings** — Main-app supplier creation and the standalone buyer flow now warn on typo-close supplier names before saving, while the existing merge workflow remains available for cleanup when duplicates already exist.
