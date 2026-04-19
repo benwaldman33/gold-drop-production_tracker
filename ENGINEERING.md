@@ -9,7 +9,9 @@ Current documentation note: the standalone buying and standalone receiving surfa
 Before closing a coding sprint:
 
 - add or update tests that cover the shipped behavior
-- run the relevant tests and make sure they pass
+- run targeted tests during implementation/debugging
+- run the full Python test suite before the final commit
+- run affected standalone app test suites before the final commit when those apps changed
 - review and update the core docs as needed:
   - `PRD.md`
   - `README.md`
