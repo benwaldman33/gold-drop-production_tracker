@@ -1403,12 +1403,146 @@ def test_inventory_on_hand_rows_expose_edit_and_charge_actions():
             _login(client, "admin")
             resp = client.get("/inventory")
             assert resp.status_code == 200
-            assert f'/purchases/{purchase_id}/edit'.encode() in resp.data
+            assert f"/lots/{lot_id}/edit".encode() in resp.data
             assert f'/lots/{lot_id}/charge'.encode() in resp.data
             assert f'/scan/lot/{tracking_id}'.encode() in resp.data
             assert b">Edit<" in resp.data
             assert b">Charge<" in resp.data
             assert b">Scan<" in resp.data
+    finally:
+        with app.app_context():
+            lot_obj = db.session.get(PurchaseLot, lot_id)
+            if lot_obj:
+                db.session.delete(lot_obj)
+            purchase_obj = db.session.get(Purchase, purchase_id)
+            if purchase_obj:
+                db.session.delete(purchase_obj)
+            supplier_obj = db.session.get(Supplier, supplier_id)
+            if supplier_obj:
+                db.session.delete(supplier_obj)
+            db.session.commit()
+
+
+def test_inventory_lot_edit_updates_only_lot_fields_and_returns_to_inventory():
+    app = app_module.app
+    with app.app_context():
+        supplier = Supplier(name="Inventory Edit Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = Purchase(
+            supplier_id=supplier.id,
+            purchase_date=date(2026, 4, 18),
+            delivery_date=date(2026, 4, 18),
+            status="delivered",
+            stated_weight_lbs=40,
+            purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            clean_or_dirty="clean",
+            testing_status="completed",
+            batch_id=f"IED-{app_module.gen_uuid()[:6]}",
+        )
+        db.session.add(purchase)
+        db.session.flush()
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Inventory Edit Dream",
+            weight_lbs=40,
+            remaining_weight_lbs=40,
+            floor_state="inventory",
+            milled=False,
+            location="Dock B",
+        )
+        db.session.add(lot)
+        db.session.commit()
+        purchase_id = purchase.id
+        lot_id = lot.id
+        supplier_id = supplier.id
+
+    try:
+        with app.test_client() as client:
+            _login(client, "admin")
+            edit_page = client.get(f"/lots/{lot_id}/edit?return_to=/inventory")
+            assert edit_page.status_code == 200
+            assert b"Edit Lot" in edit_page.data
+            assert b"Save Lot" in edit_page.data
+
+            save = client.post(
+                f"/lots/{lot_id}/edit",
+                data={
+                    "strain_name": "Inventory Edited Dream",
+                    "potency_pct": "21.5",
+                    "location": "Vault A",
+                    "floor_state": "vault",
+                    "milled_state": "milled",
+                    "notes": "updated from inventory",
+                    "return_to": "/inventory",
+                },
+                follow_redirects=False,
+            )
+            assert save.status_code in (302, 303)
+            assert save.headers["Location"].endswith("/inventory")
+
+            with app.app_context():
+                lot = db.session.get(PurchaseLot, lot_id)
+                purchase = db.session.get(Purchase, purchase_id)
+                assert lot is not None
+                assert purchase is not None
+                assert lot.strain_name == "Inventory Edited Dream"
+                assert float(lot.potency_pct or 0) == 21.5
+                assert lot.location == "Vault A"
+                assert lot.floor_state == "vault"
+                assert lot.milled is True
+                assert lot.notes == "updated from inventory"
+                assert purchase.status == "delivered"
+    finally:
+        with app.app_context():
+            lot_obj = db.session.get(PurchaseLot, lot_id)
+            if lot_obj:
+                db.session.delete(lot_obj)
+            purchase_obj = db.session.get(Purchase, purchase_id)
+            if purchase_obj:
+                db.session.delete(purchase_obj)
+            supplier_obj = db.session.get(Supplier, supplier_id)
+            if supplier_obj:
+                db.session.delete(supplier_obj)
+            db.session.commit()
+
+
+def test_inventory_label_link_can_return_to_inventory():
+    app = app_module.app
+    with app.app_context():
+        supplier = Supplier(name="Inventory Label Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = Purchase(
+            supplier_id=supplier.id,
+            purchase_date=date(2026, 4, 18),
+            delivery_date=date(2026, 4, 18),
+            status="delivered",
+            stated_weight_lbs=30,
+            purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            batch_id=f"ILB-{app_module.gen_uuid()[:6]}",
+        )
+        db.session.add(purchase)
+        db.session.flush()
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Inventory Label Dream",
+            weight_lbs=30,
+            remaining_weight_lbs=30,
+        )
+        db.session.add(lot)
+        db.session.commit()
+        lot_id = lot.id
+        purchase_id = purchase.id
+        supplier_id = supplier.id
+
+    try:
+        with app.test_client() as client:
+            _login(client, "admin")
+            resp = client.get(f"/lots/{lot_id}/label?return_to=/inventory")
+            assert resp.status_code == 200
+            assert b"Back to inventory" in resp.data
+            assert b'href="/inventory"' in resp.data
     finally:
         with app.app_context():
             lot_obj = db.session.get(PurchaseLot, lot_id)

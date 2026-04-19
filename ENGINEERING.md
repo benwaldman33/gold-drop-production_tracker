@@ -40,6 +40,8 @@ This is a review checklist, not a rule to make no-op edits. Update only the docu
 - **`gold_drop/purchases_module.py`** - purchases list/form/approval route logic delegated from `app.py`; inline list approvals in Purchases and Biomass Pipeline post through this module and preserve `return_to`
   - purchase save now also persists shared pipeline/mobile fields such as `availability_date` and `testing_notes`
   - purchase routes now include lot splitting from the main purchase form (`POST /lots/<lot_id>/split`) for confirmed inventory adjustments
+  - purchase routes now also include a dedicated lot editor (`GET|POST /lots/<lot_id>/edit`) so Inventory can edit lot-level fields without reopening the purchase form and reprocessing purchase-level status logic
+  - single-lot label routes preserve caller context through `return_to`, so Inventory and Purchase surfaces can send operators back to the right page after printing
   - **`gold_drop/biomass_module.py`** - biomass pipeline list/form/archive route logic delegated from `app.py`
   - **`gold_drop/runs_module.py`** - run list/form/delete route logic delegated from `app.py`
   - **`gold_drop/dashboard_module.py`** - dashboard, department, and biomass purchasing dashboard routes delegated from `app.py`
@@ -60,7 +62,7 @@ This is a review checklist, not a rule to make no-op edits. Update only the docu
   - **`gold_drop/api_v1_module.py`** - token-authenticated internal read-only API routes under `/api/v1`
   - **`gold_drop/mobile_module.py`** - user-authenticated mobile write API routes under `/api/mobile/v1`
   - **`services/mobile_write_api.py`** - shared standalone/mobile write helpers for workflow enablement, same-origin enforcement, capabilities, and audit metadata
-  - **`gold_drop/floor_module.py`** - operator floor activity page for recent scans, recent scale captures, floor-state rollups, and extraction-readiness rollups
+  - **`gold_drop/floor_module.py`** - operator floor activity page for recent scans, recent scale captures, floor-state rollups, extraction-readiness rollups, and reactor charge queues; the template now uses the same card treatment for top summaries and detail lists so the page scans consistently with the rest of the app
   - **`static/js/scan_camera.js`** - in-browser camera scanning client for `/scan`, with `BarcodeDetector` support plus manual/scanner fallback
   - **`services/api_auth.py`** - bearer-token generation, hashing, lookup, and scope enforcement
   - **`services/api_site.py`** - site identity + shared API response metadata

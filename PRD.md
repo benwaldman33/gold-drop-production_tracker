@@ -529,6 +529,8 @@ Acceptance criteria:
 #### Batch edit (inventory lots and in-transit purchases)
 - **On-hand table:** Checkboxes identify **PurchaseLot** IDs; batch form may update strain name, location, milled flag, potency, append notes (`can_edit_purchases`).
 - **In-transit table:** Checkboxes identify **Purchase** IDs; batch behavior matches **Purchases** batch edit (same permission and rules).
+- **Direct lot actions:** on-hand rows must also expose direct `Edit`, `Charge`, `Scan`, `Label`, and `Journey` actions. `Edit` must target lot-level fields only and must not rerun purchase-level inventory status logic.
+- **Return-path continuity:** if a user opens a label from Inventory, the label page must return them to Inventory rather than defaulting to Purchases.
 - **Acceptance criteria:** Selection is limited to **visible page** of the table; toolbar actions are disabled until ≥2 rows are checked.
 
 ---

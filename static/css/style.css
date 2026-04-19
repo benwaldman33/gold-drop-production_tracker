@@ -275,6 +275,28 @@ a:hover { color: var(--gold-light); }
   margin-top: 4px;
 }
 
+.summary-card {
+  background: var(--dark-card);
+  border: 1px solid var(--dark-border);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+}
+
+.summary-card .summary-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.summary-card .summary-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  margin-top: 4px;
+}
+
 /* Tables */
 .table-wrap {
   overflow-x: auto;

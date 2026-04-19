@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Edit Lot{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Edit Lot</h2>
+  <a href="{{ return_to }}" class="btn btn-secondary">Back</a>
+</div>
+
+<div class="card floor-scan-hero">
+  <div class="floor-scan-hero-top">
+    <div>
+      <div class="text-sm cell-muted">Lot</div>
+      <div class="text-mono floor-scan-id">{{ lot.tracking_id or lot.id[:8] }}</div>
+      <div class="floor-scan-subtitle">{{ lot.strain_name }} &middot; {{ lot.supplier_name }} &middot; {{ purchase.batch_id or purchase.id[:8] }}</div>
+    </div>
+    {% if lot.tracking_id %}
+    <a href="{{ url_for('scan_lot', tracking_id=lot.tracking_id) }}" class="btn btn-secondary">Open Scan Page</a>
+    {% endif %}
+  </div>
+
+  <div class="floor-scan-metrics">
+    <div class="floor-scan-metric">
+      <div class="text-sm cell-muted">Remaining</div>
+      <div class="floor-scan-metric-value">{{ "{:,.1f}".format(lot.remaining_weight_lbs or 0) }} lbs</div>
+    </div>
+    <div class="floor-scan-metric">
+      <div class="text-sm cell-muted">Original</div>
+      <div class="floor-scan-metric-value">{{ "{:,.1f}".format(lot.weight_lbs or 0) }} lbs</div>
+    </div>
+    <div class="floor-scan-metric">
+      <div class="text-sm cell-muted">Allocated</div>
+      <div class="floor-scan-metric-value">{{ "{:,.1f}".format(lot.allocated_weight_lbs or 0) }} lbs</div>
+    </div>
+    <div class="floor-scan-metric">
+      <div class="text-sm cell-muted">Testing</div>
+      <div class="floor-scan-metric-value">{{ purchase.testing_status.replace('_', ' ') if purchase.testing_status else '-' }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <form method="POST">
+    <input type="hidden" name="return_to" value="{{ return_to }}">
+    <div class="form-section">
+      <h4>Lot Details</h4>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Strain Name *</label>
+          <input type="text" name="strain_name" value="{{ lot.strain_name }}" required>
+        </div>
+        <div class="form-group">
+          <label>Potency %</label>
+          <input type="number" name="potency_pct" value="{{ lot.potency_pct if lot.potency_pct is not none else '' }}" step="0.1">
+        </div>
+        <div class="form-group">
+          <label>Location</label>
+          <input type="text" name="location" value="{{ lot.location or '' }}">
+        </div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Floor State</label>
+          <select name="floor_state">
+            {% for code, label in [('inventory', 'In inventory'), ('vault', 'In vault'), ('reactor_staging', 'Reactor staging'), ('quarantine', 'Quarantine'), ('custom', 'Custom movement')] %}
+            <option value="{{ code }}" {% if (lot.floor_state or 'inventory') == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Prep State</label>
+          <select name="milled_state">
+            <option value="not_milled" {% if not lot.milled %}selected{% endif %}>Not milled</option>
+            <option value="milled" {% if lot.milled %}selected{% endif %}>Milled</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea name="notes" rows="3">{{ lot.notes or '' }}</textarea>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <a href="{{ return_to }}" class="btn btn-secondary">Cancel</a>
+      <button type="submit" class="btn btn-primary">Save Lot</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
