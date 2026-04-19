@@ -36,19 +36,35 @@
     {% endif %}
     {% if scan_meta and scan_meta.tracking_id %}
     <div class="flash flash-success" style="margin-bottom:16px;">
+      {% if scan_meta.charge_id %}
+      <strong>Extraction charge recorded:</strong> lot <strong>{{ scan_meta.tracking_id }}</strong> is preloaded from a saved charge event.
+      <span class="text-sm" style="display:block;margin-top:6px;color:var(--text-muted);">
+        {{ "{:,.1f}".format(scan_meta.planned_weight_lbs or 0) }} lbs into Reactor {{ scan_meta.reactor_number or '?' }}
+        {% if scan_meta.charged_at_label %}&middot; charged {{ scan_meta.charged_at_label }}{% endif %}
+        {% if scan_meta.charge_source_mode %}&middot; source {{ scan_meta.charge_source_mode.replace('_', ' ') }}{% endif %}
+      </span>
+      {% if scan_meta.charge_notes %}
+      <span class="text-sm" style="display:block;margin-top:6px;color:var(--text-muted);">
+        Charge notes: {{ scan_meta.charge_notes }}
+      </span>
+      {% endif %}
+      {% elif scan_meta.run_start_mode == 'full_remaining' %}
       <strong>Scanner prefill:</strong> lot <strong>{{ scan_meta.tracking_id }}</strong> was selected from a scan.
-      {% if scan_meta.run_start_mode == 'full_remaining' %}
       <span class="text-sm" style="display:block;margin-top:6px;color:var(--text-muted);">
         Full remaining lot selected. Reactor weight and source allocation were prefilled.
       </span>
       {% elif scan_meta.run_start_mode == 'partial' and scan_meta.planned_weight_lbs %}
+      <strong>Scanner prefill:</strong> lot <strong>{{ scan_meta.tracking_id }}</strong> was selected from a scan.
       <span class="text-sm" style="display:block;margin-top:6px;color:var(--text-muted);">
         Partial run selected for {{ "{:,.1f}".format(scan_meta.planned_weight_lbs or 0) }} lbs. Reactor weight and source allocation were prefilled.
       </span>
       {% elif scan_meta.run_start_mode == 'scale_capture' %}
+      <strong>Scanner prefill:</strong> lot <strong>{{ scan_meta.tracking_id }}</strong> was selected from a scan.
       <span class="text-sm" style="display:block;margin-top:6px;color:var(--text-muted);">
         Scale-first flow selected{% if scan_meta.scale_device_id %}; capture from the selected scale before saving this run.{% else %}; capture from a scale before saving this run.{% endif %}
       </span>
+      {% else %}
+      <strong>Scanner prefill:</strong> lot <strong>{{ scan_meta.tracking_id }}</strong> was selected from a scan.
       {% endif %}
       <span class="text-sm" style="display:block;margin-top:6px;">
         {{ scan_meta.strain_name or 'Unknown strain' }}{% if scan_meta.supplier_name %} / {{ scan_meta.supplier_name }}{% endif %}

@@ -38,11 +38,14 @@ After logging in as **admin**:
    - Validate the live allocation summary, projected remaining lot balances, and exact-match requirement against **Lbs in Reactor**.
 6. **Scanner workflow**
    - Open a lot label or copy any lot tracking ID, then open: `http://localhost:5050/scan/lot/<tracking_id>`
-   - Validate the scan landing page, **Start Run From This Lot**, **Confirm Movement**, **Confirm Testing**, and recent scan activity.
-7. **Journey API (JSON)**
+   - Validate the scan landing page, **Open Charge Form**, **Confirm Movement**, **Confirm Testing**, and recent scan activity.
+7. **Extraction charge workflow**
+   - From a scanned lot or from **Purchases -> Edit -> Charge Lot**, record lbs, reactor, and charge time.
+   - Confirm the app opens **New Run** with the saved charge already attached.
+8. **Journey API (JSON)**
    - Open: `http://localhost:5050/api/purchases/<purchase_id>/journey`
    - Optional admin-only archived mode: `?include_archived=1`
-8. **Journey exports**
+9. **Journey exports**
    - JSON export: `http://localhost:5050/purchases/<purchase_id>/journey/export?format=json`
    - CSV export: `http://localhost:5050/purchases/<purchase_id>/journey/export?format=csv`
 
@@ -80,7 +83,8 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 - **Purchase approval gate** — On-hand inventory, dashboard on-hand, run lot pickers, and saving runs that consume lots require **`purchase_approved_at`**. You cannot set on-hand statuses (**delivered**, **in_testing**, **available**, **processing**) on **Edit Purchase** until approved. Existing on-hand purchases are **backfilled** as approved on startup. Slack **biomass intake** creates purchases as **`ordered`** until reviewed/approved per your process. Eligible approvers can now approve directly from the **Purchases** list or **Biomass Pipeline** list without opening the record first.
 - **Lot tracking IDs** — Purchase lots now receive machine-readable tracking fields (`tracking_id`, barcode payload, QR payload, label metadata) at creation or approval time, and printable labels now render both a Code 39 barcode and a QR code for floor execution.
 - **Confirmed lot splitting** — Edit Purchase now includes **Split Existing Lot** so operators can break a confirmed lot's remaining inventory into a new child lot without leaving the purchase workflow; the original lot is reduced, the child lot gets fresh tracking fields, and the action is audited.
-- **Scanner workflows** — Scanned lot labels now open a dedicated lot workflow page with quick actions for **Start Run From This Lot**, **Confirm Movement**, **Confirm Testing**, **Print Label**, and recent scan activity history.
+- **Extraction charge workflow** — A lot can now be charged into production from either the main purchase form (**Charge Lot**) or the scanned-lot workflow. The app records a persisted extraction-charge event with lbs, reactor, charge time, notes, and source mode before opening the run form.
+- **Scanner workflows** — Scanned lot labels now open a dedicated lot workflow page with quick actions for **Open Charge Form**, **Confirm Movement**, **Confirm Testing**, **Print Label**, and recent scan activity history.
 - **Guided floor execution** — The scanned-lot page now supports guided run-start modes (**blank**, **full remaining lot**, **partial amount**, **scale capture first**) plus standardized movement actions for **vault**, **reactor staging**, **quarantine**, **inventory return**, or a custom location.
 - **Floor Ops** — A dedicated operator floor page surfaces recent scan activity, recent scale captures, open lot counts, active device counts, floor-state rollups, and extraction-readiness counts in one place, with a direct **Scan Center** launcher.
 - **Tablet camera scanning** — `/scan` provides an in-browser camera scanning page for supported mobile browsers, with manual and Bluetooth-scanner fallback when camera barcode detection is unavailable.

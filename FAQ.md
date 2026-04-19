@@ -240,7 +240,7 @@ No. `git pull` only updates application files. Your database is separate and sho
 Add new questions here as operators raise them; keep answers brief and link to the manual where useful.
 ## Can a lot label do anything besides open the journey?
 Yes. Scanning the lot barcode now opens a dedicated scanned-lot execution page where operators can:
-- start a new run with the lot preselected
+- open the extraction-charge form for that lot
 - confirm movement/location
 - confirm testing status
 - review recent scan activity
@@ -262,19 +262,22 @@ On supported browsers, the page uses the device camera to detect a lot barcode a
 For local desktop testing, `http://localhost` works. On tablets, camera access usually requires HTTPS.
 
 Yes. The scanner workflow now opens a dedicated scanned-lot page at `/scan/lot/<tracking_id>`. From there an operator can:
-- start a new run with that lot preselected
+- open a dedicated extraction-charge form for that lot
 - confirm the lot's physical storage location
 - confirm the purchase testing status
 - review recent scan activity for that lot
 
-**What does "Start Run From This Lot" do now?**
+**What does "Open Charge Form" do now?**
 It is now a guided floor action. The operator can choose:
 - a blank run form
 - full remaining lot
 - a partial lbs amount
 - a scale-capture-first flow
 
-Those choices carry into the run form so reactor lbs and suggested source allocation can be prefilled when appropriate.
+Those choices open a dedicated extraction-charge form. After the operator records the actual pounds, reactor, and charge time, the app opens **New Run** with that saved charge already attached.
+
+**Can I start extraction without scanning a label?**
+Yes. On **Purchases -> Edit**, each active lot now has a **Charge Lot** action that opens the same extraction-charge workflow from the main app.
 
 **What movement actions are standardized on the scanned-lot page?**
 Operators can confirm:

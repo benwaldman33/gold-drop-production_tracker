@@ -7,7 +7,7 @@ from unittest.mock import patch
 import app as app_module
 import gold_drop.bootstrap_module as bootstrap_module
 import gold_drop.purchases_module as purchases_module
-from models import ApiClient, AuditLog, BiomassAvailability, FieldAccessToken, FieldPurchaseSubmission, LabTest, LotScanEvent, PhotoAsset, Purchase, PurchaseLot, RemoteSite, ScaleDevice, SlackIngestedMessage, Supplier, SupplierAttachment, SystemSetting, User, WeightCapture, db, gen_uuid
+from models import ApiClient, AuditLog, BiomassAvailability, ExtractionCharge, FieldAccessToken, FieldPurchaseSubmission, LabTest, LotScanEvent, PhotoAsset, Purchase, PurchaseLot, RemoteSite, ScaleDevice, SlackIngestedMessage, Supplier, SupplierAttachment, SystemSetting, User, WeightCapture, db, gen_uuid
 from flask_login import login_user
 from services.scale_ingest import create_weight_capture
 from services.supplier_merge import supplier_merge_preview
@@ -576,7 +576,7 @@ def test_purchase_label_routes_and_scan_route_render_and_resolve():
             assert scan.status_code == 200
             assert b"Scanned Lot" in scan.data
             assert tracking_id.encode() in scan.data
-            assert b"Start Run From This Lot" in scan.data
+            assert b"Open Charge Form" in scan.data
             assert b"Print Label" in scan.data
             assert b"Trace Journey" in scan.data
             assert b"Recent Scan Activity" in scan.data
@@ -600,7 +600,7 @@ def test_purchase_label_routes_and_scan_route_render_and_resolve():
             db.session.commit()
 
 
-def test_scanned_lot_can_prefill_new_run():
+def test_scanned_lot_can_open_charge_form():
     app = app_module.app
     with app.app_context():
         supplier = Supplier(name="Scan Flow Supplier", is_active=True)
@@ -637,18 +637,12 @@ def test_scanned_lot_can_prefill_new_run():
             _login(client, "admin")
             resp = client.post(f"/scan/lot/{tracking_id}/start-run", follow_redirects=False)
             assert resp.status_code in (302, 303)
-            assert resp.headers["Location"].endswith("/runs/new")
-            with client.session_transaction() as sess:
-                prefill = sess.get(app_module.SCAN_RUN_PREFILL_SESSION_KEY)
-                assert prefill is not None
-                assert prefill["tracking_id"] == tracking_id
-                assert prefill["suggested_allocations"] == [{"lot_id": lot_id, "weight_lbs": ""}]
-                assert prefill["run_start_mode"] == "blank"
+            assert resp.headers["Location"].endswith(f"/scan/lot/{tracking_id}/charge?run_start_mode=blank&scale_device_id=")
 
-            run_new = client.get("/runs/new")
-            assert run_new.status_code == 200
-            assert b"Scanner prefill:" in run_new.data
-            assert tracking_id.encode() in run_new.data
+            charge_form = client.get(resp.headers["Location"])
+            assert charge_form.status_code == 200
+            assert b"Start Extraction Charge" in charge_form.data
+            assert tracking_id.encode() in charge_form.data
 
             with app.app_context():
                 actions = [
@@ -713,15 +707,10 @@ def test_scanned_lot_guided_run_start_supports_partial_and_full_modes():
                 follow_redirects=False,
             )
             assert partial.status_code in (302, 303)
-            with client.session_transaction() as sess:
-                prefill = sess.get(app_module.SCAN_RUN_PREFILL_SESSION_KEY)
-                assert prefill["run_start_mode"] == "partial"
-                assert prefill["planned_weight_lbs"] == 42.5
-                assert prefill["suggested_allocations"] == [{"lot_id": lot_id, "weight_lbs": 42.5}]
-
-            run_new = client.get("/runs/new")
-            assert run_new.status_code == 200
-            assert b"Partial run selected for 42.5 lbs" in run_new.data
+            assert "/scan/lot/" in partial.headers["Location"]
+            charge_form = client.get(partial.headers["Location"])
+            assert charge_form.status_code == 200
+            assert b'value="42.5"' in charge_form.data
 
             full = client.post(
                 f"/scan/lot/{tracking_id}/start-run",
@@ -729,18 +718,205 @@ def test_scanned_lot_guided_run_start_supports_partial_and_full_modes():
                 follow_redirects=False,
             )
             assert full.status_code in (302, 303)
-            with client.session_transaction() as sess:
-                prefill = sess.get(app_module.SCAN_RUN_PREFILL_SESSION_KEY)
-                assert prefill["run_start_mode"] == "full_remaining"
-                assert prefill["planned_weight_lbs"] == 100.0
-                assert prefill["suggested_allocations"] == [{"lot_id": lot_id, "weight_lbs": 100.0}]
-
-            run_new = client.get("/runs/new")
-            assert run_new.status_code == 200
-            assert b"Full remaining lot selected" in run_new.data
+            charge_form = client.get(full.headers["Location"])
+            assert charge_form.status_code == 200
+            assert b'value="100.0"' in charge_form.data
     finally:
         with app.app_context():
             LotScanEvent.query.filter_by(lot_id=lot_id).delete()
+            lot_obj = db.session.get(PurchaseLot, lot_id)
+            if lot_obj:
+                db.session.delete(lot_obj)
+            purchase_obj = db.session.get(Purchase, purchase_id)
+            if purchase_obj:
+                db.session.delete(purchase_obj)
+            supplier_obj = db.session.get(Supplier, supplier_id)
+            if supplier_obj:
+                db.session.delete(supplier_obj)
+            db.session.commit()
+
+
+def test_scan_charge_creates_extraction_charge_and_prefills_run():
+    app = app_module.app
+    charge_id = None
+    with app.app_context():
+        supplier = Supplier(name="Charge Scan Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = Purchase(
+            supplier_id=supplier.id,
+            purchase_date=date(2026, 4, 14),
+            delivery_date=date(2026, 4, 14),
+            status="delivered",
+            stated_weight_lbs=90,
+            purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            clean_or_dirty="clean",
+            testing_status="completed",
+            batch_id=f"CHARGE-{app_module.gen_uuid()[:6]}",
+        )
+        db.session.add(purchase)
+        db.session.flush()
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Charge Dream",
+            weight_lbs=90,
+            remaining_weight_lbs=90,
+            milled=True,
+            floor_state="reactor_staging",
+        )
+        db.session.add(lot)
+        db.session.commit()
+        tracking_id = lot.tracking_id
+        lot_id = lot.id
+        purchase_id = purchase.id
+        supplier_id = supplier.id
+
+    try:
+        with app.test_client() as client:
+            _login(client, "admin")
+            resp = client.post(
+                f"/scan/lot/{tracking_id}/charge",
+                data={
+                    "charged_weight_lbs": "42.5",
+                    "reactor_number": "2",
+                    "charged_at": "2026-04-14T10:15",
+                    "notes": "scanner charge",
+                },
+                follow_redirects=False,
+            )
+            assert resp.status_code in (302, 303)
+            assert resp.headers["Location"].endswith("/runs/new")
+
+            with client.session_transaction() as sess:
+                prefill = sess.get(app_module.SCAN_RUN_PREFILL_SESSION_KEY)
+                assert prefill is not None
+                charge_id = prefill["charge_id"]
+                assert prefill["tracking_id"] == tracking_id
+                assert prefill["planned_weight_lbs"] == 42.5
+                assert prefill["reactor_number"] == 2
+
+            run_new = client.get("/runs/new")
+            assert run_new.status_code == 200
+            assert b"Extraction charge recorded:" in run_new.data
+            assert b"42.5 lbs into Reactor 2" in run_new.data
+
+            with app.app_context():
+                charge = db.session.get(ExtractionCharge, charge_id)
+                assert charge is not None
+                assert charge.purchase_lot_id == lot_id
+                assert charge.status == "pending"
+                events = LotScanEvent.query.filter_by(lot_id=lot_id).order_by(LotScanEvent.created_at.asc()).all()
+                assert events[-1].action == "extraction_charge"
+    finally:
+        with app.app_context():
+            if charge_id:
+                charge = db.session.get(ExtractionCharge, charge_id)
+                if charge:
+                    db.session.delete(charge)
+            LotScanEvent.query.filter_by(lot_id=lot_id).delete()
+            lot_obj = db.session.get(PurchaseLot, lot_id)
+            if lot_obj:
+                db.session.delete(lot_obj)
+            purchase_obj = db.session.get(Purchase, purchase_id)
+            if purchase_obj:
+                db.session.delete(purchase_obj)
+            supplier_obj = db.session.get(Supplier, supplier_id)
+            if supplier_obj:
+                db.session.delete(supplier_obj)
+            db.session.commit()
+
+
+def test_main_app_lot_charge_links_charge_to_saved_run():
+    app = app_module.app
+    charge_id = None
+    run_id = None
+    with app.app_context():
+        supplier = Supplier(name="Charge Link Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = Purchase(
+            supplier_id=supplier.id,
+            purchase_date=date(2026, 4, 14),
+            delivery_date=date(2026, 4, 14),
+            status="delivered",
+            stated_weight_lbs=70,
+            purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            clean_or_dirty="clean",
+            testing_status="pending",
+            batch_id=f"CHGLNK-{app_module.gen_uuid()[:6]}",
+        )
+        db.session.add(purchase)
+        db.session.flush()
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Link Dream",
+            weight_lbs=70,
+            remaining_weight_lbs=70,
+        )
+        db.session.add(lot)
+        db.session.commit()
+        lot_id = lot.id
+        purchase_id = purchase.id
+        supplier_id = supplier.id
+
+    try:
+        with app.test_client() as client:
+            _login(client, "admin")
+            charge_resp = client.post(
+                f"/lots/{lot_id}/charge",
+                data={
+                    "charged_weight_lbs": "25",
+                    "reactor_number": "1",
+                    "charged_at": "2026-04-14T12:00",
+                    "notes": "desktop charge",
+                },
+                follow_redirects=False,
+            )
+            assert charge_resp.status_code in (302, 303)
+            assert charge_resp.headers["Location"].endswith("/runs/new")
+            with client.session_transaction() as sess:
+                prefill = sess.get(app_module.SCAN_RUN_PREFILL_SESSION_KEY)
+                charge_id = prefill["charge_id"]
+
+            save = client.post(
+                "/runs/new",
+                data={
+                    "run_date": "2026-04-14",
+                    "reactor_number": "1",
+                    "run_type": "standard",
+                    "bio_in_reactor_lbs": "25",
+                    "dry_hte_g": "5",
+                    "dry_thca_g": "15",
+                    "lot_ids[]": [lot_id],
+                    "lot_weights[]": ["25"],
+                },
+                follow_redirects=False,
+            )
+            assert save.status_code in (302, 303)
+            assert save.headers["Location"].endswith("/runs")
+
+            with app.app_context():
+                charge = db.session.get(ExtractionCharge, charge_id)
+                assert charge is not None
+                assert charge.run_id is not None
+                assert charge.status == "applied"
+                run_id = charge.run_id
+                run_input = app_module.RunInput.query.filter_by(run_id=run_id, lot_id=lot_id).first()
+                assert run_input is not None
+                assert float(run_input.weight_lbs or 0) == 25.0
+    finally:
+        with app.app_context():
+            if charge_id:
+                charge = db.session.get(ExtractionCharge, charge_id)
+                if charge:
+                    db.session.delete(charge)
+            if run_id:
+                run_input = app_module.RunInput.query.filter_by(run_id=run_id, lot_id=lot_id).first()
+                if run_input:
+                    db.session.delete(run_input)
+                run_obj = db.session.get(app_module.Run, run_id)
+                if run_obj:
+                    db.session.delete(run_obj)
             lot_obj = db.session.get(PurchaseLot, lot_id)
             if lot_obj:
                 db.session.delete(lot_obj)

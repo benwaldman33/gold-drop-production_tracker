@@ -269,11 +269,19 @@ Camera notes:
 ### Scanned lot execution
 When the app opens `/scan/lot/<tracking_id>`, the page is optimized for floor execution.
 
-Use **Start Run From This Lot** to choose one of these guided run-start modes:
-- **Blank run form**: preselect the lot and open a normal new run
-- **Use full remaining lot**: prefill the run with the lot's full remaining lbs and matching source allocation
-- **Use partial amount**: enter a partial lbs amount and prefill both reactor weight and source allocation
-- **Scale capture first**: preselect the lot but direct the operator to capture reactor weight from a configured scale before saving
+Use **Open Charge Form** to choose one of these guided run-start modes:
+- **Blank run form**: open the charge screen without a prefilled lbs amount
+- **Use full remaining lot**: prefill the charge with the lot's full remaining lbs
+- **Use partial amount**: enter a partial lbs amount before opening the charge screen
+- **Scale capture first**: open the charge screen with scale-first guidance before the run is saved
+
+On the charge screen, record:
+- the actual lbs going into production
+- the reactor
+- the charge time
+- optional notes
+
+Saving the charge opens **New Run** with the lot allocation already attached. The charge is also stored as its own event for traceability before the run is finalized.
 
 Use **Confirm Movement** to record a standard movement action:
 - move to vault
@@ -286,9 +294,20 @@ Use **Confirm Testing** to update testing state without opening the purchase for
 
 The **Recent Scan Activity** section records these floor actions with context, including:
 - guided run-start mode
+- extraction-charge lbs / reactor / timestamp
 - planned partial lbs
 - movement action and location
 - testing confirmations
+
+### Starting extraction from the main app
+You do not have to scan a label first.
+
+From **Purchases -> Edit**, the **Lots** table now includes **Charge Lot** for any active lot with remaining inventory. That opens the same extraction-charge workflow used by the scan page, so office or desktop users can record:
+- source lot
+- lbs charged
+- reactor
+- charge time
+- notes
 
 ### In Transit / On Order
 This table lists purchases that are not yet fully received, including:

@@ -416,6 +416,7 @@ class PurchaseLot(db.Model):
 
     run_inputs = db.relationship("RunInput", backref="lot", lazy="dynamic")
     scan_events = db.relationship("LotScanEvent", backref="lot", lazy="dynamic", cascade="all, delete-orphan")
+    extraction_charges = db.relationship("ExtractionCharge", backref="lot", lazy="dynamic")
 
     @property
     def supplier_name(self):
@@ -479,6 +480,7 @@ class Run(db.Model):
     slack_import_applied_at = db.Column(db.DateTime)
 
     inputs = db.relationship("RunInput", backref="run", lazy="dynamic", cascade="all, delete-orphan")
+    extraction_charges = db.relationship("ExtractionCharge", backref="run", lazy="dynamic")
 
     def calculate_yields(self):
         """Recalculate all yield fields."""
@@ -631,6 +633,28 @@ class LotScanEvent(db.Model):
 
     def set_context(self, context):
         self.context_json = json.dumps(context or {})
+
+
+class ExtractionCharge(db.Model):
+    __tablename__ = "extraction_charges"
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    purchase_lot_id = db.Column(db.String(36), db.ForeignKey("purchase_lots.id"), nullable=False, index=True)
+    run_id = db.Column(db.String(36), db.ForeignKey("runs.id"), index=True)
+    weight_capture_id = db.Column(db.String(36), db.ForeignKey("weight_captures.id"))
+    lot_scan_event_id = db.Column(db.String(36), db.ForeignKey("lot_scan_events.id"))
+    charged_weight_lbs = db.Column(db.Float, nullable=False)
+    reactor_number = db.Column(db.Integer, nullable=False)
+    charged_at = db.Column(db.DateTime, nullable=False, default=utc_now)
+    source_mode = db.Column(db.String(20), nullable=False, default="main_app")
+    status = db.Column(db.String(20), nullable=False, default="pending")
+    notes = db.Column(db.Text)
+    slack_ingested_message_id = db.Column(db.String(36))
+    created_by = db.Column(db.String(36), db.ForeignKey("users.id"))
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now)
+
+    weight_capture = db.relationship("WeightCapture")
+    lot_scan_event = db.relationship("LotScanEvent")
+    creator = db.relationship("User")
 
 
 class ScaleDevice(db.Model):
