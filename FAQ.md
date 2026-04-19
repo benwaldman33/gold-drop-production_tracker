@@ -279,6 +279,18 @@ Completed and cancelled charges stay visible on the board for the rest of the lo
 **When I open a run from Floor Ops, how do I get back?**
 The run form now preserves the floor context. If you open a run from `Floor Ops`, the top button becomes `Back to Floor Ops`, and the page also keeps a separate `Open Runs` button when you still want the full run list.
 
+**Can I filter the Active Reactor Board?**
+Yes. `Floor Ops` now includes a `Board view` filter so extractors can focus on:
+- all reactors
+- active only
+- pending only
+- running only
+- completed today
+- cancelled today
+
+**What is Reactor History Today?**
+It is the same-day per-reactor history panel below the active board. It shows the charge record, lifecycle state changes, and linked run shortcuts for each reactor so operators can understand what already happened in that reactor today.
+
 **Can I use an iPad or Android tablet camera to scan labels?**
 Yes. Use the in-app **Scan Center** at `/scan` or open it from **Floor Ops**.
 

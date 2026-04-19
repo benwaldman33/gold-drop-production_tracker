@@ -11,6 +11,15 @@ from services.extraction_charge import (
     update_charge_state,
 )
 
+BOARD_VIEW_OPTIONS = (
+    ("all", "All reactors"),
+    ("active", "Active only"),
+    ("pending", "Pending only"),
+    ("running", "Running only"),
+    ("completed_today", "Completed today"),
+    ("cancelled_today", "Cancelled today"),
+)
+
 
 def register_routes(app, root):
     @root.login_required
@@ -48,6 +57,29 @@ def _reactor_numbers(root, charges):
     }
     max_reactor = max([configured, *observed]) if observed else configured
     return range(1, max_reactor + 1)
+
+
+def _board_view_value(root):
+    raw = (root.request.args.get("board_view") or "all").strip().lower()
+    allowed = {value for value, _label in BOARD_VIEW_OPTIONS}
+    return raw if raw in allowed else "all"
+
+
+def _card_matches_board_view(card, board_view):
+    state_key = (card.get("state_key") or "empty").strip()
+    if board_view == "all":
+        return True
+    if board_view == "active":
+        return state_key != "empty"
+    if board_view == "pending":
+        return state_key in {"pending", "in_reactor", "applied"}
+    if board_view == "running":
+        return state_key == "running"
+    if board_view == "completed_today":
+        return state_key == "completed"
+    if board_view == "cancelled_today":
+        return state_key == "cancelled"
+    return True
 
 
 def _build_floor_rollups(root):
@@ -246,7 +278,41 @@ def _build_active_reactor_board(root):
     return {
         "cards": cards,
         "active_count": active_count,
+        "reactor_count": len(cards),
     }
+
+
+def _build_reactor_history(root, cards):
+    history_cards = []
+    for card in cards:
+        current = card.get("current") or {}
+        entries = list(current.get("history") or [])
+        if current:
+            if current.get("run_id"):
+                entries.insert(
+                    0,
+                    {
+                        "label": "Run linked",
+                        "timestamp_label": current.get("charged_at_label") or "",
+                        "run_id": current.get("run_id"),
+                    },
+                )
+            entries.insert(
+                0,
+                {
+                    "label": f"Charge recorded ({current.get('state_label')})",
+                    "timestamp_label": current.get("charged_at_label") or "",
+                    "run_id": current.get("run_id"),
+                },
+            )
+        history_cards.append(
+            {
+                "reactor_number": card["reactor_number"],
+                "state_label": card["state_label"],
+                "entries": entries[:8],
+            }
+        )
+    return history_cards
 
 
 def _reactor_card_actions(settings, charge):
@@ -281,6 +347,9 @@ def floor_ops_view(root):
     floor_rollups = _build_floor_rollups(root)
     reactor_charge_view = _build_reactor_charge_view(root)
     active_reactor_board = _build_active_reactor_board(root)
+    board_view = _board_view_value(root)
+    filtered_cards = [card for card in active_reactor_board["cards"] if _card_matches_board_view(card, board_view)]
+    reactor_history = _build_reactor_history(root, active_reactor_board["cards"])
     reactor_lifecycle = reactor_lifecycle_settings(root)
 
     return root.render_template(
@@ -294,6 +363,10 @@ def floor_ops_view(root):
         floor_rollups=floor_rollups,
         reactor_charge_view=reactor_charge_view,
         active_reactor_board=active_reactor_board,
+        filtered_reactor_cards=filtered_cards,
+        reactor_history=reactor_history,
+        board_view=board_view,
+        board_view_options=BOARD_VIEW_OPTIONS,
         reactor_lifecycle=reactor_lifecycle,
     )
 

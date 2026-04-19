@@ -86,10 +86,21 @@
 <div class="card" style="margin-bottom:18px;">
   <div class="card-header">
     <h3>Active Reactor Board</h3>
-    <span class="text-sm cell-muted">{{ active_reactor_board.active_count }} of 3 reactors currently holding a charge or linked run</span>
+    <span class="text-sm cell-muted">{{ active_reactor_board.active_count }} of {{ active_reactor_board.reactor_count }} reactors currently holding a charge or linked run</span>
   </div>
+  <form method="GET" class="form-actions" style="justify-content:flex-start;margin-bottom:12px;gap:8px;flex-wrap:wrap;">
+    <label class="text-sm cell-muted" for="board_view">Board view</label>
+    <select id="board_view" name="board_view" onchange="this.form.submit()">
+      {% for value, label in board_view_options %}
+      <option value="{{ value }}" {% if board_view == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    {% if board_view != 'all' %}
+    <a href="{{ url_for('floor_ops') }}" class="btn btn-secondary btn-sm">Clear filter</a>
+    {% endif %}
+  </form>
   <div class="summary-row">
-    {% for card in active_reactor_board.cards %}
+    {% for card in filtered_reactor_cards %}
     <div class="card" style="min-width:260px;flex:1 1 260px;margin:0;">
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
         <div>
@@ -154,6 +165,41 @@
       </div>
       {% else %}
       <div class="summary-footnote" style="margin-top:12px;">{{ card.next_step }}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% if not filtered_reactor_cards %}
+  <p class="text-sm cell-muted" style="margin-top:12px;">No reactors match the current board filter.</p>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-bottom:18px;">
+  <div class="card-header">
+    <h3>Reactor History Today</h3>
+    <span class="text-sm cell-muted">Same-day charge and lifecycle milestones by reactor</span>
+  </div>
+  <div class="summary-row">
+    {% for card in reactor_history %}
+    <div class="card" style="min-width:260px;flex:1 1 260px;margin:0;">
+      <div class="summary-label">Reactor {{ card.reactor_number }}</div>
+      <div class="summary-footnote">{{ card.state_label }}</div>
+      {% if card.entries %}
+      <div class="floor-event-list" style="margin-top:10px;">
+        {% for entry in card.entries %}
+        <div class="floor-event-row" style="text-align:left;">
+          <div class="text-sm"><strong>{{ entry.label }}</strong></div>
+          <div class="text-sm cell-muted" style="margin-top:4px;">{{ entry.timestamp_label }}</div>
+          {% if entry.run_id %}
+          <div class="form-actions" style="justify-content:flex-start;margin-top:8px;">
+            <a href="{{ url_for('run_edit', run_id=entry.run_id, return_to=request.full_path.rstrip('?')) }}" class="btn btn-secondary btn-sm">Open Run</a>
+          </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="summary-footnote" style="margin-top:10px;">No same-day charge history for this reactor.</div>
       {% endif %}
     </div>
     {% endfor %}
