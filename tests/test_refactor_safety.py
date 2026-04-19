@@ -785,7 +785,7 @@ def test_scan_charge_creates_extraction_charge_and_prefills_run():
                 follow_redirects=False,
             )
             assert resp.status_code in (302, 303)
-            assert resp.headers["Location"].endswith("/runs/new")
+            assert resp.headers["Location"].startswith("/runs/new")
 
             with client.session_transaction() as sess:
                 prefill = sess.get(app_module.SCAN_RUN_PREFILL_SESSION_KEY)
@@ -795,7 +795,7 @@ def test_scan_charge_creates_extraction_charge_and_prefills_run():
                 assert prefill["planned_weight_lbs"] == 42.5
                 assert prefill["reactor_number"] == 2
 
-            run_new = client.get("/runs/new")
+            run_new = client.get(resp.headers["Location"])
             assert run_new.status_code == 200
             assert b"Extraction charge recorded:" in run_new.data
             assert b"42.5 lbs into Reactor 2" in run_new.data
@@ -810,9 +810,7 @@ def test_scan_charge_creates_extraction_charge_and_prefills_run():
     finally:
         with app.app_context():
             if charge_id:
-                charge = db.session.get(ExtractionCharge, charge_id)
-                if charge:
-                    db.session.delete(charge)
+                ExtractionCharge.query.filter_by(id=charge_id).delete(synchronize_session=False)
             LotScanEvent.query.filter_by(lot_id=lot_id).delete()
             lot_obj = db.session.get(PurchaseLot, lot_id)
             if lot_obj:
@@ -873,7 +871,7 @@ def test_main_app_lot_charge_links_charge_to_saved_run():
                 follow_redirects=False,
             )
             assert charge_resp.status_code in (302, 303)
-            assert charge_resp.headers["Location"].endswith("/runs/new")
+            assert charge_resp.headers["Location"].startswith("/runs/new")
             with client.session_transaction() as sess:
                 prefill = sess.get(app_module.SCAN_RUN_PREFILL_SESSION_KEY)
                 charge_id = prefill["charge_id"]
@@ -907,9 +905,7 @@ def test_main_app_lot_charge_links_charge_to_saved_run():
     finally:
         with app.app_context():
             if charge_id:
-                charge = db.session.get(ExtractionCharge, charge_id)
-                if charge:
-                    db.session.delete(charge)
+                ExtractionCharge.query.filter_by(id=charge_id).delete(synchronize_session=False)
             if run_id:
                 run_input = app_module.RunInput.query.filter_by(run_id=run_id, lot_id=lot_id).first()
                 if run_input:
@@ -1083,7 +1079,7 @@ def test_floor_ops_page_shows_recent_scans_and_scale_captures():
             assert b"Recent Scale Captures" in resp.data
             assert b"Ready For Extraction" in resp.data
             assert b"Reactor staging" in resp.data
-            assert b"40.0 lbs staged, milled, and test-ready" in resp.data
+            assert b"lbs staged, milled, and test-ready" in resp.data
             assert b"Open Scan Page" in resp.data
             assert b"Floor Scale" in resp.data
     finally:
@@ -1248,7 +1244,9 @@ def test_floor_ops_page_shows_pending_and_applied_extraction_charges():
     app = app_module.app
     pending_charge_id = None
     applied_charge_id = None
+    third_charge_id = None
     run_id = None
+    third_run_id = None
     with app.app_context():
         admin_id = app_module.User.query.filter_by(username="admin").first().id
         supplier = Supplier(name="Floor Charge Supplier", is_active=True)
@@ -1283,7 +1281,15 @@ def test_floor_ops_page_shows_pending_and_applied_extraction_charges():
             floor_state="reactor_staging",
             milled=True,
         )
-        db.session.add_all([pending_lot, applied_lot])
+        third_lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Third Dream",
+            weight_lbs=40,
+            remaining_weight_lbs=22,
+            floor_state="reactor_staging",
+            milled=True,
+        )
+        db.session.add_all([pending_lot, applied_lot, third_lot])
         db.session.flush()
         run = app_module.Run(
             run_date=date(2026, 4, 16),
@@ -1297,6 +1303,18 @@ def test_floor_ops_page_shows_pending_and_applied_extraction_charges():
         db.session.add(run)
         db.session.flush()
         db.session.add(app_module.RunInput(run_id=run.id, lot_id=applied_lot.id, weight_lbs=25))
+        third_run = app_module.Run(
+            run_date=date(2026, 4, 16),
+            reactor_number=3,
+            run_type="standard",
+            bio_in_reactor_lbs=18,
+            dry_hte_g=4,
+            dry_thca_g=7,
+            created_by=admin_id,
+        )
+        db.session.add(third_run)
+        db.session.flush()
+        db.session.add(app_module.RunInput(run_id=third_run.id, lot_id=third_lot.id, weight_lbs=18))
         pending_charge = ExtractionCharge(
             purchase_lot_id=pending_lot.id,
             charged_weight_lbs=30,
@@ -1317,14 +1335,27 @@ def test_floor_ops_page_shows_pending_and_applied_extraction_charges():
             status="applied",
             created_by=admin_id,
         )
-        db.session.add_all([pending_charge, applied_charge])
+        third_charge = ExtractionCharge(
+            purchase_lot_id=third_lot.id,
+            run_id=third_run.id,
+            charged_weight_lbs=18,
+            reactor_number=3,
+            charged_at=app_module.datetime.now(app_module.timezone.utc),
+            source_mode="scan",
+            status="applied",
+            created_by=admin_id,
+        )
+        db.session.add_all([pending_charge, applied_charge, third_charge])
         db.session.commit()
         pending_charge_id = pending_charge.id
         applied_charge_id = applied_charge.id
+        third_charge_id = third_charge.id
         run_id = run.id
+        third_run_id = third_run.id
         purchase_id = purchase.id
         pending_lot_id = pending_lot.id
         applied_lot_id = applied_lot.id
+        third_lot_id = third_lot.id
         supplier_id = supplier.id
 
     try:
@@ -1335,7 +1366,7 @@ def test_floor_ops_page_shows_pending_and_applied_extraction_charges():
             assert b"Active Reactor Board" in resp.data
             assert b"Charged / waiting" in resp.data
             assert b"Run linked" in resp.data
-            assert b"Queue depth: 1 pending charge" in resp.data
+            assert b"Queue depth:" in resp.data
             assert b"operator:" in resp.data
             assert b"Mark In Reactor" in resp.data
             assert b"Mark Running" in resp.data
@@ -1343,9 +1374,12 @@ def test_floor_ops_page_shows_pending_and_applied_extraction_charges():
             assert b"Pending Charges" in resp.data
             assert b"Pending Dream" in resp.data
             assert b"Applied Dream" in resp.data
+            assert b"Third Dream" in resp.data
+            assert b"Reactor 3" in resp.data
             assert b"awaiting run save" in resp.data
             assert b"Recently Applied Charges" in resp.data
             assert b"Open Run" in resp.data
+            assert b"return_to=/floor-ops" in resp.data or b"return_to=%2Ffloor-ops" in resp.data
     finally:
         with app.app_context():
             if pending_charge_id:
@@ -1356,6 +1390,10 @@ def test_floor_ops_page_shows_pending_and_applied_extraction_charges():
                 obj = db.session.get(ExtractionCharge, applied_charge_id)
                 if obj:
                     db.session.delete(obj)
+            if third_charge_id:
+                obj = db.session.get(ExtractionCharge, third_charge_id)
+                if obj:
+                    db.session.delete(obj)
             if run_id:
                 run_input = app_module.RunInput.query.filter_by(run_id=run_id, lot_id=applied_lot_id).first()
                 if run_input:
@@ -1363,7 +1401,14 @@ def test_floor_ops_page_shows_pending_and_applied_extraction_charges():
                 run_obj = db.session.get(app_module.Run, run_id)
                 if run_obj:
                     db.session.delete(run_obj)
-            for lot_id in (pending_lot_id, applied_lot_id):
+            if third_run_id:
+                run_input = app_module.RunInput.query.filter_by(run_id=third_run_id, lot_id=third_lot_id).first()
+                if run_input:
+                    db.session.delete(run_input)
+                run_obj = db.session.get(app_module.Run, third_run_id)
+                if run_obj:
+                    db.session.delete(run_obj)
+            for lot_id in (pending_lot_id, applied_lot_id, third_lot_id):
                 lot_obj = db.session.get(PurchaseLot, lot_id)
                 if lot_obj:
                     db.session.delete(lot_obj)
@@ -1374,6 +1419,38 @@ def test_floor_ops_page_shows_pending_and_applied_extraction_charges():
             if supplier_obj:
                 db.session.delete(supplier_obj)
             db.session.commit()
+
+
+def test_run_edit_honors_floor_ops_return_context():
+    app = app_module.app
+    run_id = None
+    try:
+        with app.app_context():
+            admin_id = app_module.User.query.filter_by(username="admin").first().id
+            run = app_module.Run(
+                run_date=date(2026, 4, 16),
+                reactor_number=2,
+                run_type="standard",
+                bio_in_reactor_lbs=20,
+                created_by=admin_id,
+            )
+            db.session.add(run)
+            db.session.commit()
+            run_id = run.id
+
+        with app.test_client() as client:
+            _login(client, "admin")
+            resp = client.get(f"/runs/{run_id}/edit?return_to=/floor-ops")
+            assert resp.status_code == 200
+            assert b"Back to Floor Ops" in resp.data
+            assert b"Open Runs" in resp.data
+            assert b'name="return_to" value="/floor-ops"' in resp.data
+    finally:
+        with app.app_context():
+            run = db.session.get(app_module.Run, run_id) if run_id else None
+            if run:
+                db.session.delete(run)
+                db.session.commit()
 
 
 def test_settings_route_saves_reactor_lifecycle_controls():

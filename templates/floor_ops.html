@@ -116,7 +116,7 @@
           {% endif %}
           {% if card.current.run_id %}
           <div class="form-actions" style="justify-content:flex-start;margin-top:8px;">
-            <a href="{{ url_for('run_edit', run_id=card.current.run_id) }}" class="btn btn-secondary btn-sm">Open Run</a>
+            <a href="{{ url_for('run_edit', run_id=card.current.run_id, return_to=request.full_path.rstrip('?')) }}" class="btn btn-secondary btn-sm">Open Run</a>
           </div>
           {% endif %}
           {% if card.current.available_actions %}
@@ -300,7 +300,7 @@
           </div>
           {% if charge.run_id %}
           <div class="form-actions" style="justify-content:flex-start;margin-top:8px;">
-            <a href="{{ url_for('run_edit', run_id=charge.run_id) }}" class="btn btn-secondary btn-sm">Open Run</a>
+            <a href="{{ url_for('run_edit', run_id=charge.run_id, return_to=request.full_path.rstrip('?')) }}" class="btn btn-secondary btn-sm">Open Run</a>
           </div>
           {% endif %}
         </div>

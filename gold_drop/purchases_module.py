@@ -10,6 +10,7 @@ from services.extraction_charge import (
     create_extraction_charge,
     default_charge_datetime_local,
     parse_charge_datetime,
+    reactor_count,
     validate_chargeable_lot,
 )
 from services.lot_labels import build_lot_label_payload, build_purchase_label_payloads
@@ -776,10 +777,16 @@ def _render_charge_form(root, lot, *, entry_mode: str, back_url: str):
         entry_mode=entry_mode,
         back_url=back_url,
         charge_defaults=prefill,
+        reactor_options=list(range(1, max(int(reactor_count(root) or 1), 1) + 1)),
     )
 
 
 def _submit_charge_form(root, lot, *, entry_mode: str):
+    back_url = (
+        root.url_for("scan_lot", tracking_id=lot.tracking_id)
+        if entry_mode == "scan"
+        else root.url_for("purchase_edit", purchase_id=lot.purchase.id)
+    )
     charged_weight_raw = (root.request.form.get("charged_weight_lbs") or "").strip()
     reactor_raw = (root.request.form.get("reactor_number") or "").strip()
     charged_at_raw = (root.request.form.get("charged_at") or "").strip()
@@ -829,15 +836,10 @@ def _submit_charge_form(root, lot, *, entry_mode: str):
             f"Extraction charge recorded for {charged_weight_lbs:.1f} lbs into Reactor {reactor_number}. Finish the run details next.",
             "success",
         )
-        return root.redirect(root.url_for("run_new"))
+        return root.redirect(root.url_for("run_new", return_to=back_url))
     except Exception as exc:
         root.db.session.rollback()
         root.flash(str(exc), "error")
-        back_url = (
-            root.url_for("scan_lot", tracking_id=lot.tracking_id)
-            if entry_mode == "scan"
-            else root.url_for("purchase_edit", purchase_id=lot.purchase.id)
-        )
         return _render_charge_form(root, lot, entry_mode=entry_mode, back_url=back_url)
 
 

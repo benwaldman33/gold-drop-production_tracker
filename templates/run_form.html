@@ -3,11 +3,17 @@
 {% block content %}
 <div class="page-header">
   <h2>{% if run and run.id %}Edit Run{% else %}Log New Run{% endif %}</h2>
-  <a href="{{ url_for('runs_list') }}" class="btn btn-secondary">← Back to Runs</a>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+    <a href="{{ return_to or url_for('runs_list') }}" class="btn btn-secondary">{{ return_label or 'Back to Runs' }}</a>
+    {% if return_to and return_to != url_for('runs_list') %}
+    <a href="{{ url_for('runs_list') }}" class="btn btn-secondary">Open Runs</a>
+    {% endif %}
+  </div>
 </div>
 
 <div class="card">
   <form method="POST" enctype="multipart/form-data">
+    <input type="hidden" name="return_to" value="{{ return_to or url_for('runs_list') }}">
     {% if scale_meta and scale_meta.capture_id %}
     <input type="hidden" name="scale_capture_id" value="{{ scale_meta.capture_id }}">
     {% endif %}
@@ -134,9 +140,9 @@
         <div class="form-group">
           <label>Processing reactor # *</label>
           <select name="reactor_number" required>
-            <option value="1" {% if run and run.reactor_number == 1 %}selected{% endif %}>Reactor 1</option>
-            <option value="2" {% if run and run.reactor_number == 2 %}selected{% endif %}>Reactor 2</option>
-            <option value="3" {% if run and run.reactor_number == 3 %}selected{% endif %}>Reactor 3</option>
+            {% for reactor_number in reactor_options %}
+            <option value="{{ reactor_number }}" {% if run and run.reactor_number == reactor_number %}selected{% endif %}>Reactor {{ reactor_number }}</option>
+            {% endfor %}
           </select>
           <span class="text-sm" style="color:var(--text-muted);">Extraction equipment used for this log.</span>
         </div>

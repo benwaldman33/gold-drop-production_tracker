@@ -434,6 +434,7 @@ This keeps each deployed facility self-identifying for future aggregation withou
     - per-reactor pending charge cards
     - recently applied charges with `Open Run` shortcuts
     - optional state-history rows sourced from `AuditLog` entries for `entity_type="extraction_charge"`
+  - `Open Run` links on `Floor Ops` now pass `return_to=/floor-ops`, and `gold_drop/runs_module.py` preserves that safe return path across GET/POST so the run form can show `Back to Floor Ops` without losing the generic `Open Runs` option.
   - `gold_drop/settings_module.py` persists reactor lifecycle policy in `SystemSetting` keys:
     - `reactor_state_<state>_enabled`
     - `reactor_state_<state>_required`

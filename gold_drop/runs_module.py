@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from gold_drop.uploads import json_paths, save_lab_files
-from services.extraction_charge import charge_history_entries, update_charge_state
+from services.extraction_charge import charge_history_entries, reactor_count, update_charge_state
 from services.lot_allocation import (
     apply_run_allocations,
     collect_run_allocations_from_form,
@@ -144,6 +144,36 @@ def runs_list_view(root):
     )
 
 
+def _safe_run_return_url(root, raw_return_to: str, *, default_endpoint: str = "runs_list") -> str:
+    candidate = (raw_return_to or "").strip()
+    if candidate.startswith("/") and not candidate.startswith("//"):
+        return candidate
+    return root.url_for(default_endpoint)
+
+
+def _run_return_label(root, return_to: str) -> str:
+    if return_to == root.url_for("floor_ops") or return_to.startswith(f"{root.url_for('floor_ops')}?"):
+        return "Back to Floor Ops"
+    if return_to == root.url_for("inventory") or return_to.startswith(f"{root.url_for('inventory')}?"):
+        return "Back to Inventory"
+    if return_to == root.url_for("purchases_list") or return_to.startswith(f"{root.url_for('purchases_list')}?"):
+        return "Back to Purchases"
+    if return_to == root.url_for("runs_list") or return_to.startswith(f"{root.url_for('runs_list')}?"):
+        return "Back to Runs"
+    return "Back"
+
+
+def _run_reactor_options(root, run=None, scan_meta=None):
+    configured = max(int(reactor_count(root) or 1), 1)
+    observed = {
+        int(getattr(run, "reactor_number", 0) or 0),
+        int((scan_meta or {}).get("reactor_number") or 0),
+    }
+    observed = {value for value in observed if value > 0}
+    max_reactor = max([configured, *observed]) if observed else configured
+    return list(range(1, max_reactor + 1))
+
+
 def run_new_view(root):
     if root.request.method == "POST":
         if not root.current_user.can_edit:
@@ -220,6 +250,11 @@ def run_new_view(root):
 
     lots = _available_lots_query(root).all()
     lot_rows = list(slack_meta.get("suggested_allocations") or []) if slack_meta else list(scan_meta.get("suggested_allocations") or []) if scan_meta else []
+    return_to = _safe_run_return_url(
+        root,
+        root.request.values.get("return_to") or root.request.referrer or "",
+        default_endpoint="runs_list",
+    )
     return root.render_template(
         "run_form.html",
         run=display_run,
@@ -231,6 +266,9 @@ def run_new_view(root):
         scan_meta=scan_meta,
         scale_meta=scale_prefill,
         can_save_run=bool(root.current_user.can_edit),
+        return_to=return_to,
+        return_label=_run_return_label(root, return_to),
+        reactor_options=_run_reactor_options(root, display_run, scan_meta),
         **root._run_form_extras(display_run),
     )
 
@@ -252,6 +290,11 @@ def run_edit_view(root, run_id):
         ),
     ).all()
     lot_rows = [{"lot_id": inp.lot_id, "weight_lbs": inp.weight_lbs} for inp in run.inputs]
+    return_to = _safe_run_return_url(
+        root,
+        root.request.values.get("return_to") or root.request.referrer or "",
+        default_endpoint="runs_list",
+    )
     return root.render_template(
         "run_form.html",
         run=run,
@@ -263,6 +306,9 @@ def run_edit_view(root, run_id):
         scan_meta=None,
         scale_meta=None,
         can_save_run=True,
+        return_to=return_to,
+        return_label=_run_return_label(root, return_to),
+        reactor_options=_run_reactor_options(root, run, None),
         **root._run_form_extras(run),
     )
 
@@ -273,6 +319,11 @@ def save_run(root, existing_run):
     scan_meta = None
     scale_meta = None
     run = existing_run if existing_run is not None else root.Run()
+    return_to = _safe_run_return_url(
+        root,
+        root.request.form.get("return_to") or root.request.args.get("return_to") or root.request.referrer or "",
+        default_endpoint="runs_list",
+    )
     if root.request.form.get("slack_ingested_message_id"):
         slack_meta = {
             "ingested_message_id": (root.request.form.get("slack_ingested_message_id") or "").strip(),
@@ -358,6 +409,9 @@ def save_run(root, existing_run):
                     today=today,
                     slack_meta=slack_meta,
                     can_save_run=True,
+                    return_to=return_to,
+                    return_label=_run_return_label(root, return_to),
+                    reactor_options=_run_reactor_options(root, run, None),
                     **root._run_form_extras(run),
                 )
 
@@ -463,7 +517,7 @@ def save_run(root, existing_run):
         if not existing_run and scale_meta:
             root.session.pop(root.RUN_SCALE_PREFILL_SESSION_KEY, None)
         root.flash("Run saved successfully.", "success")
-        return root.redirect(root.url_for("runs_list"))
+        return root.redirect(return_to)
     except Exception as exc:
         root.db.session.rollback()
         root.flash(f"Error saving run: {str(exc)}", "error")
@@ -478,6 +532,9 @@ def save_run(root, existing_run):
             scan_meta=scan_meta,
             scale_meta=scale_meta,
             can_save_run=True,
+            return_to=return_to,
+            return_label=_run_return_label(root, return_to),
+            reactor_options=_run_reactor_options(root, current, scan_meta),
             **root._run_form_extras(current),
         )
 
