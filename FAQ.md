@@ -223,6 +223,9 @@ Yes. Runs export includes pipeline label, terp/distillate grams, and lab file pa
 **Will the app warn me before I create a near-duplicate supplier?**  
 Yes on the standalone buyer app and on the main **Add Supplier** page. Typo-close names such as `Forest Farms` vs `Forrest Farms` now return a warning with likely matches before a new supplier is saved.
 
+**What if the names are similar but they really are different suppliers?**
+Keep both. The main **Add Supplier** page now includes an explicit confirmation option to save a separate supplier anyway, which covers edge cases like the same farm name used in different cities.
+
 **What happens if two supplier records refer to the same farm?**  
 Super Admins can merge duplicates from the supplier record page. The merge screen previews the impact first, then archives the source supplier, moves linked records to the chosen target supplier, and keeps an audit trail so the lineage stays visible.
 

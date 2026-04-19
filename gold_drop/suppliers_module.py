@@ -277,6 +277,7 @@ def supplier_new_view(root):
             "contact_email": root.request.form.get("contact_email", "").strip(),
             "location": root.request.form.get("location", "").strip(),
             "notes": root.request.form.get("notes", "").strip(),
+            "confirm_new_supplier": root.request.form.get("confirm_new_supplier") == "1",
         }
         duplicate_candidates = supplier_duplicate_candidates(root, form_data["name"])
         if duplicate_candidates and root.request.form.get("confirm_new_supplier") != "1":
