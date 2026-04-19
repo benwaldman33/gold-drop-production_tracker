@@ -1364,6 +1364,8 @@ def test_floor_ops_page_shows_pending_and_applied_extraction_charges():
             resp = client.get("/floor-ops")
             assert resp.status_code == 200
             assert b"Active Reactor Board" in resp.data
+            assert b"Board view" in resp.data
+            assert b"Reactor History Today" in resp.data
             assert b"Charged / waiting" in resp.data
             assert b"Run linked" in resp.data
             assert b"Queue depth:" in resp.data
@@ -1377,6 +1379,7 @@ def test_floor_ops_page_shows_pending_and_applied_extraction_charges():
             assert b"Third Dream" in resp.data
             assert b"Reactor 3" in resp.data
             assert b"awaiting run save" in resp.data
+            assert b"Charge recorded (Run linked)" in resp.data or b"Charge recorded (Charged / waiting)" in resp.data
             assert b"Recently Applied Charges" in resp.data
             assert b"Open Run" in resp.data
             assert b"return_to=/floor-ops" in resp.data or b"return_to=%2Ffloor-ops" in resp.data
@@ -1451,6 +1454,111 @@ def test_run_edit_honors_floor_ops_return_context():
             if run:
                 db.session.delete(run)
                 db.session.commit()
+
+
+def test_floor_ops_board_view_filter_shows_only_running_reactors():
+    app = app_module.app
+    charge_id = None
+    run_id = None
+    purchase_id = None
+    lot_id = None
+    supplier_id = None
+    try:
+        with app.app_context():
+            admin_id = app_module.User.query.filter_by(username="admin").first().id
+            supplier = Supplier(name="Running Filter Supplier", is_active=True)
+            db.session.add(supplier)
+            db.session.flush()
+            supplier_id = supplier.id
+            purchase = Purchase(
+                supplier_id=supplier.id,
+                purchase_date=date(2026, 4, 19),
+                delivery_date=date(2026, 4, 19),
+                status="delivered",
+                stated_weight_lbs=45,
+                purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+                testing_status="completed",
+                clean_or_dirty="clean",
+                batch_id=f"RUNFLT-{app_module.gen_uuid()[:6]}",
+            )
+            db.session.add(purchase)
+            db.session.flush()
+            purchase_id = purchase.id
+            lot = PurchaseLot(
+                purchase_id=purchase.id,
+                strain_name="Running Dream",
+                weight_lbs=45,
+                remaining_weight_lbs=45,
+                floor_state="reactor_staging",
+                milled=True,
+            )
+            db.session.add(lot)
+            db.session.flush()
+            lot_id = lot.id
+            run = app_module.Run(
+                run_date=date(2026, 4, 19),
+                reactor_number=4,
+                run_type="standard",
+                bio_in_reactor_lbs=20,
+                created_by=admin_id,
+            )
+            db.session.add(run)
+            db.session.flush()
+            run_id = run.id
+            charge = ExtractionCharge(
+                purchase_lot_id=lot.id,
+                run_id=run.id,
+                charged_weight_lbs=20,
+                reactor_number=4,
+                charged_at=app_module.datetime.now(app_module.timezone.utc),
+                source_mode="main_app",
+                status="running",
+                created_by=admin_id,
+            )
+            db.session.add(charge)
+            db.session.flush()
+            charge_id = charge.id
+            db.session.add(
+                AuditLog(
+                    user_id=admin_id,
+                    action="state_change",
+                    entity_type="extraction_charge",
+                    entity_id=charge.id,
+                    details=app_module.json.dumps({"to_state": "running"}),
+                )
+            )
+            db.session.commit()
+
+        with app.test_client() as client:
+            _login(client, "admin")
+            resp = client.get("/floor-ops?board_view=running")
+            assert resp.status_code == 200
+            assert b"No reactors match the current board filter." not in resp.data
+            assert b"Reactor 4" in resp.data
+            assert b"Running Dream" in resp.data
+            assert b"Charge recorded (Running)" in resp.data
+    finally:
+        with app.app_context():
+            AuditLog.query.filter_by(entity_type="extraction_charge", entity_id=charge_id).delete(synchronize_session=False)
+            if charge_id:
+                ExtractionCharge.query.filter_by(id=charge_id).delete(synchronize_session=False)
+            if run_id:
+                run = db.session.get(app_module.Run, run_id)
+                if run:
+                    db.session.delete(run)
+            if lot_id:
+                lot = db.session.get(PurchaseLot, lot_id)
+                if lot:
+                    db.session.delete(lot)
+            if purchase_id:
+                purchase = db.session.get(Purchase, purchase_id)
+                if purchase:
+                    db.session.delete(purchase)
+            if supplier_id:
+                supplier = db.session.get(Supplier, supplier_id)
+                if supplier:
+                    db.session.delete(supplier)
+            db.session.commit()
 
 
 def test_settings_route_saves_reactor_lifecycle_controls():

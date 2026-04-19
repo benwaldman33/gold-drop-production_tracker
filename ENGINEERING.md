@@ -430,6 +430,8 @@ This keeps each deployed facility self-identifying for future aggregation withou
   - `templates/floor_ops.html` renders:
     - per-reactor active state cards (`Empty`, `Charged / waiting`, `Run linked`)
     - direct lifecycle actions (`Mark In Reactor`, `Mark Running`, `Mark Complete`, `Cancel Charge`) when the configured policy allows them
+    - `board_view` filtering on the active board (`all`, `active`, `pending`, `running`, `completed_today`, `cancelled_today`)
+    - same-day `Reactor History Today` cards sourced from the current charge plus extraction-charge audit history
     - pending charge count / lbs summary
     - per-reactor pending charge cards
     - recently applied charges with `Open Run` shortcuts
