@@ -417,6 +417,13 @@ This keeps each deployed facility self-identifying for future aggregation withou
 - **Scanner observability**
   - `LotScanEvent` stores scan-open, start-run, extraction-charge, movement, and testing actions with user/context/timestamp.
   - `GET /api/v1/scan-events`, `GET /api/v1/lots/<lot_id>/scans`, and `GET /api/v1/summary/scanner` expose scanner activity to internal consumers.
+- **Floor queue visibility**
+  - `gold_drop/floor_module.py` now also builds a reactor-oriented charge queue from `ExtractionCharge`.
+  - Pending charges remain `status = "pending"` until `gold_drop/runs_module.py` links them to a saved run and marks them `applied`.
+  - `templates/floor_ops.html` renders:
+    - pending charge count / lbs summary
+    - per-reactor pending charge cards
+    - recently applied charges with `Open Run` shortcuts
 - **Smart-scale live integration**
   - `Settings -> Smart Scales` supports device registration, device updates, raw-payload test ingestion, and recent capture review.
   - `POST /runs/scale-capture` creates a pending `WeightCapture`, prefills `bio_in_reactor_lbs`, and links the capture to the run on save.

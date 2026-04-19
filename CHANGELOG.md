@@ -5,6 +5,7 @@
 ### Added
 - Confirmed purchases can now split an existing lot from remaining inventory on the main purchase form, creating a traced child lot with its own tracking fields and audit history.
 - Operators can now record an explicit extraction charge from a lot before opening the run form. The new charge workflow captures lot, pounds, reactor, timestamp, notes, and source mode (`main_app` or `scan`) in a persisted `ExtractionCharge` record.
+- `Floor Ops` now shows a reactor charge queue with pending charges by reactor plus recently applied charges already linked to saved runs.
 
 ### Changed
 - Purchase edit now round-trips `availability_date` and `testing_notes` so values saved from the mobile opportunity flow remain visible and editable in the main app.
@@ -17,7 +18,7 @@
 ### Tests
 - Added regression coverage for purchase edit round-trip of mobile opportunity fields and for confirmed-lot splitting from remaining inventory (`tests/test_refactor_safety.py`).
 - Added duplicate-supplier regression coverage for mobile supplier create, main supplier create, and standalone buyer duplicate matching.
-- Added extraction-charge regression coverage for scan-to-charge, charge prefill into new run, and charge-to-run linkage; full Python suite now passes with `123` tests.
+- Added extraction-charge and floor-queue regression coverage for scan-to-charge, charge prefill into new run, charge-to-run linkage, and pending/applied reactor queue visibility; full Python suite now passes with `124` tests.
 
 ## 2026-04-11
 

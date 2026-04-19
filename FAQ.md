@@ -251,6 +251,8 @@ It now also shows:
 - lots ready for extraction
 - open lots still pending prep
 - open lots still pending testing
+- pending extraction charges grouped by reactor
+- recently applied charges already linked to saved runs
 
 **Can I use an iPad or Android tablet camera to scan labels?**
 Yes. Use the in-app **Scan Center** at `/scan` or open it from **Floor Ops**.

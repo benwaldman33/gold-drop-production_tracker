@@ -1244,6 +1244,128 @@ def test_run_form_scale_capture_prefills_reactor_weight_and_links_capture():
             db.session.commit()
 
 
+def test_floor_ops_page_shows_pending_and_applied_extraction_charges():
+    app = app_module.app
+    pending_charge_id = None
+    applied_charge_id = None
+    run_id = None
+    with app.app_context():
+        supplier = Supplier(name="Floor Charge Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = Purchase(
+            supplier_id=supplier.id,
+            purchase_date=date(2026, 4, 16),
+            delivery_date=date(2026, 4, 16),
+            status="delivered",
+            stated_weight_lbs=120,
+            purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            clean_or_dirty="clean",
+            testing_status="completed",
+            batch_id=f"FCHG-{app_module.gen_uuid()[:6]}",
+        )
+        db.session.add(purchase)
+        db.session.flush()
+        pending_lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Pending Dream",
+            weight_lbs=60,
+            remaining_weight_lbs=60,
+            floor_state="reactor_staging",
+            milled=True,
+        )
+        applied_lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Applied Dream",
+            weight_lbs=60,
+            remaining_weight_lbs=35,
+            floor_state="reactor_staging",
+            milled=True,
+        )
+        db.session.add_all([pending_lot, applied_lot])
+        db.session.flush()
+        run = app_module.Run(
+            run_date=date(2026, 4, 16),
+            reactor_number=2,
+            run_type="standard",
+            bio_in_reactor_lbs=25,
+            dry_hte_g=5,
+            dry_thca_g=10,
+            created_by=app_module.User.query.filter_by(username="admin").first().id,
+        )
+        db.session.add(run)
+        db.session.flush()
+        db.session.add(app_module.RunInput(run_id=run.id, lot_id=applied_lot.id, weight_lbs=25))
+        pending_charge = ExtractionCharge(
+            purchase_lot_id=pending_lot.id,
+            charged_weight_lbs=30,
+            reactor_number=1,
+            charged_at=app_module.datetime.now(app_module.timezone.utc),
+            source_mode="main_app",
+            status="pending",
+            notes="awaiting run save",
+        )
+        applied_charge = ExtractionCharge(
+            purchase_lot_id=applied_lot.id,
+            run_id=run.id,
+            charged_weight_lbs=25,
+            reactor_number=2,
+            charged_at=app_module.datetime.now(app_module.timezone.utc),
+            source_mode="scan",
+            status="applied",
+        )
+        db.session.add_all([pending_charge, applied_charge])
+        db.session.commit()
+        pending_charge_id = pending_charge.id
+        applied_charge_id = applied_charge.id
+        run_id = run.id
+        purchase_id = purchase.id
+        pending_lot_id = pending_lot.id
+        applied_lot_id = applied_lot.id
+        supplier_id = supplier.id
+
+    try:
+        with app.test_client() as client:
+            _login(client, "admin")
+            resp = client.get("/floor-ops")
+            assert resp.status_code == 200
+            assert b"Reactor Charge Queue" in resp.data
+            assert b"Pending Charges" in resp.data
+            assert b"Pending Dream" in resp.data
+            assert b"Applied Dream" in resp.data
+            assert b"awaiting run save" in resp.data
+            assert b"Recently Applied Charges" in resp.data
+            assert b"Open Run" in resp.data
+    finally:
+        with app.app_context():
+            if pending_charge_id:
+                obj = db.session.get(ExtractionCharge, pending_charge_id)
+                if obj:
+                    db.session.delete(obj)
+            if applied_charge_id:
+                obj = db.session.get(ExtractionCharge, applied_charge_id)
+                if obj:
+                    db.session.delete(obj)
+            if run_id:
+                run_input = app_module.RunInput.query.filter_by(run_id=run_id, lot_id=applied_lot_id).first()
+                if run_input:
+                    db.session.delete(run_input)
+                run_obj = db.session.get(app_module.Run, run_id)
+                if run_obj:
+                    db.session.delete(run_obj)
+            for lot_id in (pending_lot_id, applied_lot_id):
+                lot_obj = db.session.get(PurchaseLot, lot_id)
+                if lot_obj:
+                    db.session.delete(lot_obj)
+            purchase_obj = db.session.get(Purchase, purchase_id)
+            if purchase_obj:
+                db.session.delete(purchase_obj)
+            supplier_obj = db.session.get(Supplier, supplier_id)
+            if supplier_obj:
+                db.session.delete(supplier_obj)
+            db.session.commit()
+
+
 def test_slack_apply_run_carries_manual_lot_selection_into_prefill_session():
     app = app_module.app
     with app.app_context():
