@@ -1337,7 +1337,8 @@ def test_floor_ops_page_shows_pending_and_applied_extraction_charges():
             assert b"Run linked" in resp.data
             assert b"Queue depth: 1 pending charge" in resp.data
             assert b"operator:" in resp.data
-            assert b"Ready for the next lot charge." in resp.data
+            assert b"Mark In Reactor" in resp.data
+            assert b"Mark Running" in resp.data
             assert b"Reactor Charge Queue" in resp.data
             assert b"Pending Charges" in resp.data
             assert b"Pending Dream" in resp.data
@@ -1372,6 +1373,326 @@ def test_floor_ops_page_shows_pending_and_applied_extraction_charges():
             supplier_obj = db.session.get(Supplier, supplier_id)
             if supplier_obj:
                 db.session.delete(supplier_obj)
+            db.session.commit()
+
+
+def test_settings_route_saves_reactor_lifecycle_controls():
+    app = app_module.app
+    keys = [
+        "reactor_state_in_reactor_enabled",
+        "reactor_state_in_reactor_required",
+        "reactor_state_running_enabled",
+        "reactor_state_running_required",
+        "reactor_state_completed_enabled",
+        "reactor_state_completed_required",
+        "reactor_state_cancelled_enabled",
+        "reactor_state_cancelled_required",
+        "reactor_running_requires_linked_run",
+        "reactor_show_state_history",
+    ]
+    with app.app_context():
+        originals = {key: SystemSetting.get(key) for key in keys}
+
+    try:
+        with app.test_client() as client:
+            _login(client, "admin")
+            resp = client.post(
+                "/settings",
+                data={
+                    "form_type": "system",
+                    "return_to": "#settings-system",
+                    "reactor_state_in_reactor_enabled": "on",
+                    "reactor_state_in_reactor_required": "on",
+                    "reactor_state_running_enabled": "on",
+                    "reactor_state_completed_enabled": "on",
+                    "reactor_state_cancelled_enabled": "on",
+                    "reactor_running_requires_linked_run": "on",
+                },
+                follow_redirects=False,
+            )
+            assert resp.status_code in (302, 303)
+
+        with app.app_context():
+            assert SystemSetting.get("reactor_state_in_reactor_enabled") == "1"
+            assert SystemSetting.get("reactor_state_in_reactor_required") == "1"
+            assert SystemSetting.get("reactor_state_running_enabled") == "1"
+            assert SystemSetting.get("reactor_state_running_required") == "0"
+            assert SystemSetting.get("reactor_show_state_history") == "0"
+            assert SystemSetting.get("reactor_running_requires_linked_run") == "1"
+    finally:
+        with app.app_context():
+            for key, value in originals.items():
+                row = db.session.get(SystemSetting, key)
+                if value is None:
+                    if row is not None:
+                        db.session.delete(row)
+                else:
+                    if row is None:
+                        db.session.add(SystemSetting(key=key, value=value))
+                    else:
+                        row.value = value
+            db.session.commit()
+
+
+def test_floor_charge_transitions_require_states_and_record_history():
+    app = app_module.app
+    keys = [
+        "reactor_state_in_reactor_enabled",
+        "reactor_state_in_reactor_required",
+        "reactor_state_running_enabled",
+        "reactor_state_running_required",
+        "reactor_state_completed_enabled",
+        "reactor_running_requires_linked_run",
+    ]
+    with app.app_context():
+        originals = {key: SystemSetting.get(key) for key in keys}
+        for key, value in (
+            ("reactor_state_in_reactor_enabled", "1"),
+            ("reactor_state_in_reactor_required", "1"),
+            ("reactor_state_running_enabled", "1"),
+            ("reactor_state_running_required", "1"),
+            ("reactor_state_completed_enabled", "1"),
+            ("reactor_running_requires_linked_run", "1"),
+        ):
+            row = db.session.get(SystemSetting, key)
+            if row is None:
+                db.session.add(SystemSetting(key=key, value=value))
+            else:
+                row.value = value
+        supplier = Supplier(name="Floor Transition Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = Purchase(
+            supplier_id=supplier.id,
+            purchase_date=date(2026, 4, 19),
+            delivery_date=date(2026, 4, 19),
+            status="delivered",
+            stated_weight_lbs=80,
+            purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            testing_status="completed",
+            clean_or_dirty="clean",
+            batch_id=f"TRN-{app_module.gen_uuid()[:6]}",
+        )
+        db.session.add(purchase)
+        db.session.flush()
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Transition Dream",
+            weight_lbs=80,
+            remaining_weight_lbs=80,
+            floor_state="reactor_staging",
+            milled=True,
+        )
+        db.session.add(lot)
+        db.session.flush()
+        charge = ExtractionCharge(
+            purchase_lot_id=lot.id,
+            charged_weight_lbs=30,
+            reactor_number=1,
+            charged_at=app_module.datetime.now(app_module.timezone.utc),
+            source_mode="main_app",
+            status="pending",
+            created_by=app_module.User.query.filter_by(username="admin").first().id,
+        )
+        db.session.add(charge)
+        db.session.commit()
+        charge_id = charge.id
+        purchase_id = purchase.id
+        lot_id = lot.id
+        supplier_id = supplier.id
+
+    run_id = None
+    try:
+        with app.test_client() as client:
+            _login(client, "admin")
+            blocked = client.post(
+                f"/floor-ops/charges/{charge_id}/transition",
+                data={"target_state": "completed"},
+                follow_redirects=True,
+            )
+            assert blocked.status_code == 200
+            assert b"Mark In Reactor is required before this transition." in blocked.data
+
+            moved = client.post(
+                f"/floor-ops/charges/{charge_id}/transition",
+                data={"target_state": "in_reactor"},
+                follow_redirects=True,
+            )
+            assert moved.status_code == 200
+            assert b"Reactor state updated to In reactor." in moved.data
+
+            blocked_running = client.post(
+                f"/floor-ops/charges/{charge_id}/transition",
+                data={"target_state": "running"},
+                follow_redirects=True,
+            )
+            assert blocked_running.status_code == 200
+            assert b"Mark Running requires a linked run" in blocked_running.data
+
+        with app.app_context():
+            run = app_module.Run(
+                run_date=date(2026, 4, 19),
+                reactor_number=1,
+                run_type="standard",
+                bio_in_reactor_lbs=30,
+                created_by=app_module.User.query.filter_by(username="admin").first().id,
+            )
+            db.session.add(run)
+            db.session.flush()
+            charge = db.session.get(ExtractionCharge, charge_id)
+            charge.run_id = run.id
+            run_id = run.id
+            db.session.commit()
+
+        with app.test_client() as client:
+            _login(client, "admin")
+            running = client.post(
+                f"/floor-ops/charges/{charge_id}/transition",
+                data={"target_state": "running"},
+                follow_redirects=True,
+            )
+            assert running.status_code == 200
+            assert b"Reactor state updated to Running." in running.data
+
+            completed = client.post(
+                f"/floor-ops/charges/{charge_id}/transition",
+                data={"target_state": "completed"},
+                follow_redirects=True,
+            )
+            assert completed.status_code == 200
+            assert b"Reactor state updated to Completed today." in completed.data
+
+        with app.app_context():
+            charge = db.session.get(ExtractionCharge, charge_id)
+            assert charge is not None
+            assert charge.status == "completed"
+            history = AuditLog.query.filter_by(entity_type="extraction_charge", entity_id=charge_id, action="state_change").order_by(AuditLog.timestamp.asc()).all()
+            states = [json.loads(item.details or "{}").get("to_state") for item in history]
+            assert states == ["in_reactor", "running", "completed"]
+    finally:
+        with app.app_context():
+            for item in AuditLog.query.filter_by(entity_type="extraction_charge", entity_id=charge_id).all():
+                db.session.delete(item)
+            charge = db.session.get(ExtractionCharge, charge_id)
+            if charge is not None:
+                db.session.delete(charge)
+            if run_id:
+                run = db.session.get(app_module.Run, run_id)
+                if run is not None:
+                    db.session.delete(run)
+            lot = db.session.get(PurchaseLot, lot_id)
+            if lot is not None:
+                db.session.delete(lot)
+            purchase = db.session.get(Purchase, purchase_id)
+            if purchase is not None:
+                db.session.delete(purchase)
+            supplier = db.session.get(Supplier, supplier_id)
+            if supplier is not None:
+                db.session.delete(supplier)
+            for key, value in originals.items():
+                row = db.session.get(SystemSetting, key)
+                if value is None:
+                    if row is not None:
+                        db.session.delete(row)
+                else:
+                    if row is None:
+                        db.session.add(SystemSetting(key=key, value=value))
+                    else:
+                        row.value = value
+            db.session.commit()
+
+
+def test_floor_charge_cancel_modify_redirects_to_run_and_logs_resolution():
+    app = app_module.app
+    with app.app_context():
+        supplier = Supplier(name="Floor Cancel Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = Purchase(
+            supplier_id=supplier.id,
+            purchase_date=date(2026, 4, 19),
+            delivery_date=date(2026, 4, 19),
+            status="delivered",
+            stated_weight_lbs=70,
+            purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            batch_id=f"CAN-{app_module.gen_uuid()[:6]}",
+        )
+        db.session.add(purchase)
+        db.session.flush()
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Cancel Dream",
+            weight_lbs=70,
+            remaining_weight_lbs=40,
+            floor_state="reactor_staging",
+            milled=True,
+        )
+        db.session.add(lot)
+        db.session.flush()
+        run = app_module.Run(
+            run_date=date(2026, 4, 19),
+            reactor_number=2,
+            run_type="standard",
+            bio_in_reactor_lbs=20,
+            created_by=app_module.User.query.filter_by(username="admin").first().id,
+        )
+        db.session.add(run)
+        db.session.flush()
+        charge = ExtractionCharge(
+            purchase_lot_id=lot.id,
+            run_id=run.id,
+            charged_weight_lbs=20,
+            reactor_number=2,
+            charged_at=app_module.datetime.now(app_module.timezone.utc),
+            source_mode="main_app",
+            status="applied",
+            created_by=app_module.User.query.filter_by(username="admin").first().id,
+        )
+        db.session.add(charge)
+        db.session.commit()
+        charge_id = charge.id
+        run_id = run.id
+        purchase_id = purchase.id
+        lot_id = lot.id
+        supplier_id = supplier.id
+
+    try:
+        with app.test_client() as client:
+            _login(client, "admin")
+            resp = client.post(
+                f"/floor-ops/charges/{charge_id}/transition",
+                data={"target_state": "cancelled", "cancel_resolution": "modify"},
+                follow_redirects=False,
+            )
+            assert resp.status_code in (302, 303)
+            assert resp.headers["Location"].endswith(f"/runs/{run_id}/edit")
+
+        with app.app_context():
+            charge = db.session.get(ExtractionCharge, charge_id)
+            assert charge is not None
+            assert charge.status == "cancelled"
+            audit = AuditLog.query.filter_by(entity_type="extraction_charge", entity_id=charge_id, action="state_change").order_by(AuditLog.timestamp.desc()).first()
+            assert audit is not None
+            assert json.loads(audit.details or "{}").get("cancel_resolution") == "modify"
+    finally:
+        with app.app_context():
+            for item in AuditLog.query.filter_by(entity_type="extraction_charge", entity_id=charge_id).all():
+                db.session.delete(item)
+            charge = db.session.get(ExtractionCharge, charge_id)
+            if charge is not None:
+                db.session.delete(charge)
+            run = db.session.get(app_module.Run, run_id)
+            if run is not None:
+                db.session.delete(run)
+            lot = db.session.get(PurchaseLot, lot_id)
+            if lot is not None:
+                db.session.delete(lot)
+            purchase = db.session.get(Purchase, purchase_id)
+            if purchase is not None:
+                db.session.delete(purchase)
+            supplier = db.session.get(Supplier, supplier_id)
+            if supplier is not None:
+                db.session.delete(supplier)
             db.session.commit()
 
 

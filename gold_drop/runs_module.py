@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from gold_drop.uploads import json_paths, save_lab_files
+from services.extraction_charge import charge_history_entries, update_charge_state
 from services.lot_allocation import (
     apply_run_allocations,
     collect_run_allocations_from_form,
@@ -413,7 +414,13 @@ def save_run(root, existing_run):
                 if charge.run_id and charge.run_id != run.id:
                     raise ValueError("This extraction charge is already linked to another run.")
                 charge.run_id = run.id
-                charge.status = "applied"
+                update_charge_state(
+                    root,
+                    charge,
+                    "applied",
+                    history_entries=charge_history_entries(root, charge.id, limit=20),
+                    context={"source": "run_save"},
+                )
                 if scale_capture_id and not charge.weight_capture_id:
                     charge.weight_capture_id = scale_capture_id
 

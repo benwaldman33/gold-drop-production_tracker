@@ -271,6 +271,14 @@ The page now also includes a reactor-oriented extraction queue:
   - **Run linked**
 - each reactor card shows the latest lot, charged lbs, charge time, queue depth, and the operator label when present
 - when a reactor already has a saved run linked, the card exposes **Open Run**
+- the current reactor card can also expose direct lifecycle actions:
+  - **Mark In Reactor**
+  - **Mark Running**
+  - **Mark Complete**
+  - **Cancel Charge**
+- each lifecycle action writes a timestamped history entry to the extraction charge
+- by default, **Mark Running** requires that the charge already has a linked run
+- completed or cancelled charges stay visible on the board for the rest of the local day, then move to history-only visibility
 - **Pending Charges** summarizes lbs already charged into production but not yet linked to a saved run
 - **Reactor Charge Queue** groups pending charges by Reactor 1 / 2 / 3
 - **Recently Applied Charges** shows charges that have already been finalized into saved runs and provides an **Open Run** shortcut
@@ -626,6 +634,11 @@ Includes:
 - Potency rate used for potency-based pricing
 - Reactor count/capacity
 - Throughput targets
+- Reactor lifecycle controls:
+  - show or hide `In Reactor`, `Running`, `Completed`, and `Cancelled`
+  - make lifecycle states required before later transitions
+  - require a linked run before **Mark Running**
+  - show or hide state history on the **Active Reactor Board**
 - Optional analytics filter: **Exclude runs missing biomass pricing ($/lb)**
 - Cost allocation method: **Uniform**, **Split 50/50**, or **Custom split**
 - Site identity for internal API consumers:

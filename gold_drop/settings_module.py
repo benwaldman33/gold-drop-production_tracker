@@ -19,6 +19,7 @@ from services.field_submissions import (
     submission_total_weight,
 )
 from services.api_auth import generate_api_token, hash_api_token
+from services.extraction_charge import REACTOR_LIFECYCLE_DEFAULTS, reactor_lifecycle_settings
 from services.site_aggregation import normalize_remote_base_url, pull_all_remote_sites, pull_remote_site
 from services.scale_ingest import SCALE_INTERFACE_TYPES, capture_weight_from_device_payload
 
@@ -394,6 +395,38 @@ def settings_view(root):
                         description="Facility/site timezone exposed through internal API metadata",
                     ))
 
+            for state_key, defaults in REACTOR_LIFECYCLE_DEFAULTS.items():
+                enabled_val = "1" if root.request.form.get(f"reactor_state_{state_key}_enabled") else "0"
+                required_val = "1" if root.request.form.get(f"reactor_state_{state_key}_required") else "0"
+                for key, val, desc in (
+                    (
+                        f"reactor_state_{state_key}_enabled",
+                        enabled_val,
+                        f"Show {state_key.replace('_', ' ')} lifecycle action on Floor Ops",
+                    ),
+                    (
+                        f"reactor_state_{state_key}_required",
+                        required_val,
+                        f"Require {state_key.replace('_', ' ')} before later lifecycle transitions",
+                    ),
+                ):
+                    existing = root.db.session.get(root.SystemSetting, key)
+                    if existing:
+                        existing.value = val
+                    else:
+                        root.db.session.add(root.SystemSetting(key=key, value=val, description=desc))
+            running_linked_val = "1" if root.request.form.get("reactor_running_requires_linked_run") else "0"
+            show_history_val = "1" if root.request.form.get("reactor_show_state_history") else "0"
+            for key, val, desc in (
+                ("reactor_running_requires_linked_run", running_linked_val, "Require a linked run before Mark Running"),
+                ("reactor_show_state_history", show_history_val, "Show extraction charge lifecycle history on Floor Ops"),
+            ):
+                existing = root.db.session.get(root.SystemSetting, key)
+                if existing:
+                    existing.value = val
+                else:
+                    root.db.session.add(root.SystemSetting(key=key, value=val, description=desc))
+
             root.db.session.commit()
             if tz_ok and site_timezone_ok:
                 root.flash("System settings updated.", "success")
@@ -573,11 +606,13 @@ def settings_view(root):
     pending_submissions_total_lbs = sum(float(getattr(s, "total_weight_lbs", 0) or 0) for s in pending_field_submissions)
     reviewed_approved_total_lbs = sum(float(getattr(s, "total_weight_lbs", 0) or 0) for s in reviewed_field_submissions if s.status == "approved")
     reviewed_rejected_total_lbs = sum(float(getattr(s, "total_weight_lbs", 0) or 0) for s in reviewed_field_submissions if s.status == "rejected")
+    reactor_lifecycle = reactor_lifecycle_settings(root)
 
     tz_choice_vals = [c[0] for c in root.APP_DISPLAY_TIMEZONE_CHOICES]
     return root.render_template(
         "settings.html",
         system_settings=system_settings,
+        reactor_lifecycle=reactor_lifecycle,
         app_timezone_choices=root.APP_DISPLAY_TIMEZONE_CHOICES,
         app_timezone_choice_values=tz_choice_vals,
         slack_sync_slots=slack_sync_slots,

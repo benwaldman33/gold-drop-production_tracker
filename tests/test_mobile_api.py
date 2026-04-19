@@ -21,6 +21,20 @@ def _create_supplier(app, name: str) -> str:
         return supplier.id
 
 
+def _set_mobile_workflows(app, *, buying: str = "1", receiving: str = "1"):
+    with app.app_context():
+        for key, value in (
+            ("standalone_purchasing_enabled", buying),
+            ("standalone_receiving_enabled", receiving),
+        ):
+            setting = db.session.get(SystemSetting, key)
+            if setting is None:
+                setting = SystemSetting(key=key, value=value)
+                db.session.add(setting)
+            setting.value = value
+        db.session.commit()
+
+
 def test_mobile_login_me_and_logout():
     app = app_module.create_app()
     with app.test_client() as client:
@@ -41,6 +55,7 @@ def test_mobile_login_me_and_logout():
 
 def test_mobile_supplier_duplicate_warning_and_confirm_create():
     app = app_module.create_app()
+    _set_mobile_workflows(app)
     existing_supplier_id = _create_supplier(app, "Forest Farms")
     created_supplier_id = None
     try:
@@ -140,6 +155,7 @@ def test_mobile_supplier_reads_hide_inactive_and_merged_suppliers():
 
 def test_mobile_supplier_create_accepts_standalone_form_shape():
     app = app_module.create_app()
+    _set_mobile_workflows(app)
     created_supplier_id = None
     try:
         with app.test_client() as client:
@@ -179,7 +195,9 @@ def test_mobile_supplier_create_accepts_standalone_form_shape():
 
 def test_mobile_opportunity_edit_delivery_and_photo_flow():
     app = app_module.create_app()
+    _set_mobile_workflows(app)
     supplier_id = _create_supplier(app, f"Mobile Supplier {gen_uuid()[:6]}")
+    opp_id = None
     try:
         with app.test_client() as client:
             _login_mobile(client)
@@ -278,6 +296,7 @@ def test_mobile_opportunity_edit_delivery_and_photo_flow():
 
 def test_mobile_opportunity_create_enriches_existing_supplier_blank_fields():
     app = app_module.create_app()
+    _set_mobile_workflows(app)
     supplier_id = _create_supplier(app, f"Existing Supplier {gen_uuid()[:6]}")
     purchase_id = None
     try:
@@ -348,6 +367,7 @@ def test_mobile_endpoints_require_auth():
 
 def test_mobile_receiving_queue_and_receive_flow():
     app = app_module.create_app()
+    _set_mobile_workflows(app)
     supplier_id = _create_supplier(app, f"Receiving Supplier {gen_uuid()[:6]}")
     receiver_id = None
     receiver_username = f"receiver_{gen_uuid()[:6]}"
@@ -459,6 +479,7 @@ def test_mobile_receiving_queue_and_receive_flow():
 
 def test_mobile_receiving_edit_flow_and_lock_after_downstream_usage():
     app = app_module.create_app()
+    _set_mobile_workflows(app)
     supplier_id = _create_supplier(app, f"Receiving Edit Supplier {gen_uuid()[:6]}")
     receiver_id = None
     receiver_username = f"receiver_edit_{gen_uuid()[:6]}"
@@ -605,6 +626,7 @@ def test_mobile_receiving_edit_flow_and_lock_after_downstream_usage():
 
 def test_mobile_capabilities_and_workflow_toggles():
     app = app_module.create_app()
+    _set_mobile_workflows(app)
     with app.app_context():
         setting = db.session.get(SystemSetting, "standalone_receiving_enabled")
         setting.value = "0"
@@ -630,6 +652,7 @@ def test_mobile_capabilities_and_workflow_toggles():
 
 def test_mobile_write_origin_enforcement_and_audit_log():
     app = app_module.create_app()
+    _set_mobile_workflows(app)
     supplier_id = _create_supplier(app, f"Audit Supplier {gen_uuid()[:6]}")
     purchase_id = None
     try:
@@ -677,6 +700,7 @@ def test_mobile_write_origin_enforcement_and_audit_log():
 
 def test_mobile_delivery_photo_upload_limit_enforced():
     app = app_module.create_app()
+    _set_mobile_workflows(app)
     supplier_id = _create_supplier(app, f"Limit Supplier {gen_uuid()[:6]}")
     purchase_id = None
     old_limit = app.config.get("MOBILE_UPLOAD_MAX_FILES_PER_REQUEST")

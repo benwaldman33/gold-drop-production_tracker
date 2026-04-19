@@ -258,6 +258,24 @@ It now also shows:
 **What does the Active Reactor Board mean?**
 It is the extractor-facing summary at the top of `Floor Ops`. For each reactor, it shows the current inferred state, the latest lot charged into that reactor, the charged lbs, charge time, queue depth, and an `Open Run` link when a saved run is already attached.
 
+**Can extractors update reactor state from the board?**
+Yes. `Floor Ops` now exposes lifecycle actions directly on the current reactor card:
+- `Mark In Reactor`
+- `Mark Running`
+- `Mark Complete`
+- `Cancel Charge`
+
+Each action records a timestamped audit entry against the extraction charge. By default, `Mark Running` requires a linked run. If a charge is cancelled and already has a run linked, the app asks whether the operator wants to open the run for modification or abandon the charge and logs that choice.
+
+**Can we change which reactor states are required?**
+Yes. Super Admin can use `Settings -> Operational Parameters -> Reactor lifecycle controls` to:
+- show or hide each lifecycle state
+- make a state required before later transitions
+- require a linked run before `Mark Running`
+- show or hide state history on the active reactor board
+
+Completed and cancelled charges stay visible on the board for the rest of the local day, then fall back to history.
+
 **Can I use an iPad or Android tablet camera to scan labels?**
 Yes. Use the in-app **Scan Center** at `/scan` or open it from **Floor Ops**.
 
