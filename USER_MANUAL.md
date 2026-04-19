@@ -531,6 +531,8 @@ If the “exclude runs missing $/lb” setting is enabled, these analytics ignor
 
 Editors can use **Select all** / **Select none** and **Batch edit…** from the supplier cards area to **activate/deactivate** suppliers or **append notes** (see **Batch editing from list screens**). Checkboxes appear next to each supplier card title.
 
+When creating a supplier from the main **Add Supplier** screen, the app now warns if the name is very close to an existing active supplier. Review the suggested matches before saving a new supplier.
+
 Super Admins can also open a supplier record and use **Merge Supplier** to combine duplicates safely. The merge screen shows an impact summary first, then archives the source supplier, moves linked records to the target supplier, and keeps lineage and audit history intact.
 
 ---
@@ -752,6 +754,7 @@ Use exports for reporting, reconciliation, or offline analysis.
 ## Standalone Purchasing Agent App
 
 - The standalone purchasing app is intended for buyer and intake workflows on phone or tablet.
+- Creating a new supplier from the standalone app now warns on typo-close duplicate names before saving and lets the buyer use an existing supplier instead.
 - Approvers should review mobile-created opportunities from the main app:
   - `Purchases` list shows when a line originated from the `Mobile app`
   - purchase edit pages surface submission origin, created-by user, delivery-recorded-by user, opportunity photos, and delivery photos

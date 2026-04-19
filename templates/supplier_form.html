@@ -2,10 +2,37 @@
 {% block title %}{% if supplier %}Edit Supplier{% else %}Add Supplier{% endif %}{% endblock %}
 {% block content %}
 {% set inc = supplier_incomplete_fields|default([]) %}
+{% set form_data = form_data|default({}) %}
 <div class="page-header">
   <h2>{% if supplier %}Edit Supplier{% else %}Add Supplier{% endif %}</h2>
   <a href="{{ url_for('suppliers_list') }}" class="btn btn-secondary">← Back</a>
 </div>
+{% if not supplier and duplicate_candidates %}
+<div class="card" style="margin-bottom:12px; border-color:rgba(161, 98, 7, 0.34); background:linear-gradient(180deg, rgba(161, 98, 7, 0.08), rgba(161, 98, 7, 0.02));">
+  <div class="card-header"><h3>Possible duplicate supplier</h3></div>
+  <p class="text-sm" style="margin-top:0; color:var(--text-muted);">
+    Review these likely matches before creating a new supplier. If this is really a new supplier, save again to confirm.
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Name</th><th>Location</th><th>Why matched</th><th>Score</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for candidate in duplicate_candidates %}
+        <tr>
+          <td><strong>{{ candidate.name }}</strong></td>
+          <td>{{ candidate.location or '—' }}</td>
+          <td>{{ candidate.match_reason|join(', ') }}</td>
+          <td class="text-mono">{{ "%.2f"|format(candidate.score) }}</td>
+          <td><a class="btn btn-secondary btn-sm" href="{{ url_for('supplier_edit', sid=candidate.id) }}">Open</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
 {% if supplier and inc %}
 <div class="supplier-incomplete-modal" id="supplierIncompleteModal" role="dialog" aria-modal="true" aria-labelledby="supplierIncompleteTitle">
   <div class="supplier-incomplete-modal__backdrop" aria-label="Close dialog"></div>
@@ -96,33 +123,36 @@
 <div class="card">
   <form method="POST">
     <input type="hidden" name="form_type" value="supplier">
+    {% if not supplier and duplicate_candidates %}
+    <input type="hidden" name="confirm_new_supplier" value="1">
+    {% endif %}
     <div class="form-row">
       <div class="form-group">
         <label>Farm / Supplier Name *</label>
-        <input type="text" name="name" value="{{ supplier.name if supplier else '' }}" required>
+        <input type="text" name="name" value="{{ supplier.name if supplier else form_data.get('name', '') }}" required>
       </div>
       <div class="form-group{% if 'contact_name' in inc %} form-group--incomplete{% endif %}">
         <label>Contact Name</label>
-        <input type="text" name="contact_name" value="{{ supplier.contact_name if supplier and supplier.contact_name else '' }}">
+        <input type="text" name="contact_name" value="{{ supplier.contact_name if supplier and supplier.contact_name else form_data.get('contact_name', '') }}">
       </div>
     </div>
     <div class="form-row">
       <div class="form-group{% if 'contact_phone' in inc %} form-group--incomplete{% endif %}">
         <label>Phone</label>
-        <input type="text" name="contact_phone" value="{{ supplier.contact_phone if supplier and supplier.contact_phone else '' }}">
+        <input type="text" name="contact_phone" value="{{ supplier.contact_phone if supplier and supplier.contact_phone else form_data.get('contact_phone', '') }}">
       </div>
       <div class="form-group{% if 'contact_email' in inc %} form-group--incomplete{% endif %}">
         <label>Email</label>
-        <input type="email" name="contact_email" value="{{ supplier.contact_email if supplier and supplier.contact_email else '' }}">
+        <input type="email" name="contact_email" value="{{ supplier.contact_email if supplier and supplier.contact_email else form_data.get('contact_email', '') }}">
       </div>
     </div>
     <div class="form-group{% if 'location' in inc %} form-group--incomplete{% endif %}">
       <label>Location</label>
-      <input type="text" name="location" value="{{ supplier.location if supplier and supplier.location else '' }}">
+      <input type="text" name="location" value="{{ supplier.location if supplier and supplier.location else form_data.get('location', '') }}">
     </div>
     <div class="form-group">
       <label>Notes</label>
-      <textarea name="notes" rows="3">{{ supplier.notes if supplier and supplier.notes else '' }}</textarea>
+      <textarea name="notes" rows="3">{{ supplier.notes if supplier and supplier.notes else form_data.get('notes', '') }}</textarea>
     </div>
     {% if supplier %}
     <div class="form-group">

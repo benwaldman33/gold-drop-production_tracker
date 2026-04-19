@@ -60,6 +60,70 @@ def test_settings_route_rejects_non_admin_user():
     assert page.headers["Location"].endswith("/")
 
 
+def test_supplier_new_requires_confirmation_for_close_duplicate_names():
+    app = app_module.create_app()
+    existing_id = None
+    created_id = None
+    try:
+        with app.app_context():
+            existing = Supplier(name="Forest Farms", is_active=True)
+            db.session.add(existing)
+            db.session.commit()
+            existing_id = existing.id
+
+        with app.test_client() as client:
+            warning = _call_view_as_user(
+                "/suppliers/new",
+                "supplier_new",
+                "ops",
+                method="POST",
+                data={
+                    "name": "Forrest Farms",
+                    "contact_name": "Buyer",
+                    "contact_phone": "555-0101",
+                    "contact_email": "buyer@example.com",
+                    "location": "Salinas",
+                    "notes": "possible duplicate",
+                },
+            )
+            assert warning.status_code == 200
+            assert b"Possible duplicate supplier" in warning.data
+            assert b"Forest Farms" in warning.data
+            with app.app_context():
+                assert Supplier.query.filter_by(name="Forrest Farms").count() == 0
+
+            confirmed = _call_view_as_user(
+                "/suppliers/new",
+                "supplier_new",
+                "ops",
+                method="POST",
+                data={
+                    "name": "Forrest Farms",
+                    "contact_name": "Buyer",
+                    "contact_phone": "555-0101",
+                    "contact_email": "buyer@example.com",
+                    "location": "Salinas",
+                    "notes": "confirmed duplicate create",
+                    "confirm_new_supplier": "1",
+                },
+            )
+            assert confirmed.status_code in (302, 303)
+
+        with app.app_context():
+            created = Supplier.query.filter_by(name="Forrest Farms").first()
+            assert created is not None
+            created_id = created.id
+    finally:
+        with app.app_context():
+            for supplier_id in (created_id, existing_id):
+                if not supplier_id:
+                    continue
+                supplier = db.session.get(Supplier, supplier_id)
+                if supplier is not None:
+                    db.session.delete(supplier)
+            db.session.commit()
+
+
 def test_settings_route_renders_with_legacy_naive_field_token_expiry():
     app = app_module.app
     with app.app_context():

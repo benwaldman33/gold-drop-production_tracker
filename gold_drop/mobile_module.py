@@ -25,7 +25,7 @@ from services.mobile_write_api import (
     workflow_enabled,
     workflow_permissions,
 )
-from services.slack_workflow import slack_supplier_candidates_for_source
+from services.supplier_duplicates import supplier_duplicate_candidates
 from gold_drop.uploads import save_uploads, allowed_image_filename
 
 
@@ -279,10 +279,7 @@ def _mobile_receiving_summary(root, purchase: Purchase) -> dict[str, Any]:
 
 
 def _mobile_supplier_duplicate_candidates(root, supplier_name: str, *, limit: int = 5) -> list[dict[str, Any]]:
-    candidates = slack_supplier_candidates_for_source(root, supplier_name, limit=limit)
-    for candidate in candidates:
-        candidate["requires_confirmation"] = True
-    return candidates
+    return supplier_duplicate_candidates(root, supplier_name, limit=limit)
 
 
 def _mobile_receiving_query(root):

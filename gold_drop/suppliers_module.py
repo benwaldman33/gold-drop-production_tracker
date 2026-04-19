@@ -6,6 +6,7 @@ from flask import current_app, request, url_for
 
 from gold_drop.uploads import json_paths, save_lab_files, save_photo_library_files
 from services.photo_assets import create_photo_asset, normalize_photo_category
+from services.supplier_duplicates import supplier_duplicate_candidates
 from services.supplier_merge import execute_supplier_merge, supplier_merge_preview
 
 
@@ -267,14 +268,32 @@ def suppliers_list_view(root):
 
 
 def supplier_new_view(root):
+    form_data = {}
     if root.request.method == "POST":
+        form_data = {
+            "name": root.request.form.get("name", "").strip(),
+            "contact_name": root.request.form.get("contact_name", "").strip(),
+            "contact_phone": root.request.form.get("contact_phone", "").strip(),
+            "contact_email": root.request.form.get("contact_email", "").strip(),
+            "location": root.request.form.get("location", "").strip(),
+            "notes": root.request.form.get("notes", "").strip(),
+        }
+        duplicate_candidates = supplier_duplicate_candidates(root, form_data["name"])
+        if duplicate_candidates and root.request.form.get("confirm_new_supplier") != "1":
+            return root.render_template(
+                "supplier_form.html",
+                supplier=None,
+                supplier_incomplete_fields=[],
+                form_data=form_data,
+                duplicate_candidates=duplicate_candidates,
+            )
         supplier = root.Supplier(
-            name=root.request.form["name"].strip(),
-            contact_name=root.request.form.get("contact_name", "").strip() or None,
-            contact_phone=root.request.form.get("contact_phone", "").strip() or None,
-            contact_email=root.request.form.get("contact_email", "").strip() or None,
-            location=root.request.form.get("location", "").strip() or None,
-            notes=root.request.form.get("notes", "").strip() or None,
+            name=form_data["name"],
+            contact_name=form_data["contact_name"] or None,
+            contact_phone=form_data["contact_phone"] or None,
+            contact_email=form_data["contact_email"] or None,
+            location=form_data["location"] or None,
+            notes=form_data["notes"] or None,
         )
         root.db.session.add(supplier)
         root.log_audit("create", "supplier", supplier.id)
@@ -285,7 +304,7 @@ def supplier_new_view(root):
             return root.redirect(root.url_for("supplier_edit", sid=supplier.id))
         root.flash("Supplier added.", "success")
         return root.redirect(root.url_for("suppliers_list"))
-    return root.render_template("supplier_form.html", supplier=None, supplier_incomplete_fields=[])
+    return root.render_template("supplier_form.html", supplier=None, supplier_incomplete_fields=[], form_data=form_data, duplicate_candidates=[])
 
 
 def supplier_edit_view(root, sid):

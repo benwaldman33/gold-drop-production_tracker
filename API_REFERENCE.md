@@ -87,7 +87,7 @@ Behavior:
 Behavior:
 - supplier reads are available on the mobile surface so the standalone app can search and review supplier context with the same authenticated user session it uses for writes
 - supplier creation is allowed
-- duplicate warnings can return `requires_confirmation` with `duplicate_candidates`
+- duplicate warnings can return `requires_confirmation` with `duplicate_candidates`, including typo-close name matches
 - confirmed creation uses `confirm_new_supplier=true`
 - duplicate resolution and supplier merge/correction are handled in the main app
 

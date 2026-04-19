@@ -162,6 +162,12 @@ Authorization should use **named capabilities per user** (flags or equivalent), 
 - **Commitments / finance:** weekly **commitments** dollar rollups use **`committed`/`delivered`** purchases, weighted toward rows with **`purchase_approved_at`** in the calendar week (with a legacy fallback when approval is null—see **`ENGINEERING.md`**).
 - **Audit:** log **who** approved and **when**; approval is **idempotent** (subsequent approve actions are no-ops or blocked with a clear message).
 
+### Supplier duplicate prevention
+- Supplier creation in operator-facing flows should warn before saving when the proposed supplier name is a close fuzzy match for an active existing supplier.
+- This warning should cover typo-close names, not only exact normalized matches.
+- The warning is advisory: users can still confirm and create a genuinely new supplier when the names are similar but distinct.
+- Merge/correction in the main app remains the cleanup path for duplicates that already exist.
+
 ### Operational input authority
 - **Today:** **Slack** is the **authoritative** channel for operational posts (e.g. intake weights, photos, production variables) that operators treat as ground truth; the app **ingests, links, or mirrors** that information per existing Slack integration behavior.
 - **Future:** **barcode / QR** and **connected scales** become additional structured input channels. Slack remains authoritative until those channels are explicitly turned on for a workflow, but the model must be ready now for:

@@ -26,8 +26,8 @@ test("delivery only allowed from approved or committed", () => {
 });
 
 test("fuzzy duplicate supplier detection finds close names", () => {
-  const matches = findDuplicateSupplierCandidates("Farmlane", [
-    { id: "1", name: "Farmlane West", phone: "555-0001", email: "farmlane@example.com" },
+  const matches = findDuplicateSupplierCandidates("Forest Farms", [
+    { id: "1", name: "Forrest Farms", phone: "555-0001", email: "forest@example.com" },
     { id: "2", name: "Blue Coast Farms", phone: "555-0002", email: "blue@example.com" },
   ]);
 

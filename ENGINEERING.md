@@ -9,7 +9,9 @@ Current documentation note: the standalone buying and standalone receiving surfa
 Before closing a coding sprint:
 
 - add or update tests that cover the shipped behavior
-- run the relevant tests and make sure they pass
+- run targeted tests during implementation/debugging
+- run the full Python test suite before the final commit
+- run affected standalone app test suites before the final commit when those apps changed
 - review and update the core docs as needed:
   - `PRD.md`
   - `README.md`
@@ -226,6 +228,16 @@ Pilot-hardening additions:
   - delivery-photo upload limits
 - the standalone purchasing app consumes mobile `capabilities` so production users see a clear unavailable state when standalone buying is disabled or the user lacks access
 - the standalone receiving app also consumes mobile `capabilities` plus per-record `receiving_editable` / `locked_reason` fields so the UI can expose `Edit Receipt` only while no downstream lot usage exists
+
+### Supplier duplicate warnings
+
+- Shared fuzzy duplicate matching now lives in `services/supplier_duplicates.py`.
+- The matcher is used by:
+  - `gold_drop/mobile_module.py` for `/api/mobile/v1/suppliers`
+  - `gold_drop/suppliers_module.py` for the main `Add Supplier` page
+  - `standalone-purchasing-agent-app/src/domain.js` for standalone mock-mode parity and local tests
+- Matching now covers typo-close names such as `Forest Farms` vs `Forrest Farms`; it is no longer limited to exact or substring-style matches.
+- Main web create now re-renders the supplier form with likely duplicate candidates and requires explicit confirmation before saving a new supplier.
 
 ### Shared mobile write-platform rules
 
