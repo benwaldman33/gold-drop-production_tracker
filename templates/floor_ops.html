@@ -119,8 +119,32 @@
             <a href="{{ url_for('run_edit', run_id=card.current.run_id) }}" class="btn btn-secondary btn-sm">Open Run</a>
           </div>
           {% endif %}
+          {% if card.current.available_actions %}
+          <div class="form-actions" style="justify-content:flex-start;margin-top:8px;gap:6px;flex-wrap:wrap;">
+            {% for action in card.current.available_actions %}
+            <form method="POST" action="{{ url_for('floor_charge_transition', charge_id=card.current.charge_id) }}" onsubmit="{% if action.target_state == 'cancelled' %}return floorChargeCancel(event, this, {{ 'true' if card.current.run_id else 'false' }});{% endif %}">
+              <input type="hidden" name="target_state" value="{{ action.target_state }}">
+              <input type="hidden" name="cancel_resolution" value="">
+              <button type="submit" class="btn btn-secondary btn-sm">{{ action.label }}</button>
+            </form>
+            {% endfor %}
+          </div>
+          {% endif %}
         </div>
       </div>
+      {% if card.show_history and card.current.history %}
+      <div style="margin-top:12px;">
+        <div class="summary-label">State History</div>
+        <div class="floor-event-list" style="margin-top:8px;">
+          {% for item in card.current.history %}
+          <div class="floor-event-row" style="text-align:left;">
+            <div class="text-sm"><strong>{{ item.label }}</strong></div>
+            <div class="text-sm cell-muted" style="margin-top:4px;">{{ item.timestamp_label }}</div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
       {% else %}
       <div class="summary-footnote" style="margin-top:12px;">No active charge. {{ card.next_step }}</div>
       {% endif %}
@@ -289,4 +313,32 @@
     {% endfor %}
   </div>
 </div>
+{% endblock %}
+{% block scripts %}
+{{ super() }}
+<script>
+  function floorChargeCancel(event, form, hasRun) {
+    const resolutionField = form.querySelector('input[name="cancel_resolution"]');
+    if (!resolutionField) {
+      return true;
+    }
+    if (!hasRun) {
+      resolutionField.value = 'abandon';
+      return true;
+    }
+    const answer = window.prompt("Type 'modify' to open the linked run after cancelling, or 'abandon' to cancel and leave the run as-is.", "modify");
+    if (answer === null) {
+      event.preventDefault();
+      return false;
+    }
+    const choice = String(answer).trim().toLowerCase();
+    if (choice !== 'modify' && choice !== 'abandon') {
+      window.alert("Enter 'modify' or 'abandon'.");
+      event.preventDefault();
+      return false;
+    }
+    resolutionField.value = choice;
+    return true;
+  }
+</script>
 {% endblock %}

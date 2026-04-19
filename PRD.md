@@ -26,6 +26,7 @@ This PRD describes the problem, users, workflows, data requirements, calculation
 - **lot identity** at creation time via **tracking ID + barcode + QR**
 - a dedicated **extraction charge** workflow rooted in `lot -> lbs -> reactor -> time -> run`
 - a reactor-first **active reactor board** that summarizes current extractor state from canonical charge events
+- an explicit **reactor lifecycle** on top of charge events so floor operators can move material through `in_reactor -> running -> completed/cancelled` with policy-driven requirements
 - readiness for future **connected scale** capture as a structured input channel
 
 Current implementation note: the active modular extraction surface now includes dashboard, field intake, runs, purchases, biomass, costs, inventory, batch edit, suppliers/photos, purchase import, strains, settings, Slack integration, and startup bootstrap modules. This remains an engineering delivery change only; product behavior and operator-facing workflow are intended to stay the same.
@@ -1006,6 +1007,11 @@ Current hardening requirements:
 Current delivered behavior:
 
 - `Settings -> Operational Parameters` controls site-level workflow flags for standalone buying and standalone receiving
+- `Settings -> Operational Parameters` also controls reactor lifecycle policy:
+  - per-state visibility (`In Reactor`, `Running`, `Completed`, `Cancelled`)
+  - per-state required/optional enforcement
+  - whether `Mark Running` requires a linked run
+  - whether state history is shown on `Floor Ops`
 - disabled workflows remain deployed but their `/api/mobile/v1/*` workflow endpoints return `workflow_disabled`
 - unsafe mobile writes reject cross-origin browser requests unless the request origin matches the app host
 - mobile-origin mutations write audit rows tagged with `source = "mobile_api"` and the workflow name

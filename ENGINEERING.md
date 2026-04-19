@@ -366,6 +366,7 @@ This keeps each deployed facility self-identifying for future aggregation withou
   - `PurchaseLot` exposes `allocated_weight_lbs` and `remaining_pct` convenience properties for views and services.
   - `RunInput` now carries `allocation_source`, `allocation_confidence`, `allocation_notes`, and `slack_ingested_message_id`.
   - `ExtractionCharge` now stores the canonical "start production from this lot" event before the run is saved: lot, lbs, reactor, charge time, source mode, notes, optional scan event, optional weight capture, and linked run when applied.
+  - `ExtractionCharge.status` now supports explicit floor lifecycle states in addition to `pending` / `applied`: `in_reactor`, `running`, `completed`, and `cancelled`.
 - **Generation / backfill**
   - New lots receive tracking / label fields on insert.
   - `services/bootstrap_helpers.py` extends SQLite schema compatibility for the new `purchase_lots` and `run_inputs` columns.
@@ -393,6 +394,10 @@ This keeps each deployed facility self-identifying for future aggregation withou
     - `parse_charge_datetime`
     - `create_extraction_charge`
     - `build_charge_prefill_payload`
+    - `reactor_lifecycle_settings`
+    - `charge_history_entries`
+    - `validate_charge_transition`
+    - `update_charge_state`
 - **Allocation service boundary**
   - `services/lot_allocation.py`
     - `ensure_lot_tracking_fields`
@@ -424,9 +429,17 @@ This keeps each deployed facility self-identifying for future aggregation withou
   - Pending charges remain `status = "pending"` until `gold_drop/runs_module.py` links them to a saved run and marks them `applied`.
   - `templates/floor_ops.html` renders:
     - per-reactor active state cards (`Empty`, `Charged / waiting`, `Run linked`)
+    - direct lifecycle actions (`Mark In Reactor`, `Mark Running`, `Mark Complete`, `Cancel Charge`) when the configured policy allows them
     - pending charge count / lbs summary
     - per-reactor pending charge cards
     - recently applied charges with `Open Run` shortcuts
+    - optional state-history rows sourced from `AuditLog` entries for `entity_type="extraction_charge"`
+  - `gold_drop/settings_module.py` persists reactor lifecycle policy in `SystemSetting` keys:
+    - `reactor_state_<state>_enabled`
+    - `reactor_state_<state>_required`
+    - `reactor_running_requires_linked_run`
+    - `reactor_show_state_history`
+  - `completed` and `cancelled` charges remain visible on the active reactor board through the rest of the local day, then fall back to history-only rendering.
 - **Smart-scale live integration**
   - `Settings -> Smart Scales` supports device registration, device updates, raw-payload test ingestion, and recent capture review.
   - `POST /runs/scale-capture` creates a pending `WeightCapture`, prefills `bio_in_reactor_lbs`, and links the capture to the run on save.

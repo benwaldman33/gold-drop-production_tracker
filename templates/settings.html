@@ -194,6 +194,51 @@
       <div class="form-group"></div>
       <div class="form-group"></div>
     </div>
+    <div class="form-group" style="margin-top:16px;">
+      <label>Reactor lifecycle controls</label>
+      <div class="text-sm" style="color:var(--text-muted); margin-bottom:8px;">
+        Decide which lifecycle states appear on `Floor Ops` and whether later transitions must wait for them.
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>State</th>
+              <th>Show on Floor Ops</th>
+              <th>Require before later steps</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for state_key in ['in_reactor', 'running', 'completed', 'cancelled'] %}
+            {% set state_cfg = reactor_lifecycle.states[state_key] %}
+            <tr>
+              <td><strong>{{ state_cfg.label }}</strong></td>
+              <td>
+                <label style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:0.85rem;color:var(--text-secondary);">
+                  <input type="checkbox" name="reactor_state_{{ state_key }}_enabled" {% if state_cfg.enabled %}checked{% endif %}>
+                  Show this action/state
+                </label>
+              </td>
+              <td>
+                <label style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:0.85rem;color:var(--text-secondary);">
+                  <input type="checkbox" name="reactor_state_{{ state_key }}_required" {% if state_cfg.required %}checked{% endif %}>
+                  Require before the next lifecycle step
+                </label>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px; text-transform:none; letter-spacing:0; font-size:0.85rem; color:var(--text-secondary); margin-top:10px;">
+        <input type="checkbox" name="reactor_running_requires_linked_run" {% if reactor_lifecycle.running_requires_linked_run %}checked{% endif %}>
+        Mark Running requires a linked run
+      </label>
+      <label style="display:flex;align-items:center;gap:8px; text-transform:none; letter-spacing:0; font-size:0.85rem; color:var(--text-secondary); margin-top:6px;">
+        <input type="checkbox" name="reactor_show_state_history" {% if reactor_lifecycle.show_history %}checked{% endif %}>
+        Show lifecycle history on the Active Reactor Board
+      </label>
+    </div>
     <div class="form-actions" style="border:none;padding:0;margin:0;">
       <button type="submit" class="btn btn-primary">Save Settings</button>
     </div>

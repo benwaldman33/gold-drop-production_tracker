@@ -1,6 +1,15 @@
 from __future__ import annotations
 
-from services.extraction_charge import display_charge_datetime_local
+from services.extraction_charge import (
+    charge_history_entries,
+    charge_state_badge,
+    charge_state_label,
+    charge_visible_on_board,
+    display_charge_datetime_local,
+    reactor_count,
+    reactor_lifecycle_settings,
+    update_charge_state,
+)
 
 
 def register_routes(app, root):
@@ -12,8 +21,13 @@ def register_routes(app, root):
     def scan_center():
         return scan_center_view(root)
 
+    @root.editor_required
+    def floor_charge_transition(charge_id):
+        return floor_charge_transition_view(root, charge_id)
+
     app.add_url_rule("/floor-ops", endpoint="floor_ops", view_func=floor_ops)
     app.add_url_rule("/scan", endpoint="scan_center", view_func=scan_center)
+    app.add_url_rule("/floor-ops/charges/<charge_id>/transition", endpoint="floor_charge_transition", view_func=floor_charge_transition, methods=["POST"])
 
 
 FLOOR_STATE_LABELS = {
@@ -79,7 +93,7 @@ def _build_reactor_charge_view(root):
 
     pending_cards = []
     applied_cards = []
-    for reactor_number in (1, 2, 3):
+    for reactor_number in range(1, reactor_count(root) + 1):
         reactor_charges = [charge for charge in charges if int(charge.reactor_number or 0) == reactor_number]
         pending = [charge for charge in reactor_charges if (charge.status or "pending") == "pending"][:4]
         applied = [charge for charge in reactor_charges if (charge.status or "") == "applied"][:3]
@@ -137,6 +151,7 @@ def _build_reactor_charge_view(root):
 
 
 def _build_active_reactor_board(root):
+    settings = reactor_lifecycle_settings(root)
     charges = (
         root.ExtractionCharge.query.join(root.PurchaseLot)
         .join(root.Purchase)
@@ -150,31 +165,34 @@ def _build_active_reactor_board(root):
     )
 
     cards = []
-    for reactor_number in (1, 2, 3):
+    for reactor_number in range(1, reactor_count(root) + 1):
         reactor_charges = [charge for charge in charges if int(charge.reactor_number or 0) == reactor_number]
         pending = [charge for charge in reactor_charges if (charge.status or "pending") == "pending"]
-        applied = [charge for charge in reactor_charges if (charge.status or "") == "applied"]
-        latest_pending = pending[0] if pending else None
-        latest_applied = applied[0] if applied else None
+        current = next((charge for charge in reactor_charges if charge_visible_on_board(root, charge)), None)
 
-        if latest_pending:
-            current = latest_pending
-            state_key = "charged_waiting"
-            state_label = "Charged / waiting"
-            state_badge = "badge-gold"
-            next_step = "Open the saved charge and start or save the linked run."
-        elif latest_applied:
-            current = latest_applied
-            state_key = "run_linked"
-            state_label = "Run linked"
-            state_badge = "badge-green"
-            next_step = "Open the linked run or record the next charge."
+        if current:
+            state_key = (current.status or "pending").strip() or "pending"
+            state_label = charge_state_label(state_key)
+            state_badge = charge_state_badge(state_key)
+            if state_key == "pending":
+                next_step = "Open the saved charge and move it into reactor, start the run, or save the linked run."
+            elif state_key == "applied":
+                next_step = "Mark the charge running, complete it, or open the linked run."
+            elif state_key == "in_reactor":
+                next_step = "Mark the charge running when the reactor actually starts."
+            elif state_key == "running":
+                next_step = "Mark the charge complete when the reactor cycle finishes."
+            elif state_key == "completed":
+                next_step = "Completed charges stay visible until the day rolls over."
+            else:
+                next_step = "Cancelled charges stay visible until the day rolls over."
+            history = charge_history_entries(root, current.id, limit=6) if settings["show_history"] else []
         else:
-            current = None
             state_key = "empty"
             state_label = "Empty"
             state_badge = "badge-gray"
             next_step = "Ready for the next lot charge."
+            history = []
 
         cards.append(
             {
@@ -185,6 +203,7 @@ def _build_active_reactor_board(root):
                 "next_step": next_step,
                 "pending_count": len(pending),
                 "pending_weight_lbs": sum(float(charge.charged_weight_lbs or 0) for charge in pending),
+                "show_history": settings["show_history"],
                 "current": (
                     {
                         "charge_id": current.id,
@@ -199,8 +218,12 @@ def _build_active_reactor_board(root):
                             if current and current.creator and current.creator.display_name
                             else None
                         ),
+                        "state_key": state_key,
+                        "state_label": state_label,
                         "source_mode": (current.source_mode or "").replace("_", " ") if current else None,
                         "run_id": current.run_id if current else None,
+                        "available_actions": _reactor_card_actions(settings, current),
+                        "history": history,
                     }
                     if current
                     else None
@@ -213,6 +236,20 @@ def _build_active_reactor_board(root):
         "cards": cards,
         "active_count": active_count,
     }
+
+
+def _reactor_card_actions(settings, charge):
+    status = (charge.status or "pending").strip() or "pending"
+    actions = []
+    if status in {"pending", "applied"} and settings["states"]["in_reactor"]["enabled"]:
+        actions.append({"target_state": "in_reactor", "label": "Mark In Reactor"})
+    if status in {"pending", "in_reactor", "applied"} and settings["states"]["running"]["enabled"]:
+        actions.append({"target_state": "running", "label": "Mark Running"})
+    if status in {"pending", "in_reactor", "applied", "running"} and settings["states"]["completed"]["enabled"]:
+        actions.append({"target_state": "completed", "label": "Mark Complete"})
+    if status in {"pending", "in_reactor", "applied", "running"} and settings["states"]["cancelled"]["enabled"]:
+        actions.append({"target_state": "cancelled", "label": "Cancel Charge"})
+    return actions
 
 
 def floor_ops_view(root):
@@ -233,6 +270,7 @@ def floor_ops_view(root):
     floor_rollups = _build_floor_rollups(root)
     reactor_charge_view = _build_reactor_charge_view(root)
     active_reactor_board = _build_active_reactor_board(root)
+    reactor_lifecycle = reactor_lifecycle_settings(root)
 
     return root.render_template(
         "floor_ops.html",
@@ -245,9 +283,46 @@ def floor_ops_view(root):
         floor_rollups=floor_rollups,
         reactor_charge_view=reactor_charge_view,
         active_reactor_board=active_reactor_board,
+        reactor_lifecycle=reactor_lifecycle,
     )
 
 
 def scan_center_view(root):
     recent_scans = root.LotScanEvent.query.order_by(root.LotScanEvent.created_at.desc()).limit(6).all()
     return root.render_template("scan_center.html", recent_scans=recent_scans)
+
+
+def floor_charge_transition_view(root, charge_id):
+    charge = root.db.session.get(root.ExtractionCharge, charge_id)
+    if charge is None:
+        root.flash("Extraction charge not found.", "error")
+        return root.redirect(root.url_for("floor_ops"))
+
+    target_state = (root.request.form.get("target_state") or "").strip()
+    cancel_resolution = (root.request.form.get("cancel_resolution") or "").strip().lower() or None
+    if target_state == "cancelled" and cancel_resolution not in {"modify", "abandon", None}:
+        root.flash("Choose whether the cancelled charge should send you to modify the linked run or simply abandon it.", "error")
+        return root.redirect(root.url_for("floor_ops"))
+
+    try:
+        history = charge_history_entries(root, charge.id, limit=20)
+        update_charge_state(
+            root,
+            charge,
+            target_state,
+            history_entries=history,
+            cancel_resolution=cancel_resolution,
+            context={"source": "floor_ops"},
+        )
+        root.db.session.commit()
+        root.flash(f"Reactor state updated to {charge_state_label(target_state)}.", "success")
+        if target_state == "cancelled" and cancel_resolution == "modify" and charge.run_id:
+            return root.redirect(root.url_for("run_edit", run_id=charge.run_id))
+    except ValueError as exc:
+        root.db.session.rollback()
+        root.flash(str(exc), "error")
+    except Exception:
+        root.db.session.rollback()
+        root.app.logger.exception("Error updating reactor charge state")
+        root.flash("Error updating reactor charge state.", "error")
+    return root.redirect(root.url_for("floor_ops"))
