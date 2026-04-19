@@ -121,6 +121,13 @@
             {% endif %}
           </td>
           <td style="white-space:nowrap;">
+            <a href="{{ url_for('purchase_edit', purchase_id=lot.purchase_id) }}" class="btn btn-secondary btn-sm">Edit</a>
+            {% if current_user.can_edit_purchases and not lot.deleted_at and (lot.remaining_weight_lbs or 0) > 0 %}
+            <a href="{{ url_for('lot_charge', lot_id=lot.id) }}" class="btn btn-secondary btn-sm">Charge</a>
+            {% endif %}
+            {% if lot.tracking_id %}
+            <a href="{{ url_for('scan_lot', tracking_id=lot.tracking_id) }}" class="btn btn-secondary btn-sm">Scan</a>
+            {% endif %}
             <a href="{{ url_for('lot_label', lot_id=lot.id) }}" class="btn btn-secondary btn-sm">Label</a>
             <a href="{{ url_for('purchases_bp.purchase_journey', purchase_id=lot.purchase_id, lot=lot.tracking_id or '') }}" class="btn btn-secondary btn-sm">Journey</a>
           </td>

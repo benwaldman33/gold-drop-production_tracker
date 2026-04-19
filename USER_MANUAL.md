@@ -229,6 +229,13 @@ This table lists lots with remaining weight, including:
 
 Purchase editors see **Select all**, **Select none**, and **Batch edit…** above this table to change strain name, location, milled, potency, or notes on **multiple lots** at once (see **Batch editing from list screens**).
 
+Each on-hand row now also gives direct action buttons:
+- `Edit` opens the parent purchase record
+- `Charge` opens the extraction-charge workflow
+- `Scan` opens the scanned-lot execution page
+- `Label` opens the printable lot label
+- `Journey` opens the purchase journey filtered to that lot
+
 Lots may also show a **tracking ID**. This is the permanent machine-readable identity for that physical lot and now drives the printed barcode and scan route for that lot.
 
 Where available, use the **Label** action from Inventory, Purchases, or Journey to print a lot-facing label page. The label now renders a printable **Code 39 barcode**, a **QR code**, and the scan route for that exact lot.

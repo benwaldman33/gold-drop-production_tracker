@@ -281,6 +281,14 @@ Those choices open a dedicated extraction-charge form. After the operator record
 **Can I start extraction without scanning a label?**
 Yes. On **Purchases -> Edit**, each active lot now has a **Charge Lot** action that opens the same extraction-charge workflow from the main app.
 
+**How do I get from Inventory to the actual lot actions?**
+On **Inventory -> Biomass On Hand**, each lot row now includes direct buttons for:
+- `Edit` to open the parent purchase record
+- `Charge` to open the extraction-charge workflow
+- `Scan` to open the scanned-lot execution page
+- `Label`
+- `Journey`
+
 **What movement actions are standardized on the scanned-lot page?**
 Operators can confirm:
 - move to vault

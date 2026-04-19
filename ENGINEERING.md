@@ -440,6 +440,7 @@ This keeps each deployed facility self-identifying for future aggregation withou
 - **Purchases `hide_terminal`:** Merged like other keys; when `filter_form=1` on the GET form, `hide_terminal` is set explicitly from the checkbox (unchecked ⇒ cleared) so session does not stick “on” incorrectly.
 - **Slack imports:** Custom branch logic (not `_list_filters_merge`): empty query string restores full saved state; `filter_form=1` snapshots the apply form (including `getlist("channel_id")` stored as sorted CSV); partial URLs merge onto prior state. **Date filtering:** rows with `_slack_ts_to_date_value(...) is None` are **not** excluded by start/end range only (compare when `ts_date is not None`).
 - **UX elsewhere:** `static/css/style.css` — `input[type="date"]` calendar indicator uses a white masked icon for dark theme. `purchase_form.html` — top **Save** uses `form="purchase-main-form"`.
+- **Inventory on-hand actions:** `templates/inventory.html` now exposes direct `Edit`, `Charge`, and `Scan` links for each on-hand lot row so operators can navigate back to the parent purchase or extraction flow without relying on batch edit.
 - **Windows:** `requirements.txt` includes **`tzdata`** so `zoneinfo` resolves IANA names (e.g. `America/Los_Angeles`); timezone resolution now lives in **`gold_drop/list_state.py`** and falls back to `timezone.utc` if no zone DB.
 
 See **`USER_MANUAL.md` → Saved filters, sorts, and list state** for operator-facing wording.
