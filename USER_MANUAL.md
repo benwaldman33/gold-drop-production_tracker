@@ -735,6 +735,12 @@ sudo systemctl restart golddrop
 - Revoked or expired tokens can be deleted from the table to keep Settings clean.
 
 ### Slack integration
+- **Production events URL:** For the current production server, use `https://3.230.126.196/api/slack/events` in the Slack app's **Event Subscriptions -> Request URL** field unless the public hostname changes.
+- **Where to find each Slack value:**
+- **Webhook URL:** Slack app -> **Features -> Incoming Webhooks**. Turn on **Activate Incoming Webhooks**, then install or reinstall the app to the workspace and copy the generated `https://hooks.slack.com/services/...` URL.
+- **Signing Secret:** Slack app -> **Basic Information** -> **App Credentials** -> **Signing Secret**.
+- **Bot Token:** Slack app -> **Features -> OAuth & Permissions** -> **Bot User OAuth Token** (`xoxb-...`). If it is missing, install or reinstall the app to the workspace after adding the needed bot scopes.
+- **Security rule:** Never write live Slack secrets into `USER_MANUAL.md`, any repo file, screenshots, tickets, or Git history. Store the real Signing Secret and Bot Token only in Slack app settings, the app's Slack Integration screen, and a secure password manager or vault. If a secret is exposed in chat, email, docs, or source control, rotate it immediately.
 - Configure webhook URL, signing secret, bot token, and default channel in Settings.
 - **Outbound:** notifications for key actions (when enabled).
 - **Inbound:** Slash commands and interactivity use `/api/slack/command` and `/api/slack/interactivity`.
