@@ -39,6 +39,17 @@ FLOOR_STATE_LABELS = {
 }
 
 
+def _reactor_numbers(root, charges):
+    configured = max(int(reactor_count(root) or 1), 1)
+    observed = {
+        int(charge.reactor_number or 0)
+        for charge in charges
+        if int(charge.reactor_number or 0) > 0
+    }
+    max_reactor = max([configured, *observed]) if observed else configured
+    return range(1, max_reactor + 1)
+
+
 def _build_floor_rollups(root):
     open_lots = (
         root.PurchaseLot.query.join(root.Purchase)
@@ -93,7 +104,7 @@ def _build_reactor_charge_view(root):
 
     pending_cards = []
     applied_cards = []
-    for reactor_number in range(1, reactor_count(root) + 1):
+    for reactor_number in _reactor_numbers(root, charges):
         reactor_charges = [charge for charge in charges if int(charge.reactor_number or 0) == reactor_number]
         pending = [charge for charge in reactor_charges if (charge.status or "pending") == "pending"][:4]
         applied = [charge for charge in reactor_charges if (charge.status or "") == "applied"][:3]
@@ -165,7 +176,7 @@ def _build_active_reactor_board(root):
     )
 
     cards = []
-    for reactor_number in range(1, reactor_count(root) + 1):
+    for reactor_number in _reactor_numbers(root, charges):
         reactor_charges = [charge for charge in charges if int(charge.reactor_number or 0) == reactor_number]
         pending = [charge for charge in reactor_charges if (charge.status or "pending") == "pending"]
         current = next((charge for charge in reactor_charges if charge_visible_on_board(root, charge)), None)

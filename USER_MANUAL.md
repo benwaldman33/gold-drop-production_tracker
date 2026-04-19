@@ -279,6 +279,7 @@ The page now also includes a reactor-oriented extraction queue:
 - each lifecycle action writes a timestamped history entry to the extraction charge
 - by default, **Mark Running** requires that the charge already has a linked run
 - completed or cancelled charges stay visible on the board for the rest of the local day, then move to history-only visibility
+- if you open a run from **Active Reactor Board** or **Recently Applied Charges**, the run form now shows **Back to Floor Ops** plus a separate **Open Runs** button so operators can return to the floor screen without losing context
 - **Pending Charges** summarizes lbs already charged into production but not yet linked to a saved run
 - **Reactor Charge Queue** groups pending charges by Reactor 1 / 2 / 3
 - **Recently Applied Charges** shows charges that have already been finalized into saved runs and provides an **Open Run** shortcut

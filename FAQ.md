@@ -276,6 +276,9 @@ Yes. Super Admin can use `Settings -> Operational Parameters -> Reactor lifecycl
 
 Completed and cancelled charges stay visible on the board for the rest of the local day, then fall back to history.
 
+**When I open a run from Floor Ops, how do I get back?**
+The run form now preserves the floor context. If you open a run from `Floor Ops`, the top button becomes `Back to Floor Ops`, and the page also keeps a separate `Open Runs` button when you still want the full run list.
+
 **Can I use an iPad or Android tablet camera to scan labels?**
 Yes. Use the in-app **Scan Center** at `/scan` or open it from **Floor Ops**.
 
