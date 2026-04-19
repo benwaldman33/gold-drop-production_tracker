@@ -532,6 +532,7 @@ If the “exclude runs missing $/lb” setting is enabled, these analytics ignor
 Editors can use **Select all** / **Select none** and **Batch edit…** from the supplier cards area to **activate/deactivate** suppliers or **append notes** (see **Batch editing from list screens**). Checkboxes appear next to each supplier card title.
 
 When creating a supplier from the main **Add Supplier** screen, the app now warns if the name is very close to an existing active supplier. Review the suggested matches before saving a new supplier.
+If it really is a different supplier with a similar name, use the explicit confirmation option on that screen to keep both records.
 
 Super Admins can also open a supplier record and use **Merge Supplier** to combine duplicates safely. The merge screen shows an impact summary first, then archives the source supplier, moves linked records to the target supplier, and keeps lineage and audit history intact.
 

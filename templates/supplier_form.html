@@ -11,7 +11,10 @@
 <div class="card" style="margin-bottom:12px; border-color:rgba(161, 98, 7, 0.34); background:linear-gradient(180deg, rgba(161, 98, 7, 0.08), rgba(161, 98, 7, 0.02));">
   <div class="card-header"><h3>Possible duplicate supplier</h3></div>
   <p class="text-sm" style="margin-top:0; color:var(--text-muted);">
-    Review these likely matches before creating a new supplier. If this is really a new supplier, save again to confirm.
+    Review these likely matches before creating a new supplier. If this is really a different supplier, you can explicitly keep both records below.
+  </p>
+  <p class="text-sm" style="color:var(--text-muted); margin-top:8px;">
+    Edge case: two farms can share the same name but be different suppliers because they are in different cities or are separate businesses.
   </p>
   <div class="table-wrap">
     <table>
@@ -123,9 +126,6 @@
 <div class="card">
   <form method="POST">
     <input type="hidden" name="form_type" value="supplier">
-    {% if not supplier and duplicate_candidates %}
-    <input type="hidden" name="confirm_new_supplier" value="1">
-    {% endif %}
     <div class="form-row">
       <div class="form-group">
         <label>Farm / Supplier Name *</label>
@@ -157,6 +157,13 @@
     {% if supplier %}
     <div class="form-group">
       <label><input type="checkbox" name="is_active" {% if supplier.is_active %}checked{% endif %}> Active Supplier</label>
+    </div>
+    {% elif duplicate_candidates %}
+    <div class="form-group">
+      <label>
+        <input type="checkbox" name="confirm_new_supplier" value="1" {% if form_data.get('confirm_new_supplier') %}checked{% endif %}>
+        I reviewed the possible duplicates and want to keep this as a separate supplier anyway.
+      </label>
     </div>
     {% endif %}
     <div class="form-actions">
