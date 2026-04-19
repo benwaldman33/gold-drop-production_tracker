@@ -41,32 +41,31 @@ def test_mobile_login_me_and_logout():
 
 def test_mobile_supplier_duplicate_warning_and_confirm_create():
     app = app_module.create_app()
-    existing_supplier_id = _create_supplier(app, f"Acme Farms {gen_uuid()[:6]}")
+    existing_supplier_id = _create_supplier(app, "Forest Farms")
     created_supplier_id = None
-    # Intentional same-ish name to trigger the fuzzy warning flow.
-    duplicate_name = "Acme Farms"
     try:
         with app.test_client() as client:
             _login_mobile(client)
             warning = client.post(
                 "/api/mobile/v1/suppliers",
-                json={"new_supplier": {"name": duplicate_name}},
+                json={"new_supplier": {"name": "Forrest Farms"}},
             )
             assert warning.status_code == 200
             warning_payload = warning.get_json()["data"]
             assert warning_payload["requires_confirmation"] is True
             assert warning_payload["duplicate_candidates"]
+            assert any(candidate["name"] == "Forest Farms" for candidate in warning_payload["duplicate_candidates"])
 
             confirmed = client.post(
                 "/api/mobile/v1/suppliers",
                 json={
-                    "new_supplier": {"name": f"{duplicate_name} North"},
+                    "new_supplier": {"name": "Forresst Farms"},
                     "confirm_new_supplier": True,
                 },
             )
             assert confirmed.status_code == 201
             confirmed_payload = confirmed.get_json()["data"]["supplier"]
-            assert confirmed_payload["name"] == f"{duplicate_name} North"
+            assert confirmed_payload["name"] == "Forresst Farms"
             created_supplier_id = confirmed_payload["id"]
             logout = client.post("/api/mobile/v1/auth/logout")
             assert logout.status_code == 200
