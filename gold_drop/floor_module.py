@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from services.extraction_charge import display_charge_datetime_local
+
 
 def register_routes(app, root):
     @root.login_required
@@ -62,6 +64,78 @@ def _build_floor_rollups(root):
     }
 
 
+def _build_reactor_charge_view(root):
+    charges = (
+        root.ExtractionCharge.query.join(root.PurchaseLot)
+        .join(root.Purchase)
+        .filter(
+            root.PurchaseLot.deleted_at.is_(None),
+            root.Purchase.deleted_at.is_(None),
+        )
+        .order_by(root.ExtractionCharge.charged_at.desc(), root.ExtractionCharge.created_at.desc())
+        .limit(36)
+        .all()
+    )
+
+    pending_cards = []
+    applied_cards = []
+    for reactor_number in (1, 2, 3):
+        reactor_charges = [charge for charge in charges if int(charge.reactor_number or 0) == reactor_number]
+        pending = [charge for charge in reactor_charges if (charge.status or "pending") == "pending"][:4]
+        applied = [charge for charge in reactor_charges if (charge.status or "") == "applied"][:3]
+
+        pending_cards.append(
+            {
+                "reactor_number": reactor_number,
+                "count": len(pending),
+                "total_lbs": sum(float(charge.charged_weight_lbs or 0) for charge in pending),
+                "charges": [
+                    {
+                        "id": charge.id,
+                        "tracking_id": charge.lot.tracking_id if charge.lot else None,
+                        "lot_id": charge.purchase_lot_id,
+                        "supplier_name": charge.lot.supplier_name if charge.lot else "Unknown",
+                        "strain_name": charge.lot.strain_name if charge.lot else "Unknown",
+                        "charged_weight_lbs": float(charge.charged_weight_lbs or 0),
+                        "charged_at_label": display_charge_datetime_local(charge.charged_at),
+                        "source_mode": (charge.source_mode or "").replace("_", " "),
+                        "notes": charge.notes,
+                    }
+                    for charge in pending
+                ],
+            }
+        )
+
+        applied_cards.append(
+            {
+                "reactor_number": reactor_number,
+                "charges": [
+                    {
+                        "id": charge.id,
+                        "tracking_id": charge.lot.tracking_id if charge.lot else None,
+                        "supplier_name": charge.lot.supplier_name if charge.lot else "Unknown",
+                        "strain_name": charge.lot.strain_name if charge.lot else "Unknown",
+                        "charged_weight_lbs": float(charge.charged_weight_lbs or 0),
+                        "charged_at_label": display_charge_datetime_local(charge.charged_at),
+                        "run_id": charge.run_id,
+                    }
+                    for charge in applied
+                ],
+            }
+        )
+
+    pending_count = sum(card["count"] for card in pending_cards)
+    pending_weight = sum(card["total_lbs"] for card in pending_cards)
+    applied_count = sum(len(card["charges"]) for card in applied_cards)
+    return {
+        "pending_cards": pending_cards,
+        "applied_cards": applied_cards,
+        "pending_count": pending_count,
+        "pending_weight_lbs": pending_weight,
+        "applied_count": applied_count,
+    }
+
+
 def floor_ops_view(root):
     recent_scans = root.LotScanEvent.query.order_by(root.LotScanEvent.created_at.desc()).limit(12).all()
     recent_captures = root.WeightCapture.query.order_by(root.WeightCapture.created_at.desc()).limit(12).all()
@@ -78,6 +152,7 @@ def floor_ops_view(root):
         root.WeightCapture.created_at >= root.datetime.now(root.timezone.utc) - root.timedelta(days=1)
     ).count()
     floor_rollups = _build_floor_rollups(root)
+    reactor_charge_view = _build_reactor_charge_view(root)
 
     return root.render_template(
         "floor_ops.html",
@@ -88,6 +163,7 @@ def floor_ops_view(root):
         scans_last_day=scans_last_day,
         captures_last_day=captures_last_day,
         floor_rollups=floor_rollups,
+        reactor_charge_view=reactor_charge_view,
     )
 
 
