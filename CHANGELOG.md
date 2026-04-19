@@ -14,11 +14,12 @@
 - Main-app duplicate warnings now include an explicit "keep both suppliers" confirmation path for legitimate same-name/different-city cases.
 - The scanned-lot page now routes operators into a dedicated extraction-charge form instead of jumping straight to a generic run prefill.
 - The main purchase form now gives each active lot a direct **Charge Lot** action alongside the existing scan workflow.
+- The on-hand `Inventory` table now exposes direct `Edit`, `Charge`, and `Scan` actions for each lot instead of forcing users to navigate indirectly through batch edit or labels.
 
 ### Tests
 - Added regression coverage for purchase edit round-trip of mobile opportunity fields and for confirmed-lot splitting from remaining inventory (`tests/test_refactor_safety.py`).
 - Added duplicate-supplier regression coverage for mobile supplier create, main supplier create, and standalone buyer duplicate matching.
-- Added extraction-charge and floor-queue regression coverage for scan-to-charge, charge prefill into new run, charge-to-run linkage, and pending/applied reactor queue visibility; full Python suite now passes with `124` tests.
+- Added extraction-charge, floor-queue, and inventory-action regression coverage for scan-to-charge, charge prefill into new run, charge-to-run linkage, pending/applied reactor queue visibility, and direct inventory lot actions; full Python suite now passes with `125` tests.
 
 ## 2026-04-11
 

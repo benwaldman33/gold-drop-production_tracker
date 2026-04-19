@@ -1366,6 +1366,63 @@ def test_floor_ops_page_shows_pending_and_applied_extraction_charges():
             db.session.commit()
 
 
+def test_inventory_on_hand_rows_expose_edit_and_charge_actions():
+    app = app_module.app
+    with app.app_context():
+        supplier = Supplier(name="Inventory Link Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = Purchase(
+            supplier_id=supplier.id,
+            purchase_date=date(2026, 4, 18),
+            delivery_date=date(2026, 4, 18),
+            status="delivered",
+            stated_weight_lbs=50,
+            purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            clean_or_dirty="clean",
+            testing_status="completed",
+            batch_id=f"INV-{app_module.gen_uuid()[:6]}",
+        )
+        db.session.add(purchase)
+        db.session.flush()
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Inventory Dream",
+            weight_lbs=50,
+            remaining_weight_lbs=50,
+        )
+        db.session.add(lot)
+        db.session.commit()
+        purchase_id = purchase.id
+        lot_id = lot.id
+        tracking_id = lot.tracking_id
+        supplier_id = supplier.id
+
+    try:
+        with app.test_client() as client:
+            _login(client, "admin")
+            resp = client.get("/inventory")
+            assert resp.status_code == 200
+            assert f'/purchases/{purchase_id}/edit'.encode() in resp.data
+            assert f'/lots/{lot_id}/charge'.encode() in resp.data
+            assert f'/scan/lot/{tracking_id}'.encode() in resp.data
+            assert b">Edit<" in resp.data
+            assert b">Charge<" in resp.data
+            assert b">Scan<" in resp.data
+    finally:
+        with app.app_context():
+            lot_obj = db.session.get(PurchaseLot, lot_id)
+            if lot_obj:
+                db.session.delete(lot_obj)
+            purchase_obj = db.session.get(Purchase, purchase_id)
+            if purchase_obj:
+                db.session.delete(purchase_obj)
+            supplier_obj = db.session.get(Supplier, supplier_id)
+            if supplier_obj:
+                db.session.delete(supplier_obj)
+            db.session.commit()
+
+
 def test_slack_apply_run_carries_manual_lot_selection_into_prefill_session():
     app = app_module.app
     with app.app_context():
