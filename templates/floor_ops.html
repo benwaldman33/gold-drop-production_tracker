@@ -94,6 +94,7 @@
         </div>
         <div class="form-actions" style="justify-content:flex-start;margin-top:10px;">
           <a href="{{ url_for('scan_lot', tracking_id=event.tracking_id_snapshot) }}" class="btn btn-secondary btn-sm">Open Scan Page</a>
+          <a href="{{ url_for('scan_lot_charge', tracking_id=event.tracking_id_snapshot) }}" class="btn btn-secondary btn-sm">Charge Lot</a>
         </div>
       </div>
       {% endfor %}

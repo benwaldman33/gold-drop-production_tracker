@@ -363,6 +363,7 @@ This keeps each deployed facility self-identifying for future aggregation withou
   - `PurchaseLot` now carries `tracking_id`, `barcode_value`, `qr_value`, `label_generated_at`, and `label_version`.
   - `PurchaseLot` exposes `allocated_weight_lbs` and `remaining_pct` convenience properties for views and services.
   - `RunInput` now carries `allocation_source`, `allocation_confidence`, `allocation_notes`, and `slack_ingested_message_id`.
+  - `ExtractionCharge` now stores the canonical "start production from this lot" event before the run is saved: lot, lbs, reactor, charge time, source mode, notes, optional scan event, optional weight capture, and linked run when applied.
 - **Generation / backfill**
   - New lots receive tracking / label fields on insert.
   - `services/bootstrap_helpers.py` extends SQLite schema compatibility for the new `purchase_lots` and `run_inputs` columns.
@@ -372,14 +373,25 @@ This keeps each deployed facility self-identifying for future aggregation withou
     - guided run-start modes: `blank`, `full_remaining`, `partial`, `scale_capture`
     - standardized movement codes: `vault`, `reactor_staging`, `quarantine`, `inventory_return`, `custom`
     - testing confirmation from the scanned-lot page
-  - The scanned-lot run-start flow writes a richer session prefill payload (`SCAN_RUN_PREFILL_SESSION_KEY`) that can include:
+  - The scanned-lot run-start flow now redirects into `/scan/lot/<tracking_id>/charge`, where the operator records actual charge details before `runs/new` opens.
+  - The extraction-charge prefill payload (`SCAN_RUN_PREFILL_SESSION_KEY`) can include:
     - `run_start_mode`
     - `planned_weight_lbs`
     - `scale_device_id`
     - `suggested_allocations`
-  - `gold_drop/runs_module.py` consumes those fields so the new-run form can prefill reactor lbs, source allocations, and scanner guidance text.
-  - `LotScanEvent.context_json` now carries richer floor context for movement labels, locations, run-start mode, and planned partial weight so activity history is auditable without parsing free-text notes.
+    - `charge_id`
+    - `reactor_number`
+    - `charged_at`
+    - `charge_source_mode`
+  - `gold_drop/runs_module.py` consumes those fields so the new-run form can prefill reactor lbs, source allocations, charge metadata, and scanner guidance text. On save, it links the saved run back to `ExtractionCharge` and marks the charge `applied`.
+  - `LotScanEvent.context_json` now carries richer floor context for movement labels, locations, run-start mode, planned partial weight, and extraction-charge details so activity history is auditable without parsing free-text notes.
 - **Service boundary**
+  - `services/extraction_charge.py`
+    - `validate_chargeable_lot`
+    - `parse_charge_datetime`
+    - `create_extraction_charge`
+    - `build_charge_prefill_payload`
+- **Allocation service boundary**
   - `services/lot_allocation.py`
     - `ensure_lot_tracking_fields`
     - `ensure_purchase_lot_tracking`
@@ -395,13 +407,15 @@ This keeps each deployed facility self-identifying for future aggregation withou
   - Run save fails unless selected lot allocations equal `bio_in_reactor_lbs` exactly.
 - **Label / scan surfaces**
   - `GET /lots/<lot_id>/label`
+  - `GET|POST /lots/<lot_id>/charge`
   - `GET /purchases/<purchase_id>/labels`
   - `GET /scan/lot/<tracking_id>` -> dedicated scanned-lot workflow page
-  - `POST /scan/lot/<tracking_id>/start-run` -> creates a run-form prefill from the scanned lot
+  - `GET|POST /scan/lot/<tracking_id>/charge` -> records an extraction charge from the scanned lot and then redirects into `runs/new`
+  - `POST /scan/lot/<tracking_id>/start-run` -> validates guided mode choices and redirects into the scanned-lot charge form
   - `POST /scan/lot/<tracking_id>/confirm-movement` -> updates lot location and records a movement scan event
   - `POST /scan/lot/<tracking_id>/confirm-testing` -> updates purchase testing status and records a testing scan event
 - **Scanner observability**
-  - `LotScanEvent` stores scan-open, start-run, movement, and testing actions with user/context/timestamp.
+  - `LotScanEvent` stores scan-open, start-run, extraction-charge, movement, and testing actions with user/context/timestamp.
   - `GET /api/v1/scan-events`, `GET /api/v1/lots/<lot_id>/scans`, and `GET /api/v1/summary/scanner` expose scanner activity to internal consumers.
 - **Smart-scale live integration**
   - `Settings -> Smart Scales` supports device registration, device updates, raw-payload test ingestion, and recent capture review.

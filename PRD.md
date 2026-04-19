@@ -24,6 +24,7 @@ This PRD describes the problem, users, workflows, data requirements, calculation
 - a richer **Batch Journey** rooted in `Purchase -> PurchaseLot -> RunInput allocation -> Run -> outputs`
 - a **Slack imports inbox** organized by confidence / manual resolution need
 - **lot identity** at creation time via **tracking ID + barcode + QR**
+- a dedicated **extraction charge** workflow rooted in `lot -> lbs -> reactor -> time -> run`
 - readiness for future **connected scale** capture as a structured input channel
 
 Current implementation note: the active modular extraction surface now includes dashboard, field intake, runs, purchases, biomass, costs, inventory, batch edit, suppliers/photos, purchase import, strains, settings, Slack integration, and startup bootstrap modules. This remains an engineering delivery change only; product behavior and operator-facing workflow are intended to stay the same.
@@ -945,7 +946,7 @@ Some **potential** purchase / pipeline lines will never be approved. The product
 - **Lot identity + labels:** generate `tracking_id`, barcode, and QR for each lot at purchase authorization / lot creation; support printable labels with live barcode + QR rendering and `/scan/lot/<tracking_id>` execution.
 - **Operator floor UX:** expose a dedicated floor surface for recent scan activity, recent scale captures, floor-state rollups, extraction-readiness counts, and quick handoff back into lot execution workflows.
 - **Tablet scan center:** provide an in-browser `/scan` workflow for supported tablet/phone cameras, with manual and hardware-scanner fallback when camera barcode detection is unavailable.
-- **Guided scanned-lot execution:** when `/scan/lot/<tracking_id>` opens, operators can choose a run-start mode (blank form, full remaining lot, partial lbs, or scale-capture-first), record standardized movement actions (vault, reactor staging, quarantine, inventory return, or custom), confirm testing status, confirm prep state, and review recent floor activity with structured context.
+- **Extractor-first surfaces:** build the future standalone extractor app and Slack-assisted extraction intake on top of the now-shipped extraction-charge workflow rather than inventing separate business rules per surface.
 - **Connected scale readiness:** add device-backed weight capture as a future structured input channel without changing the operator-facing material model. The current delivery already includes `ScaleDevice` and `WeightCapture` as the persistence layer for that later workflow.
 - **Department UIs + governance:** **capabilities**, **purchase approval**, **Old Lots** + **soft delete**, and **`/dept` department hub + per-department pages** are implemented; continue to deepen per-department workflows (e.g. explicit “on stripper” stage, richer testing integrations) per **Operational departments & shared data model**.
 - **Explicit close-out reasons** for potential lines (declined, lost, withdrawn) — optional enhancement beyond aging; supports analytics such as win rate by supplier without relying on soft-delete alone.

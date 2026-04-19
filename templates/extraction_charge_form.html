@@ -1,0 +1,103 @@
+{% block title %}Extraction Charge{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Start Extraction Charge</h2>
+  <a href="{{ back_url }}" class="btn btn-secondary">Back</a>
+</div>
+
+<div class="card floor-scan-hero">
+  <div class="floor-scan-hero-top">
+    <div>
+      <div class="text-sm cell-muted">Charge target</div>
+      <div class="text-mono floor-scan-id">{{ lot.tracking_id or lot.id[:8] }}</div>
+      <div class="floor-scan-subtitle">{{ lot.strain_name }} &middot; {{ lot.supplier_name }} &middot; {{ purchase.batch_id or purchase.id[:8] }}</div>
+    </div>
+    {% if lot.tracking_id %}
+    <a href="{{ url_for('scan_lot', tracking_id=lot.tracking_id) }}" class="btn btn-secondary">Open Scan Page</a>
+    {% endif %}
+  </div>
+
+  <div class="floor-scan-metrics">
+    <div class="floor-scan-metric">
+      <div class="text-sm cell-muted">Remaining</div>
+      <div class="floor-scan-metric-value">{{ "{:,.1f}".format(lot.remaining_weight_lbs or 0) }} lbs</div>
+    </div>
+    <div class="floor-scan-metric">
+      <div class="text-sm cell-muted">Potency</div>
+      <div class="floor-scan-metric-value">{% if lot.potency_pct is not none %}{{ "{:.2f}".format(lot.potency_pct) }}%{% else %}-{% endif %}</div>
+    </div>
+    <div class="floor-scan-metric">
+      <div class="text-sm cell-muted">Testing</div>
+      <div class="floor-scan-metric-value">{{ purchase.testing_status.replace('_', ' ') if purchase.testing_status else '-' }}</div>
+    </div>
+    <div class="floor-scan-metric">
+      <div class="text-sm cell-muted">Prep</div>
+      <div class="floor-scan-metric-value">{% if lot.milled %}Milled{% else %}Not milled{% endif %}</div>
+    </div>
+    <div class="floor-scan-metric">
+      <div class="text-sm cell-muted">Floor state</div>
+      <div class="floor-scan-metric-value">{{ (lot.floor_state or 'inventory').replace('_', ' ') }}</div>
+    </div>
+    <div class="floor-scan-metric">
+      <div class="text-sm cell-muted">Location</div>
+      <div class="floor-scan-metric-value">{{ lot.location or '-' }}</div>
+    </div>
+  </div>
+</div>
+
+{% if charge_defaults.warnings %}
+<div class="flash flash-error" style="margin-bottom:16px;">
+  <strong>Charge review:</strong>
+  <ul class="text-sm" style="margin:8px 0 0 1.1rem;padding:0;">
+    {% for warning in charge_defaults.warnings %}
+    <li style="margin-bottom:4px;">{{ warning }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<div class="card">
+  <form method="POST">
+    <input type="hidden" name="scale_device_id" value="{{ charge_defaults.scale_device_id or '' }}">
+    <div class="form-section">
+      <h4>Charge Details</h4>
+      <p class="text-sm cell-muted" style="margin-top:0;">
+        Record the source lot, pounds, reactor, and charge time here. Saving this step opens the run form with the lot allocation already attached.
+      </p>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Charge Weight (lbs) *</label>
+          <input type="number" step="0.1" min="0.1" max="{{ lot.remaining_weight_lbs or 0 }}" name="charged_weight_lbs" value="{{ charge_defaults.requested_weight_lbs or '' }}" required>
+        </div>
+        <div class="form-group">
+          <label>Processing reactor *</label>
+          <select name="reactor_number" required>
+            <option value="">Select reactor...</option>
+            <option value="1" {% if charge_defaults.reactor_number == '1' %}selected{% endif %}>Reactor 1</option>
+            <option value="2" {% if charge_defaults.reactor_number == '2' %}selected{% endif %}>Reactor 2</option>
+            <option value="3" {% if charge_defaults.reactor_number == '3' %}selected{% endif %}>Reactor 3</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Charge time *</label>
+          <input type="datetime-local" name="charged_at" value="{{ charge_defaults.charged_at }}" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Charge notes</label>
+        <textarea name="notes" rows="3" placeholder="Optional operator note about staging, scale evidence, or lot condition"></textarea>
+      </div>
+      {% if charge_defaults.run_start_mode == 'scale_capture' %}
+      <div class="flash flash-success" style="margin-bottom:0;">
+        <strong>Scale-first flow:</strong> enter the measured reactor pounds here after the scale read is confirmed. The selected scale device will still be carried into the run form.
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="form-actions">
+      <a href="{{ back_url }}" class="btn btn-secondary">Cancel</a>
+      <button type="submit" class="btn btn-primary">Record Charge And Open Run</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

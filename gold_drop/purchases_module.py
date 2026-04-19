@@ -5,6 +5,13 @@ from datetime import date, datetime, timezone
 from gold_drop.list_state import LIST_FILTERS_SESSION_KEY, list_filters_clear_redirect, list_filters_merge
 from gold_drop.purchases import biomass_budget_snapshot_for_purchase, enforce_weekly_biomass_purchase_limits
 from gold_drop.uploads import save_purchase_support_docs
+from services.extraction_charge import (
+    build_charge_prefill_payload,
+    create_extraction_charge,
+    default_charge_datetime_local,
+    parse_charge_datetime,
+    validate_chargeable_lot,
+)
 from services.lot_labels import build_lot_label_payload, build_purchase_label_payloads
 from services.lot_allocation import ensure_lot_tracking_fields, ensure_purchase_lot_tracking
 
@@ -54,6 +61,10 @@ def register_routes(app, root):
     def lot_label(lot_id):
         return lot_label_view(root, lot_id)
 
+    @root.editor_required
+    def lot_charge(lot_id):
+        return lot_charge_view(root, lot_id)
+
     @root.login_required
     def purchase_labels(purchase_id):
         return purchase_labels_view(root, purchase_id)
@@ -61,6 +72,10 @@ def register_routes(app, root):
     @root.login_required
     def scan_lot(tracking_id):
         return scan_lot_view(root, tracking_id)
+
+    @root.editor_required
+    def scan_lot_charge(tracking_id):
+        return scan_lot_charge_view(root, tracking_id)
 
     @root.editor_required
     def scan_lot_start_run(tracking_id):
@@ -93,8 +108,10 @@ def register_routes(app, root):
     app.add_url_rule("/purchases/<purchase_id>/lots/new", endpoint="lot_new", view_func=lot_new, methods=["POST"])
     app.add_url_rule("/lots/<lot_id>/split", endpoint="lot_split", view_func=lot_split, methods=["POST"])
     app.add_url_rule("/lots/<lot_id>/label", endpoint="lot_label", view_func=lot_label)
+    app.add_url_rule("/lots/<lot_id>/charge", endpoint="lot_charge", view_func=lot_charge, methods=["GET", "POST"])
     app.add_url_rule("/purchases/<purchase_id>/labels", endpoint="purchase_labels", view_func=purchase_labels)
     app.add_url_rule("/scan/lot/<tracking_id>", endpoint="scan_lot", view_func=scan_lot)
+    app.add_url_rule("/scan/lot/<tracking_id>/charge", endpoint="scan_lot_charge", view_func=scan_lot_charge, methods=["GET", "POST"])
     app.add_url_rule("/scan/lot/<tracking_id>/start-run", endpoint="scan_lot_start_run", view_func=scan_lot_start_run, methods=["POST"])
     app.add_url_rule(
         "/scan/lot/<tracking_id>/confirm-movement",
@@ -664,6 +681,109 @@ def _record_lot_scan_event(root, lot, action: str, *, context: dict | None = Non
     return event
 
 
+def _charge_form_prefill(root, lot):
+    remaining_weight_lbs = float(lot.remaining_weight_lbs or 0)
+    run_start_mode = (root.request.args.get("run_start_mode") or "").strip()
+    requested_weight_raw = (root.request.args.get("requested_weight_lbs") or "").strip()
+    scale_device_id = (root.request.args.get("scale_device_id") or "").strip()
+    reactor_number = (root.request.args.get("reactor_number") or "").strip()
+    charged_weight_lbs = ""
+    if run_start_mode == "full_remaining":
+        charged_weight_lbs = f"{remaining_weight_lbs:.1f}"
+    elif run_start_mode == "partial":
+        charged_weight_lbs = requested_weight_raw
+    testing_status = (getattr(lot.purchase, "testing_status", None) or "pending").strip()
+    warnings: list[str] = []
+    if testing_status not in {"completed", "not_needed"}:
+        warnings.append("Testing is not marked complete or waived. Extraction is allowed, but review this lot's current testing state before charging.")
+    if not getattr(lot, "milled", False):
+        warnings.append("Lot prep is still marked not milled.")
+    if (getattr(lot, "floor_state", None) or "inventory").strip() != "reactor_staging":
+        warnings.append("Lot is not currently marked in reactor staging.")
+    return {
+        "run_start_mode": run_start_mode,
+        "requested_weight_lbs": charged_weight_lbs,
+        "scale_device_id": scale_device_id,
+        "reactor_number": reactor_number,
+        "charged_at": default_charge_datetime_local(),
+        "warnings": warnings,
+    }
+
+
+def _render_charge_form(root, lot, *, entry_mode: str, back_url: str):
+    prefill = _charge_form_prefill(root, lot)
+    return root.render_template(
+        "extraction_charge_form.html",
+        lot=lot,
+        purchase=lot.purchase,
+        entry_mode=entry_mode,
+        back_url=back_url,
+        charge_defaults=prefill,
+    )
+
+
+def _submit_charge_form(root, lot, *, entry_mode: str):
+    charged_weight_raw = (root.request.form.get("charged_weight_lbs") or "").strip()
+    reactor_raw = (root.request.form.get("reactor_number") or "").strip()
+    charged_at_raw = (root.request.form.get("charged_at") or "").strip()
+    notes = (root.request.form.get("notes") or "").strip() or None
+    scale_device_id = (root.request.form.get("scale_device_id") or "").strip()
+
+    try:
+        validate_chargeable_lot(root, lot)
+        charged_weight_lbs = float(charged_weight_raw)
+        reactor_number = int(reactor_raw)
+        charged_at = parse_charge_datetime(charged_at_raw)
+
+        lot_scan_event = None
+        if entry_mode == "scan":
+            lot_scan_event = _record_lot_scan_event(
+                root,
+                lot,
+                "extraction_charge",
+                context={
+                    "purchase_id": lot.purchase.id,
+                    "charged_weight_lbs": charged_weight_lbs,
+                    "reactor_number": reactor_number,
+                    "charged_at": charged_at.isoformat(),
+                    "source_mode": "scan",
+                },
+            )
+            root.db.session.flush()
+
+        charge = create_extraction_charge(
+            root,
+            lot=lot,
+            charged_weight_lbs=charged_weight_lbs,
+            reactor_number=reactor_number,
+            charged_at=charged_at,
+            source_mode="scan" if entry_mode == "scan" else "main_app",
+            notes=notes,
+            lot_scan_event_id=lot_scan_event.id if lot_scan_event else None,
+        )
+        root.session[root.SCAN_RUN_PREFILL_SESSION_KEY] = build_charge_prefill_payload(
+            root,
+            lot,
+            charge,
+            scale_device_id=scale_device_id,
+        )
+        root.db.session.commit()
+        root.flash(
+            f"Extraction charge recorded for {charged_weight_lbs:.1f} lbs into Reactor {reactor_number}. Finish the run details next.",
+            "success",
+        )
+        return root.redirect(root.url_for("run_new"))
+    except Exception as exc:
+        root.db.session.rollback()
+        root.flash(str(exc), "error")
+        back_url = (
+            root.url_for("scan_lot", tracking_id=lot.tracking_id)
+            if entry_mode == "scan"
+            else root.url_for("purchase_edit", purchase_id=lot.purchase.id)
+        )
+        return _render_charge_form(root, lot, entry_mode=entry_mode, back_url=back_url)
+
+
 def scan_lot_view(root, tracking_id):
     lot = _get_scannable_lot(root, tracking_id)
     if not lot:
@@ -696,12 +816,10 @@ def scan_lot_start_run_view(root, tracking_id):
     run_start_mode = (root.request.form.get("run_start_mode") or "blank").strip()
     requested_weight_raw = (root.request.form.get("requested_weight_lbs") or "").strip()
     scale_device_id = (root.request.form.get("scale_device_id") or "").strip()
-    suggested_allocations = [{"lot_id": lot.id, "weight_lbs": ""}]
     planned_weight_lbs = None
 
     if run_start_mode == "full_remaining":
         planned_weight_lbs = remaining_weight_lbs
-        suggested_allocations = [{"lot_id": lot.id, "weight_lbs": remaining_weight_lbs}]
     elif run_start_mode == "partial":
         try:
             planned_weight_lbs = float(requested_weight_raw)
@@ -714,12 +832,8 @@ def scan_lot_start_run_view(root, tracking_id):
         if planned_weight_lbs > remaining_weight_lbs + 1e-9:
             root.flash(f"Partial run amount cannot exceed the lot's {remaining_weight_lbs:.1f} lbs remaining.", "error")
             return root.redirect(root.url_for("scan_lot", tracking_id=tracking_id))
-        suggested_allocations = [{"lot_id": lot.id, "weight_lbs": planned_weight_lbs}]
-    elif run_start_mode == "scale_capture":
-        planned_weight_lbs = None
-        suggested_allocations = [{"lot_id": lot.id, "weight_lbs": ""}]
     else:
-        run_start_mode = "blank"
+        run_start_mode = "scale_capture" if run_start_mode == "scale_capture" else "blank"
 
     _record_lot_scan_event(
         root,
@@ -732,33 +846,45 @@ def scan_lot_start_run_view(root, tracking_id):
             "scale_device_id": scale_device_id or None,
         },
     )
-
-    root.session[root.SCAN_RUN_PREFILL_SESSION_KEY] = {
-        "lot_id": lot.id,
-        "purchase_id": lot.purchase.id,
-        "tracking_id": lot.tracking_id,
-        "batch_id": lot.purchase.batch_id,
-        "supplier_name": lot.supplier_name,
-        "strain_name": lot.strain_name,
-        "remaining_weight_lbs": remaining_weight_lbs,
-        "suggested_allocations": suggested_allocations,
-        "run_start_mode": run_start_mode,
-        "planned_weight_lbs": planned_weight_lbs,
-        "scale_device_id": scale_device_id,
-    }
     root.db.session.commit()
-    if run_start_mode == "full_remaining":
-        root.flash(f"Scanned lot {lot.tracking_id or lot.id[:8]} prefilled for a full-lot run.", "success")
-    elif run_start_mode == "partial":
-        root.flash(
-            f"Scanned lot {lot.tracking_id or lot.id[:8]} prefilled for {planned_weight_lbs:.1f} lbs.",
-            "success",
-        )
-    elif run_start_mode == "scale_capture":
-        root.flash("Scanned lot preselected. Capture the reactor weight from the scale before saving the run.", "success")
-    else:
-        root.flash(f"Scanned lot {lot.tracking_id or lot.id[:8]} preselected for a new run.", "success")
-    return root.redirect(root.url_for("run_new"))
+    params = {
+        "run_start_mode": run_start_mode,
+        "scale_device_id": scale_device_id or "",
+    }
+    if planned_weight_lbs is not None:
+        params["requested_weight_lbs"] = f"{planned_weight_lbs:.1f}"
+    root.flash("Review reactor, weight, and charge time before opening the run form.", "success")
+    return root.redirect(root.url_for("scan_lot_charge", tracking_id=tracking_id, **params))
+
+
+def lot_charge_view(root, lot_id):
+    lot = root.db.session.get(root.PurchaseLot, lot_id)
+    if not lot:
+        root.flash("Lot not found.", "error")
+        return root.redirect(root.url_for("inventory"))
+    try:
+        validate_chargeable_lot(root, lot)
+    except ValueError as exc:
+        root.flash(str(exc), "error")
+        return root.redirect(root.url_for("purchase_edit", purchase_id=lot.purchase.id if lot.purchase else None))
+    if root.request.method == "POST":
+        return _submit_charge_form(root, lot, entry_mode="main_app")
+    return _render_charge_form(root, lot, entry_mode="main_app", back_url=root.url_for("purchase_edit", purchase_id=lot.purchase.id))
+
+
+def scan_lot_charge_view(root, tracking_id):
+    lot = _get_scannable_lot(root, tracking_id)
+    if not lot:
+        root.flash("Tracked lot not found.", "error")
+        return root.redirect(root.url_for("inventory"))
+    try:
+        validate_chargeable_lot(root, lot)
+    except ValueError as exc:
+        root.flash(str(exc), "error")
+        return root.redirect(root.url_for("scan_lot", tracking_id=tracking_id))
+    if root.request.method == "POST":
+        return _submit_charge_form(root, lot, entry_mode="scan")
+    return _render_charge_form(root, lot, entry_mode="scan", back_url=root.url_for("scan_lot", tracking_id=tracking_id))
 
 
 def scan_lot_confirm_movement_view(root, tracking_id):

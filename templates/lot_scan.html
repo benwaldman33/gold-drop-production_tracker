@@ -51,8 +51,8 @@
 
   <div class="floor-action-grid">
     <form method="POST" action="{{ url_for('scan_lot_start_run', tracking_id=lot.tracking_id) }}" class="floor-action-card floor-action-card-primary">
-      <div class="floor-action-title">Guided Run Start</div>
-      <div class="floor-action-copy">Choose whether the operator is using the full lot, a partial amount, or a scale-first flow before opening the run form.</div>
+      <div class="floor-action-title">Start Extraction Charge</div>
+      <div class="floor-action-copy">Choose whether the operator is using the full lot, a partial amount, or a scale-first flow before recording the charge and opening the run form.</div>
 
       <div class="floor-run-mode-group">
         <label class="floor-run-mode-option">
@@ -84,7 +84,7 @@
         </div>
       </div>
 
-      <button type="submit" class="btn btn-primary floor-action-button">Start Run From This Lot</button>
+      <button type="submit" class="btn btn-primary floor-action-button">Open Charge Form</button>
     </form>
 
     <a href="{{ url_for('purchases_bp.purchase_journey', purchase_id=purchase.id, lot=lot.tracking_id) }}" class="floor-action-card">
@@ -192,6 +192,8 @@
               Start run &middot; full remaining lot
             {% elif event.action == 'start_run' and context.run_start_mode == 'scale_capture' %}
               Start run &middot; scale capture first
+            {% elif event.action == 'extraction_charge' and context.charged_weight_lbs %}
+              Extraction charge &middot; {{ "{:,.1f}".format(context.charged_weight_lbs) }} lbs into Reactor {{ context.reactor_number or '?' }}
             {% else %}
               {{ event.action.replace('_', ' ') }}
             {% endif %}
@@ -205,6 +207,7 @@
           {% if context.location %} &middot; location={{ context.location }}{% endif %}
           {% if context.testing_status %} &middot; testing={{ context.testing_status }}{% endif %}
           {% if context.scale_device_id %} &middot; scale selected{% endif %}
+          {% if context.charged_at %} &middot; charged_at={{ context.charged_at }}{% endif %}
         </div>
       </div>
       {% endfor %}

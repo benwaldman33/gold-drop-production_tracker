@@ -188,6 +188,13 @@ def run_new_view(root):
         display_run = display_run or root.Run()
         if scan_prefill.get("planned_weight_lbs") not in (None, "") and not getattr(display_run, "bio_in_reactor_lbs", None):
             display_run.bio_in_reactor_lbs = float(scan_prefill.get("planned_weight_lbs") or 0)
+        if scan_prefill.get("reactor_number") and not getattr(display_run, "reactor_number", None):
+            display_run.reactor_number = int(scan_prefill.get("reactor_number") or 0)
+        if scan_prefill.get("charge_run_date") and not getattr(display_run, "run_date", None):
+            try:
+                display_run.run_date = root.datetime.strptime(scan_prefill.get("charge_run_date"), "%Y-%m-%d").date()
+            except (TypeError, ValueError):
+                pass
         scan_meta = {
             "tracking_id": (scan_prefill.get("tracking_id") or "").strip(),
             "purchase_id": (scan_prefill.get("purchase_id") or "").strip(),
@@ -199,6 +206,11 @@ def run_new_view(root):
             "run_start_mode": (scan_prefill.get("run_start_mode") or "").strip(),
             "planned_weight_lbs": scan_prefill.get("planned_weight_lbs"),
             "scale_device_id": (scan_prefill.get("scale_device_id") or "").strip(),
+            "charge_id": (scan_prefill.get("charge_id") or "").strip(),
+            "reactor_number": scan_prefill.get("reactor_number"),
+            "charged_at_label": (scan_prefill.get("charged_at_label") or "").strip(),
+            "charge_notes": (scan_prefill.get("charge_notes") or "").strip(),
+            "charge_source_mode": (scan_prefill.get("charge_source_mode") or "").strip(),
         }
     if scale_prefill:
         display_run = display_run or root.Run()
@@ -259,6 +271,7 @@ def save_run(root, existing_run):
     slack_meta = None
     scan_meta = None
     scale_meta = None
+    run = existing_run if existing_run is not None else root.Run()
     if root.request.form.get("slack_ingested_message_id"):
         slack_meta = {
             "ingested_message_id": (root.request.form.get("slack_ingested_message_id") or "").strip(),
@@ -271,6 +284,13 @@ def save_run(root, existing_run):
         if scan_prefill:
             if scan_prefill.get("planned_weight_lbs") not in (None, "") and not getattr(run, "bio_in_reactor_lbs", None):
                 run.bio_in_reactor_lbs = float(scan_prefill.get("planned_weight_lbs") or 0)
+            if scan_prefill.get("reactor_number") and not getattr(run, "reactor_number", None):
+                run.reactor_number = int(scan_prefill.get("reactor_number") or 0)
+            if scan_prefill.get("charge_run_date") and not getattr(run, "run_date", None):
+                try:
+                    run.run_date = root.datetime.strptime(scan_prefill.get("charge_run_date"), "%Y-%m-%d").date()
+                except (TypeError, ValueError):
+                    pass
             scan_meta = {
                 "tracking_id": (scan_prefill.get("tracking_id") or "").strip(),
                 "purchase_id": (scan_prefill.get("purchase_id") or "").strip(),
@@ -282,6 +302,11 @@ def save_run(root, existing_run):
                 "run_start_mode": (scan_prefill.get("run_start_mode") or "").strip(),
                 "planned_weight_lbs": scan_prefill.get("planned_weight_lbs"),
                 "scale_device_id": (scan_prefill.get("scale_device_id") or "").strip(),
+                "charge_id": (scan_prefill.get("charge_id") or "").strip(),
+                "reactor_number": scan_prefill.get("reactor_number"),
+                "charged_at_label": (scan_prefill.get("charged_at_label") or "").strip(),
+                "charge_notes": (scan_prefill.get("charge_notes") or "").strip(),
+                "charge_source_mode": (scan_prefill.get("charge_source_mode") or "").strip(),
             }
         scale_prefill = root.session.get(root.RUN_SCALE_PREFILL_SESSION_KEY) or {}
         if scale_prefill:
@@ -381,6 +406,16 @@ def save_run(root, existing_run):
             capture = root.db.session.get(root.WeightCapture, scale_capture_id)
             if capture is not None:
                 capture.run_id = run.id
+
+        if not existing_run and scan_meta and scan_meta.get("charge_id"):
+            charge = root.db.session.get(root.ExtractionCharge, scan_meta["charge_id"])
+            if charge is not None:
+                if charge.run_id and charge.run_id != run.id:
+                    raise ValueError("This extraction charge is already linked to another run.")
+                charge.run_id = run.id
+                charge.status = "applied"
+                if scale_capture_id and not charge.weight_capture_id:
+                    charge.weight_capture_id = scale_capture_id
 
         slack_prefill_snapshot = (root.session.get(root.SLACK_RUN_PREFILL_SESSION_KEY) or {}) if not existing_run else {}
         resolution = slack_prefill_snapshot.get("resolution")
