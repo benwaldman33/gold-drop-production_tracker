@@ -251,8 +251,12 @@ It now also shows:
 - lots ready for extraction
 - open lots still pending prep
 - open lots still pending testing
+- an active reactor board showing whether each reactor is empty, charged/waiting, or already linked to a saved run
 - pending extraction charges grouped by reactor
 - recently applied charges already linked to saved runs
+
+**What does the Active Reactor Board mean?**
+It is the extractor-facing summary at the top of `Floor Ops`. For each reactor, it shows the current inferred state, the latest lot charged into that reactor, the charged lbs, charge time, queue depth, and an `Open Run` link when a saved run is already attached.
 
 **Can I use an iPad or Android tablet camera to scan labels?**
 Yes. Use the in-app **Scan Center** at `/scan` or open it from **Floor Ops**.

@@ -420,9 +420,10 @@ This keeps each deployed facility self-identifying for future aggregation withou
   - `LotScanEvent` stores scan-open, start-run, extraction-charge, movement, and testing actions with user/context/timestamp.
   - `GET /api/v1/scan-events`, `GET /api/v1/lots/<lot_id>/scans`, and `GET /api/v1/summary/scanner` expose scanner activity to internal consumers.
 - **Floor queue visibility**
-  - `gold_drop/floor_module.py` now also builds a reactor-oriented charge queue from `ExtractionCharge`.
+  - `gold_drop/floor_module.py` now also builds a reactor-oriented charge queue and active reactor board from `ExtractionCharge`.
   - Pending charges remain `status = "pending"` until `gold_drop/runs_module.py` links them to a saved run and marks them `applied`.
   - `templates/floor_ops.html` renders:
+    - per-reactor active state cards (`Empty`, `Charged / waiting`, `Run linked`)
     - pending charge count / lbs summary
     - per-reactor pending charge cards
     - recently applied charges with `Open Run` shortcuts

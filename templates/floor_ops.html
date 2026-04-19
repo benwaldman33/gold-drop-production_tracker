@@ -85,6 +85,59 @@
 
 <div class="card" style="margin-bottom:18px;">
   <div class="card-header">
+    <h3>Active Reactor Board</h3>
+    <span class="text-sm cell-muted">{{ active_reactor_board.active_count }} of 3 reactors currently holding a charge or linked run</span>
+  </div>
+  <div class="summary-row">
+    {% for card in active_reactor_board.cards %}
+    <div class="card" style="min-width:260px;flex:1 1 260px;margin:0;">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
+        <div>
+          <div class="summary-label">Reactor {{ card.reactor_number }}</div>
+          <div class="summary-value">{{ card.state_label }}</div>
+        </div>
+        <span class="badge {{ card.state_badge }}">{{ card.state_label }}</span>
+      </div>
+      {% if card.current %}
+      <div class="floor-event-list" style="margin-top:12px;">
+        <div class="floor-event-row" style="text-align:left;">
+          <div class="text-sm">
+            <strong>{{ card.current.tracking_id or card.current.lot_id[:8] }}</strong>
+            <span class="cell-muted">&middot; {{ "{:,.1f}".format(card.current.charged_weight_lbs or 0) }} lbs</span>
+          </div>
+          <div class="text-sm cell-muted" style="margin-top:4px;">
+            {{ card.current.strain_name }} / {{ card.current.supplier_name }}
+          </div>
+          <div class="text-sm cell-muted" style="margin-top:4px;">
+            charged {{ card.current.charged_at_label }}{% if card.current.source_mode %} &middot; {{ card.current.source_mode }}{% endif %}
+          </div>
+          {% if card.current.operator_name %}
+          <div class="text-sm cell-muted" style="margin-top:4px;">operator: {{ card.current.operator_name }}</div>
+          {% endif %}
+          {% if card.current.run_id %}
+          <div class="form-actions" style="justify-content:flex-start;margin-top:8px;">
+            <a href="{{ url_for('run_edit', run_id=card.current.run_id) }}" class="btn btn-secondary btn-sm">Open Run</a>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% else %}
+      <div class="summary-footnote" style="margin-top:12px;">No active charge. {{ card.next_step }}</div>
+      {% endif %}
+      {% if card.pending_count %}
+      <div class="summary-footnote" style="margin-top:12px;">
+        Queue depth: {{ card.pending_count }} pending charge{% if card.pending_count != 1 %}s{% endif %} / {{ "{:,.1f}".format(card.pending_weight_lbs or 0) }} lbs
+      </div>
+      {% else %}
+      <div class="summary-footnote" style="margin-top:12px;">{{ card.next_step }}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:18px;">
+  <div class="card-header">
     <h3>Reactor Charge Queue</h3>
     <span class="text-sm cell-muted">Pending extraction charges by reactor</span>
   </div>
