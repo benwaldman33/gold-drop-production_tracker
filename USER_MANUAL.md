@@ -249,6 +249,7 @@ Use **Floor Ops** from the left navigation when you want a quick operator view o
 - active scale devices
 - lots already staged and ready for extraction
 - open lots still pending prep or testing
+- a live board for Reactor 1 / 2 / 3 showing the current charge state
 - pending extraction charges by reactor
 - recently applied charges already linked to saved runs
 
@@ -264,6 +265,12 @@ The page also rolls open lots up by floor state:
 Each recent scan row includes an **Open Scan Page** shortcut back into the lot execution workflow.
 
 The page now also includes a reactor-oriented extraction queue:
+- **Active Reactor Board** shows each reactor as:
+  - **Empty**
+  - **Charged / waiting**
+  - **Run linked**
+- each reactor card shows the latest lot, charged lbs, charge time, queue depth, and the operator label when present
+- when a reactor already has a saved run linked, the card exposes **Open Run**
 - **Pending Charges** summarizes lbs already charged into production but not yet linked to a saved run
 - **Reactor Charge Queue** groups pending charges by Reactor 1 / 2 / 3
 - **Recently Applied Charges** shows charges that have already been finalized into saved runs and provides an **Open Run** shortcut

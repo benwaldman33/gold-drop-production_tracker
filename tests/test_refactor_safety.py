@@ -1250,6 +1250,7 @@ def test_floor_ops_page_shows_pending_and_applied_extraction_charges():
     applied_charge_id = None
     run_id = None
     with app.app_context():
+        admin_id = app_module.User.query.filter_by(username="admin").first().id
         supplier = Supplier(name="Floor Charge Supplier", is_active=True)
         db.session.add(supplier)
         db.session.flush()
@@ -1291,7 +1292,7 @@ def test_floor_ops_page_shows_pending_and_applied_extraction_charges():
             bio_in_reactor_lbs=25,
             dry_hte_g=5,
             dry_thca_g=10,
-            created_by=app_module.User.query.filter_by(username="admin").first().id,
+            created_by=admin_id,
         )
         db.session.add(run)
         db.session.flush()
@@ -1304,6 +1305,7 @@ def test_floor_ops_page_shows_pending_and_applied_extraction_charges():
             source_mode="main_app",
             status="pending",
             notes="awaiting run save",
+            created_by=admin_id,
         )
         applied_charge = ExtractionCharge(
             purchase_lot_id=applied_lot.id,
@@ -1313,6 +1315,7 @@ def test_floor_ops_page_shows_pending_and_applied_extraction_charges():
             charged_at=app_module.datetime.now(app_module.timezone.utc),
             source_mode="scan",
             status="applied",
+            created_by=admin_id,
         )
         db.session.add_all([pending_charge, applied_charge])
         db.session.commit()
@@ -1329,6 +1332,12 @@ def test_floor_ops_page_shows_pending_and_applied_extraction_charges():
             _login(client, "admin")
             resp = client.get("/floor-ops")
             assert resp.status_code == 200
+            assert b"Active Reactor Board" in resp.data
+            assert b"Charged / waiting" in resp.data
+            assert b"Run linked" in resp.data
+            assert b"Queue depth: 1 pending charge" in resp.data
+            assert b"operator:" in resp.data
+            assert b"Ready for the next lot charge." in resp.data
             assert b"Reactor Charge Queue" in resp.data
             assert b"Pending Charges" in resp.data
             assert b"Pending Dream" in resp.data

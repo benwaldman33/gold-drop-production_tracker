@@ -25,6 +25,7 @@ This PRD describes the problem, users, workflows, data requirements, calculation
 - a **Slack imports inbox** organized by confidence / manual resolution need
 - **lot identity** at creation time via **tracking ID + barcode + QR**
 - a dedicated **extraction charge** workflow rooted in `lot -> lbs -> reactor -> time -> run`
+- a reactor-first **active reactor board** that summarizes current extractor state from canonical charge events
 - readiness for future **connected scale** capture as a structured input channel
 
 Current implementation note: the active modular extraction surface now includes dashboard, field intake, runs, purchases, biomass, costs, inventory, batch edit, suppliers/photos, purchase import, strains, settings, Slack integration, and startup bootstrap modules. This remains an engineering delivery change only; product behavior and operator-facing workflow are intended to stay the same.

@@ -136,6 +136,85 @@ def _build_reactor_charge_view(root):
     }
 
 
+def _build_active_reactor_board(root):
+    charges = (
+        root.ExtractionCharge.query.join(root.PurchaseLot)
+        .join(root.Purchase)
+        .filter(
+            root.PurchaseLot.deleted_at.is_(None),
+            root.Purchase.deleted_at.is_(None),
+        )
+        .order_by(root.ExtractionCharge.charged_at.desc(), root.ExtractionCharge.created_at.desc())
+        .limit(60)
+        .all()
+    )
+
+    cards = []
+    for reactor_number in (1, 2, 3):
+        reactor_charges = [charge for charge in charges if int(charge.reactor_number or 0) == reactor_number]
+        pending = [charge for charge in reactor_charges if (charge.status or "pending") == "pending"]
+        applied = [charge for charge in reactor_charges if (charge.status or "") == "applied"]
+        latest_pending = pending[0] if pending else None
+        latest_applied = applied[0] if applied else None
+
+        if latest_pending:
+            current = latest_pending
+            state_key = "charged_waiting"
+            state_label = "Charged / waiting"
+            state_badge = "badge-gold"
+            next_step = "Open the saved charge and start or save the linked run."
+        elif latest_applied:
+            current = latest_applied
+            state_key = "run_linked"
+            state_label = "Run linked"
+            state_badge = "badge-green"
+            next_step = "Open the linked run or record the next charge."
+        else:
+            current = None
+            state_key = "empty"
+            state_label = "Empty"
+            state_badge = "badge-gray"
+            next_step = "Ready for the next lot charge."
+
+        cards.append(
+            {
+                "reactor_number": reactor_number,
+                "state_key": state_key,
+                "state_label": state_label,
+                "state_badge": state_badge,
+                "next_step": next_step,
+                "pending_count": len(pending),
+                "pending_weight_lbs": sum(float(charge.charged_weight_lbs or 0) for charge in pending),
+                "current": (
+                    {
+                        "charge_id": current.id,
+                        "tracking_id": current.lot.tracking_id if current and current.lot else None,
+                        "lot_id": current.purchase_lot_id if current else None,
+                        "supplier_name": current.lot.supplier_name if current and current.lot else "Unknown",
+                        "strain_name": current.lot.strain_name if current and current.lot else "Unknown",
+                        "charged_weight_lbs": float(current.charged_weight_lbs or 0) if current else 0.0,
+                        "charged_at_label": display_charge_datetime_local(current.charged_at) if current else None,
+                        "operator_name": (
+                            current.creator.display_name
+                            if current and current.creator and current.creator.display_name
+                            else None
+                        ),
+                        "source_mode": (current.source_mode or "").replace("_", " ") if current else None,
+                        "run_id": current.run_id if current else None,
+                    }
+                    if current
+                    else None
+                ),
+            }
+        )
+
+    active_count = sum(1 for card in cards if card["state_key"] != "empty")
+    return {
+        "cards": cards,
+        "active_count": active_count,
+    }
+
+
 def floor_ops_view(root):
     recent_scans = root.LotScanEvent.query.order_by(root.LotScanEvent.created_at.desc()).limit(12).all()
     recent_captures = root.WeightCapture.query.order_by(root.WeightCapture.created_at.desc()).limit(12).all()
@@ -153,6 +232,7 @@ def floor_ops_view(root):
     ).count()
     floor_rollups = _build_floor_rollups(root)
     reactor_charge_view = _build_reactor_charge_view(root)
+    active_reactor_board = _build_active_reactor_board(root)
 
     return root.render_template(
         "floor_ops.html",
@@ -164,6 +244,7 @@ def floor_ops_view(root):
         captures_last_day=captures_last_day,
         floor_rollups=floor_rollups,
         reactor_charge_view=reactor_charge_view,
+        active_reactor_board=active_reactor_board,
     )
 
 
