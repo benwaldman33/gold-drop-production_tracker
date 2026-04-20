@@ -31,6 +31,7 @@ export function resetStorage() {
   if (typeof window !== "undefined") {
     window.localStorage.removeItem("gold-drop-extraction-lab-state-v1");
     window.localStorage.removeItem("gold-drop-extraction-lab-session-v1");
+    window.localStorage.removeItem("gold-drop-extraction-lab-ui-prefs-v1");
     return;
   }
   memory.clear();

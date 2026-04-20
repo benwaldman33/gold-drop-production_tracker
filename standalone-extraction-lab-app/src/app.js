@@ -2,7 +2,7 @@ import { createApiClient } from "./api.js";
 import { clampChargeWeight, halfLotChargeWeight, lotTitle, readyLotCount, stateTone } from "./domain.js";
 import { getAppConfig } from "./config.js";
 import { readJson, writeJson } from "./storage.js";
-import { buildChargePayload, defaultChargeValue, escapeHtml, localDateTimeInputValue, parseRoute } from "./ui-helpers.js";
+import { buildChargePayload, defaultChargeValue, defaultReactorValue, escapeHtml, localDateTimeInputValue, parseRoute } from "./ui-helpers.js";
 
 const config = getAppConfig();
 const api = createApiClient(config);
@@ -20,6 +20,7 @@ const state = {
   lastCharge: null,
   dialog: null,
   scanStatus: "",
+  recentLookup: null,
 };
 
 let cameraStream = null;
@@ -91,11 +92,20 @@ function navigate(hash) {
 }
 
 function loadUiPrefs() {
-  return readJson(UI_PREFS_KEY, { last_charge_weight_lbs: null });
+  return readJson(UI_PREFS_KEY, { last_charge_weight_lbs: null, last_reactor_number: 1 });
 }
 
 function saveUiPrefs(prefs) {
   writeJson(UI_PREFS_KEY, prefs);
+}
+
+function focusScanInput() {
+  if (state.route.name !== "scan") return;
+  window.setTimeout(() => {
+    const input = app?.querySelector("#scan-tracking-id");
+    input?.focus();
+    input?.select();
+  }, 0);
 }
 
 function preferredChargePreset(maxWeight) {
@@ -263,6 +273,11 @@ function renderLastChargeCard() {
 }
 
 function renderScan() {
+  const guidance = [
+    "Use the iPad in landscape and fill most of the frame with the label.",
+    "Bluetooth scanners can type directly into the Tracking ID field below.",
+    "Resolved lots open with the last reactor preselected to cut one more tap.",
+  ];
   return `
     <div class="layout-grid">
       <div class="topbar">
@@ -287,6 +302,9 @@ function renderScan() {
             <div class="scan-empty" id="scan-preview-empty">Camera preview appears here</div>
           </div>
           <p class="subtle" id="scan-status-text">${escapeHtml(state.scanStatus || browserScanSupportMessage())}</p>
+          <div class="scan-guidance">
+            ${guidance.map((item) => `<div class="guidance-row">${escapeHtml(item)}</div>`).join("")}
+          </div>
           <div class="actions">
             <button class="btn btn-primary" type="button" data-action="start-camera">Start camera</button>
             <button class="btn btn-secondary" type="button" data-action="stop-camera">Stop camera</button>
@@ -302,7 +320,7 @@ function renderScan() {
           <form class="form" data-form="scan-lookup">
             <div class="field">
               <label for="scan-tracking-id">Tracking ID</label>
-              <input id="scan-tracking-id" name="tracking_id" autocomplete="off" placeholder="LOT-..." />
+              <input id="scan-tracking-id" name="tracking_id" autocomplete="off" placeholder="LOT-..." enterkeyhint="go" />
             </div>
             <div class="actions">
               <button class="btn btn-primary" type="submit">Open Charge Form</button>
@@ -315,6 +333,24 @@ function renderScan() {
           </div>
         </article>
       </section>
+      ${
+        state.recentLookup
+          ? `
+        <section class="card success-banner">
+          <div class="section-head compact">
+            <div>
+              <div class="eyebrow">Last resolved lot</div>
+              <h3>${escapeHtml(state.recentLookup.tracking_id)}</h3>
+            </div>
+          </div>
+          <p class="subtle">${escapeHtml(state.recentLookup.method_label)} opened ${escapeHtml(state.recentLookup.lot_label)}.</p>
+          <div class="actions">
+            <a class="btn btn-secondary" href="#/lots/${encodeURIComponent(state.recentLookup.lot_id)}/charge">Open charge form again</a>
+          </div>
+        </section>
+      `
+          : ""
+      }
       ${renderLastChargeCard()}
     </div>
   `;
@@ -505,8 +541,10 @@ function renderChargeForm() {
   const prefs = loadUiPrefs();
   const presetWeight = preferredChargePreset(maxWeight);
   const lastUsedWeight = clampChargeWeight(prefs.last_charge_weight_lbs || 0, maxWeight);
+  const defaultReactor = defaultReactorValue(prefs.last_reactor_number || 1, reactorCount);
   const defaultWeight = clampChargeWeight(chargeDefaults.charged_weight_lbs || presetWeight, maxWeight) || presetWeight;
   const defaultTime = chargeDefaults.charged_at || localDateTimeInputValue();
+  const lookupContext = state.recentLookup && state.recentLookup.lot_id === lot.id ? state.recentLookup : null;
   return `
     <div class="layout-grid">
       <div class="topbar">
@@ -520,6 +558,17 @@ function renderChargeForm() {
         </div>
       </div>
       <section class="card charge-hero">
+        ${
+          lookupContext
+            ? `
+          <div class="success-banner inline">
+            <div class="eyebrow">Scan success</div>
+            <strong>${escapeHtml(lookupContext.method_label)}</strong>
+            <span class="subtle">${escapeHtml(lookupContext.tracking_id)} resolved and Reactor ${escapeHtml(String(defaultReactor))} is preselected from recent use.</span>
+          </div>
+        `
+            : ""
+        }
         <div class="metric-row">
           <div><span>Remaining</span><strong>${escapeHtml(String(maxWeight))} lbs</strong></div>
           <div><span>Testing</span><strong>${escapeHtml(lot.testing_status || "")}</strong></div>
@@ -558,9 +607,10 @@ function renderChargeForm() {
           <div class="reactor-picker">
             ${Array.from({ length: reactorCount }, (_, index) => {
               const reactorNumber = index + 1;
-              return `<label class="reactor-option"><input type="radio" name="reactor_number" value="${reactorNumber}" ${reactorNumber === 1 ? "checked" : ""} /><span>Reactor ${reactorNumber}</span></label>`;
+              return `<label class="reactor-option"><input type="radio" name="reactor_number" value="${reactorNumber}" ${reactorNumber === defaultReactor ? "checked" : ""} /><span>Reactor ${reactorNumber}</span></label>`;
             }).join("")}
           </div>
+          <div class="subtle">Last used reactor defaults first so repeat charges take one less tap.</div>
         </div>
         <div class="field">
           <label for="charged_at">Charge time</label>
@@ -602,6 +652,7 @@ function bind() {
   });
   app?.querySelectorAll("[data-action='confirm-cancel']").forEach((button) => button.addEventListener("click", handleConfirmCancel));
   app?.querySelector("input[type='range'][name='charged_weight_lbs']")?.addEventListener("input", syncWeightDisplay);
+  focusScanInput();
 }
 
 async function handleLogin(event) {
@@ -647,7 +698,7 @@ async function handleScanLookup(event) {
   event.preventDefault();
   const form = new FormData(event.currentTarget);
   const trackingId = String(form.get("tracking_id") || "").trim();
-  await openTrackingId(trackingId);
+  await openTrackingId(trackingId, "Manual entry");
 }
 
 function syncWeightDisplay() {
@@ -696,7 +747,7 @@ async function handleChargeSubmit(event) {
   try {
     const result = await api.createCharge(String(form.get("lot_id") || ""), payload);
     state.lastCharge = result;
-    saveUiPrefs({ ...loadUiPrefs(), last_charge_weight_lbs: payload.charged_weight_lbs });
+    saveUiPrefs({ ...loadUiPrefs(), last_charge_weight_lbs: payload.charged_weight_lbs, last_reactor_number: payload.reactor_number });
     state.board = await api.getBoard("all");
     showToast(`Recorded ${result.charge.charged_weight_lbs} lbs into Reactor ${result.charge.reactor_number}.`);
     navigate("#/reactors");
@@ -797,7 +848,7 @@ async function scanFrame() {
       if (rawValue && rawValue !== lastScannedValue) {
         lastScannedValue = rawValue;
         setScanStatus(`Scanned ${rawValue}. Opening charge form...`);
-        await openTrackingId(rawValue);
+        await openTrackingId(rawValue, "Camera scan");
         return;
       }
     }
@@ -846,7 +897,7 @@ async function startCamera() {
   }
 }
 
-async function openTrackingId(trackingId) {
+async function openTrackingId(trackingId, method = "Manual entry") {
   const value = String(trackingId || "").trim();
   if (!value) {
     showToast("Enter a tracking ID before opening the lot.");
@@ -854,6 +905,13 @@ async function openTrackingId(trackingId) {
   }
   try {
     const lot = await api.lookupLot(value);
+    state.recentLookup = {
+      tracking_id: value,
+      lot_id: lot.id,
+      lot_label: lotTitle(lot),
+      method_label: method,
+    };
+    setScanStatus(`${method} resolved ${value}. Opening charge form...`);
     stopCamera();
     navigate(`#/lots/${encodeURIComponent(lot.id)}/charge`);
   } catch (error) {

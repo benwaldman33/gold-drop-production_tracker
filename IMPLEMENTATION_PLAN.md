@@ -1,10 +1,10 @@
 # Gold Drop - Next Sprint Implementation Plan
 
-The standalone extraction lab app is now live. The next sprint should make it truly scan-first for floor operators.
+The standalone extraction lab app is now scan-first. The next sprint should polish the operator continuity around that flow.
 
 ## Sprint Focus
 
-Build `Scan-First Extraction Entry` on top of the existing standalone extraction app and extraction mobile API.
+Build `Scan-To-Charge Continuity Polish` on top of the existing standalone extraction app and extraction mobile API.
 
 The business sequence remains:
 
@@ -15,11 +15,11 @@ The business sequence remains:
 5. Run / complete / cancel
 6. Testing can occur before buy, after receipt, or after extraction depending on supplier trust and process stage
 
-This sprint is about reducing keyboard dependence and shortening the path from label scan to reactor charge.
+This sprint is about reducing friction after the scan screen is already in place: fewer taps, better guidance, and clearer handoff into the charge form.
 
 ## Product Goal
 
-Let extractors and assistant extractors open the standalone extraction app, scan or enter a lot label, apply a default 100 lb reactor charge when appropriate, and move straight into the next action without unnecessary navigation.
+Let extractors and assistant extractors open the standalone extraction app, scan or enter a lot label, land on a clearly confirmed charge form, and keep their recent reactor preference without extra typing or guesswork.
 
 ## Why This Is Next
 
@@ -31,25 +31,25 @@ The repo already has:
 - browser-camera barcode detection in the main app scan center
 - canonical `ExtractionCharge` persistence and run handoff
 
-What is still missing is the fastest operator entry path:
+What is still missing is the continuity around that entry path:
 
-- scan lot
-- land on the lot immediately
-- charge using presets
-- charge another lot or open the run
+- the manual field should be ready immediately
+- scan guidance should be explicit on the iPad screen
+- successful lookup should be obvious when the operator lands on charge
+- repeat charges should reuse the last reactor selection
 
 ## User Stories
 
 ### Extractor
 
-- As an extractor, I can scan a lot label on the iPad and open the correct lot without typing.
-- As an extractor, I can use a default 100 lb reactor charge preset instead of manually dragging a slider every time.
-- As an extractor, I can record a charge and immediately choose whether to open the run, return to the reactor board, or charge another lot.
+- As an extractor, I can open `Scan / Enter Lot` and start typing or scanning immediately because the manual field is already focused.
+- As an extractor, I can see clear scan guidance on the iPad without having to remember camera constraints or scanner behavior.
+- As an extractor, I land on a charge form that clearly confirms the scanned lot and preselects the reactor I used most recently.
 
 ### Assistant extractor
 
 - As an assistant extractor, I can still manually enter a tracking ID when camera scanning is unavailable.
-- As an assistant extractor, I can use large preset buttons such as `100 lbs`, `Half lot`, `Full lot`, and `Last used`.
+- As an assistant extractor, I can repeat similar charges faster because the app remembers the last reactor used.
 
 ### Operations / audit
 
@@ -59,15 +59,11 @@ What is still missing is the fastest operator entry path:
 
 ### In scope
 
-- new standalone route for `Scan / Enter Lot`
-- camera barcode scanning in the standalone extraction app when the browser supports it
-- manual tracking-ID fallback entry
-- charge presets with default `100 lbs per reactor`
-- post-charge action loop:
-  - `Open run now`
-  - `Back to reactors`
-  - `Charge another lot`
-- targeted frontend regression coverage for route parsing, presets, and lookup behavior
+- auto-focus on manual tracking-ID entry when the scan route opens
+- stronger scan guidance copy directly on the scan screen
+- persisted recent-lot success context between scan and charge
+- remembered last-used reactor on the charge form
+- targeted frontend regression coverage for reactor default helpers and scan route continuity
 
 ### Out of scope
 
@@ -79,48 +75,40 @@ What is still missing is the fastest operator entry path:
 
 ## UX Surfaces
 
-### 1. Scan / Enter Lot
+### 1. Scan route continuity
 
-Add a dedicated route:
+Keep `#/scan` as the primary entry point, but tighten the screen so:
 
-- `#/scan`
+- the manual field is focused automatically
+- scan guidance is visible without opening help text
+- the operator sees the most recent resolved lot after a successful scan
 
-It should support:
+### 2. Charge handoff clarity
 
-- browser camera scan when `BarcodeDetector` is available
-- manual tracking-ID entry
-- Bluetooth scanner keyboard-wedge entry through the same input
+When a lookup succeeds and the app lands on `#/lots/<id>/charge`:
 
-### 2. Charge presets
+- show a visible success banner that confirms the source tracking ID
+- indicate whether the lookup came from the camera or manual entry
+- make it clear that the last-used reactor is already selected
 
-The charge form should expose:
+### 3. Reactor continuity
+
+Persist the last-used reactor in local UI preferences so the next charge form:
+
+- preselects the most recently used reactor
+- still clamps that selection to configured reactor count
+
+### 4. Preserve current presets and loop
+
+Keep the existing fast-entry controls:
 
 - `100 lbs`
 - `Half lot`
 - `Full lot`
 - `Last used`
-
-Default behavior:
-
-- the initial suggested charge should be `100 lbs` when the lot has at least `100 lbs` remaining
-- otherwise use the remaining lot weight
-
-### 3. Post-charge loop
-
-After a charge is recorded, the operator should immediately see:
-
 - `Open Run in Main App`
 - `Back to Reactors`
 - `Charge Another Lot`
-
-### 4. Navigation polish
-
-Make `Scan / Enter Lot` a first-class action from:
-
-- sidebar
-- home
-- reactors
-- lots
 
 ## Backend Changes
 
@@ -149,10 +137,10 @@ Standalone frontend routes should become:
 
 ### Targeted tests during implementation
 
-- route parsing includes `#/scan`
-- charge preset helpers clamp `100 lbs` correctly
-- mock/live standalone API lookup path works
-- camera/manual scan helpers can route into a resolved lot
+- route parsing still includes `#/scan`
+- charge preset helpers still clamp `100 lbs` correctly
+- reactor default helper clamps to configured reactor count
+- mock/live standalone API lookup path still works
 
 ### Full-suite closeout before final commit
 
@@ -163,9 +151,8 @@ Standalone frontend routes should become:
 
 This sprint is done when:
 
-- the standalone extraction app has a dedicated `Scan / Enter Lot` screen
-- an operator can scan or manually enter a tracking ID and open the right lot
-- the charge form defaults to `100 lbs` when possible
-- preset buttons speed up charge entry
-- the post-charge loop lets operators continue without backing through the app manually
+- the scan screen focuses the manual field automatically
+- scan guidance is visible on the scan screen
+- a successful lookup leaves a clear visual confirmation on the charge form
+- the charge form remembers and preselects the last-used reactor
 - tests and docs are updated

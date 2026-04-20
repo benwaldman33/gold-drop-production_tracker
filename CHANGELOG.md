@@ -14,6 +14,7 @@
 ### Changed
 - Standalone extraction `Reactors` board filters now respect the selected `Board view` on live production data instead of always showing every reactor card.
 - The standalone extraction app now exposes a dedicated `Scan / Enter Lot` screen, camera/manual tracking-ID lookup, a default `100 lbs` charge preset per reactor, and a faster post-charge loop (`Open Run`, `Back to Reactors`, `Charge Another Lot`).
+- The standalone extraction app now auto-focuses the manual tracking-ID field, shows scan guidance on-screen, confirms successful lot resolution on the charge form, and remembers the last reactor used for the next charge.
 - Purchase edit now round-trips `availability_date` and `testing_notes` so values saved from the mobile opportunity flow remain visible and editable in the main app.
 - Standalone buying copy now uses clearer "ready to record delivery" wording instead of the older "delivery capture" phrasing.
 - Supplier creation now warns on typo-close duplicate names in the standalone buyer app and on the main supplier create page before saving a new record.

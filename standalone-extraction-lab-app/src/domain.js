@@ -28,6 +28,15 @@ export function halfLotChargeWeight(maxWeight) {
   return clampChargeWeight(Number(maxWeight || 0) / 2, maxWeight);
 }
 
+export function preferredReactorNumber(value, reactorCount) {
+  const count = Math.max(1, Number(reactorCount || 0) || 1);
+  const parsed = Number(value || 1);
+  if (!Number.isFinite(parsed)) return 1;
+  if (parsed < 1) return 1;
+  if (parsed > count) return count;
+  return Math.round(parsed);
+}
+
 export function stateTone(stateKey) {
   switch (String(stateKey || "").toLowerCase()) {
     case "running":
