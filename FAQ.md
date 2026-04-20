@@ -402,6 +402,19 @@ The charge form now defaults to `100 lbs` when the lot has at least that much re
 
 The manual tracking field now auto-focuses when that screen opens, and the charge form remembers the last reactor used so repeat charges take fewer taps.
 
+After the charge is recorded, the standalone app can now open a dedicated run-execution screen where the extractor captures run / fill timing, blend percentages, fills, flushes, stringer baskets, CRC blend, and notes without leaving the tablet workflow.
+
+## How does the standalone extraction app handle timers?
+
+The standalone run screen now uses touch-first time controls instead of making operators type timestamps.
+
+For run / fill time, mixer time, and flush time, use:
+
+- `Start / Now`
+- `Stop / Now`
+
+The app stores the actual timestamps and also shows the derived duration in minutes when both endpoints are present.
+
 ## Can receiving staff correct a receipt after it was submitted?
 
 Yes, but only while the purchase's lots have not been used downstream.

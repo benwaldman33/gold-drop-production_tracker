@@ -1,10 +1,10 @@
 # Gold Drop - Next Sprint Implementation Plan
 
-The standalone extraction lab app is now scan-first. The next sprint should polish the operator continuity around that flow.
+The standalone extraction lab app now covers charge creation and scan-first lot entry. The next sprint should carry extractors through the actual run without forcing them back into the admin form.
 
 ## Sprint Focus
 
-Build `Scan-To-Charge Continuity Polish` on top of the existing standalone extraction app and extraction mobile API.
+Build `Standalone Extraction Run Execution` on top of the existing extraction charge workflow and standalone extraction app.
 
 The business sequence remains:
 
@@ -12,135 +12,172 @@ The business sequence remains:
 2. Receive
 3. Find or scan the lot
 4. Charge into reactor / start extraction
-5. Run / complete / cancel
-6. Testing can occur before buy, after receipt, or after extraction depending on supplier trust and process stage
+5. Record run execution details
+6. Complete / cancel / review
 
-This sprint is about reducing friction after the scan screen is already in place: fewer taps, better guidance, and clearer handoff into the charge form.
+Testing can still happen before buy, after receipt, or after extraction depending on supplier trust and process stage.
 
 ## Product Goal
 
-Let extractors and assistant extractors open the standalone extraction app, scan or enter a lot label, land on a clearly confirmed charge form, and keep their recent reactor preference without extra typing or guesswork.
+Let extractors and assistant extractors stay inside the standalone extraction app after charge creation, capture the same execution details they currently type into Slack, and use touch-first timers instead of keyboard-heavy timestamp entry.
 
 ## Why This Is Next
 
 The repo already has:
 
 - a deployed standalone extraction app
-- extraction board, lot browser, and lifecycle actions
-- `GET /api/mobile/v1/extraction/lookup/<tracking_id>`
-- browser-camera barcode detection in the main app scan center
-- canonical `ExtractionCharge` persistence and run handoff
+- charge-first and scan-first entry
+- a reactor board with lifecycle transitions
+- canonical `ExtractionCharge` persistence
+- a main-app run form with lot allocations and downstream analytics
 
-What is still missing is the continuity around that entry path:
+What is still missing is the extractor’s actual execution loop:
 
-- the manual field should be ready immediately
-- scan guidance should be explicit on the iPad screen
-- successful lookup should be obvious when the operator lands on charge
-- repeat charges should reuse the last reactor selection
+- open a run directly from the charge
+- record fill / flush / mixer timing
+- capture blend and hardware counts
+- preserve inherited reactor / source / biomass data without re-entry
 
 ## User Stories
 
 ### Extractor
 
-- As an extractor, I can open `Scan / Enter Lot` and start typing or scanning immediately because the manual field is already focused.
-- As an extractor, I can see clear scan guidance on the iPad without having to remember camera constraints or scanner behavior.
-- As an extractor, I land on a charge form that clearly confirms the scanned lot and preselects the reactor I used most recently.
+- As an extractor, I can open a run directly from a charged reactor in the standalone app.
+- As an extractor, I can use `Start`, `Stop`, and `Now` style controls for timing fields instead of typing timestamps.
+- As an extractor, I can record fill, flush, CRC, and stringer-basket details in the same workflow where I already charge the lot.
 
 ### Assistant extractor
 
-- As an assistant extractor, I can still manually enter a tracking ID when camera scanning is unavailable.
-- As an assistant extractor, I can repeat similar charges faster because the app remembers the last reactor used.
+- As an assistant extractor, I can see which values came from the charge step and which ones I still need to record.
+- As an assistant extractor, I can save execution details on an iPad with large controls and minimal keyboard use.
 
 ### Operations / audit
 
-- As operations, I keep the same `ExtractionCharge` audit trail, lifecycle history, and `Floor Ops` continuity as before.
+- As operations, I keep the same canonical lot allocation and charge-to-run linkage as before.
+- As operations, the extracted run metadata is structured, queryable, and editable later from the main app.
 
 ## Scope For This Sprint
 
 ### In scope
 
-- auto-focus on manual tracking-ID entry when the scan route opens
-- stronger scan guidance copy directly on the scan screen
-- persisted recent-lot success context between scan and charge
-- remembered last-used reactor on the charge form
-- targeted frontend regression coverage for reactor default helpers and scan route continuity
+- structured extraction run-execution fields on `Run`
+- schema bootstrap support for SQLite and PostgreSQL
+- mobile extraction endpoints to fetch and save a charge-linked standalone run
+- standalone run-execution screen inside `standalone-extraction-lab-app`
+- touch-first timer controls for:
+  - run / fill time
+  - mixer time
+  - flush start / end
+- inherited charge context on the run screen:
+  - reactor
+  - source
+  - strain
+  - biomass weight
+- first-pass structured fields for:
+  - biomass blend `% milled / % unmilled`
+  - number and weight of flushes
+  - number and weight of fills
+  - number of stringer baskets
+  - CRC blend
+  - notes
+- targeted regression coverage for extraction run API + standalone route handling
 
 ### Out of scope
 
-- new backend entities
-- full standalone run editing
-- device-scale integration inside the standalone app
-- Slack work
-- broader post-extraction testing UI
+- per-fill or per-flush child tables
+- full standalone yield-output editing
+- Slack parser expansion for the new run fields
+- scale capture directly inside the standalone run screen
+
+## Field Mapping
+
+### Inherited from charge / source lot
+
+- `Reactor`
+- `Strain`
+- `Source`
+- `Biomass Weight`
+- charge timestamp as the initial execution context
+
+### Captured in the standalone run workflow
+
+- `Run / Fill Start Time`
+- `Biomass Blend (% milled / % unmilled)`
+- `Number and Weight of Flushes`
+- `Number and Weight of Fills`
+- `Number of Stringer Baskets`
+- `CRC Blend`
+- `Mixer Time`
+- `Flush Start Time`
+- `Flush End Time`
+- `Notes`
 
 ## UX Surfaces
 
-### 1. Scan route continuity
+### 1. Run screen
 
-Keep `#/scan` as the primary entry point, but tighten the screen so:
+Add a dedicated standalone route:
 
-- the manual field is focused automatically
-- scan guidance is visible without opening help text
-- the operator sees the most recent resolved lot after a successful scan
+- `#/runs/charge/<charge_id>`
 
-### 2. Charge handoff clarity
+That screen should:
 
-When a lookup succeeds and the app lands on `#/lots/<id>/charge`:
+- show inherited charge / lot context at the top
+- show touch-first time controls
+- let operators save structured execution details without leaving the app
+- still offer `Open in Main App` as a secondary path
 
-- show a visible success banner that confirms the source tracking ID
-- indicate whether the lookup came from the camera or manual entry
-- make it clear that the last-used reactor is already selected
+### 2. Touch-first timers
 
-### 3. Reactor continuity
+The standalone run screen should prefer buttons over manual datetime typing:
 
-Persist the last-used reactor in local UI preferences so the next charge form:
+- `Start / Now`
+- `Stop / Now`
 
-- preselects the most recently used reactor
-- still clamps that selection to configured reactor count
+This applies first to:
 
-### 4. Preserve current presets and loop
+- run / fill timing
+- mixer timing
+- flush timing
 
-Keep the existing fast-entry controls:
+### 3. Counter-style controls
 
-- `100 lbs`
-- `Half lot`
-- `Full lot`
-- `Last used`
-- `Open Run in Main App`
-- `Back to Reactors`
-- `Charge Another Lot`
+For count fields, prefer quick `- / +` adjustments over typing:
+
+- flush count
+- fill count
+- stringer basket count
+
+### 4. Blend control
+
+Use a single slider for `% milled`, with `% unmilled` automatically derived to total `100`.
 
 ## Backend Changes
 
-No new backend objects are required.
+### Run fields
 
-Reuse existing endpoints:
+Add structured execution fields to `Run`, including datetime, numeric, and text fields needed for the extractor workflow.
 
-- `GET /api/mobile/v1/extraction/lookup/<tracking_id>`
-- `GET /api/mobile/v1/extraction/lots/<lot_id>`
-- `POST /api/mobile/v1/extraction/lots/<lot_id>/charge`
-- `POST /api/mobile/v1/extraction/charges/<charge_id>/transition`
+### Extraction mobile API
 
-## Proposed Route / Entry Changes
+Add a charge-linked run endpoint:
 
-Standalone frontend routes should become:
+- `GET /api/mobile/v1/extraction/charges/<charge_id>/run`
+- `POST /api/mobile/v1/extraction/charges/<charge_id>/run`
 
-- `#/login`
-- `#/home`
-- `#/reactors`
-- `#/lots`
-- `#/lots/<id>`
-- `#/lots/<id>/charge`
-- `#/scan`
+Behavior:
+
+- `GET` returns either the linked run or a draft payload built from the charge without allocating inventory yet
+- `POST` creates the linked run on first save, applies the existing lot allocation, and stores the execution fields
 
 ## Test Plan
 
 ### Targeted tests during implementation
 
-- route parsing still includes `#/scan`
-- charge preset helpers still clamp `100 lbs` correctly
-- reactor default helper clamps to configured reactor count
-- mock/live standalone API lookup path still works
+- mobile extraction run endpoint returns draft payloads and saved structured fields
+- charge-to-run linkage does not allocate inventory on `GET`
+- standalone route parsing includes `#/runs/charge/<charge_id>`
+- mock/live standalone API run methods unwrap correctly
 
 ### Full-suite closeout before final commit
 
@@ -151,8 +188,9 @@ Standalone frontend routes should become:
 
 This sprint is done when:
 
-- the scan screen focuses the manual field automatically
-- scan guidance is visible on the scan screen
-- a successful lookup leaves a clear visual confirmation on the charge form
-- the charge form remembers and preselects the last-used reactor
+- a charge can open a standalone run-execution screen
+- extractors can save structured execution fields without leaving the standalone app
+- timer buttons capture the relevant timestamps
+- inherited charge data is shown and not re-entered manually
+- the main app can still open and edit the saved run with the new fields
 - tests and docs are updated

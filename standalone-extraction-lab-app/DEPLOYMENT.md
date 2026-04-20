@@ -32,3 +32,4 @@ This app is plain HTML/CSS/JS. Any static host or Nginx site can serve it. The o
 5. Confirm login works with session cookies.
 6. Confirm `Scan / Enter Lot`, `Reactors`, `Lots`, and `Charge` screens all load.
 7. Confirm the `Scan / Enter Lot` field auto-focuses and that a second charge preselects the last reactor used.
+8. Confirm `Open Run` from a recorded charge opens the standalone run-execution screen and that `Open in Main App` still works.

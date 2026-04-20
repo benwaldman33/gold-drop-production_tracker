@@ -90,6 +90,30 @@ const seed = {
       ],
     },
   ],
+  runs: [
+    {
+      id: "run-501",
+      run_date: "2026-04-19",
+      reactor_number: 1,
+      bio_in_reactor_lbs: 55,
+      run_type: "standard",
+      run_fill_started_at: "2026-04-19T07:00",
+      run_fill_ended_at: "",
+      biomass_blend_milled_pct: 100,
+      biomass_blend_unmilled_pct: 0,
+      flush_count: 2,
+      flush_total_weight_lbs: 10,
+      fill_count: 1,
+      fill_total_weight_lbs: 55,
+      stringer_basket_count: 8,
+      crc_blend: "Standard house blend",
+      mixer_started_at: "2026-04-19T07:10",
+      mixer_ended_at: "2026-04-19T07:22",
+      flush_started_at: "",
+      flush_ended_at: "",
+      notes: "Existing execution mock",
+    },
+  ],
 };
 
 export function cloneSeedState() {

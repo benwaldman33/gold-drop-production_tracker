@@ -52,7 +52,7 @@ Related mobile workflows:
 - The default charge preset is `100 lbs` per reactor whenever the lot has at least 100 lbs remaining; otherwise it defaults to the remaining lot weight.
 - The manual tracking field auto-focuses on the scan screen, and the charge form remembers the last reactor used so repeat work moves faster.
 - It mirrors the same charge and lifecycle workflow the main app uses on `Floor Ops`.
-- After recording a charge, it can still open the main run form when deeper run editing is needed.
+- After recording a charge, it can now open a dedicated standalone run-execution screen for the extractor workflow, and it can still open the main run form when deeper admin editing is needed.
 
 ---
 
@@ -339,6 +339,31 @@ On the charge screen, record:
 - optional notes
 
 Saving the charge opens **New Run** with the lot allocation already attached. The charge is also stored as its own event for traceability before the run is finalized.
+
+### Standalone run execution
+
+Inside the standalone extraction app, use **Open Run** after a charge is recorded.
+
+That screen inherits:
+- reactor
+- source lot / source summary
+- strain
+- biomass weight
+
+It then lets extractors capture:
+- run / fill timing
+- biomass blend `% milled / % unmilled`
+- number and weight of fills
+- number and weight of flushes
+- number of stringer baskets
+- CRC blend
+- notes
+
+The timer-heavy fields use touch-first buttons instead of keyboard entry:
+- `Start / Now`
+- `Stop / Now`
+
+Use **Open in Main App** only when a supervisor needs the full admin run form.
 
 Use **Confirm Movement** to record a standard movement action:
 - move to vault

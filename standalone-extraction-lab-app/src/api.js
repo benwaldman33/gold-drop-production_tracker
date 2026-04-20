@@ -82,6 +82,118 @@ function historyEntry(label, toState) {
   };
 }
 
+function minutesBetween(startValue, endValue) {
+  if (!startValue || !endValue) return null;
+  const start = new Date(startValue);
+  const end = new Date(endValue);
+  const delta = end.getTime() - start.getTime();
+  if (!Number.isFinite(delta) || delta < 0) return null;
+  return Math.round(delta / 60000);
+}
+
+function buildMockRunPayload(state, charge, run) {
+  const lot = state.lots.find((row) => row.id === charge.purchase_lot_id) || state.lots.find((row) => row.tracking_id === charge.tracking_id) || state.lots[0];
+  return {
+    id: run.id,
+    run_date: run.run_date,
+    reactor_number: run.reactor_number,
+    bio_in_reactor_lbs: run.bio_in_reactor_lbs,
+    run_type: run.run_type || "standard",
+    run_fill_started_at: run.run_fill_started_at || "",
+    run_fill_ended_at: run.run_fill_ended_at || "",
+    run_fill_duration_minutes: minutesBetween(run.run_fill_started_at, run.run_fill_ended_at),
+    biomass_blend_milled_pct: run.biomass_blend_milled_pct,
+    biomass_blend_unmilled_pct: run.biomass_blend_unmilled_pct,
+    flush_count: run.flush_count,
+    flush_total_weight_lbs: run.flush_total_weight_lbs,
+    fill_count: run.fill_count,
+    fill_total_weight_lbs: run.fill_total_weight_lbs,
+    stringer_basket_count: run.stringer_basket_count,
+    crc_blend: run.crc_blend || "",
+    mixer_started_at: run.mixer_started_at || "",
+    mixer_ended_at: run.mixer_ended_at || "",
+    mixer_duration_minutes: minutesBetween(run.mixer_started_at, run.mixer_ended_at),
+    flush_started_at: run.flush_started_at || "",
+    flush_ended_at: run.flush_ended_at || "",
+    flush_duration_minutes: minutesBetween(run.flush_started_at, run.flush_ended_at),
+    notes: run.notes || "",
+    inherited: {
+      tracking_id: lot?.tracking_id || "",
+      supplier_name: lot?.supplier_name || "Unknown",
+      strain_name: lot?.strain_name || "Unknown",
+      source_summary: `${lot?.supplier_name || "Unknown"} - ${lot?.strain_name || "Unknown"}`,
+      charge_weight_lbs: Number(charge.charged_weight_lbs || 0),
+      charged_at_label: charge.charged_at_label || "",
+    },
+    open_main_app_url: run.id ? `/runs/${run.id}/edit?return_to=/floor-ops` : "/runs/new?return_to=/floor-ops",
+  };
+}
+
+function buildMockDraftRun(charge) {
+  return {
+    id: null,
+    run_date: String(charge.charged_at || "").slice(0, 10) || new Date().toISOString().slice(0, 10),
+    reactor_number: Number(charge.reactor_number || 1),
+    bio_in_reactor_lbs: Number(charge.charged_weight_lbs || 0),
+    run_type: "standard",
+    run_fill_started_at: String(charge.charged_at || "").slice(0, 16),
+    run_fill_ended_at: "",
+    biomass_blend_milled_pct: 100,
+    biomass_blend_unmilled_pct: 0,
+    flush_count: null,
+    flush_total_weight_lbs: null,
+    fill_count: 1,
+    fill_total_weight_lbs: Number(charge.charged_weight_lbs || 0),
+    stringer_basket_count: null,
+    crc_blend: "",
+    mixer_started_at: "",
+    mixer_ended_at: "",
+    flush_started_at: "",
+    flush_ended_at: "",
+    notes: "",
+  };
+}
+
+function ensureMockRunForCharge(state, chargeId) {
+  const charge = state.charges.find((row) => row.id === chargeId);
+  if (!charge) throw Object.assign(new Error("Charge not found"), { status: 404 });
+  if (charge.run_id) {
+    const existing = state.runs.find((row) => row.id === charge.run_id);
+    if (existing) return { charge, run: existing };
+  }
+  const run = {
+    id: `run-${Date.now()}`,
+    run_date: String(charge.charged_at || "").slice(0, 10) || new Date().toISOString().slice(0, 10),
+    reactor_number: Number(charge.reactor_number || 1),
+    bio_in_reactor_lbs: Number(charge.charged_weight_lbs || 0),
+    run_type: "standard",
+    run_fill_started_at: String(charge.charged_at || "").slice(0, 16),
+    run_fill_ended_at: "",
+    biomass_blend_milled_pct: 100,
+    biomass_blend_unmilled_pct: 0,
+    flush_count: null,
+    flush_total_weight_lbs: null,
+    fill_count: 1,
+    fill_total_weight_lbs: Number(charge.charged_weight_lbs || 0),
+    stringer_basket_count: null,
+    crc_blend: "",
+    mixer_started_at: "",
+    mixer_ended_at: "",
+    flush_started_at: "",
+    flush_ended_at: "",
+    notes: "",
+  };
+  state.runs.push(run);
+  charge.run_id = run.id;
+  if (charge.status === "pending") {
+    charge.status = "applied";
+    charge.state_label = "Run linked";
+    charge.history = [historyEntry("State -> Run linked", "applied"), ...(charge.history || [])];
+  }
+  saveState(state);
+  return { charge, run };
+}
+
 function buildMockBoard(state, boardView = "all") {
   const charges = state.charges || [];
   const configuredReactors = 3;
@@ -299,6 +411,42 @@ export function createApiClient({ mode = "mock", apiBaseUrl = "", fetchImpl = fe
       charge.history = [historyEntry(`State -> ${charge.state_label}`, payload.target_state), ...(charge.history || [])];
       saveState(state);
       return { charge: mockChargePayload(state, charge) };
+    },
+    async getChargeRun(chargeId) {
+      if (mode === "live") {
+        return unwrapData(await liveRequest(apiBaseUrl, fetchImpl, `/api/mobile/v1/extraction/charges/${encodeURIComponent(chargeId)}/run`));
+      }
+      ensureMockSession();
+      const state = loadState();
+      const charge = state.charges.find((row) => row.id === chargeId);
+      if (!charge) throw Object.assign(new Error("Charge not found"), { status: 404 });
+      const run = charge.run_id ? state.runs.find((row) => row.id === charge.run_id) : null;
+      return {
+        charge: mockChargePayload(state, charge),
+        lot: state.lots.find((row) => row.id === charge.purchase_lot_id || row.tracking_id === charge.tracking_id) || null,
+        run: buildMockRunPayload(state, charge, run || buildMockDraftRun(charge)),
+      };
+    },
+    async saveChargeRun(chargeId, payload) {
+      if (mode === "live") {
+        return unwrapData(await liveRequest(apiBaseUrl, fetchImpl, `/api/mobile/v1/extraction/charges/${encodeURIComponent(chargeId)}/run`, {
+          method: "POST",
+          body: JSON.stringify(payload),
+        }));
+      }
+      ensureMockSession();
+      const state = loadState();
+      const { charge, run } = ensureMockRunForCharge(state, chargeId);
+      Object.assign(run, {
+        ...run,
+        ...payload,
+      });
+      saveState(state);
+      return {
+        charge: mockChargePayload(state, charge),
+        lot: state.lots.find((row) => row.id === charge.purchase_lot_id || row.tracking_id === charge.tracking_id) || null,
+        run: buildMockRunPayload(state, charge, run),
+      };
     },
   };
 }

@@ -119,6 +119,8 @@ Behavior:
 - `GET /api/mobile/v1/extraction/lookup/<tracking_id>`
 - `POST /api/mobile/v1/extraction/lots/<lot_id>/charge`
 - `POST /api/mobile/v1/extraction/charges/<charge_id>/transition`
+- `GET /api/mobile/v1/extraction/charges/<charge_id>/run`
+- `POST /api/mobile/v1/extraction/charges/<charge_id>/run`
 
 Behavior:
 - extraction operates on approved on-hand lots with remaining inventory
@@ -126,6 +128,7 @@ Behavior:
 - lot payloads include readiness flags, warnings, and charge defaults for touch-first UIs
 - creating a charge stores a canonical `ExtractionCharge` with `source_mode="standalone_extraction"` and writes run-prefill session data for the existing main run form
 - lifecycle transitions reuse the same validation and audit history rules as the main reactor board
+- the charge-linked run endpoint returns a draft standalone run payload on `GET` without allocating inventory yet; the first `POST` creates the linked run, applies lot allocation, and stores structured execution fields such as blend, fill/flush totals, timer stamps, stringer baskets, CRC blend, and notes
 
 ### Mobile Write Platform Rules
 

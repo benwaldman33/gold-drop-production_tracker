@@ -832,6 +832,128 @@ def test_mobile_extraction_charge_and_transition_flow():
             db.session.commit()
 
 
+def test_mobile_extraction_run_execution_flow():
+    app = app_module.create_app()
+    _set_mobile_workflows(app)
+    supplier_id = _create_supplier(app, f"Run Supplier {gen_uuid()[:6]}")
+    purchase_id = None
+    lot_id = None
+    charge_id = None
+    run_id = None
+    try:
+        with app.app_context():
+            ops_user = app_module.User.query.filter_by(username="ops").first()
+            purchase = Purchase(
+                supplier_id=supplier_id,
+                purchase_date=app_module.date(2026, 4, 19),
+                availability_date=app_module.date(2026, 4, 19),
+                status="available",
+                stated_weight_lbs=100,
+                declared_weight_lbs=100,
+                purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+                created_by_user_id=ops_user.id if ops_user else None,
+                testing_status="completed",
+                clean_or_dirty="clean",
+            )
+            db.session.add(purchase)
+            db.session.flush()
+            purchase_id = purchase.id
+            lot = app_module.PurchaseLot(
+                purchase_id=purchase.id,
+                strain_name="Mochi",
+                weight_lbs=100,
+                remaining_weight_lbs=100,
+                tracking_id=f"LOT-{gen_uuid()[:8].upper()}",
+                floor_state="reactor_staging",
+                location="Prep Bay",
+                milled=True,
+            )
+            db.session.add(lot)
+            db.session.commit()
+            lot_id = lot.id
+
+        with app.test_client() as client:
+            _login_mobile(client)
+            charge = client.post(
+                f"/api/mobile/v1/extraction/lots/{lot_id}/charge",
+                json={
+                    "charged_weight_lbs": 50,
+                    "reactor_number": 1,
+                    "charged_at": "2026-04-19T09:00",
+                },
+            )
+            assert charge.status_code == 201
+            charge_id = charge.get_json()["data"]["charge"]["id"]
+
+            run_get = client.get(f"/api/mobile/v1/extraction/charges/{charge_id}/run")
+            assert run_get.status_code == 200
+            run_payload = run_get.get_json()["data"]
+            run_id = run_payload["run"]["id"]
+            assert run_id is None
+            assert run_payload["run"]["reactor_number"] == 1
+            assert run_payload["run"]["bio_in_reactor_lbs"] == 50.0
+            assert run_payload["run"]["inherited"]["tracking_id"]
+
+            run_save = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={
+                    "run_fill_started_at": "2026-04-19T09:05",
+                    "run_fill_ended_at": "2026-04-19T09:40",
+                    "biomass_blend_milled_pct": 80,
+                    "biomass_blend_unmilled_pct": 20,
+                    "flush_count": 2,
+                    "flush_total_weight_lbs": 10,
+                    "fill_count": 1,
+                    "fill_total_weight_lbs": 50,
+                    "stringer_basket_count": 8,
+                    "crc_blend": "House CRC",
+                    "mixer_started_at": "2026-04-19T09:10",
+                    "mixer_ended_at": "2026-04-19T09:20",
+                    "flush_started_at": "2026-04-19T09:21",
+                    "flush_ended_at": "2026-04-19T09:33",
+                    "notes": "Touch-first run capture",
+                },
+            )
+            assert run_save.status_code == 200
+            saved = run_save.get_json()["data"]["run"]
+            assert saved["run_fill_duration_minutes"] == 35
+            assert saved["mixer_duration_minutes"] == 10
+            assert saved["flush_duration_minutes"] == 12
+            assert saved["crc_blend"] == "House CRC"
+            run_id = saved["id"]
+            assert saved["open_main_app_url"].endswith(f"/runs/{run_id}/edit?return_to=/floor-ops")
+
+        with app.app_context():
+            charge = db.session.get(ExtractionCharge, charge_id)
+            assert charge is not None
+            assert charge.run_id == run_id
+            run = db.session.get(app_module.Run, run_id)
+            assert run is not None
+            assert run.biomass_blend_milled_pct == 80
+            assert run.flush_count == 2
+            assert run.fill_total_weight_lbs == 50
+            assert run.stringer_basket_count == 8
+            assert run.crc_blend == "House CRC"
+            assert run.notes == "Touch-first run capture"
+    finally:
+        with app.app_context():
+            charge = db.session.get(ExtractionCharge, charge_id) if charge_id else None
+            if charge:
+                db.session.delete(charge)
+            if run_id:
+                app_module.RunInput.query.filter_by(run_id=run_id).delete(synchronize_session=False)
+                run = db.session.get(app_module.Run, run_id)
+                if run:
+                    db.session.delete(run)
+            purchase = db.session.get(Purchase, purchase_id) if purchase_id else None
+            if purchase:
+                db.session.delete(purchase)
+            supplier = db.session.get(Supplier, supplier_id)
+            if supplier:
+                db.session.delete(supplier)
+            db.session.commit()
+
+
 def test_mobile_extraction_board_view_filtering():
     app = app_module.create_app()
     _set_mobile_workflows(app)

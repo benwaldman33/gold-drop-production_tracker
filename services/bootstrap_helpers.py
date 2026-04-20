@@ -175,6 +175,34 @@ def ensure_sqlite_schema(root) -> None:
             root.db.session.execute(text("ALTER TABLE runs ADD COLUMN hte_terpenes_recovered_g FLOAT"))
         if "hte_distillate_retail_g" not in cols:
             root.db.session.execute(text("ALTER TABLE runs ADD COLUMN hte_distillate_retail_g FLOAT"))
+        if "run_fill_started_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN run_fill_started_at DATETIME"))
+        if "run_fill_ended_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN run_fill_ended_at DATETIME"))
+        if "biomass_blend_milled_pct" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN biomass_blend_milled_pct FLOAT"))
+        if "biomass_blend_unmilled_pct" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN biomass_blend_unmilled_pct FLOAT"))
+        if "flush_count" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN flush_count INTEGER"))
+        if "flush_total_weight_lbs" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN flush_total_weight_lbs FLOAT"))
+        if "fill_count" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN fill_count INTEGER"))
+        if "fill_total_weight_lbs" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN fill_total_weight_lbs FLOAT"))
+        if "stringer_basket_count" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN stringer_basket_count INTEGER"))
+        if "crc_blend" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN crc_blend VARCHAR(200)"))
+        if "mixer_started_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN mixer_started_at DATETIME"))
+        if "mixer_ended_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN mixer_ended_at DATETIME"))
+        if "flush_started_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN flush_started_at DATETIME"))
+        if "flush_ended_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN flush_ended_at DATETIME"))
 
     if has_table("purchase_lots"):
         cols = column_names("purchase_lots")
@@ -334,6 +362,29 @@ def ensure_postgres_run_hte_columns(root) -> None:
         "ALTER TABLE runs ADD COLUMN IF NOT EXISTS hte_lab_result_paths_json TEXT",
         "ALTER TABLE runs ADD COLUMN IF NOT EXISTS hte_terpenes_recovered_g DOUBLE PRECISION",
         "ALTER TABLE runs ADD COLUMN IF NOT EXISTS hte_distillate_retail_g DOUBLE PRECISION",
+    ):
+        root.db.session.execute(text(stmt))
+    root.db.session.commit()
+
+
+def ensure_postgres_run_execution_columns(root) -> None:
+    if root.db.engine.dialect.name != "postgresql":
+        return
+    for stmt in (
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS run_fill_started_at TIMESTAMP",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS run_fill_ended_at TIMESTAMP",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS biomass_blend_milled_pct DOUBLE PRECISION",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS biomass_blend_unmilled_pct DOUBLE PRECISION",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS flush_count INTEGER",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS flush_total_weight_lbs DOUBLE PRECISION",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS fill_count INTEGER",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS fill_total_weight_lbs DOUBLE PRECISION",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS stringer_basket_count INTEGER",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS crc_blend VARCHAR(200)",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS mixer_started_at TIMESTAMP",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS mixer_ended_at TIMESTAMP",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS flush_started_at TIMESTAMP",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS flush_ended_at TIMESTAMP",
     ):
         root.db.session.execute(text(stmt))
     root.db.session.commit()

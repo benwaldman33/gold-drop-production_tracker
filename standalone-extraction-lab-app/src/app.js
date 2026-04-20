@@ -15,6 +15,7 @@ const state = {
   board: null,
   lots: [],
   lot: null,
+  run: null,
   loading: false,
   toast: "",
   lastCharge: null,
@@ -80,6 +81,12 @@ async function loadRoute() {
   }
   if (["lot", "charge"].includes(state.route.name)) {
     state.lot = await api.getLot(state.route.id);
+    if (!state.board) state.board = await api.getBoard("all");
+  }
+  if (state.route.name === "run") {
+    const payload = await api.getChargeRun(state.route.chargeId);
+    state.run = payload.run;
+    state.lot = payload.lot;
     if (!state.board) state.board = await api.getBoard("all");
   }
   if (state.route.name === "scan") {
@@ -191,6 +198,7 @@ function renderContent() {
   if (state.route.name === "lots") return renderLots();
   if (state.route.name === "lot") return renderLotDetail();
   if (state.route.name === "charge") return renderChargeForm();
+  if (state.route.name === "run") return renderRunExecution();
   return `<div class="empty">Page not found.</div>`;
 }
 
@@ -264,7 +272,8 @@ function renderLastChargeCard() {
       </div>
       <p class="subtle">${escapeHtml(String(state.lastCharge.charge?.charged_weight_lbs || 0))} lbs to Reactor ${escapeHtml(String(state.lastCharge.charge?.reactor_number || ""))}</p>
       <div class="actions">
-        <a class="btn btn-primary" href="${escapeHtml(state.lastCharge.next_run_url || "#")}">Open Run in Main App</a>
+        <a class="btn btn-primary" href="#/runs/charge/${escapeHtml(state.lastCharge.charge?.id || "")}">Open Run</a>
+        <a class="btn btn-secondary" href="${escapeHtml(state.lastCharge.next_run_url || "#")}">Open Run in Main App</a>
         <a class="btn btn-secondary" href="#/reactors">Back to Reactors</a>
         <a class="btn btn-secondary" href="#/scan">Charge Another Lot</a>
       </div>
@@ -414,7 +423,7 @@ function renderReactorCard(card) {
           <strong>${escapeHtml(`${current.supplier_name} - ${current.strain_name}`)}</strong>
           <div class="meta-row"><span>${escapeHtml(current.tracking_id || "No tracking id")}</span><span>${escapeHtml(String(current.charged_weight_lbs || 0))} lbs</span></div>
           <div class="meta-row"><span>${escapeHtml(current.charged_at_label || "")}</span><span>${escapeHtml(current.operator_name || "Unassigned")}</span></div>
-          <div class="meta-row"><span>${escapeHtml(current.source_mode || "main app")}</span>${current.run_id ? `<a class="inline-link" href="/runs/${escapeHtml(current.run_id)}/edit?return_to=/floor-ops">Open Run</a>` : `<span>Run not linked</span>`}</div>
+          <div class="meta-row"><span>${escapeHtml(current.source_mode || "main app")}</span><a class="inline-link" href="#/runs/charge/${escapeHtml(current.charge_id)}">Open Run</a></div>
           ${renderActionBar(current)}
         </div>
       `
@@ -448,7 +457,7 @@ function renderHistoryCard(card) {
           <strong>${escapeHtml(card.state_label)}</strong>
         </div>
       </div>
-      ${card.entries?.length ? `<div class="stack tight">${card.entries.map((entry) => `<div class="history-entry"><strong>${escapeHtml(entry.label)}</strong><span>${escapeHtml(entry.timestamp_label || "")}</span>${entry.run_id ? `<a class="inline-link" href="/runs/${escapeHtml(entry.run_id)}/edit?return_to=/floor-ops">Open Run</a>` : ""}</div>`).join("")}</div>` : `<p class="subtle">No history yet today.</p>`}
+      ${card.entries?.length ? `<div class="stack tight">${card.entries.map((entry) => `<div class="history-entry"><strong>${escapeHtml(entry.label)}</strong><span>${escapeHtml(entry.timestamp_label || "")}</span>${entry.charge_id ? `<a class="inline-link" href="#/runs/charge/${escapeHtml(entry.charge_id)}">Open Run</a>` : ""}</div>`).join("")}</div>` : `<p class="subtle">No history yet today.</p>`}
     </article>
   `;
 }
@@ -634,15 +643,137 @@ function renderChargeForm() {
   `;
 }
 
+function renderTimerField(name, label, value, durationLabel, stopField = "", stopValue = "") {
+  return `
+    <div class="field timer-card">
+      <label for="${escapeHtml(name)}">${escapeHtml(label)}</label>
+      <input id="${escapeHtml(name)}" name="${escapeHtml(name)}" type="datetime-local" value="${escapeHtml(value || "")}" />
+      ${stopField ? `<input type="hidden" name="${escapeHtml(stopField)}" value="${escapeHtml(stopValue || "")}" />` : ""}
+      <div class="weight-actions">
+        <button class="btn btn-secondary" type="button" data-action="timer-stamp" data-field="${escapeHtml(name)}">Start / Now</button>
+        <button class="btn btn-secondary" type="button" data-action="timer-stop" data-field="${escapeHtml(name)}">Stop / Now</button>
+      </div>
+      ${durationLabel ? `<div class="subtle">${escapeHtml(durationLabel)}</div>` : ""}
+    </div>
+  `;
+}
+
+function renderRunExecution() {
+  const run = state.run;
+  const lot = state.lot;
+  if (!run || !state.route.chargeId) return `<div class="empty">Run not found.</div>`;
+  const inherited = run.inherited || {};
+  return `
+    <div class="layout-grid">
+      <div class="topbar">
+        <div>
+          <h2>Run Execution</h2>
+          <div class="meta">${escapeHtml(inherited.tracking_id || "")} - Reactor ${escapeHtml(String(run.reactor_number || ""))}</div>
+        </div>
+        <div class="actions">
+          <a class="btn btn-secondary" href="#/reactors">Back to Reactors</a>
+          <a class="btn btn-secondary" href="${escapeHtml(run.open_main_app_url || "#")}">Open in Main App</a>
+        </div>
+      </div>
+      <section class="card charge-hero">
+        <div class="metric-row">
+          <div><span>Strain</span><strong>${escapeHtml(inherited.strain_name || lotTitle(lot || {}))}</strong></div>
+          <div><span>Source</span><strong>${escapeHtml(inherited.source_summary || "")}</strong></div>
+          <div><span>Biomass Weight</span><strong>${escapeHtml(String(run.bio_in_reactor_lbs || 0))} lbs</strong></div>
+          <div><span>Charged</span><strong>${escapeHtml(inherited.charged_at_label || "")}</strong></div>
+        </div>
+      </section>
+      <form class="card charge-form" data-form="run-execution">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Execution details</div>
+            <h3>Capture the extraction details the lab team currently sends in Slack.</h3>
+          </div>
+        </div>
+        <div class="grid-2">
+          ${renderTimerField("run_fill_started_at", "Run / Fill Start", run.run_fill_started_at, run.run_fill_duration_minutes != null ? `${run.run_fill_duration_minutes} minute(s) recorded` : "", "run_fill_ended_at", run.run_fill_ended_at)}
+          ${renderTimerField("mixer_started_at", "Mixer Time", run.mixer_started_at, run.mixer_duration_minutes != null ? `${run.mixer_duration_minutes} minute(s) recorded` : "", "mixer_ended_at", run.mixer_ended_at)}
+        </div>
+        <div class="grid-2">
+          ${renderTimerField("flush_started_at", "Flush Start", run.flush_started_at, run.flush_duration_minutes != null ? `${run.flush_duration_minutes} minute(s) recorded` : "", "flush_ended_at", run.flush_ended_at)}
+          <div class="field timer-card">
+            <label for="flush_ended_at_display">Flush End</label>
+            <input id="flush_ended_at_display" type="datetime-local" value="${escapeHtml(run.flush_ended_at || "")}" disabled />
+            <div class="subtle">Stop is captured from the Flush Start timer.</div>
+          </div>
+        </div>
+        <div class="field">
+          <label for="biomass_blend_milled_pct">Biomass Blend</label>
+          <div class="blend-card">
+            <input id="biomass_blend_milled_pct" name="biomass_blend_milled_pct" type="range" min="0" max="100" step="1" value="${escapeHtml(String(run.biomass_blend_milled_pct ?? 100))}" />
+            <div class="metric-row">
+              <div><span>Milled</span><strong data-blend-milled>${escapeHtml(String(run.biomass_blend_milled_pct ?? 100))}%</strong></div>
+              <div><span>Unmilled</span><strong data-blend-unmilled>${escapeHtml(String(run.biomass_blend_unmilled_pct ?? 0))}%</strong></div>
+            </div>
+            <input type="hidden" name="biomass_blend_unmilled_pct" value="${escapeHtml(String(run.biomass_blend_unmilled_pct ?? 0))}" data-blend-unmilled-input="1" />
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="field counter-card">
+            <label>Flushes</label>
+            <div class="counter-row">
+              <button class="btn btn-secondary" type="button" data-action="adjust-count" data-field="flush_count" data-delta="-1">-</button>
+              <input type="number" name="flush_count" value="${escapeHtml(String(run.flush_count ?? ""))}" min="0" step="1" />
+              <button class="btn btn-secondary" type="button" data-action="adjust-count" data-field="flush_count" data-delta="1">+</button>
+            </div>
+            <input type="number" name="flush_total_weight_lbs" value="${escapeHtml(String(run.flush_total_weight_lbs ?? ""))}" min="0" step="0.1" placeholder="Total flush weight (lbs)" />
+          </div>
+          <div class="field counter-card">
+            <label>Fills</label>
+            <div class="counter-row">
+              <button class="btn btn-secondary" type="button" data-action="adjust-count" data-field="fill_count" data-delta="-1">-</button>
+              <input type="number" name="fill_count" value="${escapeHtml(String(run.fill_count ?? ""))}" min="0" step="1" />
+              <button class="btn btn-secondary" type="button" data-action="adjust-count" data-field="fill_count" data-delta="1">+</button>
+            </div>
+            <input type="number" name="fill_total_weight_lbs" value="${escapeHtml(String(run.fill_total_weight_lbs ?? ""))}" min="0" step="0.1" placeholder="Total fill weight (lbs)" />
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="field counter-card">
+            <label>Stringer Baskets</label>
+            <div class="counter-row">
+              <button class="btn btn-secondary" type="button" data-action="adjust-count" data-field="stringer_basket_count" data-delta="-1">-</button>
+              <input type="number" name="stringer_basket_count" value="${escapeHtml(String(run.stringer_basket_count ?? ""))}" min="0" step="1" />
+              <button class="btn btn-secondary" type="button" data-action="adjust-count" data-field="stringer_basket_count" data-delta="1">+</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="crc_blend">CRC Blend</label>
+            <input id="crc_blend" name="crc_blend" type="text" value="${escapeHtml(run.crc_blend || "")}" placeholder="Optional CRC blend" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="notes">Notes</label>
+          <textarea id="notes" name="notes" rows="4" placeholder="Operator notes">${escapeHtml(run.notes || "")}</textarea>
+        </div>
+        <div class="actions sticky-actions">
+          <a class="btn btn-secondary" href="#/reactors">Back to Reactors</a>
+          <a class="btn btn-secondary" href="${escapeHtml(run.open_main_app_url || "#")}">Open in Main App</a>
+          <button class="btn btn-primary" type="submit">${state.loading ? "Saving..." : "Save Run"}</button>
+        </div>
+      </form>
+    </div>
+  `;
+}
+
 function bind() {
   app?.querySelectorAll("[data-action='logout']").forEach((button) => button.addEventListener("click", handleLogout));
   app?.querySelector("form[data-form='login']")?.addEventListener("submit", handleLogin);
   app?.querySelector("form[data-form='lot-search']")?.addEventListener("submit", handleLotSearch);
   app?.querySelector("form[data-form='scan-lookup']")?.addEventListener("submit", handleScanLookup);
   app?.querySelector("form[data-form='charge']")?.addEventListener("submit", handleChargeSubmit);
+  app?.querySelector("form[data-form='run-execution']")?.addEventListener("submit", handleRunSubmit);
   app?.querySelectorAll("[data-action='adjust-weight']").forEach((button) => button.addEventListener("click", handleWeightAdjust));
+  app?.querySelectorAll("[data-action='adjust-count']").forEach((button) => button.addEventListener("click", handleCountAdjust));
   app?.querySelectorAll("[data-action='set-preset-weight']").forEach((button) => button.addEventListener("click", handlePresetWeight));
   app?.querySelector("[data-action='set-now']")?.addEventListener("click", handleSetNow);
+  app?.querySelectorAll("[data-action='timer-stamp']").forEach((button) => button.addEventListener("click", handleTimerStamp));
+  app?.querySelectorAll("[data-action='timer-stop']").forEach((button) => button.addEventListener("click", handleTimerStop));
   app?.querySelector("[data-action='start-camera']")?.addEventListener("click", startCamera);
   app?.querySelector("[data-action='stop-camera']")?.addEventListener("click", stopCamera);
   app?.querySelectorAll("[data-action='transition-charge']").forEach((button) => button.addEventListener("click", handleTransition));
@@ -652,7 +783,9 @@ function bind() {
   });
   app?.querySelectorAll("[data-action='confirm-cancel']").forEach((button) => button.addEventListener("click", handleConfirmCancel));
   app?.querySelector("input[type='range'][name='charged_weight_lbs']")?.addEventListener("input", syncWeightDisplay);
+  app?.querySelector("input[type='range'][name='biomass_blend_milled_pct']")?.addEventListener("input", syncBlendDisplay);
   focusScanInput();
+  syncBlendDisplay();
 }
 
 async function handleLogin(event) {
@@ -717,6 +850,15 @@ function handleWeightAdjust(event) {
   syncWeightDisplay();
 }
 
+function handleCountAdjust(event) {
+  const field = event.currentTarget.dataset.field;
+  const input = app?.querySelector(`input[name='${field}']`);
+  if (!input) return;
+  const delta = Number(event.currentTarget.dataset.delta || 0);
+  const current = Math.max(0, Number(input.value || 0) || 0);
+  input.value = String(Math.max(0, current + delta));
+}
+
 function presetWeightValue(preset, maxWeight) {
   const prefs = loadUiPrefs();
   if (preset === "full") return clampChargeWeight(maxWeight, maxWeight);
@@ -738,6 +880,41 @@ function handleSetNow() {
   if (input) input.value = localDateTimeInputValue();
 }
 
+function syncBlendDisplay() {
+  const slider = app?.querySelector("input[type='range'][name='biomass_blend_milled_pct']");
+  if (!slider) return;
+  const milled = Math.max(0, Math.min(100, Number(slider.value || 0)));
+  const unmilled = 100 - milled;
+  const milledNode = app?.querySelector("[data-blend-milled]");
+  const unmilledNode = app?.querySelector("[data-blend-unmilled]");
+  const unmilledInput = app?.querySelector("[data-blend-unmilled-input='1']");
+  if (milledNode) milledNode.textContent = `${milled}%`;
+  if (unmilledNode) unmilledNode.textContent = `${unmilled}%`;
+  if (unmilledInput) unmilledInput.value = String(unmilled);
+}
+
+function handleTimerStamp(event) {
+  const field = event.currentTarget.dataset.field;
+  const input = app?.querySelector(`input[name='${field}']`);
+  if (input) input.value = localDateTimeInputValue();
+}
+
+function timerStopField(field) {
+  if (field === "run_fill_started_at") return "run_fill_ended_at";
+  if (field === "mixer_started_at") return "mixer_ended_at";
+  if (field === "flush_started_at") return "flush_ended_at";
+  return field;
+}
+
+function handleTimerStop(event) {
+  const targetField = timerStopField(event.currentTarget.dataset.field || "");
+  const value = localDateTimeInputValue();
+  const input = app?.querySelector(`input[name='${targetField}']`);
+  if (input) input.value = value;
+  const display = app?.querySelector(`#${targetField}_display`);
+  if (display) display.value = value;
+}
+
 async function handleChargeSubmit(event) {
   event.preventDefault();
   const form = new FormData(event.currentTarget);
@@ -753,6 +930,43 @@ async function handleChargeSubmit(event) {
     navigate("#/reactors");
   } catch (error) {
     showToast(error.payload?.error?.message || error.message || "Unable to record charge");
+  } finally {
+    state.loading = false;
+    render();
+  }
+}
+
+async function handleRunSubmit(event) {
+  event.preventDefault();
+  if (!state.route.chargeId) return;
+  const form = new FormData(event.currentTarget);
+  const payload = {
+    run_fill_started_at: String(form.get("run_fill_started_at") || "").trim(),
+    run_fill_ended_at: String(form.get("run_fill_ended_at") || "").trim(),
+    biomass_blend_milled_pct: String(form.get("biomass_blend_milled_pct") || "").trim(),
+    biomass_blend_unmilled_pct: String(form.get("biomass_blend_unmilled_pct") || "").trim(),
+    flush_count: String(form.get("flush_count") || "").trim(),
+    flush_total_weight_lbs: String(form.get("flush_total_weight_lbs") || "").trim(),
+    fill_count: String(form.get("fill_count") || "").trim(),
+    fill_total_weight_lbs: String(form.get("fill_total_weight_lbs") || "").trim(),
+    stringer_basket_count: String(form.get("stringer_basket_count") || "").trim(),
+    crc_blend: String(form.get("crc_blend") || "").trim(),
+    mixer_started_at: String(form.get("mixer_started_at") || "").trim(),
+    mixer_ended_at: String(form.get("mixer_ended_at") || "").trim(),
+    flush_started_at: String(form.get("flush_started_at") || "").trim(),
+    flush_ended_at: String(form.get("flush_ended_at") || "").trim(),
+    notes: String(form.get("notes") || "").trim(),
+  };
+  state.loading = true;
+  render();
+  try {
+    const response = await api.saveChargeRun(state.route.chargeId, payload);
+    state.run = response.run;
+    state.lot = response.lot;
+    state.board = await api.getBoard("all");
+    showToast("Run execution saved.");
+  } catch (error) {
+    showToast(error.payload?.error?.message || error.message || "Unable to save run execution");
   } finally {
     state.loading = false;
     render();

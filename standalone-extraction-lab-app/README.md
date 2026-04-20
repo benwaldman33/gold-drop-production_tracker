@@ -9,6 +9,7 @@ Touch-first operator app for the extraction lab workflow. It mirrors the main ap
 - dedicated `Scan / Enter Lot` screen with camera and manual fallback
 - chargeable lot search
 - touch-friendly extraction charge form with `100 lbs`, `Half lot`, `Full lot`, and `Last used` presets plus last-reactor recall
+- standalone run-execution screen with timer controls, blend capture, fill / flush fields, CRC blend, baskets, and notes
 - reactor lifecycle actions from the board
 - handoff link into the main run form after recording a charge
 
@@ -29,4 +30,5 @@ By default the dev server runs at `http://127.0.0.1:4175` and proxies `/api/*` t
 3. Open `Reactors` to see active lifecycle state and same-day history.
 4. Open `Lots` when you need browser-style search by tracking id, supplier, strain, or batch id.
 5. On the charge form, use the default `100 lbs` preset or tap `Half lot`, `Full lot`, or `Last used`. The app also preselects the last reactor used when possible.
-6. Record the charge, then choose `Open Run in Main App`, `Back to Reactors`, or `Charge Another Lot`.
+6. Record the charge, then choose `Open Run`, `Open Run in Main App`, `Back to Reactors`, or `Charge Another Lot`.
+7. In `Open Run`, use the touch-first timers and counters to capture execution details without leaving the tablet workflow.

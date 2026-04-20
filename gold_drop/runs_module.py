@@ -8,6 +8,7 @@ from services.lot_allocation import (
     release_run_allocations,
 )
 from services.scale_ingest import capture_weight_from_device_payload
+from services.extraction_run import apply_execution_payload
 from services.slack_workflow import (
     hydrate_run_from_slack_prefill,
     slack_resolution_create_declared_biomass,
@@ -389,6 +390,7 @@ def save_run(root, existing_run):
         run.fuel_consumption = float(root.request.form.get("fuel_consumption") or 0) or None
         run.notes = root.request.form.get("notes", "").strip() or None
         run.run_type = root.request.form.get("run_type", "standard")
+        apply_execution_payload(run, root.request.form)
 
         if not existing_run:
             run.created_by = root.current_user.id
@@ -468,13 +470,21 @@ def save_run(root, existing_run):
                 if charge.run_id and charge.run_id != run.id:
                     raise ValueError("This extraction charge is already linked to another run.")
                 charge.run_id = run.id
-                update_charge_state(
-                    root,
-                    charge,
-                    "applied",
-                    history_entries=charge_history_entries(root, charge.id, limit=20),
-                    context={"source": "run_save"},
-                )
+                if (charge.status or "pending").strip() == "pending":
+                    update_charge_state(
+                        root,
+                        charge,
+                        "applied",
+                        history_entries=charge_history_entries(root, charge.id, limit=20),
+                        context={"source": "run_save"},
+                    )
+                else:
+                    root.log_audit(
+                        "link_run",
+                        "extraction_charge",
+                        charge.id,
+                        details=root.json.dumps({"run_id": run.id, "source": "run_save_preserve_state", "status": charge.status}),
+                    )
                 if scale_capture_id and not charge.weight_capture_id:
                     charge.weight_capture_id = scale_capture_id
 

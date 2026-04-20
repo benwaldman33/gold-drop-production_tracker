@@ -35,6 +35,7 @@ from services.extraction_charge import (
     parse_charge_datetime,
     update_charge_state,
 )
+from services.extraction_run import apply_execution_payload, draft_run_payload, ensure_run_for_charge, mobile_run_payload
 from gold_drop.floor_module import (
     BOARD_VIEW_OPTIONS,
     _build_active_reactor_board,
@@ -382,6 +383,15 @@ def _mobile_extraction_charge_payload(root, charge) -> dict[str, Any]:
     }
 
 
+def _mobile_extraction_run_response(root, charge, run) -> dict[str, Any]:
+    lot = charge.lot
+    return {
+        "charge": _mobile_extraction_charge_payload(root, charge),
+        "lot": _mobile_extraction_lot_payload(root, lot) if lot is not None else None,
+        "run": mobile_run_payload(root, run, charge),
+    }
+
+
 def _mobile_extraction_board_payload(root) -> dict[str, Any]:
     floor_rollups = _build_floor_rollups(root)
     active_reactor_board = _build_active_reactor_board(root)
@@ -679,6 +689,9 @@ def register_routes(app, root):
     def mobile_extraction_transition(charge_id):
         return mobile_extraction_transition_view(root, charge_id)
 
+    def mobile_extraction_run(charge_id):
+        return mobile_extraction_run_view(root, charge_id)
+
     def mobile_opportunity_create():
         return mobile_opportunity_create_view(root)
 
@@ -711,6 +724,7 @@ def register_routes(app, root):
     app.add_url_rule("/api/mobile/v1/extraction/lookup/<tracking_id>", endpoint="mobile_extraction_lookup", view_func=mobile_extraction_lookup, methods=["GET"])
     app.add_url_rule("/api/mobile/v1/extraction/lots/<lot_id>/charge", endpoint="mobile_extraction_charge", view_func=mobile_extraction_charge, methods=["POST"])
     app.add_url_rule("/api/mobile/v1/extraction/charges/<charge_id>/transition", endpoint="mobile_extraction_transition", view_func=mobile_extraction_transition, methods=["POST"])
+    app.add_url_rule("/api/mobile/v1/extraction/charges/<charge_id>/run", endpoint="mobile_extraction_run", view_func=mobile_extraction_run, methods=["GET", "POST"])
 
 
 def _mobile_supplier_payload(supplier: Supplier) -> dict[str, Any]:
@@ -1417,6 +1431,51 @@ def mobile_extraction_transition_view(root, charge_id: str):
         )
         root.db.session.commit()
         return jsonify({"meta": build_meta(extra={"workflow": "extraction"}), "data": {"charge": _mobile_extraction_charge_payload(root, charge)}})
+    except ValueError as exc:
+        root.db.session.rollback()
+        return _json_error(str(exc), status_code=400, code="bad_request")
+
+
+def mobile_extraction_run_view(root, charge_id: str):
+    write_error = _require_mobile_workflow(root, "extraction")
+    if write_error:
+        return write_error
+    charge = root.db.session.get(root.ExtractionCharge, charge_id)
+    if charge is None:
+        return _json_error("Extraction charge not found.", status_code=404, code="not_found")
+
+    if request.method == "GET":
+        if charge.run_id:
+            run = root.db.session.get(root.Run, charge.run_id)
+            if run is not None:
+                return jsonify({"meta": build_meta(extra={"workflow": "extraction"}), "data": _mobile_extraction_run_response(root, charge, run)})
+        return jsonify({
+            "meta": build_meta(extra={"workflow": "extraction"}),
+            "data": {
+                "charge": _mobile_extraction_charge_payload(root, charge),
+                "lot": _mobile_extraction_lot_payload(root, charge.lot) if charge.lot is not None else None,
+                "run": draft_run_payload(root, charge),
+            },
+        })
+
+    payload = _mobile_payload()
+    try:
+        had_run_before = bool(charge.run_id)
+        run = ensure_run_for_charge(root, charge)
+        apply_execution_payload(run, payload)
+        run.calculate_yields()
+        run.calculate_cost()
+        audit_mobile_action(
+            root,
+            action="update" if had_run_before else "create",
+            entity_type="run",
+            entity_id=run.id,
+            workflow="extraction",
+            details={"charge_id": charge.id, "reactor_number": run.reactor_number},
+            user_id=current_user.id,
+        )
+        root.db.session.commit()
+        return jsonify({"meta": build_meta(extra={"workflow": "extraction"}), "data": _mobile_extraction_run_response(root, charge, run)})
     except ValueError as exc:
         root.db.session.rollback()
         return _json_error(str(exc), status_code=400, code="bad_request")

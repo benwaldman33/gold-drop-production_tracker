@@ -465,6 +465,20 @@ class Run(db.Model):
     decarb_sample_done = db.Column(db.Boolean, default=False)
     fuel_consumption = db.Column(db.Float)
     run_type = db.Column(db.String(20), default="standard")  # standard, kief, ld
+    run_fill_started_at = db.Column(db.DateTime)
+    run_fill_ended_at = db.Column(db.DateTime)
+    biomass_blend_milled_pct = db.Column(db.Float)
+    biomass_blend_unmilled_pct = db.Column(db.Float)
+    flush_count = db.Column(db.Integer)
+    flush_total_weight_lbs = db.Column(db.Float)
+    fill_count = db.Column(db.Integer)
+    fill_total_weight_lbs = db.Column(db.Float)
+    stringer_basket_count = db.Column(db.Integer)
+    crc_blend = db.Column(db.String(200))
+    mixer_started_at = db.Column(db.DateTime)
+    mixer_ended_at = db.Column(db.DateTime)
+    flush_started_at = db.Column(db.DateTime)
+    flush_ended_at = db.Column(db.DateTime)
     # After dry HTE is separated from THCA: lab testing → clean (menu) or dirty (Prescott strip) → terp accounting.
     hte_pipeline_stage = db.Column(db.String(40))  # awaiting_lab, lab_clean, lab_dirty_queued_strip, terp_stripped
     hte_lab_result_paths_json = db.Column(db.Text)  # JSON array; COA / lab result images or PDFs under static/
