@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from io import BytesIO
 
-from models import AuditLog, PhotoAsset, Purchase, Supplier, SystemSetting, db, gen_uuid
+from models import AuditLog, ExtractionCharge, PhotoAsset, Purchase, Supplier, SystemSetting, db, gen_uuid
 import app as app_module
 
 
@@ -21,11 +21,12 @@ def _create_supplier(app, name: str) -> str:
         return supplier.id
 
 
-def _set_mobile_workflows(app, *, buying: str = "1", receiving: str = "1"):
+def _set_mobile_workflows(app, *, buying: str = "1", receiving: str = "1", extraction: str = "1"):
     with app.app_context():
         for key, value in (
             ("standalone_purchasing_enabled", buying),
             ("standalone_receiving_enabled", receiving),
+            ("standalone_extraction_enabled", extraction),
         ):
             setting = db.session.get(SystemSetting, key)
             if setting is None:
@@ -630,6 +631,8 @@ def test_mobile_capabilities_and_workflow_toggles():
     with app.app_context():
         setting = db.session.get(SystemSetting, "standalone_receiving_enabled")
         setting.value = "0"
+        extraction_setting = db.session.get(SystemSetting, "standalone_extraction_enabled")
+        extraction_setting.value = "0"
         db.session.commit()
     try:
         with app.test_client() as client:
@@ -639,14 +642,193 @@ def test_mobile_capabilities_and_workflow_toggles():
             payload = caps.get_json()["data"]
             assert payload["write_workflows"]["buying"]["enabled"] is True
             assert payload["write_workflows"]["receiving"]["enabled"] is False
+            assert payload["write_workflows"]["extraction"]["enabled"] is False
 
             denied = client.get("/api/mobile/v1/receiving/queue")
             assert denied.status_code == 403
             assert denied.get_json()["error"]["code"] == "workflow_disabled"
+
+            extraction_denied = client.get("/api/mobile/v1/extraction/board")
+            assert extraction_denied.status_code == 403
+            assert extraction_denied.get_json()["error"]["code"] == "workflow_disabled"
     finally:
         with app.app_context():
             setting = db.session.get(SystemSetting, "standalone_receiving_enabled")
             setting.value = "1"
+            extraction_setting = db.session.get(SystemSetting, "standalone_extraction_enabled")
+            extraction_setting.value = "1"
+            db.session.commit()
+
+
+def test_mobile_extraction_board_and_lot_listing():
+    app = app_module.create_app()
+    _set_mobile_workflows(app)
+    supplier_id = _create_supplier(app, f"Extraction Supplier {gen_uuid()[:6]}")
+    purchase_id = None
+    lot_id = None
+    try:
+        with app.app_context():
+            ops_user = app_module.User.query.filter_by(username="ops").first()
+            purchase = Purchase(
+                supplier_id=supplier_id,
+                purchase_date=app_module.date(2026, 4, 19),
+                availability_date=app_module.date(2026, 4, 19),
+                status="available",
+                stated_weight_lbs=150,
+                declared_weight_lbs=150,
+                price_per_lb=205,
+                purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+                created_by_user_id=ops_user.id if ops_user else None,
+                testing_status="completed",
+                clean_or_dirty="clean",
+            )
+            db.session.add(purchase)
+            db.session.flush()
+            purchase_id = purchase.id
+            lot = app_module.PurchaseLot(
+                purchase_id=purchase.id,
+                strain_name="Tangie",
+                weight_lbs=150,
+                remaining_weight_lbs=150,
+                tracking_id=f"LOT-{gen_uuid()[:8].upper()}",
+                potency_pct=29.4,
+                milled=True,
+                floor_state="reactor_staging",
+                location="Prep Bay",
+            )
+            db.session.add(lot)
+            db.session.commit()
+            lot_id = lot.id
+            tracking_id = lot.tracking_id
+
+        with app.test_client() as client:
+            _login_mobile(client)
+            board = client.get("/api/mobile/v1/extraction/board")
+            assert board.status_code == 200
+            board_payload = board.get_json()["data"]
+            assert board_payload["summary"]["open_lot_count"] >= 1
+            assert board_payload["reactor_cards"]
+            assert any(option["value"] == "all" for option in board_payload["board_view_options"])
+
+            listing = client.get("/api/mobile/v1/extraction/lots?q=Tang")
+            assert listing.status_code == 200
+            lots = listing.get_json()["data"]
+            assert any(row["id"] == lot_id and row["ready_for_charge"] is True for row in lots)
+
+            detail = client.get(f"/api/mobile/v1/extraction/lots/{lot_id}")
+            assert detail.status_code == 200
+            detail_payload = detail.get_json()["data"]["lot"]
+            assert detail_payload["tracking_id"] == tracking_id
+            assert detail_payload["charge_defaults"]["reactor_number"] is None
+
+            lookup = client.get(f"/api/mobile/v1/extraction/lookup/{tracking_id}")
+            assert lookup.status_code == 200
+            assert lookup.get_json()["data"]["lot"]["id"] == lot_id
+    finally:
+        with app.app_context():
+            purchase = db.session.get(Purchase, purchase_id) if purchase_id else None
+            if purchase:
+                db.session.delete(purchase)
+            supplier = db.session.get(Supplier, supplier_id)
+            if supplier:
+                db.session.delete(supplier)
+            db.session.commit()
+
+
+def test_mobile_extraction_charge_and_transition_flow():
+    app = app_module.create_app()
+    _set_mobile_workflows(app)
+    supplier_id = _create_supplier(app, f"Charge Supplier {gen_uuid()[:6]}")
+    purchase_id = None
+    lot_id = None
+    charge_id = None
+    try:
+        with app.app_context():
+            ops_user = app_module.User.query.filter_by(username="ops").first()
+            purchase = Purchase(
+                supplier_id=supplier_id,
+                purchase_date=app_module.date(2026, 4, 19),
+                availability_date=app_module.date(2026, 4, 19),
+                status="available",
+                stated_weight_lbs=120,
+                declared_weight_lbs=120,
+                price_per_lb=215,
+                purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+                created_by_user_id=ops_user.id if ops_user else None,
+                testing_status="pending",
+                clean_or_dirty="clean",
+            )
+            db.session.add(purchase)
+            db.session.flush()
+            purchase_id = purchase.id
+            lot = app_module.PurchaseLot(
+                purchase_id=purchase.id,
+                strain_name="Gary Payton",
+                weight_lbs=120,
+                remaining_weight_lbs=120,
+                tracking_id=f"LOT-{gen_uuid()[:8].upper()}",
+                floor_state="inventory",
+                location="Dock B",
+            )
+            db.session.add(lot)
+            db.session.commit()
+            lot_id = lot.id
+
+        with app.test_client() as client:
+            _login_mobile(client)
+            charge = client.post(
+                f"/api/mobile/v1/extraction/lots/{lot_id}/charge",
+                json={
+                    "charged_weight_lbs": 42.5,
+                    "reactor_number": 2,
+                    "charged_at": "2026-04-19T08:15",
+                    "notes": "Staged from standalone extraction",
+                },
+            )
+            assert charge.status_code == 201
+            payload = charge.get_json()["data"]
+            charge_row = payload["charge"]
+            charge_id = charge_row["id"]
+            assert charge_row["source_mode"] == "standalone_extraction"
+            assert charge_row["reactor_number"] == 2
+            assert payload["lot"]["id"] == lot_id
+            assert payload["next_run_url"].endswith("/runs/new?return_to=/floor-ops")
+
+            with client.session_transaction() as session:
+                prefill = session.get(app_module.SCAN_RUN_PREFILL_SESSION_KEY)
+            assert prefill is not None
+            assert prefill["charge_id"] == charge_id
+            assert prefill["reactor_number"] == 2
+            assert prefill["planned_weight_lbs"] == 42.5
+
+            transition = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/transition",
+                json={"target_state": "in_reactor"},
+            )
+            assert transition.status_code == 200
+            transitioned = transition.get_json()["data"]["charge"]
+            assert transitioned["status"] == "in_reactor"
+            assert any(entry["label"] == "State -> In reactor" for entry in transitioned["history"])
+
+        with app.app_context():
+            charge = db.session.get(ExtractionCharge, charge_id)
+            assert charge is not None
+            assert charge.source_mode == "standalone_extraction"
+            assert charge.status == "in_reactor"
+            assert charge.notes == "Staged from standalone extraction"
+            audit_rows = AuditLog.query.filter_by(entity_type="extraction_charge", entity_id=charge_id).all()
+            assert any('"workflow": "extraction"' in (row.details or "") for row in audit_rows)
+    finally:
+        with app.app_context():
+            charge = db.session.get(ExtractionCharge, charge_id) if charge_id else None
+            if charge:
+                db.session.delete(charge)
+            purchase = db.session.get(Purchase, purchase_id) if purchase_id else None
+            if purchase:
+                db.session.delete(purchase)
+            supplier = db.session.get(Supplier, supplier_id)
+            if supplier:
+                db.session.delete(supplier)
             db.session.commit()
 
 

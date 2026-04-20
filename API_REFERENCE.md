@@ -8,7 +8,7 @@ Status:
 - Intended for trusted internal systems, site-to-site aggregation, and AI/MCP consumers
 
 Additional mobile workflow surface:
-- `/api/mobile/v1` is a user-authenticated write API for the standalone Purchasing Agent App
+- `/api/mobile/v1` is a user-authenticated write API for the standalone Purchasing Agent App, Receiving Intake App, and Extraction Lab App
 - it uses logged-in Gold Drop users and session cookies rather than bearer-token API clients
 
 Primary HTTP API source of truth:
@@ -47,7 +47,7 @@ This surface is separate from `/api/v1`.
 Authentication:
 - user-based login
 - session cookies
-- intended for standalone mobile/tablet workflow apps such as the Purchasing Agent App and Receiving Intake App
+- intended for standalone mobile/tablet workflow apps such as the Purchasing Agent App, Receiving Intake App, and Extraction Lab App
 
 ### Auth
 
@@ -111,9 +111,25 @@ Behavior:
   - `receiving.last_receiving_edit_at`
   - `receiving.last_receiving_edit_by`
 
+### Extraction
+
+- `GET /api/mobile/v1/extraction/board`
+- `GET /api/mobile/v1/extraction/lots`
+- `GET /api/mobile/v1/extraction/lots/<lot_id>`
+- `GET /api/mobile/v1/extraction/lookup/<tracking_id>`
+- `POST /api/mobile/v1/extraction/lots/<lot_id>/charge`
+- `POST /api/mobile/v1/extraction/charges/<charge_id>/transition`
+
+Behavior:
+- extraction operates on approved on-hand lots with remaining inventory
+- board responses reuse the same reactor summary concepts shown on `Floor Ops`
+- lot payloads include readiness flags, warnings, and charge defaults for touch-first UIs
+- creating a charge stores a canonical `ExtractionCharge` with `source_mode="standalone_extraction"` and writes run-prefill session data for the existing main run form
+- lifecycle transitions reuse the same validation and audit history rules as the main reactor board
+
 ### Mobile Write Platform Rules
 
-- standalone buying and receiving workflows can be enabled or disabled per site in `Settings -> Operational Parameters`
+- standalone buying, receiving, and extraction workflows can be enabled or disabled per site in `Settings -> Operational Parameters`
 - unsafe mobile writes reject cross-site `Origin` / `Referer` values
 - mobile write actions are audited with `source = mobile_api`
 - photo uploads enforce per-request and per-context limits

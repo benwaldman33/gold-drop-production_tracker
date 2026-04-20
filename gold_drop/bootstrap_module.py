@@ -56,6 +56,7 @@ def init_db(root):
         "cross_site_ops_enabled": ("0", "Enable cross-site operations UI surfaces for this site"),
         "standalone_purchasing_enabled": ("1", "Enable standalone purchasing app workflow"),
         "standalone_receiving_enabled": ("1", "Enable standalone receiving intake app workflow"),
+        "standalone_extraction_enabled": ("1", "Enable standalone extraction lab app workflow"),
         "potency_rate": ("1.50", "Potency Rate ($/lb/%pt)"),
         "num_reactors": ("2", "Number of Reactors"),
         "reactor_capacity": ("100", "Reactor Capacity (lbs)"),

@@ -1,10 +1,10 @@
 # Gold Drop - Next Sprint Implementation Plan
 
-The extraction-charge foundation and reactor board are now live. The next sprint should add Slack as an alternate intake path into that same canonical extraction-charge workflow.
+The main-app extraction workflow is now operational. The next sprint should package that workflow into a dedicated standalone app for extractors and assistant extractors.
 
 ## Sprint Focus
 
-Build `Slack Extraction Intake` on top of the existing extraction-charge, run-prefill, and reactor-board workflow.
+Build `Standalone Extraction Lab App` on top of the existing extraction-charge, reactor-board, and lifecycle APIs.
 
 The business sequence remains:
 
@@ -14,147 +14,168 @@ The business sequence remains:
 4. Run / complete / cancel
 5. Testing can occur before buy, after receipt, or after extraction depending on supplier trust and process stage
 
-This sprint is about adding another entry channel without creating a second extraction process model.
+This sprint is about isolating the extractor-facing UI, not creating a second extraction process model.
 
 ## Product Goal
 
-Let a structured Slack production message create the same `ExtractionCharge` record that the main app and scan flows already use, then open the run form with that charge attached.
+Give extractors and assistant extractors a fast, touch-friendly interface that mirrors the main extraction workflow without the noise of the broader admin app.
 
 ## Why This Is Next
 
 The repo already has:
 
-- Slack production-message parsing
-- Slack import preview and apply flows
 - persisted `ExtractionCharge`
-- run prefill from charge, scan, and Slack sources
-- `Floor Ops` surfaces that understand pending / running / completed charge records
+- reactor lifecycle controls
+- `Floor Ops` board, queue, and history
+- charge creation from purchases, scans, and Slack preview
+- mobile session-cookie auth and capability envelopes for standalone apps
 
-What is still missing is a Slack path that creates the charge event itself instead of only pre-filling a generic run.
+What is still missing is a dedicated frontend that lets floor operators do their work without navigating the full desktop app.
 
 ## User Stories
 
 ### Extractor
 
-- As an extractor, I can open a Slack import preview and create an extraction charge directly from that message.
-- As an extractor, I can have the charge appear on `Floor Ops` immediately, before the run is saved.
+- As an extractor, I can sign into a focused extraction app and immediately see reactor status, pending charges, and ready lots.
+- As an extractor, I can charge a lot into a reactor with large touch targets instead of a dense admin form.
+- As an extractor, I can move a charge through `In Reactor`, `Running`, `Completed`, or `Cancelled` from the same board.
 
-### Slack importer
+### Assistant extractor
 
-- As a Slack importer, I can resolve supplier and lot ambiguity on the preview page before creating a charge.
-- As a Slack importer, I can still use the existing run flow when one Slack message needs a split allocation across multiple lots.
+- As an assistant extractor, I can search or scan for a lot, review its readiness warnings, and record a charge with minimal typing.
+- As an assistant extractor, I can use sliders, segmented controls, and quick time shortcuts instead of relying on a keyboard.
 
 ### Operations / audit
 
-- As an operator or auditor, I can see that the charge source was Slack and trace it back to the ingested message.
+- As operations, I can keep using the same `ExtractionCharge` records, audit history, and run-prefill handoff that the main app already understands.
 
 ## Scope For This Sprint
 
 ### In scope
 
-- Slack import preview action to create an extraction charge
-- reuse of supplier / lot resolution from the existing Slack preview page
-- single-lot enforcement for Slack-created charges
-- charge prefill handoff into `runs/new`
-- regression coverage for Slack charge creation and multi-lot rejection
+- new `standalone-extraction-lab-app/` frontend
+- extraction workflow toggle in Settings and mobile capabilities
+- extraction mobile API endpoints for board, lots, lot detail, lookup, charge create, and lifecycle transition
+- touch-friendly charge form and reactor board UI
+- run handoff link back into the main app when a charge is recorded
+- regression coverage for the new extraction mobile endpoints
 
 ### Out of scope
 
-- standalone extractor app
-- connected-scale automation beyond current capture plumbing
-- multi-lot Slack charge events
-- new extraction entities beyond the existing `ExtractionCharge`
-- batch-journey graph work
+- full standalone run-editing UI
+- scanner camera UI inside the standalone extraction app
+- connected-scale automation beyond current saved charge/run handoff
+- post-extraction testing UI
+- Slack remediation work
 
 ## UX Surfaces
 
-### 1. Slack import preview
+### 1. Standalone home
 
-Add a second operator action alongside `Create run from Slack`:
+Surface:
 
-- `Create extraction charge from Slack`
+- floor snapshot
+- active reactor board
+- pending charge count
+- ready-lot count
 
-This action should only be used when the message has:
+### 2. Reactor board
 
-- a parsed reactor number
-- a parsed biomass weight
-- exactly one resolved source lot
+Each reactor card should show:
 
-### 2. Existing run flow remains
+- current state
+- lot / supplier / strain
+- lbs
+- charge time
+- queue depth
+- direct lifecycle actions
 
-Keep `Create run from Slack` for cases where:
+### 3. Lots screen
 
-- the operator wants a split allocation across multiple lots
-- the Slack message is not ready to become a canonical charge record yet
+Operators should be able to:
 
-### 3. Floor Ops continuity
+- search lots by tracking id, supplier, strain, or batch id
+- tap into a lot detail card
+- open a charge form quickly
 
-A Slack-created charge should immediately show up in:
+### 4. Charge form
 
-- `Active Reactor Board`
-- `Reactor Charge Queue`
-- `Reactor History Today`
+The charge form should prefer:
 
-because it is the same persisted `ExtractionCharge`.
+- range slider for weight
+- `- / +` nudges
+- segmented reactor buttons
+- `Now` shortcut for charge time
+- optional notes field only when needed
+
+### 5. Lifecycle continuity
+
+After a charge is recorded, the app should:
+
+- show success immediately
+- return to the board or lot context cleanly
+- offer a direct `Open Run in Main App` handoff
 
 ## Backend Changes
 
 ### Service boundary
 
-Reuse the existing extraction-charge service and Slack preview/apply flow.
+Reuse the existing extraction-charge service and floor-board helpers.
 
-Likely additions:
+Add or finish:
 
-- one new apply route for Slack -> charge
-- shared helper logic for selecting supplier ids and candidate lots
-- direct population of `SCAN_RUN_PREFILL_SESSION_KEY` from the created Slack charge
+- extraction workflow toggle in Settings / bootstrapping
+- extraction capability envelope in the mobile write API
+- extraction mobile endpoints inside `gold_drop/mobile_module.py`
 
 ### Data rules
 
-- `ExtractionCharge.source_mode = "slack"`
-- `ExtractionCharge.slack_ingested_message_id = SlackIngestedMessage.id`
-- use the Slack message timestamp as the default `charged_at`
-
-### Allocation rules
-
-Slack charge creation must enforce exactly one lot allocation.
-
-If the operator selects multiple lots, or no single lot can be suggested safely:
-
-- do not create a charge
-- tell the operator to use `Create run from Slack` instead
+- `ExtractionCharge.source_mode = "standalone_extraction"` for charges created from the new app
+- write `SCAN_RUN_PREFILL_SESSION_KEY` so the existing run form opens with the charge attached
+- lifecycle transitions should reuse the same validation and audit history as `Floor Ops`
 
 ## Proposed Route / Entry Changes
 
-Add:
+Add standalone frontend routes within the app:
 
-- `POST /settings/slack-imports/<msg_id>/apply-charge`
+- `#/login`
+- `#/home`
+- `#/reactors`
+- `#/lots`
+- `#/lots/<id>`
+- `#/lots/<id>/charge`
 
-Reuse:
+Use existing backend endpoints:
 
-- `GET /settings/slack-imports/<msg_id>/preview`
-- `POST /settings/slack-imports/<msg_id>/apply-run`
+- `GET /api/mobile/v1/extraction/board`
+- `GET /api/mobile/v1/extraction/lots`
+- `GET /api/mobile/v1/extraction/lots/<id>`
+- `GET /api/mobile/v1/extraction/lookup/<tracking_id>`
+- `POST /api/mobile/v1/extraction/lots/<id>/charge`
+- `POST /api/mobile/v1/extraction/charges/<id>/transition`
 
 ## Test Plan
 
 ### Targeted tests during implementation
 
-- Slack preview shows the new charge action when reactor + weight are present
-- Slack charge creation creates one `ExtractionCharge`
-- Slack charge creation writes run prefill session data
-- multi-lot Slack allocations are rejected for charge creation
+- extraction capabilities expose the workflow toggle correctly
+- extraction board and lot endpoints return operator-facing payloads
+- standalone extraction charge creation records `source_mode="standalone_extraction"` and writes run-prefill session data
+- lifecycle transition endpoint updates the charge state correctly
+- standalone frontend API/domain tests cover board, lot search, and charge payload helpers
 
 ### Full-suite closeout before final commit
 
 - full Python suite
-- affected standalone app suites only if touched
+- standalone extraction app test suite
 
 ## Definition Of Done
 
 This sprint is done when:
 
-- a Slack preview can create a valid `ExtractionCharge`
-- the new run form opens with that charge attached
-- the created charge shows on `Floor Ops`
-- split allocations are rejected from the charge path with a clear message
+- an operator can log into the standalone extraction app
+- the app shows the active reactor board and ready lots
+- the app can create an extraction charge with a touch-friendly UI
+- the app can advance charge lifecycle states
+- the created charge still appears correctly in the main app `Floor Ops`
 - regression tests and docs are updated

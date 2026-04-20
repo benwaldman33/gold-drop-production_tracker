@@ -999,7 +999,7 @@ As standalone apps expand, the session-auth write surface now needs shared platf
 
 Current hardening requirements:
 
-- workflow-specific site toggles for standalone buying and receiving
+- workflow-specific site toggles for standalone buying, receiving, and extraction
 - same-origin enforcement on unsafe mobile writes
 - write-side audit visibility for mobile-origin mutations
 - machine-readable mobile capabilities discovery
@@ -1007,7 +1007,7 @@ Current hardening requirements:
 
 Current delivered behavior:
 
-- `Settings -> Operational Parameters` controls site-level workflow flags for standalone buying and standalone receiving
+- `Settings -> Operational Parameters` controls site-level workflow flags for standalone buying, standalone receiving, and standalone extraction
 - `Settings -> Operational Parameters` also controls reactor lifecycle policy:
   - per-state visibility (`In Reactor`, `Running`, `Completed`, `Cancelled`)
   - per-state required/optional enforcement

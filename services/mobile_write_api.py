@@ -11,6 +11,7 @@ from services.api_site import build_meta
 WORKFLOW_SETTINGS = {
     "buying": "standalone_purchasing_enabled",
     "receiving": "standalone_receiving_enabled",
+    "extraction": "standalone_extraction_enabled",
 }
 
 
@@ -30,6 +31,7 @@ def workflow_permissions(root, user) -> dict[str, bool]:
         "can_record_delivery": can_write and workflow_enabled(root, "buying"),
         "can_receive_intake": can_write and workflow_enabled(root, "receiving"),
         "can_create_supplier": can_write and workflow_enabled(root, "buying"),
+        "can_extract_lab": bool(getattr(user, "can_edit", False)) and workflow_enabled(root, "extraction"),
     }
 
 
@@ -92,6 +94,18 @@ def mobile_capabilities(root, user) -> dict[str, Any]:
                     "PATCH /api/mobile/v1/receiving/queue/<id>",
                     "/api/mobile/v1/receiving/queue/<id>/receive",
                     "/api/mobile/v1/receiving/queue/<id>/photos",
+                ],
+            },
+            "extraction": {
+                "enabled": workflow_enabled(root, "extraction"),
+                "allowed": perms["can_extract_lab"],
+                "endpoints": [
+                    "/api/mobile/v1/extraction/board",
+                    "/api/mobile/v1/extraction/lots",
+                    "/api/mobile/v1/extraction/lots/<id>",
+                    "/api/mobile/v1/extraction/lookup/<tracking_id>",
+                    "/api/mobile/v1/extraction/lots/<id>/charge",
+                    "/api/mobile/v1/extraction/charges/<id>/transition",
                 ],
             },
         },

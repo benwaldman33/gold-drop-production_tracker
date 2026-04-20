@@ -9,6 +9,7 @@
 - `Floor Ops` now also includes an active reactor board that shows each reactor as empty, charged/waiting, or run-linked, with the current lot, charged lbs, charge time, queue depth, operator label, and direct run links when available.
 - `Floor Ops` now supports explicit reactor lifecycle transitions for charged lots: `Mark In Reactor`, `Mark Running`, `Mark Complete`, and `Cancel Charge`, with timestamped audit history for each state change.
 - `Settings -> Operational Parameters` now includes reactor lifecycle controls so Super Admin can show/hide each lifecycle state, make states required or optional, require a linked run before `Mark Running`, and choose whether state history is shown on the active reactor board.
+- A new `standalone-extraction-lab-app` now mirrors the extractor workflow with a touch-first reactor board, lot browser, charge form, and lifecycle actions that still hand off into the main run form when needed.
 
 ### Changed
 - Purchase edit now round-trips `availability_date` and `testing_notes` so values saved from the mobile opportunity flow remain visible and editable in the main app.
@@ -31,7 +32,8 @@
 ### Tests
 - Added regression coverage for purchase edit round-trip of mobile opportunity fields, dedicated inventory lot editing, inventory label return paths, and confirmed-lot splitting from remaining inventory (`tests/test_refactor_safety.py`).
 - Added duplicate-supplier regression coverage for mobile supplier create, main supplier create, and standalone buyer duplicate matching.
-- Added extraction-charge, floor-queue, lifecycle-settings, inventory-action, and Slack-charge regression coverage for scan-to-charge, charge prefill into new run, charge-to-run linkage, pending/applied reactor queue visibility, active reactor board status rendering, direct inventory lot actions, lifecycle transition enforcement, cancel resolution redirects, and Slack import charge creation / split-allocation rejection; full Python suite now passes with `134` tests.
+- Added extraction-charge, floor-queue, lifecycle-settings, inventory-action, and Slack-charge regression coverage for scan-to-charge, charge prefill into new run, charge-to-run linkage, pending/applied reactor queue visibility, active reactor board status rendering, direct inventory lot actions, lifecycle transition enforcement, cancel resolution redirects, and Slack import charge creation / split-allocation rejection; combined with the new extraction standalone coverage, the full Python suite now passes with `136` tests.
+- Added standalone extraction mobile API regression coverage for workflow toggles, board and lot reads, charge creation, and lifecycle transitions, plus a standalone extraction app Node suite covering route parsing, touch-charge helpers, and API envelope handling.
 
 ## 2026-04-11
 
