@@ -28,6 +28,7 @@ This PRD describes the problem, users, workflows, data requirements, calculation
 - a reactor-first **active reactor board** that summarizes current extractor state from canonical charge events
 - an explicit **reactor lifecycle** on top of charge events so floor operators can move material through `in_reactor -> running -> completed/cancelled` with policy-driven requirements
 - a filterable **reactor board** and same-day **reactor history** view so extractors can focus on the work that matters right now without opening every run
+- a dedicated **standalone extraction run execution** flow so extractors can capture execution details (timers, blend, fills, flushes, CRC, baskets, notes) without leaving the tablet workflow
 - readiness for future **connected scale** capture as a structured input channel
 
 Current implementation note: the active modular extraction surface now includes dashboard, field intake, runs, purchases, biomass, costs, inventory, batch edit, suppliers/photos, purchase import, strains, settings, Slack integration, and startup bootstrap modules. This remains an engineering delivery change only; product behavior and operator-facing workflow are intended to stay the same.
@@ -395,6 +396,7 @@ Represents an extraction run with:
 - Wet/dry outputs for THCA and HTE
 - Yield calculations
 - Cost calculations (combined and product-specific)
+- Structured execution detail fields for run / fill timing, biomass blend `% milled / % unmilled`, fill and flush counts / weights, stringer baskets, CRC blend, and execution notes
 - **HTE post-separation workflow (optional per run):** after dry HTE is separated from THCA, operators may record a **pipeline stage** (e.g. awaiting outside lab test; lab result **clean** for menu/sale vs **dirty** queued for terp stripping on Prescott / “Terp Tubes”; **stripped** with terpene and retail distillate mass accounted). **Lab/COA evidence** may be attached as files on the run (images or PDFs). This is distinct from **supplier-level** historical lab tests in the Suppliers module.
 
 ### CostEntry (operational costs)

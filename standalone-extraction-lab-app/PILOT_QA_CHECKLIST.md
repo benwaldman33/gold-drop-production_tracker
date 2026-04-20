@@ -39,6 +39,15 @@
 
 ## Main-app continuity
 
+- after recording a charge, `Open Run` opens the standalone run-execution screen
 - after recording a charge, `Open Run in Main App` opens the existing run form
 - `Charge Another Lot` returns the operator to `Scan / Enter Lot`
 - the new charge also appears on main-app `Floor Ops`
+
+## Standalone run execution
+
+- `Open Run` shows inherited reactor, source, strain, and biomass weight from the charge
+- `Start / Now` and `Stop / Now` buttons stamp the timer fields without typing
+- biomass blend slider updates milled / unmilled percentages to total `100`
+- fill, flush, and stringer basket counters respond to `- / +`
+- saving the run keeps the reactor-linked workflow intact and leaves `Open in Main App` available

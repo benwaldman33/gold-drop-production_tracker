@@ -273,6 +273,85 @@
     </div>
 
     <div class="form-section">
+      <h4>Execution</h4>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Run / Fill Start</label>
+          <input type="datetime-local" name="run_fill_started_at" value="{{ run_execution_fields.run_fill_started_at or '' }}">
+        </div>
+        <div class="form-group">
+          <label>Run / Fill End</label>
+          <input type="datetime-local" name="run_fill_ended_at" value="{{ run_execution_fields.run_fill_ended_at or '' }}">
+          {% if run_execution_fields.run_fill_duration_minutes is not none %}
+          <span class="text-sm" style="color:var(--text-muted);display:block;margin-top:4px;">{{ run_execution_fields.run_fill_duration_minutes }} minute(s)</span>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label>CRC Blend</label>
+          <input type="text" name="crc_blend" value="{{ run.crc_blend if run and run.crc_blend else '' }}" maxlength="200" placeholder="Optional CRC blend">
+        </div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Milled %</label>
+          <input type="number" name="biomass_blend_milled_pct" value="{% if run and run.biomass_blend_milled_pct is not none %}{{ run.biomass_blend_milled_pct }}{% endif %}" step="0.1" min="0" max="100">
+        </div>
+        <div class="form-group">
+          <label>Unmilled %</label>
+          <input type="number" name="biomass_blend_unmilled_pct" value="{% if run and run.biomass_blend_unmilled_pct is not none %}{{ run.biomass_blend_unmilled_pct }}{% endif %}" step="0.1" min="0" max="100">
+        </div>
+        <div class="form-group">
+          <label>Stringer Baskets</label>
+          <input type="number" name="stringer_basket_count" value="{% if run and run.stringer_basket_count is not none %}{{ run.stringer_basket_count }}{% endif %}" min="0" step="1">
+        </div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Fill Count</label>
+          <input type="number" name="fill_count" value="{% if run and run.fill_count is not none %}{{ run.fill_count }}{% endif %}" min="0" step="1">
+        </div>
+        <div class="form-group">
+          <label>Fill Weight (lbs)</label>
+          <input type="number" name="fill_total_weight_lbs" value="{% if run and run.fill_total_weight_lbs is not none %}{{ run.fill_total_weight_lbs }}{% endif %}" min="0" step="0.1">
+        </div>
+        <div class="form-group">
+          <label>Flush Count</label>
+          <input type="number" name="flush_count" value="{% if run and run.flush_count is not none %}{{ run.flush_count }}{% endif %}" min="0" step="1">
+        </div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Flush Weight (lbs)</label>
+          <input type="number" name="flush_total_weight_lbs" value="{% if run and run.flush_total_weight_lbs is not none %}{{ run.flush_total_weight_lbs }}{% endif %}" min="0" step="0.1">
+        </div>
+        <div class="form-group">
+          <label>Mixer Start</label>
+          <input type="datetime-local" name="mixer_started_at" value="{{ run_execution_fields.mixer_started_at or '' }}">
+        </div>
+        <div class="form-group">
+          <label>Mixer End</label>
+          <input type="datetime-local" name="mixer_ended_at" value="{{ run_execution_fields.mixer_ended_at or '' }}">
+          {% if run_execution_fields.mixer_duration_minutes is not none %}
+          <span class="text-sm" style="color:var(--text-muted);display:block;margin-top:4px;">{{ run_execution_fields.mixer_duration_minutes }} minute(s)</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Flush Start</label>
+          <input type="datetime-local" name="flush_started_at" value="{{ run_execution_fields.flush_started_at or '' }}">
+        </div>
+        <div class="form-group">
+          <label>Flush End</label>
+          <input type="datetime-local" name="flush_ended_at" value="{{ run_execution_fields.flush_ended_at or '' }}">
+          {% if run_execution_fields.flush_duration_minutes is not none %}
+          <span class="text-sm" style="color:var(--text-muted);display:block;margin-top:4px;">{{ run_execution_fields.flush_duration_minutes }} minute(s)</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
       <h4>Output</h4>
       <div class="form-row">
         <div class="form-group">

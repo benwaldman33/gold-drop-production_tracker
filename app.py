@@ -117,6 +117,7 @@ from services.slack_workflow import (
 from services.bootstrap_helpers import (
     backfill_default_inventory_lots as _backfill_default_inventory_lots_service,
     backfill_purchase_approval as _backfill_purchase_approval_service,
+    ensure_postgres_run_execution_columns as _ensure_postgres_run_execution_columns_service,
     ensure_postgres_run_hte_columns as _ensure_postgres_run_hte_columns_service,
     ensure_postgres_slack_ingested_columns as _ensure_postgres_slack_ingested_columns_service,
     ensure_sqlite_schema as _ensure_sqlite_schema_service,
@@ -124,6 +125,7 @@ from services.bootstrap_helpers import (
     migrate_biomass_to_purchase as _migrate_biomass_to_purchase_service,
     reconcile_closed_purchase_inventory_lots as _reconcile_closed_purchase_inventory_lots_service,
 )
+from services.extraction_run import display_local_datetime, duration_minutes
 from gold_drop.slack import (
     SLACK_IMPORT_KIND_FILTER_CHOICES,
     SLACK_IMPORT_TEXT_FILTER_OPS,
@@ -675,6 +677,17 @@ def _run_form_extras(run=None):
     return {
         "hte_lab_paths": _json_paths(getattr(run, "hte_lab_result_paths_json", None) if run else None),
         "hte_pipeline_options": _hte_pipeline_options(),
+        "run_execution_fields": {
+            "run_fill_started_at": display_local_datetime(getattr(run, "run_fill_started_at", None) if run else None),
+            "run_fill_ended_at": display_local_datetime(getattr(run, "run_fill_ended_at", None) if run else None),
+            "run_fill_duration_minutes": duration_minutes(getattr(run, "run_fill_started_at", None) if run else None, getattr(run, "run_fill_ended_at", None) if run else None),
+            "mixer_started_at": display_local_datetime(getattr(run, "mixer_started_at", None) if run else None),
+            "mixer_ended_at": display_local_datetime(getattr(run, "mixer_ended_at", None) if run else None),
+            "mixer_duration_minutes": duration_minutes(getattr(run, "mixer_started_at", None) if run else None, getattr(run, "mixer_ended_at", None) if run else None),
+            "flush_started_at": display_local_datetime(getattr(run, "flush_started_at", None) if run else None),
+            "flush_ended_at": display_local_datetime(getattr(run, "flush_ended_at", None) if run else None),
+            "flush_duration_minutes": duration_minutes(getattr(run, "flush_started_at", None) if run else None, getattr(run, "flush_ended_at", None) if run else None),
+        },
     }
 
 

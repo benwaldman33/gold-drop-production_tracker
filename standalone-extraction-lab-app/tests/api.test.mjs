@@ -32,6 +32,18 @@ test("mock api login, board, charge, and transition flow", async () => {
 
   const transitioned = await api.transitionCharge(created.charge.id, { target_state: "in_reactor" });
   assert.equal(transitioned.charge.status, "in_reactor");
+
+  const runPayload = await api.getChargeRun(created.charge.id);
+  assert.equal(runPayload.run.reactor_number, 2);
+
+  const savedRun = await api.saveChargeRun(created.charge.id, {
+    fill_count: 1,
+    fill_total_weight_lbs: 22.5,
+    run_fill_started_at: "2026-04-19T09:10",
+    notes: "Execution notes",
+  });
+  assert.equal(savedRun.run.fill_count, 1);
+  assert.equal(savedRun.run.notes, "Execution notes");
 });
 
 test("live api unwraps extraction mobile envelopes", async () => {
@@ -143,6 +155,38 @@ test("live api unwraps extraction mobile envelopes", async () => {
         },
       };
     }
+    if (url.endsWith("/api/mobile/v1/extraction/charges/chg-1/run") && (!options.method || options.method === "GET")) {
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return {
+            meta: {},
+            data: {
+              charge: { id: "chg-1", status: "applied", reactor_number: 1, source_mode: "standalone_extraction" },
+              lot: { id: "lot-1", tracking_id: "LOT-ABC", supplier_name: "Forest Farms", strain_name: "Blue Dream" },
+              run: { id: "run-1", reactor_number: 1, bio_in_reactor_lbs: 30, notes: "", open_main_app_url: "/runs/run-1/edit?return_to=/floor-ops" },
+            },
+          };
+        },
+      };
+    }
+    if (url.endsWith("/api/mobile/v1/extraction/charges/chg-1/run") && options.method === "POST") {
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return {
+            meta: {},
+            data: {
+              charge: { id: "chg-1", status: "applied", reactor_number: 1, source_mode: "standalone_extraction" },
+              lot: { id: "lot-1", tracking_id: "LOT-ABC", supplier_name: "Forest Farms", strain_name: "Blue Dream" },
+              run: { id: "run-1", reactor_number: 1, bio_in_reactor_lbs: 30, notes: "Saved", open_main_app_url: "/runs/run-1/edit?return_to=/floor-ops" },
+            },
+          };
+        },
+      };
+    }
     throw new Error(`Unexpected URL ${url}`);
   };
 
@@ -167,4 +211,10 @@ test("live api unwraps extraction mobile envelopes", async () => {
 
   const transitioned = await api.transitionCharge("chg-1", { target_state: "running" });
   assert.equal(transitioned.charge.state_label, "Running");
+
+  const runPayload = await api.getChargeRun("chg-1");
+  assert.equal(runPayload.run.id, "run-1");
+
+  const savedRun = await api.saveChargeRun("chg-1", { notes: "Saved" });
+  assert.equal(savedRun.run.notes, "Saved");
 });
