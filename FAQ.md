@@ -387,6 +387,19 @@ Use the runbook in:
 
 Like the other standalone apps, it is a static frontend that proxies into the Gold Drop backend's session-auth mobile API surface.
 
+## What is the fastest way to use the standalone extraction app on an iPad?
+
+Open the standalone extraction app and go to `Scan / Enter Lot`.
+
+That screen supports:
+- iPad camera scanning when Safari has HTTPS and barcode support
+- Bluetooth scanner entry into the tracking-ID field
+- manual tracking-ID entry as fallback
+
+Once the lot is resolved, the app opens the charge form directly.
+
+The charge form now defaults to `100 lbs` when the lot has at least that much remaining, and also offers `Half lot`, `Full lot`, and `Last used` presets.
+
 ## Can receiving staff correct a receipt after it was submitted?
 
 Yes, but only while the purchase's lots have not been used downstream.

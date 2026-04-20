@@ -18,6 +18,16 @@ export function clampChargeWeight(value, maxWeight) {
   return Math.round(parsed * 10) / 10;
 }
 
+export function preferredChargeWeight(maxWeight, preferredWeight = 100) {
+  const max = Number(maxWeight || 0);
+  if (max <= 0) return 0;
+  return clampChargeWeight(Math.min(max, Number(preferredWeight || 0)), max);
+}
+
+export function halfLotChargeWeight(maxWeight) {
+  return clampChargeWeight(Number(maxWeight || 0) / 2, maxWeight);
+}
+
 export function stateTone(stateKey) {
   switch (String(stateKey || "").toLowerCase()) {
     case "running":

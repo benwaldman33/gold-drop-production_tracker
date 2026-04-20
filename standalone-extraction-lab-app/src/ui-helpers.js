@@ -1,4 +1,4 @@
-import { clampChargeWeight } from "./domain.js";
+import { clampChargeWeight, preferredChargeWeight } from "./domain.js";
 
 export function parseRoute(hash) {
   const raw = String(hash || "").replace(/^#/, "");
@@ -8,6 +8,7 @@ export function parseRoute(hash) {
 
   if (!parts.length || parts[0] === "login") return { name: "login" };
   if (parts[0] === "home") return { name: "home" };
+  if (parts[0] === "scan") return { name: "scan" };
   if (parts[0] === "reactors") return { name: "reactors", boardView: query.get("board_view") || "all" };
   if (parts[0] === "lots" && parts[1] && parts[2] === "charge") return { name: "charge", id: parts[1] };
   if (parts[0] === "lots" && parts[1]) return { name: "lot", id: parts[1] };
@@ -45,4 +46,8 @@ export function buildChargePayload(form, maxWeight) {
     charged_at: String(form.get("charged_at") || "").trim(),
     notes: String(form.get("notes") || "").trim(),
   };
+}
+
+export function defaultChargeValue(maxWeight, preferredWeight = 100) {
+  return preferredChargeWeight(maxWeight, preferredWeight);
 }

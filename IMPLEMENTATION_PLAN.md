@@ -1,142 +1,141 @@
 # Gold Drop - Next Sprint Implementation Plan
 
-The main-app extraction workflow is now operational. The next sprint should package that workflow into a dedicated standalone app for extractors and assistant extractors.
+The standalone extraction lab app is now live. The next sprint should make it truly scan-first for floor operators.
 
 ## Sprint Focus
 
-Build `Standalone Extraction Lab App` on top of the existing extraction-charge, reactor-board, and lifecycle APIs.
+Build `Scan-First Extraction Entry` on top of the existing standalone extraction app and extraction mobile API.
 
 The business sequence remains:
 
 1. Buy
 2. Receive
-3. Charge into reactor / start extraction
-4. Run / complete / cancel
-5. Testing can occur before buy, after receipt, or after extraction depending on supplier trust and process stage
+3. Find or scan the lot
+4. Charge into reactor / start extraction
+5. Run / complete / cancel
+6. Testing can occur before buy, after receipt, or after extraction depending on supplier trust and process stage
 
-This sprint is about isolating the extractor-facing UI, not creating a second extraction process model.
+This sprint is about reducing keyboard dependence and shortening the path from label scan to reactor charge.
 
 ## Product Goal
 
-Give extractors and assistant extractors a fast, touch-friendly interface that mirrors the main extraction workflow without the noise of the broader admin app.
+Let extractors and assistant extractors open the standalone extraction app, scan or enter a lot label, apply a default 100 lb reactor charge when appropriate, and move straight into the next action without unnecessary navigation.
 
 ## Why This Is Next
 
 The repo already has:
 
-- persisted `ExtractionCharge`
-- reactor lifecycle controls
-- `Floor Ops` board, queue, and history
-- charge creation from purchases, scans, and Slack preview
-- mobile session-cookie auth and capability envelopes for standalone apps
+- a deployed standalone extraction app
+- extraction board, lot browser, and lifecycle actions
+- `GET /api/mobile/v1/extraction/lookup/<tracking_id>`
+- browser-camera barcode detection in the main app scan center
+- canonical `ExtractionCharge` persistence and run handoff
 
-What is still missing is a dedicated frontend that lets floor operators do their work without navigating the full desktop app.
+What is still missing is the fastest operator entry path:
+
+- scan lot
+- land on the lot immediately
+- charge using presets
+- charge another lot or open the run
 
 ## User Stories
 
 ### Extractor
 
-- As an extractor, I can sign into a focused extraction app and immediately see reactor status, pending charges, and ready lots.
-- As an extractor, I can charge a lot into a reactor with large touch targets instead of a dense admin form.
-- As an extractor, I can move a charge through `In Reactor`, `Running`, `Completed`, or `Cancelled` from the same board.
+- As an extractor, I can scan a lot label on the iPad and open the correct lot without typing.
+- As an extractor, I can use a default 100 lb reactor charge preset instead of manually dragging a slider every time.
+- As an extractor, I can record a charge and immediately choose whether to open the run, return to the reactor board, or charge another lot.
 
 ### Assistant extractor
 
-- As an assistant extractor, I can search or scan for a lot, review its readiness warnings, and record a charge with minimal typing.
-- As an assistant extractor, I can use sliders, segmented controls, and quick time shortcuts instead of relying on a keyboard.
+- As an assistant extractor, I can still manually enter a tracking ID when camera scanning is unavailable.
+- As an assistant extractor, I can use large preset buttons such as `100 lbs`, `Half lot`, `Full lot`, and `Last used`.
 
 ### Operations / audit
 
-- As operations, I can keep using the same `ExtractionCharge` records, audit history, and run-prefill handoff that the main app already understands.
+- As operations, I keep the same `ExtractionCharge` audit trail, lifecycle history, and `Floor Ops` continuity as before.
 
 ## Scope For This Sprint
 
 ### In scope
 
-- new `standalone-extraction-lab-app/` frontend
-- extraction workflow toggle in Settings and mobile capabilities
-- extraction mobile API endpoints for board, lots, lot detail, lookup, charge create, and lifecycle transition
-- touch-friendly charge form and reactor board UI
-- run handoff link back into the main app when a charge is recorded
-- regression coverage for the new extraction mobile endpoints
+- new standalone route for `Scan / Enter Lot`
+- camera barcode scanning in the standalone extraction app when the browser supports it
+- manual tracking-ID fallback entry
+- charge presets with default `100 lbs per reactor`
+- post-charge action loop:
+  - `Open run now`
+  - `Back to reactors`
+  - `Charge another lot`
+- targeted frontend regression coverage for route parsing, presets, and lookup behavior
 
 ### Out of scope
 
-- full standalone run-editing UI
-- scanner camera UI inside the standalone extraction app
-- connected-scale automation beyond current saved charge/run handoff
-- post-extraction testing UI
-- Slack remediation work
+- new backend entities
+- full standalone run editing
+- device-scale integration inside the standalone app
+- Slack work
+- broader post-extraction testing UI
 
 ## UX Surfaces
 
-### 1. Standalone home
+### 1. Scan / Enter Lot
 
-Surface:
+Add a dedicated route:
 
-- floor snapshot
-- active reactor board
-- pending charge count
-- ready-lot count
+- `#/scan`
 
-### 2. Reactor board
+It should support:
 
-Each reactor card should show:
+- browser camera scan when `BarcodeDetector` is available
+- manual tracking-ID entry
+- Bluetooth scanner keyboard-wedge entry through the same input
 
-- current state
-- lot / supplier / strain
-- lbs
-- charge time
-- queue depth
-- direct lifecycle actions
+### 2. Charge presets
 
-### 3. Lots screen
+The charge form should expose:
 
-Operators should be able to:
+- `100 lbs`
+- `Half lot`
+- `Full lot`
+- `Last used`
 
-- search lots by tracking id, supplier, strain, or batch id
-- tap into a lot detail card
-- open a charge form quickly
+Default behavior:
 
-### 4. Charge form
+- the initial suggested charge should be `100 lbs` when the lot has at least `100 lbs` remaining
+- otherwise use the remaining lot weight
 
-The charge form should prefer:
+### 3. Post-charge loop
 
-- range slider for weight
-- `- / +` nudges
-- segmented reactor buttons
-- `Now` shortcut for charge time
-- optional notes field only when needed
+After a charge is recorded, the operator should immediately see:
 
-### 5. Lifecycle continuity
+- `Open Run in Main App`
+- `Back to Reactors`
+- `Charge Another Lot`
 
-After a charge is recorded, the app should:
+### 4. Navigation polish
 
-- show success immediately
-- return to the board or lot context cleanly
-- offer a direct `Open Run in Main App` handoff
+Make `Scan / Enter Lot` a first-class action from:
+
+- sidebar
+- home
+- reactors
+- lots
 
 ## Backend Changes
 
-### Service boundary
+No new backend objects are required.
 
-Reuse the existing extraction-charge service and floor-board helpers.
+Reuse existing endpoints:
 
-Add or finish:
-
-- extraction workflow toggle in Settings / bootstrapping
-- extraction capability envelope in the mobile write API
-- extraction mobile endpoints inside `gold_drop/mobile_module.py`
-
-### Data rules
-
-- `ExtractionCharge.source_mode = "standalone_extraction"` for charges created from the new app
-- write `SCAN_RUN_PREFILL_SESSION_KEY` so the existing run form opens with the charge attached
-- lifecycle transitions should reuse the same validation and audit history as `Floor Ops`
+- `GET /api/mobile/v1/extraction/lookup/<tracking_id>`
+- `GET /api/mobile/v1/extraction/lots/<lot_id>`
+- `POST /api/mobile/v1/extraction/lots/<lot_id>/charge`
+- `POST /api/mobile/v1/extraction/charges/<charge_id>/transition`
 
 ## Proposed Route / Entry Changes
 
-Add standalone frontend routes within the app:
+Standalone frontend routes should become:
 
 - `#/login`
 - `#/home`
@@ -144,38 +143,29 @@ Add standalone frontend routes within the app:
 - `#/lots`
 - `#/lots/<id>`
 - `#/lots/<id>/charge`
-
-Use existing backend endpoints:
-
-- `GET /api/mobile/v1/extraction/board`
-- `GET /api/mobile/v1/extraction/lots`
-- `GET /api/mobile/v1/extraction/lots/<id>`
-- `GET /api/mobile/v1/extraction/lookup/<tracking_id>`
-- `POST /api/mobile/v1/extraction/lots/<id>/charge`
-- `POST /api/mobile/v1/extraction/charges/<id>/transition`
+- `#/scan`
 
 ## Test Plan
 
 ### Targeted tests during implementation
 
-- extraction capabilities expose the workflow toggle correctly
-- extraction board and lot endpoints return operator-facing payloads
-- standalone extraction charge creation records `source_mode="standalone_extraction"` and writes run-prefill session data
-- lifecycle transition endpoint updates the charge state correctly
-- standalone frontend API/domain tests cover board, lot search, and charge payload helpers
+- route parsing includes `#/scan`
+- charge preset helpers clamp `100 lbs` correctly
+- mock/live standalone API lookup path works
+- camera/manual scan helpers can route into a resolved lot
 
 ### Full-suite closeout before final commit
 
-- full Python suite
 - standalone extraction app test suite
+- full Python suite
 
 ## Definition Of Done
 
 This sprint is done when:
 
-- an operator can log into the standalone extraction app
-- the app shows the active reactor board and ready lots
-- the app can create an extraction charge with a touch-friendly UI
-- the app can advance charge lifecycle states
-- the created charge still appears correctly in the main app `Floor Ops`
-- regression tests and docs are updated
+- the standalone extraction app has a dedicated `Scan / Enter Lot` screen
+- an operator can scan or manually enter a tracking ID and open the right lot
+- the charge form defaults to `100 lbs` when possible
+- preset buttons speed up charge entry
+- the post-charge loop lets operators continue without backing through the app manually
+- tests and docs are updated
