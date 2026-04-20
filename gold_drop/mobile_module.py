@@ -38,9 +38,11 @@ from services.extraction_charge import (
 from gold_drop.floor_module import (
     BOARD_VIEW_OPTIONS,
     _build_active_reactor_board,
+    _board_view_value,
     _build_floor_rollups,
     _build_reactor_charge_view,
     _build_reactor_history,
+    _card_matches_board_view,
 )
 from gold_drop.uploads import save_uploads, allowed_image_filename
 
@@ -384,6 +386,8 @@ def _mobile_extraction_board_payload(root) -> dict[str, Any]:
     floor_rollups = _build_floor_rollups(root)
     active_reactor_board = _build_active_reactor_board(root)
     reactor_queue = _build_reactor_charge_view(root)
+    board_view = _board_view_value(root)
+    filtered_cards = [card for card in active_reactor_board["cards"] if _card_matches_board_view(card, board_view)]
     reactor_history = _build_reactor_history(root, active_reactor_board["cards"])
     return {
         "summary": {
@@ -397,8 +401,9 @@ def _mobile_extraction_board_payload(root) -> dict[str, Any]:
             "active_reactor_count": active_reactor_board["active_count"],
             "reactor_count": active_reactor_board["reactor_count"],
         },
+        "board_view": board_view,
         "board_view_options": [{"value": value, "label": label} for value, label in BOARD_VIEW_OPTIONS],
-        "reactor_cards": active_reactor_board["cards"],
+        "reactor_cards": filtered_cards,
         "pending_cards": reactor_queue["pending_cards"],
         "applied_cards": reactor_queue["applied_cards"],
         "reactor_history": reactor_history,

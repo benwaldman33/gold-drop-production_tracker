@@ -832,6 +832,113 @@ def test_mobile_extraction_charge_and_transition_flow():
             db.session.commit()
 
 
+def test_mobile_extraction_board_view_filtering():
+    app = app_module.create_app()
+    _set_mobile_workflows(app)
+    supplier_id = _create_supplier(app, f"Filter Supplier {gen_uuid()[:6]}")
+    purchase_id = None
+    running_charge_id = None
+    pending_charge_id = None
+    try:
+        with app.app_context():
+            ops_user = app_module.User.query.filter_by(username="ops").first()
+            purchase = Purchase(
+                supplier_id=supplier_id,
+                purchase_date=app_module.date(2026, 4, 19),
+                availability_date=app_module.date(2026, 4, 19),
+                status="available",
+                stated_weight_lbs=180,
+                declared_weight_lbs=180,
+                price_per_lb=220,
+                purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+                created_by_user_id=ops_user.id if ops_user else None,
+                testing_status="completed",
+                clean_or_dirty="clean",
+            )
+            db.session.add(purchase)
+            db.session.flush()
+            purchase_id = purchase.id
+
+            lot_running = app_module.PurchaseLot(
+                purchase_id=purchase.id,
+                strain_name="Super Boof",
+                weight_lbs=90,
+                remaining_weight_lbs=90,
+                tracking_id=f"LOT-{gen_uuid()[:8].upper()}",
+                floor_state="reactor_staging",
+                milled=True,
+            )
+            lot_pending = app_module.PurchaseLot(
+                purchase_id=purchase.id,
+                strain_name="Permanent Marker",
+                weight_lbs=90,
+                remaining_weight_lbs=90,
+                tracking_id=f"LOT-{gen_uuid()[:8].upper()}",
+                floor_state="reactor_staging",
+                milled=True,
+            )
+            db.session.add(lot_running)
+            db.session.add(lot_pending)
+            db.session.flush()
+
+            running_charge = ExtractionCharge(
+                purchase_lot_id=lot_running.id,
+                charged_weight_lbs=45,
+                reactor_number=1,
+                charged_at=app_module.datetime.now(app_module.timezone.utc),
+                source_mode="standalone_extraction",
+                status="running",
+                created_by=ops_user.id if ops_user else None,
+            )
+            pending_charge = ExtractionCharge(
+                purchase_lot_id=lot_pending.id,
+                charged_weight_lbs=42,
+                reactor_number=2,
+                charged_at=app_module.datetime.now(app_module.timezone.utc),
+                source_mode="standalone_extraction",
+                status="pending",
+                created_by=ops_user.id if ops_user else None,
+            )
+            db.session.add(running_charge)
+            db.session.add(pending_charge)
+            db.session.commit()
+            running_charge_id = running_charge.id
+            pending_charge_id = pending_charge.id
+
+        with app.test_client() as client:
+            _login_mobile(client)
+            running = client.get("/api/mobile/v1/extraction/board?board_view=running")
+            assert running.status_code == 200
+            running_payload = running.get_json()["data"]
+            assert running_payload["board_view"] == "running"
+            assert len(running_payload["reactor_cards"]) == 1
+            assert running_payload["reactor_cards"][0]["reactor_number"] == 1
+            assert running_payload["reactor_cards"][0]["state_key"] == "running"
+
+            pending = client.get("/api/mobile/v1/extraction/board?board_view=pending")
+            assert pending.status_code == 200
+            pending_payload = pending.get_json()["data"]
+            assert pending_payload["board_view"] == "pending"
+            assert len(pending_payload["reactor_cards"]) == 1
+            assert pending_payload["reactor_cards"][0]["reactor_number"] == 2
+            assert pending_payload["reactor_cards"][0]["state_key"] == "pending"
+    finally:
+        with app.app_context():
+            pending_charge = db.session.get(ExtractionCharge, pending_charge_id) if pending_charge_id else None
+            if pending_charge:
+                db.session.delete(pending_charge)
+            running_charge = db.session.get(ExtractionCharge, running_charge_id) if running_charge_id else None
+            if running_charge:
+                db.session.delete(running_charge)
+            purchase = db.session.get(Purchase, purchase_id) if purchase_id else None
+            if purchase:
+                db.session.delete(purchase)
+            supplier = db.session.get(Supplier, supplier_id)
+            if supplier:
+                db.session.delete(supplier)
+            db.session.commit()
+
+
 def test_mobile_write_origin_enforcement_and_audit_log():
     app = app_module.create_app()
     _set_mobile_workflows(app)

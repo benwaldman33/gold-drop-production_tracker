@@ -12,6 +12,7 @@
 - A new `standalone-extraction-lab-app` now mirrors the extractor workflow with a touch-first reactor board, lot browser, charge form, and lifecycle actions that still hand off into the main run form when needed.
 
 ### Changed
+- Standalone extraction `Reactors` board filters now respect the selected `Board view` on live production data instead of always showing every reactor card.
 - Purchase edit now round-trips `availability_date` and `testing_notes` so values saved from the mobile opportunity flow remain visible and editable in the main app.
 - Standalone buying copy now uses clearer "ready to record delivery" wording instead of the older "delivery capture" phrasing.
 - Supplier creation now warns on typo-close duplicate names in the standalone buyer app and on the main supplier create page before saving a new record.
