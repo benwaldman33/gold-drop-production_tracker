@@ -16,6 +16,7 @@
 - The standalone extraction app now exposes a dedicated `Scan / Enter Lot` screen, camera/manual tracking-ID lookup, a default `100 lbs` charge preset per reactor, and a faster post-charge loop (`Open Run`, `Back to Reactors`, `Charge Another Lot`).
 - The standalone extraction app now auto-focuses the manual tracking-ID field, shows scan guidance on-screen, confirms successful lot resolution on the charge form, and remembers the last reactor used for the next charge.
 - The standalone extraction app now includes a dedicated run-execution screen tied to each charge, with touch-first timers for run/fill, mixer, and flush timing plus structured fields for blend, fills, flushes, stringer baskets, CRC blend, and notes.
+- The standalone extraction reactor board now renders `Open Run` as a full-size primary action next to the lifecycle buttons so operators do not have to hunt for a small inline link before `Mark Running`.
 - The extraction mobile API now exposes `GET/POST /api/mobile/v1/extraction/charges/<charge_id>/run` so the standalone app can fetch a draft run from a charge and save execution details without bouncing into the admin form.
 - The main run form now stores the new extraction execution fields so supervisors can still review or edit the same data from the admin UI.
 - Purchase edit now round-trips `availability_date` and `testing_notes` so values saved from the mobile opportunity flow remain visible and editable in the main app.

@@ -53,6 +53,7 @@ Related mobile workflows:
 - The manual tracking field auto-focuses on the scan screen, and the charge form remembers the last reactor used so repeat work moves faster.
 - It mirrors the same charge and lifecycle workflow the main app uses on `Floor Ops`.
 - After recording a charge, it can now open a dedicated standalone run-execution screen for the extractor workflow, and it can still open the main run form when deeper admin editing is needed.
+- On the `Reactors` board, use the large `Open Run` button on the reactor card before `Mark Running` when the current policy requires a linked run.
 
 ---
 

@@ -56,3 +56,21 @@ export function defaultChargeValue(maxWeight, preferredWeight = 100) {
 export function defaultReactorValue(preferredReactor, reactorCount) {
   return preferredReactorNumber(preferredReactor, reactorCount);
 }
+
+export function buildReactorActionMarkup(current, escape = escapeHtml) {
+  const actions = current?.available_actions || [];
+  const hasOpenRun = Boolean(current?.charge_id);
+  if (!actions.length && !hasOpenRun) return "";
+  const buttons = [];
+  if (hasOpenRun) {
+    buttons.push(
+      `<a class="btn btn-primary" href="#/runs/charge/${escape(current.charge_id)}">Open Run</a>`,
+    );
+  }
+  for (const action of actions) {
+    buttons.push(
+      `<button class="btn ${action.target_state === "cancelled" ? "btn-danger" : "btn-secondary"}" data-action="transition-charge" data-charge-id="${escape(current.charge_id)}" data-target-state="${escape(action.target_state)}">${escape(action.label)}</button>`,
+    );
+  }
+  return `<div class="action-grid">${buttons.join("")}</div>`;
+}
