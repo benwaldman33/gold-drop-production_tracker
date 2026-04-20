@@ -400,6 +400,8 @@ Once the lot is resolved, the app opens the charge form directly.
 
 The charge form now defaults to `100 lbs` when the lot has at least that much remaining, and also offers `Half lot`, `Full lot`, and `Last used` presets.
 
+The manual tracking field now auto-focuses when that screen opens, and the charge form remembers the last reactor used so repeat charges take fewer taps.
+
 ## Can receiving staff correct a receipt after it was submitted?
 
 Yes, but only while the purchase's lots have not been used downstream.

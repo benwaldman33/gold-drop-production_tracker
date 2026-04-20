@@ -15,9 +15,11 @@
 ## Scan / Enter Lot
 
 - `Scan / Enter Lot` opens from the sidebar and home page.
+- the manual tracking-ID field is focused automatically when the scan screen opens.
 - manual tracking-ID entry opens the correct lot charge form.
 - camera scanning works on supported iPad/Safari environments over HTTPS.
 - unsupported browsers show a clear fallback message instead of a broken camera state.
+- scan guidance copy is visible on-screen without opening another help panel.
 
 ## Lots
 
@@ -31,7 +33,7 @@
 - default weight is `100 lbs` when the lot has at least 100 lbs remaining
 - `100 lbs`, `Half lot`, `Full lot`, and `Last used` presets work
 - `-5`, `-1`, `+1`, `+5`, and `Full lot` controls work
-- reactor segmented buttons work
+- reactor segmented buttons work and the last-used reactor is preselected on the next charge
 - `Now` updates the timestamp
 - `Record Charge` creates a charge and returns to the board
 

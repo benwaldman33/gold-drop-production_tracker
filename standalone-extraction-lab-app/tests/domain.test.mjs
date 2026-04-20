@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { clampChargeWeight, halfLotChargeWeight, lotTitle, normalizeText, preferredChargeWeight, readyLotCount, stateTone } from "../src/domain.js";
-import { defaultChargeValue, parseRoute } from "../src/ui-helpers.js";
+import { defaultChargeValue, defaultReactorValue, parseRoute } from "../src/ui-helpers.js";
 
 test("normalizeText trims and lowercases", () => {
   assert.equal(normalizeText("  Reactor   Bay "), "reactor bay");
@@ -24,6 +24,8 @@ test("preferred charge presets default to 100 lbs and clamp down when needed", (
   assert.equal(preferredChargeWeight(80), 80);
   assert.equal(defaultChargeValue(200), 100);
   assert.equal(halfLotChargeWeight(85), 42.5);
+  assert.equal(defaultReactorValue(2, 3), 2);
+  assert.equal(defaultReactorValue(9, 3), 3);
 });
 
 test("lotTitle and readiness helpers stay operator-readable", () => {

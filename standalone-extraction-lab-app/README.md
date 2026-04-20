@@ -8,7 +8,7 @@ Touch-first operator app for the extraction lab workflow. It mirrors the main ap
 - active reactor board and same-day reactor history
 - dedicated `Scan / Enter Lot` screen with camera and manual fallback
 - chargeable lot search
-- touch-friendly extraction charge form with `100 lbs`, `Half lot`, `Full lot`, and `Last used` presets
+- touch-friendly extraction charge form with `100 lbs`, `Half lot`, `Full lot`, and `Last used` presets plus last-reactor recall
 - reactor lifecycle actions from the board
 - handoff link into the main run form after recording a charge
 
@@ -25,8 +25,8 @@ By default the dev server runs at `http://127.0.0.1:4175` and proxies `/api/*` t
 ## Operator Flow
 
 1. Log in with a Gold Drop user who has extraction workflow access.
-2. Open `Scan / Enter Lot` to scan or type a tracking ID directly into the charge workflow.
+2. Open `Scan / Enter Lot` to scan or type a tracking ID directly into the charge workflow. The manual field auto-focuses for Bluetooth scanner use.
 3. Open `Reactors` to see active lifecycle state and same-day history.
 4. Open `Lots` when you need browser-style search by tracking id, supplier, strain, or batch id.
-5. On the charge form, use the default `100 lbs` preset or tap `Half lot`, `Full lot`, or `Last used`.
+5. On the charge form, use the default `100 lbs` preset or tap `Half lot`, `Full lot`, or `Last used`. The app also preselects the last reactor used when possible.
 6. Record the charge, then choose `Open Run in Main App`, `Back to Reactors`, or `Charge Another Lot`.

@@ -1,4 +1,4 @@
-import { clampChargeWeight, preferredChargeWeight } from "./domain.js";
+import { clampChargeWeight, preferredChargeWeight, preferredReactorNumber } from "./domain.js";
 
 export function parseRoute(hash) {
   const raw = String(hash || "").replace(/^#/, "");
@@ -50,4 +50,8 @@ export function buildChargePayload(form, maxWeight) {
 
 export function defaultChargeValue(maxWeight, preferredWeight = 100) {
   return preferredChargeWeight(maxWeight, preferredWeight);
+}
+
+export function defaultReactorValue(preferredReactor, reactorCount) {
+  return preferredReactorNumber(preferredReactor, reactorCount);
 }
