@@ -48,6 +48,8 @@ Related mobile workflows:
 - Use this app when you want a focused extraction surface without the rest of the admin UI.
 - It is built for tablet and phone use by extractors and assistant extractors.
 - The app emphasizes large buttons, weight sliders, quick `- / +` nudges, segmented reactor buttons, and minimal keyboard use.
+- It also now includes a dedicated `Scan / Enter Lot` screen so operators can use the iPad camera, a Bluetooth scanner, or manual tracking-ID entry.
+- The default charge preset is `100 lbs` per reactor whenever the lot has at least 100 lbs remaining; otherwise it defaults to the remaining lot weight.
 - It mirrors the same charge and lifecycle workflow the main app uses on `Floor Ops`.
 - After recording a charge, it can still open the main run form when deeper run editing is needed.
 

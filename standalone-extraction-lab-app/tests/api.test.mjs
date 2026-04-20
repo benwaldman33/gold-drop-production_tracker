@@ -18,6 +18,8 @@ test("mock api login, board, charge, and transition flow", async () => {
 
   const lots = await api.listLots("Blue");
   assert.equal(lots.length, 1);
+  const lookedUp = await api.lookupLot("LOT-A1B2C3D4");
+  assert.equal(lookedUp.id, lots[0].id);
 
   const created = await api.createCharge(lots[0].id, {
     charged_weight_lbs: 22.5,
@@ -95,6 +97,20 @@ test("live api unwraps extraction mobile envelopes", async () => {
         },
       };
     }
+    if (url.endsWith("/api/mobile/v1/extraction/lookup/LOT-ABC")) {
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return {
+            meta: {},
+            data: {
+              lot: { id: "lot-1", tracking_id: "LOT-ABC", supplier_name: "Forest Farms", strain_name: "Blue Dream" },
+            },
+          };
+        },
+      };
+    }
     if (url.endsWith("/api/mobile/v1/extraction/lots/lot-1/charge")) {
       assert.equal(options.method, "POST");
       return {
@@ -142,6 +158,9 @@ test("live api unwraps extraction mobile envelopes", async () => {
 
   const lot = await api.getLot("lot-1");
   assert.equal(lot.tracking_id, "LOT-ABC");
+
+  const lookedUp = await api.lookupLot("LOT-ABC");
+  assert.equal(lookedUp.id, "lot-1");
 
   const created = await api.createCharge("lot-1", { charged_weight_lbs: 30, reactor_number: 1, charged_at: "2026-04-19T09:10" });
   assert.equal(created.charge.source_mode, "standalone_extraction");

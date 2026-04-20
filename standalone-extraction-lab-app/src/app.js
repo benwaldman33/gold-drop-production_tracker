@@ -1,11 +1,13 @@
 import { createApiClient } from "./api.js";
-import { clampChargeWeight, lotTitle, readyLotCount, stateTone } from "./domain.js";
+import { clampChargeWeight, halfLotChargeWeight, lotTitle, readyLotCount, stateTone } from "./domain.js";
 import { getAppConfig } from "./config.js";
-import { buildChargePayload, escapeHtml, localDateTimeInputValue, parseRoute, shortDateTime } from "./ui-helpers.js";
+import { readJson, writeJson } from "./storage.js";
+import { buildChargePayload, defaultChargeValue, escapeHtml, localDateTimeInputValue, parseRoute } from "./ui-helpers.js";
 
 const config = getAppConfig();
 const api = createApiClient(config);
 const app = document.getElementById("app");
+const UI_PREFS_KEY = "gold-drop-extraction-lab-ui-prefs-v1";
 
 const state = {
   route: parseRoute(window.location.hash || "#/login"),
@@ -17,9 +19,16 @@ const state = {
   toast: "",
   lastCharge: null,
   dialog: null,
+  scanStatus: "",
 };
 
+let cameraStream = null;
+let barcodeDetector = null;
+let scanTimer = null;
+let lastScannedValue = null;
+
 window.addEventListener("hashchange", onRouteChange);
+window.addEventListener("beforeunload", stopCamera);
 
 start().catch((error) => {
   console.error(error);
@@ -51,7 +60,11 @@ async function bootstrapAuth() {
 }
 
 async function onRouteChange() {
-  state.route = parseRoute(window.location.hash || "#/login");
+  const nextRoute = parseRoute(window.location.hash || "#/login");
+  if (state.route.name === "scan" && nextRoute.name !== "scan") {
+    stopCamera();
+  }
+  state.route = nextRoute;
   await loadRoute();
   render();
 }
@@ -68,10 +81,25 @@ async function loadRoute() {
     state.lot = await api.getLot(state.route.id);
     if (!state.board) state.board = await api.getBoard("all");
   }
+  if (state.route.name === "scan") {
+    state.scanStatus = browserScanSupportMessage();
+  }
 }
 
 function navigate(hash) {
   window.location.hash = hash;
+}
+
+function loadUiPrefs() {
+  return readJson(UI_PREFS_KEY, { last_charge_weight_lbs: null });
+}
+
+function saveUiPrefs(prefs) {
+  writeJson(UI_PREFS_KEY, prefs);
+}
+
+function preferredChargePreset(maxWeight) {
+  return defaultChargeValue(maxWeight, 100);
 }
 
 function showToast(message) {
@@ -99,6 +127,7 @@ function shell(content) {
             ? `
           <nav class="nav">
             <a href="#/home" class="${state.route.name === "home" ? "active" : ""}">Home <small>Snapshot</small></a>
+            <a href="#/scan" class="${state.route.name === "scan" ? "active" : ""}">Scan / Enter Lot <small>Fast entry</small></a>
             <a href="#/reactors" class="${state.route.name === "reactors" ? "active" : ""}">Reactors <small>Control board</small></a>
             <a href="#/lots" class="${["lots", "lot", "charge"].includes(state.route.name) ? "active" : ""}">Lots <small>Charge queue</small></a>
           </nav>
@@ -147,6 +176,7 @@ function render() {
 function renderContent() {
   if (!state.auth.authenticated) return renderLogin();
   if (state.route.name === "home") return renderHome();
+  if (state.route.name === "scan") return renderScan();
   if (state.route.name === "reactors") return renderReactors();
   if (state.route.name === "lots") return renderLots();
   if (state.route.name === "lot") return renderLotDetail();
@@ -187,7 +217,8 @@ function renderHome() {
           <div class="meta">Immediate reactor status, ready lots, and the next charge decisions.</div>
         </div>
         <div class="actions">
-          <a class="btn btn-primary" href="#/reactors">Open board</a>
+          <a class="btn btn-primary" href="#/scan">Scan / Enter Lot</a>
+          <a class="btn btn-secondary" href="#/reactors">Open board</a>
           <a class="btn btn-secondary" href="#/lots">Browse lots</a>
         </div>
       </div>
@@ -206,25 +237,85 @@ function renderHome() {
         </div>
         <div class="reactor-grid">${(state.board?.reactor_cards || []).slice(0, 3).map(renderReactorCard).join("")}</div>
       </section>
-      ${
-        state.lastCharge
-          ? `
-      <section class="card accent">
-        <div class="section-head">
-          <div>
-            <div class="eyebrow">Last charge</div>
-            <h3>${escapeHtml(lotTitle(state.lastCharge.lot))}</h3>
-          </div>
+      ${renderLastChargeCard()}
+    </div>
+  `;
+}
+
+function renderLastChargeCard() {
+  if (!state.lastCharge) return "";
+  return `
+    <section class="card accent">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">Last charge</div>
+          <h3>${escapeHtml(lotTitle(state.lastCharge.lot))}</h3>
         </div>
-        <p class="subtle">${escapeHtml(String(state.lastCharge.charge?.charged_weight_lbs || 0))} lbs to Reactor ${escapeHtml(String(state.lastCharge.charge?.reactor_number || ""))}</p>
+      </div>
+      <p class="subtle">${escapeHtml(String(state.lastCharge.charge?.charged_weight_lbs || 0))} lbs to Reactor ${escapeHtml(String(state.lastCharge.charge?.reactor_number || ""))}</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="${escapeHtml(state.lastCharge.next_run_url || "#")}">Open Run in Main App</a>
+        <a class="btn btn-secondary" href="#/reactors">Back to Reactors</a>
+        <a class="btn btn-secondary" href="#/scan">Charge Another Lot</a>
+      </div>
+    </section>
+  `;
+}
+
+function renderScan() {
+  return `
+    <div class="layout-grid">
+      <div class="topbar">
+        <div>
+          <h2>Scan / Enter Lot</h2>
+          <div class="meta">Use the camera, a Bluetooth scanner, or manual tracking-ID entry to open a lot charge fast.</div>
+        </div>
         <div class="actions">
-          <a class="btn btn-primary" href="${escapeHtml(state.lastCharge.next_run_url || "#")}">Open Run in Main App</a>
-          <a class="btn btn-secondary" href="#/reactors">Back to board</a>
+          <a class="btn btn-secondary" href="#/reactors">Back to Reactors</a>
         </div>
+      </div>
+      <section class="scan-grid">
+        <article class="card scan-card">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">Camera scan</div>
+              <h3>Open the lot charge form from a barcode or QR code</h3>
+            </div>
+          </div>
+          <div class="scan-preview" id="scan-preview">
+            <video id="scan-video" playsinline muted></video>
+            <div class="scan-empty" id="scan-preview-empty">Camera preview appears here</div>
+          </div>
+          <p class="subtle" id="scan-status-text">${escapeHtml(state.scanStatus || browserScanSupportMessage())}</p>
+          <div class="actions">
+            <button class="btn btn-primary" type="button" data-action="start-camera">Start camera</button>
+            <button class="btn btn-secondary" type="button" data-action="stop-camera">Stop camera</button>
+          </div>
+        </article>
+        <article class="card scan-card">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">Manual fallback</div>
+              <h3>Type or scan a tracking ID into the field below</h3>
+            </div>
+          </div>
+          <form class="form" data-form="scan-lookup">
+            <div class="field">
+              <label for="scan-tracking-id">Tracking ID</label>
+              <input id="scan-tracking-id" name="tracking_id" autocomplete="off" placeholder="LOT-..." />
+            </div>
+            <div class="actions">
+              <button class="btn btn-primary" type="submit">Open Charge Form</button>
+              <a class="btn btn-secondary" href="#/lots">Browse Lots Instead</a>
+            </div>
+          </form>
+          <div class="preset-note">
+            <strong>Default charge preset:</strong>
+            <span>100 lbs per reactor when the lot has at least 100 lbs remaining.</span>
+          </div>
+        </article>
       </section>
-      `
-          : ""
-      }
+      ${renderLastChargeCard()}
     </div>
   `;
 }
@@ -239,6 +330,7 @@ function renderReactors() {
           <div class="meta">Advance charges through the reactor lifecycle without opening the full admin app.</div>
         </div>
         <div class="actions">
+          <a class="btn btn-primary" href="#/scan">Scan / Enter Lot</a>
           <a class="btn btn-secondary" href="#/lots">Find lot</a>
         </div>
       </div>
@@ -263,6 +355,7 @@ function renderReactors() {
         </div>
         <div class="history-grid">${(state.board?.reactor_history || []).map(renderHistoryCard).join("")}</div>
       </section>
+      ${renderLastChargeCard()}
     </div>
   `;
 }
@@ -332,6 +425,9 @@ function renderLots() {
           <h2>Chargeable Lots</h2>
           <div class="meta">Search by tracking id, supplier, strain, or batch. Open a lot to charge it fast.</div>
         </div>
+        <div class="actions">
+          <a class="btn btn-primary" href="#/scan">Scan / Enter Lot</a>
+        </div>
       </div>
       <section class="card">
         <form class="toolbar" data-form="lot-search">
@@ -343,6 +439,7 @@ function renderLots() {
       <section class="lot-grid">
         ${state.lots.length ? state.lots.map(renderLotCard).join("") : `<div class="empty">No lots match this search.</div>`}
       </section>
+      ${renderLastChargeCard()}
     </div>
   `;
 }
@@ -394,6 +491,7 @@ function renderLotDetail() {
         </div>
       </section>
       ${lot.warnings?.length ? `<section class="card warning-stack">${lot.warnings.map((warning) => `<div class="warning-row">${escapeHtml(warning)}</div>`).join("")}</section>` : ""}
+      ${renderLastChargeCard()}
     </div>
   `;
 }
@@ -404,7 +502,10 @@ function renderChargeForm() {
   const maxWeight = Number(lot.remaining_weight_lbs || 0);
   const chargeDefaults = lot.charge_defaults || {};
   const reactorCount = Number(state.board?.summary?.reactor_count || 3);
-  const defaultWeight = clampChargeWeight(chargeDefaults.charged_weight_lbs || maxWeight, maxWeight);
+  const prefs = loadUiPrefs();
+  const presetWeight = preferredChargePreset(maxWeight);
+  const lastUsedWeight = clampChargeWeight(prefs.last_charge_weight_lbs || 0, maxWeight);
+  const defaultWeight = clampChargeWeight(chargeDefaults.charged_weight_lbs || presetWeight, maxWeight) || presetWeight;
   const defaultTime = chargeDefaults.charged_at || localDateTimeInputValue();
   return `
     <div class="layout-grid">
@@ -414,6 +515,7 @@ function renderChargeForm() {
           <div class="meta">${escapeHtml(lot.tracking_id || "No tracking id")} - ${escapeHtml(lotTitle(lot))}</div>
         </div>
         <div class="actions">
+          <a class="btn btn-secondary" href="#/scan">Scan Another</a>
           <a class="btn btn-secondary" href="#/lots/${encodeURIComponent(lot.id)}">Back</a>
         </div>
       </div>
@@ -431,7 +533,7 @@ function renderChargeForm() {
         <div class="section-head">
           <div>
             <div class="eyebrow">Charge details</div>
-            <h3>Use touch-first controls and keep typing minimal.</h3>
+            <h3>Default preset is 100 lbs per reactor when the lot can support it.</h3>
           </div>
         </div>
         <div class="weight-panel">
@@ -439,11 +541,16 @@ function renderChargeForm() {
           <div class="weight-display" data-weight-display>${escapeHtml(String(defaultWeight.toFixed(1)))} lbs</div>
           <input id="charged_weight_lbs" name="charged_weight_lbs" type="range" min="0" max="${escapeHtml(String(maxWeight))}" step="0.5" value="${escapeHtml(String(defaultWeight))}" />
           <div class="weight-actions">
+            <button class="btn btn-primary" type="button" data-action="set-preset-weight" data-preset="hundred">100 lbs</button>
+            <button class="btn btn-secondary" type="button" data-action="set-preset-weight" data-preset="half">Half lot</button>
+            <button class="btn btn-secondary" type="button" data-action="set-preset-weight" data-preset="full">Full lot</button>
+            <button class="btn btn-secondary" type="button" data-action="set-preset-weight" data-preset="last" ${lastUsedWeight <= 0 ? "disabled" : ""}>Last used</button>
+          </div>
+          <div class="weight-actions">
             <button class="btn btn-secondary" type="button" data-action="adjust-weight" data-delta="-5">-5</button>
             <button class="btn btn-secondary" type="button" data-action="adjust-weight" data-delta="-1">-1</button>
             <button class="btn btn-secondary" type="button" data-action="adjust-weight" data-delta="1">+1</button>
             <button class="btn btn-secondary" type="button" data-action="adjust-weight" data-delta="5">+5</button>
-            <button class="btn btn-primary" type="button" data-action="set-full-weight">Full lot</button>
           </div>
         </div>
         <div class="field">
@@ -467,10 +574,12 @@ function renderChargeForm() {
           <textarea id="notes" name="notes" rows="3" placeholder="Optional note about staging, scale evidence, or lot condition"></textarea>
         </div>
         <div class="actions sticky-actions">
+          <a class="btn btn-secondary" href="#/scan">Charge Another Lot</a>
           <a class="btn btn-secondary" href="#/lots/${encodeURIComponent(lot.id)}">Cancel</a>
           <button class="btn btn-primary" type="submit">${state.loading ? "Recording..." : "Record Charge"}</button>
         </div>
       </form>
+      ${renderLastChargeCard()}
     </div>
   `;
 }
@@ -479,10 +588,13 @@ function bind() {
   app?.querySelectorAll("[data-action='logout']").forEach((button) => button.addEventListener("click", handleLogout));
   app?.querySelector("form[data-form='login']")?.addEventListener("submit", handleLogin);
   app?.querySelector("form[data-form='lot-search']")?.addEventListener("submit", handleLotSearch);
+  app?.querySelector("form[data-form='scan-lookup']")?.addEventListener("submit", handleScanLookup);
   app?.querySelector("form[data-form='charge']")?.addEventListener("submit", handleChargeSubmit);
   app?.querySelectorAll("[data-action='adjust-weight']").forEach((button) => button.addEventListener("click", handleWeightAdjust));
-  app?.querySelector("[data-action='set-full-weight']")?.addEventListener("click", handleFullWeight);
+  app?.querySelectorAll("[data-action='set-preset-weight']").forEach((button) => button.addEventListener("click", handlePresetWeight));
   app?.querySelector("[data-action='set-now']")?.addEventListener("click", handleSetNow);
+  app?.querySelector("[data-action='start-camera']")?.addEventListener("click", startCamera);
+  app?.querySelector("[data-action='stop-camera']")?.addEventListener("click", stopCamera);
   app?.querySelectorAll("[data-action='transition-charge']").forEach((button) => button.addEventListener("click", handleTransition));
   app?.querySelector("[data-action='close-dialog']")?.addEventListener("click", () => {
     state.dialog = null;
@@ -515,6 +627,7 @@ async function handleLogin(event) {
 }
 
 async function handleLogout() {
+  stopCamera();
   await api.logout();
   state.auth = { authenticated: false, user: null, permissions: {}, site: null };
   state.board = null;
@@ -528,6 +641,13 @@ function handleLotSearch(event) {
   event.preventDefault();
   const query = String(new FormData(event.currentTarget).get("query") || "").trim();
   navigate(query ? `#/lots?q=${encodeURIComponent(query)}` : "#/lots");
+}
+
+async function handleScanLookup(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const trackingId = String(form.get("tracking_id") || "").trim();
+  await openTrackingId(trackingId);
 }
 
 function syncWeightDisplay() {
@@ -546,10 +666,19 @@ function handleWeightAdjust(event) {
   syncWeightDisplay();
 }
 
-function handleFullWeight() {
+function presetWeightValue(preset, maxWeight) {
+  const prefs = loadUiPrefs();
+  if (preset === "full") return clampChargeWeight(maxWeight, maxWeight);
+  if (preset === "half") return halfLotChargeWeight(maxWeight);
+  if (preset === "last") return clampChargeWeight(prefs.last_charge_weight_lbs || 0, maxWeight);
+  return preferredChargePreset(maxWeight);
+}
+
+function handlePresetWeight(event) {
   const slider = app?.querySelector("input[type='range'][name='charged_weight_lbs']");
   if (!slider) return;
-  slider.value = slider.max;
+  const next = presetWeightValue(event.currentTarget.dataset.preset || "hundred", Number(slider.max || 0));
+  slider.value = String(next);
   syncWeightDisplay();
 }
 
@@ -567,6 +696,7 @@ async function handleChargeSubmit(event) {
   try {
     const result = await api.createCharge(String(form.get("lot_id") || ""), payload);
     state.lastCharge = result;
+    saveUiPrefs({ ...loadUiPrefs(), last_charge_weight_lbs: payload.charged_weight_lbs });
     state.board = await api.getBoard("all");
     showToast(`Recorded ${result.charge.charged_weight_lbs} lbs into Reactor ${result.charge.reactor_number}.`);
     navigate("#/reactors");
@@ -605,5 +735,129 @@ async function submitTransition(chargeId, targetState, cancelResolution = undefi
     render();
   } catch (error) {
     showToast(error.payload?.error?.message || error.message || "Unable to update charge state");
+  }
+}
+
+function cameraAllowedWithoutHttps() {
+  const hostname = window.location.hostname || "";
+  return window.isSecureContext || hostname === "localhost" || hostname === "127.0.0.1";
+}
+
+function browserScanSupportMessage() {
+  if (!("mediaDevices" in navigator) || !navigator.mediaDevices.getUserMedia) {
+    return "This browser does not expose camera access. Manual and Bluetooth-scanner entry are still ready.";
+  }
+  if (!cameraAllowedWithoutHttps()) {
+    return "Camera access requires HTTPS on this device. Manual and Bluetooth-scanner entry are still ready.";
+  }
+  if (!("BarcodeDetector" in window)) {
+    return "Camera barcode detection is not supported in this browser yet. Manual and Bluetooth-scanner entry are ready.";
+  }
+  return "Camera scan is idle.";
+}
+
+function setScanStatus(message) {
+  state.scanStatus = message;
+  const label = app?.querySelector("#scan-status-text");
+  if (label) label.textContent = message;
+}
+
+function scanVideoElements() {
+  return {
+    video: app?.querySelector("#scan-video"),
+    emptyState: app?.querySelector("#scan-preview-empty"),
+  };
+}
+
+function stopCamera() {
+  if (scanTimer) {
+    window.clearTimeout(scanTimer);
+    scanTimer = null;
+  }
+  if (cameraStream) {
+    cameraStream.getTracks().forEach((track) => track.stop());
+    cameraStream = null;
+  }
+  const { video, emptyState } = scanVideoElements();
+  if (video) video.srcObject = null;
+  if (emptyState) emptyState.hidden = false;
+  lastScannedValue = null;
+  if (state.route.name === "scan") {
+    setScanStatus(browserScanSupportMessage());
+  }
+}
+
+async function scanFrame() {
+  const { video } = scanVideoElements();
+  if (!barcodeDetector || !video?.srcObject) return;
+  try {
+    const barcodes = await barcodeDetector.detect(video);
+    if (Array.isArray(barcodes) && barcodes.length > 0) {
+      const rawValue = String(barcodes[0].rawValue || "").trim();
+      if (rawValue && rawValue !== lastScannedValue) {
+        lastScannedValue = rawValue;
+        setScanStatus(`Scanned ${rawValue}. Opening charge form...`);
+        await openTrackingId(rawValue);
+        return;
+      }
+    }
+  } catch (error) {
+    setScanStatus(`Camera scan error: ${error.message || "unknown error"}`);
+    stopCamera();
+    return;
+  }
+  scanTimer = window.setTimeout(scanFrame, 250);
+}
+
+async function startCamera() {
+  if (!("mediaDevices" in navigator) || !navigator.mediaDevices.getUserMedia) {
+    setScanStatus("This browser does not expose camera access. Use the manual field instead.");
+    return;
+  }
+  if (!cameraAllowedWithoutHttps()) {
+    setScanStatus("Camera access requires HTTPS on this device. Use the manual field or a Bluetooth scanner.");
+    return;
+  }
+  if (!("BarcodeDetector" in window)) {
+    setScanStatus("Barcode scanning is not supported in this browser. Use the manual field or a Bluetooth scanner.");
+    return;
+  }
+  try {
+    barcodeDetector = new window.BarcodeDetector({ formats: ["code_39", "code_128", "qr_code"] });
+  } catch {
+    setScanStatus("This browser cannot initialize barcode detection. Use the manual field instead.");
+    return;
+  }
+  try {
+    const { video, emptyState } = scanVideoElements();
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" } },
+      audio: false,
+    });
+    if (!video) return;
+    video.srcObject = cameraStream;
+    await video.play();
+    if (emptyState) emptyState.hidden = true;
+    setScanStatus("Camera live. Point it at a lot barcode or QR code.");
+    scanFrame();
+  } catch (error) {
+    setScanStatus(`Unable to start camera: ${error.message || "permission denied"}`);
+    stopCamera();
+  }
+}
+
+async function openTrackingId(trackingId) {
+  const value = String(trackingId || "").trim();
+  if (!value) {
+    showToast("Enter a tracking ID before opening the lot.");
+    return;
+  }
+  try {
+    const lot = await api.lookupLot(value);
+    stopCamera();
+    navigate(`#/lots/${encodeURIComponent(lot.id)}/charge`);
+  } catch (error) {
+    setScanStatus(error.payload?.error?.message || error.message || "Unable to find that lot.");
+    showToast(error.payload?.error?.message || error.message || "Unable to find that lot.");
   }
 }

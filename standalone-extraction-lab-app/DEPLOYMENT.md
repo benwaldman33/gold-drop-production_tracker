@@ -28,5 +28,6 @@ This app is plain HTML/CSS/JS. Any static host or Nginx site can serve it. The o
 1. Serve the app from its own path or hostname.
 2. Proxy `/api/*` to the main Gold Drop backend.
 3. Preserve the browser-facing `Host` header on proxied requests.
-4. Confirm login works with session cookies.
-5. Confirm `Reactors`, `Lots`, and `Charge` screens all load.
+4. Use HTTPS if you want iPad camera scanning to work in production.
+5. Confirm login works with session cookies.
+6. Confirm `Scan / Enter Lot`, `Reactors`, `Lots`, and `Charge` screens all load.
