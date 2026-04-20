@@ -359,6 +359,7 @@ def settings_view(root):
             cross_site_ops_enabled = "1" if root.request.form.get("cross_site_ops_enabled") else "0"
             standalone_purchasing_enabled = "1" if root.request.form.get("standalone_purchasing_enabled") else "0"
             standalone_receiving_enabled = "1" if root.request.form.get("standalone_receiving_enabled") else "0"
+            standalone_extraction_enabled = "1" if root.request.form.get("standalone_extraction_enabled") else "0"
             site_timezone_ok = True
             if site_timezone_raw:
                 try:
@@ -377,6 +378,7 @@ def settings_view(root):
                 ("cross_site_ops_enabled", cross_site_ops_enabled, "Enable cross-site operations UI surfaces for this site"),
                 ("standalone_purchasing_enabled", standalone_purchasing_enabled, "Enable standalone purchasing app workflow"),
                 ("standalone_receiving_enabled", standalone_receiving_enabled, "Enable standalone receiving intake workflow"),
+                ("standalone_extraction_enabled", standalone_extraction_enabled, "Enable standalone extraction lab workflow"),
             ):
                 existing = root.db.session.get(root.SystemSetting, key)
                 if existing:

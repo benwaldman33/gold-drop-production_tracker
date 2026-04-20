@@ -6,7 +6,7 @@ This guide explains how to use the Gold Drop web app day-to-day. It intentionall
 
 **Current release note:** the app has now been split internally across dedicated route modules for dashboard, field intake, runs, purchases, biomass, costs, inventory, batch edit, suppliers/photos, purchase import, strains, settings, and Slack integration. The workflows in this manual are still the ones you should test: routes, page names, approvals, list screens, and Slack import behavior are intended to work the same as before.
 
-**Operator-facing additions in the current release:** Purchases and Inventory are more status-first, the Journey page is richer, Slack imports now includes inbox buckets, lot labels now print with scannable barcodes, `Floor Ops` gives operators a recent activity surface, the standalone receiving app can now correct a confirmed receipt before downstream lot consumption, and the data model supports live smart-scale capture.
+**Operator-facing additions in the current release:** Purchases and Inventory are more status-first, the Journey page is richer, Slack imports now includes inbox buckets, lot labels now print with scannable barcodes, `Floor Ops` gives operators a recent activity surface, the standalone receiving app can now correct a confirmed receipt before downstream lot consumption, the standalone extraction app now mirrors the reactor workflow with touch-first controls, and the data model supports live smart-scale capture.
 
 ---
 
@@ -40,7 +40,16 @@ Use the left sidebar:
 Related mobile workflows:
 - the standalone purchasing app is intended for buyer/intake users on phone or tablet
 - the standalone receiving app is intended for dock / receiving users on phone or tablet
-- both workflows can be enabled or disabled independently by a Super Admin in **Settings -> Operational Parameters**
+- the standalone extraction app is intended for extractors and assistant extractors on phone or tablet
+- all three workflows can be enabled or disabled independently by a Super Admin in **Settings -> Operational Parameters**
+
+### Standalone Extraction Lab App
+
+- Use this app when you want a focused extraction surface without the rest of the admin UI.
+- It is built for tablet and phone use by extractors and assistant extractors.
+- The app emphasizes large buttons, weight sliders, quick `- / +` nudges, segmented reactor buttons, and minimal keyboard use.
+- It mirrors the same charge and lifecycle workflow the main app uses on `Floor Ops`.
+- After recording a charge, it can still open the main run form when deeper run editing is needed.
 
 ---
 
@@ -844,7 +853,7 @@ Use exports for reporting, reconciliation, or offline analysis.
 - After receipt is confirmed, the receiving app now offers `Edit Receipt` until the lot is used in a downstream run.
 - Once downstream processing starts, the receiving record becomes read-only and the main purchase screen shows the locked reason.
 - Delivery photos and receiving metadata are visible from the main purchase review screen.
-- `Settings -> Operational Parameters` can enable or disable the standalone purchasing and receiving workflows independently.
+- `Settings -> Operational Parameters` can enable or disable the standalone purchasing, receiving, and extraction workflows independently.
 - `Settings -> Internal API Clients` now also shows recent mobile workflow activity for audit visibility.
 
 ### Typical receiving flow

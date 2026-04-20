@@ -2,7 +2,7 @@
 
 Developer-facing implementation details. Product behavior belongs in `PRD.md`; operator steps in `USER_MANUAL.md`.
 
-Current documentation note: the standalone buying and standalone receiving surfaces should be treated as one shared mobile write platform. Keep endpoint, toggle, and audit notes aligned across both workflows.
+Current documentation note: the standalone buying, standalone receiving, and standalone extraction surfaces should be treated as one shared mobile write platform. Keep endpoint, toggle, and audit notes aligned across all three workflows.
 
 ## End-of-sprint closeout
 
@@ -62,6 +62,7 @@ This is a review checklist, not a rule to make no-op edits. Update only the docu
   - **`gold_drop/api_v1_module.py`** - token-authenticated internal read-only API routes under `/api/v1`
   - **`gold_drop/mobile_module.py`** - user-authenticated mobile write API routes under `/api/mobile/v1`
   - **`services/mobile_write_api.py`** - shared standalone/mobile write helpers for workflow enablement, same-origin enforcement, capabilities, and audit metadata
+  - **`services/extraction_charge.py`** - canonical extraction-charge creation, lifecycle validation, board visibility rules, and run-prefill helpers shared by the main app, Slack path, and standalone extraction app
   - **`gold_drop/floor_module.py`** - operator floor activity page for recent scans, recent scale captures, floor-state rollups, extraction-readiness rollups, and reactor charge queues; the template now uses the same card treatment for top summaries and detail lists so the page scans consistently with the rest of the app
   - **`static/js/scan_camera.js`** - in-browser camera scanning client for `/scan`, with `BarcodeDetector` support plus manual/scanner fallback
   - **`services/api_auth.py`** - bearer-token generation, hashing, lookup, and scope enforcement

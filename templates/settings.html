@@ -161,6 +161,10 @@
         <input type="checkbox" name="standalone_receiving_enabled" {% if system_settings.get('standalone_receiving_enabled', '1') in ('1','true','yes','on') %}checked{% endif %}>
         Enable standalone receiving intake workflow
       </label>
+      <label style="display:flex;align-items:center;gap:8px; text-transform:none; letter-spacing:0; font-size:0.85rem; color:var(--text-secondary); margin-top:6px;">
+        <input type="checkbox" name="standalone_extraction_enabled" {% if system_settings.get('standalone_extraction_enabled', '1') in ('1','true','yes','on') %}checked{% endif %}>
+        Enable standalone extraction lab workflow
+      </label>
       <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">
         These toggles gate the session-auth standalone write workflows without changing the underlying system-of-record data model.
       </div>

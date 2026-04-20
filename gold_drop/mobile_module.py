@@ -26,6 +26,22 @@ from services.mobile_write_api import (
     workflow_permissions,
 )
 from services.supplier_duplicates import supplier_duplicate_candidates
+from services.extraction_charge import (
+    build_charge_prefill_payload,
+    charge_history_entries,
+    charge_state_label,
+    create_extraction_charge,
+    default_charge_datetime_local,
+    parse_charge_datetime,
+    update_charge_state,
+)
+from gold_drop.floor_module import (
+    BOARD_VIEW_OPTIONS,
+    _build_active_reactor_board,
+    _build_floor_rollups,
+    _build_reactor_charge_view,
+    _build_reactor_history,
+)
 from gold_drop.uploads import save_uploads, allowed_image_filename
 
 
@@ -292,6 +308,104 @@ def _mobile_receiving_query(root):
     )
 
 
+def _mobile_extraction_chargeable_lots_query(root):
+    return (
+        root.PurchaseLot.query.join(root.Purchase)
+        .filter(
+            root.PurchaseLot.deleted_at.is_(None),
+            root.Purchase.deleted_at.is_(None),
+            root.PurchaseLot.remaining_weight_lbs > 0,
+            root.Purchase.purchase_approved_at.is_not(None),
+            root.Purchase.status.in_(tuple(root.INVENTORY_ON_HAND_PURCHASE_STATUSES)),
+        )
+    )
+
+
+def _mobile_extraction_lot_payload(root, lot: PurchaseLot) -> dict[str, Any]:
+    testing_status = (lot.purchase.testing_status or "pending") if lot.purchase else "pending"
+    floor_state = (lot.floor_state or "inventory").strip() or "inventory"
+    ready = bool(lot.milled and testing_status in {"completed", "not_needed"} and floor_state == "reactor_staging")
+    return {
+        "id": lot.id,
+        "tracking_id": lot.tracking_id,
+        "purchase_id": lot.purchase.id if lot.purchase else None,
+        "batch_id": lot.purchase.batch_id if lot.purchase else None,
+        "supplier_name": lot.supplier_name,
+        "strain_name": lot.strain_name,
+        "remaining_weight_lbs": float(lot.remaining_weight_lbs or 0),
+        "weight_lbs": float(lot.weight_lbs or 0),
+        "potency_pct": float(lot.potency_pct or 0) if lot.potency_pct is not None else None,
+        "testing_status": testing_status,
+        "clean_or_dirty": lot.purchase.clean_or_dirty if lot.purchase else None,
+        "floor_state": floor_state,
+        "location": lot.location,
+        "milled": bool(lot.milled),
+        "ready_for_charge": ready,
+        "recommended_weight_lbs": float(lot.remaining_weight_lbs or 0),
+        "charge_defaults": {
+            "charged_weight_lbs": f"{float(lot.remaining_weight_lbs or 0):.1f}",
+            "reactor_number": None,
+            "charged_at": default_charge_datetime_local(),
+        },
+        "warnings": [
+            warning
+            for warning in (
+                None if testing_status in {"completed", "not_needed"} else "Testing is not marked complete or waived.",
+                None if lot.milled else "Lot prep is still marked not milled.",
+                None if floor_state == "reactor_staging" else "Lot is not currently marked in reactor staging.",
+            )
+            if warning
+        ],
+    }
+
+
+def _mobile_extraction_charge_payload(root, charge) -> dict[str, Any]:
+    history = charge_history_entries(root, charge.id, limit=6)
+    lot = charge.lot
+    return {
+        "id": charge.id,
+        "status": (charge.status or "pending").strip() or "pending",
+        "state_label": charge_state_label(charge.status),
+        "reactor_number": int(charge.reactor_number or 0) if charge.reactor_number is not None else None,
+        "charged_weight_lbs": float(charge.charged_weight_lbs or 0),
+        "charged_at": charge.charged_at.isoformat() if charge.charged_at else None,
+        "charged_at_label": lot and build_charge_prefill_payload(root, lot, charge).get("charged_at_label") or None,
+        "source_mode": charge.source_mode,
+        "notes": charge.notes,
+        "run_id": charge.run_id,
+        "tracking_id": lot.tracking_id if lot else None,
+        "supplier_name": lot.supplier_name if lot else None,
+        "strain_name": lot.strain_name if lot else None,
+        "history": history,
+    }
+
+
+def _mobile_extraction_board_payload(root) -> dict[str, Any]:
+    floor_rollups = _build_floor_rollups(root)
+    active_reactor_board = _build_active_reactor_board(root)
+    reactor_queue = _build_reactor_charge_view(root)
+    reactor_history = _build_reactor_history(root, active_reactor_board["cards"])
+    return {
+        "summary": {
+            "open_lot_count": _mobile_extraction_chargeable_lots_query(root).count(),
+            "ready_count": floor_rollups["ready_count"],
+            "ready_weight_lbs": float(floor_rollups["ready_weight_lbs"] or 0),
+            "pending_prep_count": floor_rollups["pending_prep_count"],
+            "pending_testing_count": floor_rollups["pending_testing_count"],
+            "pending_charge_count": reactor_queue["pending_count"],
+            "pending_charge_weight_lbs": float(reactor_queue["pending_weight_lbs"] or 0),
+            "active_reactor_count": active_reactor_board["active_count"],
+            "reactor_count": active_reactor_board["reactor_count"],
+        },
+        "board_view_options": [{"value": value, "label": label} for value, label in BOARD_VIEW_OPTIONS],
+        "reactor_cards": active_reactor_board["cards"],
+        "pending_cards": reactor_queue["pending_cards"],
+        "applied_cards": reactor_queue["applied_cards"],
+        "reactor_history": reactor_history,
+        "floor_state_cards": floor_rollups["state_cards"],
+    }
+
+
 def _mobile_purchase_has_downstream_usage(root, purchase: Purchase) -> bool:
     return root.RunInput.query.join(
         root.PurchaseLot, root.RunInput.lot_id == root.PurchaseLot.id
@@ -491,6 +605,8 @@ def _require_mobile_workflow(root, workflow: str):
         return _json_error("Buying workflow access required.", status_code=403, code="forbidden")
     if workflow == "receiving" and not permissions["can_receive_intake"]:
         return _json_error("Receiving workflow access required.", status_code=403, code="forbidden")
+    if workflow == "extraction" and not permissions["can_extract_lab"]:
+        return _json_error("Extraction workflow access required.", status_code=403, code="forbidden")
     return None
 
 
@@ -540,6 +656,24 @@ def register_routes(app, root):
     def mobile_receiving_photos(opportunity_id):
         return mobile_receiving_photos_view(root, opportunity_id)
 
+    def mobile_extraction_board():
+        return mobile_extraction_board_view(root)
+
+    def mobile_extraction_lots():
+        return mobile_extraction_lots_view(root)
+
+    def mobile_extraction_lot_detail(lot_id):
+        return mobile_extraction_lot_detail_view(root, lot_id)
+
+    def mobile_extraction_lookup(tracking_id):
+        return mobile_extraction_lookup_view(root, tracking_id)
+
+    def mobile_extraction_charge(lot_id):
+        return mobile_extraction_charge_view(root, lot_id)
+
+    def mobile_extraction_transition(charge_id):
+        return mobile_extraction_transition_view(root, charge_id)
+
     def mobile_opportunity_create():
         return mobile_opportunity_create_view(root)
 
@@ -566,6 +700,12 @@ def register_routes(app, root):
     app.add_url_rule("/api/mobile/v1/receiving/queue/<opportunity_id>", endpoint="mobile_receiving_update", view_func=mobile_receiving_update, methods=["PATCH"])
     app.add_url_rule("/api/mobile/v1/receiving/queue/<opportunity_id>/receive", endpoint="mobile_receiving_receive", view_func=mobile_receiving_receive, methods=["POST"])
     app.add_url_rule("/api/mobile/v1/receiving/queue/<opportunity_id>/photos", endpoint="mobile_receiving_photos", view_func=mobile_receiving_photos, methods=["POST"])
+    app.add_url_rule("/api/mobile/v1/extraction/board", endpoint="mobile_extraction_board", view_func=mobile_extraction_board, methods=["GET"])
+    app.add_url_rule("/api/mobile/v1/extraction/lots", endpoint="mobile_extraction_lots", view_func=mobile_extraction_lots, methods=["GET"])
+    app.add_url_rule("/api/mobile/v1/extraction/lots/<lot_id>", endpoint="mobile_extraction_lot_detail", view_func=mobile_extraction_lot_detail, methods=["GET"])
+    app.add_url_rule("/api/mobile/v1/extraction/lookup/<tracking_id>", endpoint="mobile_extraction_lookup", view_func=mobile_extraction_lookup, methods=["GET"])
+    app.add_url_rule("/api/mobile/v1/extraction/lots/<lot_id>/charge", endpoint="mobile_extraction_charge", view_func=mobile_extraction_charge, methods=["POST"])
+    app.add_url_rule("/api/mobile/v1/extraction/charges/<charge_id>/transition", endpoint="mobile_extraction_transition", view_func=mobile_extraction_transition, methods=["POST"])
 
 
 def _mobile_supplier_payload(supplier: Supplier) -> dict[str, Any]:
@@ -1126,6 +1266,155 @@ def mobile_receiving_photos_view(root, opportunity_id: str):
             "photos": [_mobile_photo_payload(photo) for photo in photos],
         },
     }), 201
+
+
+def mobile_extraction_board_view(root):
+    if not current_user.is_authenticated:
+        return _json_error("Authentication required.", status_code=401, code="unauthorized")
+    if not workflow_enabled(root, "extraction"):
+        return _json_error("This standalone workflow is disabled for the site.", status_code=403, code="workflow_disabled")
+    permissions = _mobile_permissions(root, current_user)
+    if not permissions["can_extract_lab"]:
+        return _json_error("Extraction workflow access required.", status_code=403, code="forbidden")
+    return jsonify({"meta": build_meta(extra={"workflow": "extraction"}), "data": _mobile_extraction_board_payload(root)})
+
+
+def mobile_extraction_lots_view(root):
+    if not current_user.is_authenticated:
+        return _json_error("Authentication required.", status_code=401, code="unauthorized")
+    if not workflow_enabled(root, "extraction"):
+        return _json_error("This standalone workflow is disabled for the site.", status_code=403, code="workflow_disabled")
+    permissions = _mobile_permissions(root, current_user)
+    if not permissions["can_extract_lab"]:
+        return _json_error("Extraction workflow access required.", status_code=403, code="forbidden")
+    query_text = (request.args.get("q") or "").strip()
+    query = _mobile_extraction_chargeable_lots_query(root).join(root.Supplier, root.Purchase.supplier_id == root.Supplier.id)
+    if query_text:
+        q = f"%{query_text}%"
+        query = query.filter(
+            root.or_(
+                root.PurchaseLot.tracking_id.ilike(q),
+                root.PurchaseLot.strain_name.ilike(q),
+                root.Purchase.batch_id.ilike(q),
+                root.Supplier.name.ilike(q),
+            )
+        )
+    rows = query.order_by(
+        root.Purchase.purchase_date.desc().nullslast(),
+        root.PurchaseLot.id.desc(),
+    ).limit(40).all()
+    return jsonify({"meta": build_meta(extra={"workflow": "extraction", "query": query_text}), "data": [_mobile_extraction_lot_payload(root, lot) for lot in rows]})
+
+
+def mobile_extraction_lot_detail_view(root, lot_id: str):
+    if not current_user.is_authenticated:
+        return _json_error("Authentication required.", status_code=401, code="unauthorized")
+    if not workflow_enabled(root, "extraction"):
+        return _json_error("This standalone workflow is disabled for the site.", status_code=403, code="workflow_disabled")
+    permissions = _mobile_permissions(root, current_user)
+    if not permissions["can_extract_lab"]:
+        return _json_error("Extraction workflow access required.", status_code=403, code="forbidden")
+    lot = root.db.session.get(root.PurchaseLot, lot_id)
+    if not lot or lot.deleted_at is not None or lot.purchase is None or lot.purchase.deleted_at is not None:
+        return _json_error("Extraction lot not found.", status_code=404, code="not_found")
+    if float(lot.remaining_weight_lbs or 0) <= 0:
+        return _json_error("This lot has no remaining inventory.", status_code=409, code="not_chargeable")
+    return jsonify({"meta": build_meta(extra={"workflow": "extraction"}), "data": {"lot": _mobile_extraction_lot_payload(root, lot)}})
+
+
+def mobile_extraction_lookup_view(root, tracking_id: str):
+    if not current_user.is_authenticated:
+        return _json_error("Authentication required.", status_code=401, code="unauthorized")
+    if not workflow_enabled(root, "extraction"):
+        return _json_error("This standalone workflow is disabled for the site.", status_code=403, code="workflow_disabled")
+    permissions = _mobile_permissions(root, current_user)
+    if not permissions["can_extract_lab"]:
+        return _json_error("Extraction workflow access required.", status_code=403, code="forbidden")
+    lot = _mobile_extraction_chargeable_lots_query(root).filter(root.PurchaseLot.tracking_id == tracking_id).first()
+    if not lot:
+        return _json_error("Extraction lot not found.", status_code=404, code="not_found")
+    return jsonify({"meta": build_meta(extra={"workflow": "extraction"}), "data": {"lot": _mobile_extraction_lot_payload(root, lot)}})
+
+
+def mobile_extraction_charge_view(root, lot_id: str):
+    write_error = _require_mobile_workflow(root, "extraction")
+    if write_error:
+        return write_error
+    lot = root.db.session.get(root.PurchaseLot, lot_id)
+    if not lot or lot.deleted_at is not None or lot.purchase is None or lot.purchase.deleted_at is not None:
+        return _json_error("Extraction lot not found.", status_code=404, code="not_found")
+    payload = _mobile_payload()
+    try:
+        charged_weight_lbs = float(payload.get("charged_weight_lbs") or 0)
+        reactor_number = int(payload.get("reactor_number") or 0)
+        charged_at = parse_charge_datetime(payload.get("charged_at"))
+        notes = (payload.get("notes") or "").strip() or None
+        charge = create_extraction_charge(
+            root,
+            lot=lot,
+            charged_weight_lbs=charged_weight_lbs,
+            reactor_number=reactor_number,
+            charged_at=charged_at,
+            source_mode="standalone_extraction",
+            notes=notes,
+        )
+        audit_mobile_action(
+            root,
+            action="create",
+            entity_type="extraction_charge",
+            entity_id=charge.id,
+            workflow="extraction",
+            details={"lot_id": lot.id, "reactor_number": reactor_number, "charged_weight_lbs": charged_weight_lbs},
+            user_id=current_user.id,
+        )
+        root.session[root.SCAN_RUN_PREFILL_SESSION_KEY] = build_charge_prefill_payload(root, lot, charge)
+        root.db.session.commit()
+        return jsonify({
+            "meta": build_meta(extra={"workflow": "extraction"}),
+            "data": {
+                "charge": _mobile_extraction_charge_payload(root, charge),
+                "lot": _mobile_extraction_lot_payload(root, lot),
+                "next_run_url": root.url_for("run_new", return_to=root.url_for("floor_ops")),
+            },
+        }), 201
+    except ValueError as exc:
+        root.db.session.rollback()
+        return _json_error(str(exc), status_code=400, code="bad_request")
+
+
+def mobile_extraction_transition_view(root, charge_id: str):
+    write_error = _require_mobile_workflow(root, "extraction")
+    if write_error:
+        return write_error
+    charge = root.db.session.get(root.ExtractionCharge, charge_id)
+    if charge is None:
+        return _json_error("Extraction charge not found.", status_code=404, code="not_found")
+    payload = _mobile_payload()
+    target_state = (payload.get("target_state") or "").strip()
+    cancel_resolution = (payload.get("cancel_resolution") or "").strip().lower() or None
+    try:
+        update_charge_state(
+            root,
+            charge,
+            target_state,
+            history_entries=charge_history_entries(root, charge.id, limit=20),
+            cancel_resolution=cancel_resolution,
+            context={"source": "standalone_extraction"},
+        )
+        audit_mobile_action(
+            root,
+            action="transition",
+            entity_type="extraction_charge",
+            entity_id=charge.id,
+            workflow="extraction",
+            details={"target_state": target_state, "cancel_resolution": cancel_resolution},
+            user_id=current_user.id,
+        )
+        root.db.session.commit()
+        return jsonify({"meta": build_meta(extra={"workflow": "extraction"}), "data": {"charge": _mobile_extraction_charge_payload(root, charge)}})
+    except ValueError as exc:
+        root.db.session.rollback()
+        return _json_error(str(exc), status_code=400, code="bad_request")
 
 
 def mobile_opportunity_photos_view(root, opportunity_id: str):

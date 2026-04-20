@@ -1,0 +1,97 @@
+const seed = {
+  session: {
+    authenticated: true,
+    user: {
+      id: "ops-1",
+      username: "extractor1",
+      display_name: "Extractor One",
+      role: "extractor",
+    },
+    permissions: {
+      can_extract_lab: true,
+    },
+    site: {
+      site_code: "MOCK",
+      site_name: "Gold Drop Mock Site",
+      site_timezone: "America/Los_Angeles",
+    },
+  },
+  lots: [
+    {
+      id: "lot-1001",
+      tracking_id: "LOT-A1B2C3D4",
+      purchase_id: "pur-1",
+      batch_id: "BATCH-1001",
+      supplier_name: "Forest Farms",
+      strain_name: "Blue Dream",
+      remaining_weight_lbs: 88.5,
+      weight_lbs: 100,
+      potency_pct: 27.2,
+      testing_status: "completed",
+      clean_or_dirty: "clean",
+      floor_state: "reactor_staging",
+      location: "Prep Bay",
+      milled: true,
+      ready_for_charge: true,
+      recommended_weight_lbs: 88.5,
+      charge_defaults: {
+        charged_weight_lbs: "88.5",
+        reactor_number: null,
+        charged_at: "2026-04-19T08:15",
+      },
+      warnings: [],
+    },
+    {
+      id: "lot-1002",
+      tracking_id: "LOT-E5F6G7H8",
+      purchase_id: "pur-2",
+      batch_id: "BATCH-1002",
+      supplier_name: "Crazy Horse Farm",
+      strain_name: "MAC 1",
+      remaining_weight_lbs: 64,
+      weight_lbs: 64,
+      potency_pct: 24.3,
+      testing_status: "pending",
+      clean_or_dirty: "clean",
+      floor_state: "inventory",
+      location: "Vault B",
+      milled: false,
+      ready_for_charge: false,
+      recommended_weight_lbs: 64,
+      charge_defaults: {
+        charged_weight_lbs: "64.0",
+        reactor_number: null,
+        charged_at: "2026-04-19T08:15",
+      },
+      warnings: [
+        "Testing is not marked complete or waived.",
+        "Lot prep is still marked not milled.",
+        "Lot is not currently marked in reactor staging.",
+      ],
+    },
+  ],
+  charges: [
+    {
+      id: "chg-1001",
+      status: "running",
+      state_label: "Running",
+      reactor_number: 1,
+      charged_weight_lbs: 55,
+      charged_at: "2026-04-19T14:00:00Z",
+      charged_at_label: "2026-04-19 07:00",
+      source_mode: "standalone extraction",
+      notes: "Morning charge",
+      run_id: "run-501",
+      tracking_id: "LOT-A1B2C3D4",
+      supplier_name: "Forest Farms",
+      strain_name: "Blue Dream",
+      history: [
+        { label: "State -> Running", timestamp_label: "2026-04-19 07:20", details: { to_state: "running" } },
+      ],
+    },
+  ],
+};
+
+export function cloneSeedState() {
+  return JSON.parse(JSON.stringify(seed));
+}
