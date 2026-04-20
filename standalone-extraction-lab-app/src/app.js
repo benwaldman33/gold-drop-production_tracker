@@ -2,7 +2,7 @@ import { createApiClient } from "./api.js";
 import { clampChargeWeight, halfLotChargeWeight, lotTitle, readyLotCount, stateTone } from "./domain.js";
 import { getAppConfig } from "./config.js";
 import { readJson, writeJson } from "./storage.js";
-import { buildChargePayload, defaultChargeValue, defaultReactorValue, escapeHtml, localDateTimeInputValue, parseRoute } from "./ui-helpers.js";
+import { buildChargePayload, buildReactorActionMarkup, defaultChargeValue, defaultReactorValue, escapeHtml, localDateTimeInputValue, parseRoute } from "./ui-helpers.js";
 
 const config = getAppConfig();
 const api = createApiClient(config);
@@ -423,7 +423,7 @@ function renderReactorCard(card) {
           <strong>${escapeHtml(`${current.supplier_name} - ${current.strain_name}`)}</strong>
           <div class="meta-row"><span>${escapeHtml(current.tracking_id || "No tracking id")}</span><span>${escapeHtml(String(current.charged_weight_lbs || 0))} lbs</span></div>
           <div class="meta-row"><span>${escapeHtml(current.charged_at_label || "")}</span><span>${escapeHtml(current.operator_name || "Unassigned")}</span></div>
-          <div class="meta-row"><span>${escapeHtml(current.source_mode || "main app")}</span><a class="inline-link" href="#/runs/charge/${escapeHtml(current.charge_id)}">Open Run</a></div>
+          <div class="meta-row"><span>${escapeHtml(current.source_mode || "main app")}</span><span>${escapeHtml(current.run_id ? "Run linked" : "Run not started")}</span></div>
           ${renderActionBar(current)}
         </div>
       `
@@ -437,15 +437,7 @@ function renderReactorCard(card) {
 }
 
 function renderActionBar(current) {
-  const actions = current.available_actions || [];
-  if (!actions.length) return "";
-  return `
-    <div class="action-grid">
-      ${actions
-        .map((action) => `<button class="btn ${action.target_state === "cancelled" ? "btn-danger" : "btn-secondary"}" data-action="transition-charge" data-charge-id="${escapeHtml(current.charge_id)}" data-target-state="${escapeHtml(action.target_state)}">${escapeHtml(action.label)}</button>`)
-        .join("")}
-    </div>
-  `;
+  return buildReactorActionMarkup(current, escapeHtml);
 }
 
 function renderHistoryCard(card) {

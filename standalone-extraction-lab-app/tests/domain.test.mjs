@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { clampChargeWeight, halfLotChargeWeight, lotTitle, normalizeText, preferredChargeWeight, readyLotCount, stateTone } from "../src/domain.js";
-import { defaultChargeValue, defaultReactorValue, parseRoute } from "../src/ui-helpers.js";
+import { buildReactorActionMarkup, defaultChargeValue, defaultReactorValue, parseRoute } from "../src/ui-helpers.js";
 
 test("normalizeText trims and lowercases", () => {
   assert.equal(normalizeText("  Reactor   Bay "), "reactor bay");
@@ -33,4 +33,17 @@ test("lotTitle and readiness helpers stay operator-readable", () => {
   assert.equal(lotTitle({ supplier_name: "Forest Farms", strain_name: "Blue Dream" }), "Forest Farms - Blue Dream");
   assert.equal(readyLotCount([{ ready_for_charge: true }, { ready_for_charge: false }, { ready_for_charge: true }]), 2);
   assert.equal(stateTone("cancelled"), "danger");
+});
+
+test("reactor action markup promotes open run to a primary button", () => {
+  const markup = buildReactorActionMarkup({
+    charge_id: "chg-123",
+    available_actions: [
+      { target_state: "running", label: "Mark Running" },
+      { target_state: "cancelled", label: "Cancel Charge" },
+    ],
+  });
+  assert.match(markup, /class="btn btn-primary" href="#\/runs\/charge\/chg-123">Open Run<\/a>/);
+  assert.match(markup, /Mark Running/);
+  assert.match(markup, /Cancel Charge/);
 });

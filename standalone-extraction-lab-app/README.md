@@ -11,6 +11,7 @@ Touch-first operator app for the extraction lab workflow. It mirrors the main ap
 - touch-friendly extraction charge form with `100 lbs`, `Half lot`, `Full lot`, and `Last used` presets plus last-reactor recall
 - standalone run-execution screen with timer controls, blend capture, fill / flush fields, CRC blend, baskets, and notes
 - reactor lifecycle actions from the board
+- full-size `Open Run` button on reactor cards so the linked-run step is obvious on iPad
 - handoff link into the main run form after recording a charge
 
 ## Local Development
