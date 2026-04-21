@@ -668,6 +668,19 @@ def test_mobile_extraction_board_and_lot_listing():
     lot_id = None
     try:
         with app.app_context():
+            for key, value in (
+                ("extraction_default_biomass_blend_milled_pct", "50"),
+                ("extraction_default_fill_count", "2"),
+                ("extraction_default_flush_count", "3"),
+                ("extraction_default_stringer_basket_count", "10"),
+                ("extraction_default_crc_blend", "House CRC Default"),
+            ):
+                setting = db.session.get(SystemSetting, key)
+                if setting is None:
+                    setting = SystemSetting(key=key, value=value)
+                    db.session.add(setting)
+                else:
+                    setting.value = value
             ops_user = app_module.User.query.filter_by(username="ops").first()
             purchase = Purchase(
                 supplier_id=supplier_id,
@@ -842,6 +855,18 @@ def test_mobile_extraction_run_execution_flow():
     run_id = None
     try:
         with app.app_context():
+            for key, value in (
+                ("extraction_default_biomass_blend_milled_pct", "50"),
+                ("extraction_default_fill_count", "2"),
+                ("extraction_default_flush_count", "3"),
+                ("extraction_default_stringer_basket_count", "10"),
+                ("extraction_default_crc_blend", "House CRC Default"),
+            ):
+                setting = db.session.get(SystemSetting, key)
+                if setting is None:
+                    db.session.add(SystemSetting(key=key, value=value))
+                else:
+                    setting.value = value
             ops_user = app_module.User.query.filter_by(username="ops").first()
             purchase = Purchase(
                 supplier_id=supplier_id,
@@ -892,6 +917,12 @@ def test_mobile_extraction_run_execution_flow():
             assert run_id is None
             assert run_payload["run"]["reactor_number"] == 1
             assert run_payload["run"]["bio_in_reactor_lbs"] == 50.0
+            assert run_payload["run"]["biomass_blend_milled_pct"] == 50.0
+            assert run_payload["run"]["biomass_blend_unmilled_pct"] == 50.0
+            assert run_payload["run"]["fill_count"] == 2
+            assert run_payload["run"]["flush_count"] == 3
+            assert run_payload["run"]["stringer_basket_count"] == 10
+            assert run_payload["run"]["crc_blend"] == "House CRC Default"
             assert run_payload["run"]["inherited"]["tracking_id"]
 
             run_save = client.post(

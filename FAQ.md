@@ -438,3 +438,16 @@ If `Settings -> Operational Parameters` has standalone buying, standalone receiv
 Unsafe mobile writes now enforce same-origin browser requests.
 
 If a browser sends an `Origin` header for a different host than the Gold Drop app, the request is rejected before saving. This is intentional hardening for the standalone buying, receiving, and extraction surfaces.
+## How do extraction-run defaults work in the standalone iPad app?
+
+Super Admin can set default extractor assumptions in `Settings -> Operational Parameters -> Extraction run defaults`.
+
+Those defaults prepopulate the standalone run screen for new charge-linked runs, including:
+
+- milled / unmilled biomass blend
+- fill count
+- flush count
+- stringer basket count
+- CRC blend
+
+Operators can still override any of those values on a specific run before saving.

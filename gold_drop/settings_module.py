@@ -20,6 +20,7 @@ from services.field_submissions import (
 )
 from services.api_auth import generate_api_token, hash_api_token
 from services.extraction_charge import REACTOR_LIFECYCLE_DEFAULTS, reactor_lifecycle_settings
+from services.extraction_run import EXTRACTION_RUN_DEFAULTS
 from services.site_aggregation import normalize_remote_base_url, pull_all_remote_sites, pull_remote_site
 from services.scale_ingest import SCALE_INTERFACE_TYPES, capture_weight_from_device_payload
 
@@ -417,6 +418,44 @@ def settings_view(root):
                         existing.value = val
                     else:
                         root.db.session.add(root.SystemSetting(key=key, value=val, description=desc))
+
+            extraction_default_specs = (
+                ("extraction_default_biomass_blend_milled_pct", 100.0, 0.0, 100.0),
+                ("extraction_default_fill_count", 1.0, 0.0, None),
+                ("extraction_default_flush_count", 0.0, 0.0, None),
+                ("extraction_default_stringer_basket_count", 0.0, 0.0, None),
+            )
+            for key, fallback, min_value, max_value in extraction_default_specs:
+                raw = (root.request.form.get(key) or "").strip()
+                try:
+                    parsed = float(raw) if raw else fallback
+                except ValueError:
+                    parsed = fallback
+                if parsed < min_value:
+                    parsed = min_value
+                if max_value is not None and parsed > max_value:
+                    parsed = max_value
+                if key != "extraction_default_biomass_blend_milled_pct":
+                    parsed = int(parsed)
+                desc = EXTRACTION_RUN_DEFAULTS[key][1]
+                existing = root.db.session.get(root.SystemSetting, key)
+                if existing:
+                    existing.value = str(parsed)
+                else:
+                    root.db.session.add(root.SystemSetting(key=key, value=str(parsed), description=desc))
+
+            crc_default = (root.request.form.get("extraction_default_crc_blend") or "").strip()
+            crc_existing = root.db.session.get(root.SystemSetting, "extraction_default_crc_blend")
+            if crc_existing:
+                crc_existing.value = crc_default
+            else:
+                root.db.session.add(
+                    root.SystemSetting(
+                        key="extraction_default_crc_blend",
+                        value=crc_default,
+                        description=EXTRACTION_RUN_DEFAULTS["extraction_default_crc_blend"][1],
+                    )
+                )
             running_linked_val = "1" if root.request.form.get("reactor_running_requires_linked_run") else "0"
             show_history_val = "1" if root.request.form.get("reactor_show_state_history") else "0"
             for key, val, desc in (
