@@ -51,6 +51,9 @@ a:hover { color: var(--gold-light); }
   left: 0;
   bottom: 0;
   z-index: 100;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 .sidebar-logo {
   padding: 20px 20px 16px;
