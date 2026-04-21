@@ -40,12 +40,19 @@ from flask import (Flask, render_template, request, redirect, url_for, flash,
 from flask_login import (login_user, logout_user, login_required,
                          current_user)
 from sqlalchemy import func, desc, and_, or_, text, select, exists
+from werkzeug.utils import secure_filename
 
 from models import (db, User, Supplier, Purchase, PurchaseLot, Run, RunInput, ExtractionCharge,
                     KpiTarget, SystemSetting, AuditLog, BiomassAvailability, CostEntry,
                     FieldAccessToken, FieldPurchaseSubmission, LabTest, SupplierAttachment, PhotoAsset,
                     SlackIngestedMessage, SlackChannelSyncConfig, LotScanEvent, ScaleDevice, WeightCapture, gen_uuid)
-from purchase_import import parse_purchase_spreadsheet_upload
+from purchase_import import (
+    PURCHASE_IMPORT_FIELDS,
+    parse_purchase_spreadsheet_upload,
+    parse_purchase_spreadsheet_upload_for_mapping,
+    purchase_import_field_choices,
+    purchase_import_rows_from_mapping,
+)
 from blueprints import register_blueprints
 from policies.purchase_status import (
     require_approval_for_on_hand_status,

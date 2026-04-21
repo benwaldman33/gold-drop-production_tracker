@@ -12,10 +12,11 @@
 <div class="card">
   <p class="text-sm cell-muted" style="margin-bottom:16px;line-height:1.6;">
     Upload a <strong>.csv</strong>, <strong>.xlsx</strong>, or <strong>.xlsm</strong> file. The first row with recognizable column headers is used as the header row
-    (Supplier/Farm/Source, Date, Weight, etc.).     Required: <strong>Vendor</strong>/<strong>Supplier</strong>, <strong>Purchase date</strong> (or <strong>Paid date</strong> as fallback),
+    (Supplier/Farm/Source, Date, Weight, etc.). After upload, you can interactively remap any column before importing.
+    Required: <strong>Vendor</strong>/<strong>Supplier</strong>, <strong>Purchase date</strong> (or <strong>Paid date</strong> as fallback),
     and <strong>invoice/stated weight</strong> (or <strong>actual weight</strong> if invoice is blank).
     Recognized accounting-style headers include <strong>Week</strong>, <strong>Paid date</strong>, <strong>Amount</strong>, <strong>Payment method</strong>,
-    <strong>Invoice weight</strong>, <strong>Actual weight</strong>, and <strong>Manifest</strong> (batch id). Amount is stored as total cost; implied $/lb is filled when possible.
+    <strong>Invoice weight</strong>, <strong>Actual weight</strong>, and <strong>Manifest</strong> (batch id), plus pipeline/testing and lot fields.
   </p>
   <form id="purchase-import-form" method="POST" enctype="multipart/form-data" style="margin:0;">
     <input type="file" id="purchase-import-file" name="spreadsheet" accept=".csv,.xlsx,.xlsm" style="display:none;">

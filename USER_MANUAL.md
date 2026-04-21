@@ -479,11 +479,11 @@ If a buyer created or edited the opportunity on iPad first, those values should 
 Use **Purchases** → **Import spreadsheet** when you have many purchases in Excel or CSV (for example accounting exports with **Vendor**, **Purchase Date**, **Invoice Weight**, **Actual Weight**, **Manifest**, **Amount**, **Paid Date**, **Payment Method**, **Week**).
 
 1. Drag a **.csv**, **.xlsx**, or **.xlsm** file onto the drop zone (or click to browse). Upload starts automatically after you pick a file.
-2. The app finds a header row and maps familiar column names. Fix any problems shown on the **preview** (missing date or weight, duplicate manifest/batch ID, etc.).
+2. The app finds a header row and suggests mappings for familiar column names. On the preview page, adjust any column mappings you want before importing.
 3. Choose which valid rows to import. You can turn on **Create missing suppliers** so new vendor names become supplier records (matched case-insensitively by name).
 4. Confirm import.
 
-**Tips:** A **Download sample CSV** link on the import page shows expected-style headers. If **purchase date** is empty but **paid date** is filled, the app may use paid date as the purchase date. If **invoice weight** is empty but **actual weight** is present, actual weight can stand in for stated weight. **Amount** is stored as **total cost**; **Week** / paid date / payment method are added to **notes** for traceability.
+**Tips:** A **Download sample CSV** link on the import page shows expected-style headers. If **purchase date** is empty but **paid date** is filled, the app may use paid date as the purchase date. If **invoice weight** is empty but **actual weight** is present, actual weight can stand in for stated weight. **Amount** is stored as **total cost**; **Week** / paid date / payment method are added to **notes** for traceability. The preview mapper now also supports purchase workflow fields such as **Availability Date**, **Testing Notes**, **Delivery Notes**, **Testing Timing / Status / Date**, and single-lot fields like **Strain**, **Lot location**, **Floor state**, **Milled**, **Lot potency**, and **Lot notes**.
 
 **Approval:** Imported rows are created **without** automatic approval. If a row’s status would normally put material **on hand**, the app stores a non-on-hand status (typically **ordered**) until someone **Approves** the purchase and sets the correct status on **Edit Purchase**.
 
