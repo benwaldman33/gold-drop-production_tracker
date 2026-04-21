@@ -422,27 +422,37 @@ def settings_view(root):
             extraction_default_specs = (
                 ("extraction_default_biomass_blend_milled_pct", 100.0, 0.0, 100.0),
                 ("extraction_default_fill_count", 1.0, 0.0, None),
+                ("extraction_default_fill_total_weight_lbs", None, 0.0, None),
                 ("extraction_default_flush_count", 0.0, 0.0, None),
+                ("extraction_default_flush_total_weight_lbs", None, 0.0, None),
                 ("extraction_default_stringer_basket_count", 0.0, 0.0, None),
             )
             for key, fallback, min_value, max_value in extraction_default_specs:
                 raw = (root.request.form.get(key) or "").strip()
-                try:
-                    parsed = float(raw) if raw else fallback
-                except ValueError:
-                    parsed = fallback
-                if parsed < min_value:
-                    parsed = min_value
-                if max_value is not None and parsed > max_value:
-                    parsed = max_value
-                if key != "extraction_default_biomass_blend_milled_pct":
-                    parsed = int(parsed)
+                parsed = fallback
+                if raw:
+                    try:
+                        parsed = float(raw)
+                    except ValueError:
+                        parsed = fallback
+                if parsed is not None:
+                    if parsed < min_value:
+                        parsed = min_value
+                    if max_value is not None and parsed > max_value:
+                        parsed = max_value
+                    if key in {
+                        "extraction_default_fill_count",
+                        "extraction_default_flush_count",
+                        "extraction_default_stringer_basket_count",
+                    }:
+                        parsed = int(parsed)
                 desc = EXTRACTION_RUN_DEFAULTS[key][1]
                 existing = root.db.session.get(root.SystemSetting, key)
+                value = "" if parsed is None else str(parsed)
                 if existing:
-                    existing.value = str(parsed)
+                    existing.value = value
                 else:
-                    root.db.session.add(root.SystemSetting(key=key, value=str(parsed), description=desc))
+                    root.db.session.add(root.SystemSetting(key=key, value=value, description=desc))
 
             crc_default = (root.request.form.get("extraction_default_crc_blend") or "").strip()
             crc_existing = root.db.session.get(root.SystemSetting, "extraction_default_crc_blend")

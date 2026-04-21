@@ -14,24 +14,40 @@ from services.lot_allocation import apply_run_allocations
 EXTRACTION_RUN_DEFAULTS = {
     "extraction_default_biomass_blend_milled_pct": ("100", "Default milled biomass percentage for extraction run drafts"),
     "extraction_default_fill_count": ("1", "Default fill count for extraction run drafts"),
+    "extraction_default_fill_total_weight_lbs": ("", "Default total fill weight (lbs) for extraction run drafts"),
     "extraction_default_flush_count": ("0", "Default flush count for extraction run drafts"),
+    "extraction_default_flush_total_weight_lbs": ("", "Default total flush weight (lbs) for extraction run drafts"),
     "extraction_default_stringer_basket_count": ("0", "Default stringer basket count for extraction run drafts"),
     "extraction_default_crc_blend": ("", "Default CRC blend note for extraction run drafts"),
 }
+
+
+def _setting_float_or_none(root, key: str) -> float | None:
+    raw = (root.SystemSetting.get(key, "") or "").strip()
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
 
 
 def extraction_run_defaults(root) -> dict[str, float | int | str]:
     milled_pct = root.SystemSetting.get_float("extraction_default_biomass_blend_milled_pct", 100.0)
     milled_pct = max(0.0, min(100.0, float(milled_pct)))
     fill_count = max(0, int(root.SystemSetting.get_float("extraction_default_fill_count", 1) or 0))
+    fill_total_weight_lbs = _setting_float_or_none(root, "extraction_default_fill_total_weight_lbs")
     flush_count = max(0, int(root.SystemSetting.get_float("extraction_default_flush_count", 0) or 0))
+    flush_total_weight_lbs = _setting_float_or_none(root, "extraction_default_flush_total_weight_lbs")
     stringer_basket_count = max(0, int(root.SystemSetting.get_float("extraction_default_stringer_basket_count", 0) or 0))
     crc_blend = (root.SystemSetting.get("extraction_default_crc_blend", "") or "").strip()
     return {
         "biomass_blend_milled_pct": milled_pct,
         "biomass_blend_unmilled_pct": round(100.0 - milled_pct, 1),
         "fill_count": fill_count,
+        "fill_total_weight_lbs": fill_total_weight_lbs,
         "flush_count": flush_count,
+        "flush_total_weight_lbs": flush_total_weight_lbs,
         "stringer_basket_count": stringer_basket_count,
         "crc_blend": crc_blend,
     }
@@ -140,10 +156,13 @@ def _draft_run_for_charge(root, charge):
     run.biomass_blend_milled_pct = defaults["biomass_blend_milled_pct"]
     run.biomass_blend_unmilled_pct = defaults["biomass_blend_unmilled_pct"]
     run.fill_count = defaults["fill_count"]
+    run.fill_total_weight_lbs = defaults["fill_total_weight_lbs"]
     run.flush_count = defaults["flush_count"]
+    run.flush_total_weight_lbs = defaults["flush_total_weight_lbs"]
     run.stringer_basket_count = defaults["stringer_basket_count"]
     run.crc_blend = defaults["crc_blend"] or None
-    run.fill_total_weight_lbs = float(charge.charged_weight_lbs or 0)
+    if run.fill_total_weight_lbs is None:
+        run.fill_total_weight_lbs = float(charge.charged_weight_lbs or 0)
     return run
 
 

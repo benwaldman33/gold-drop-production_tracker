@@ -225,10 +225,21 @@
           <label>Default stringer basket count</label>
           <input type="number" name="extraction_default_stringer_basket_count" value="{{ system_settings.get('extraction_default_stringer_basket_count', '0') }}" step="1" min="0">
         </div>
+        <div class="form-group">
+          <label>Default total fill weight (lbs)</label>
+          <input type="number" name="extraction_default_fill_total_weight_lbs" value="{{ system_settings.get('extraction_default_fill_total_weight_lbs', '') }}" step="0.1" min="0" placeholder="Optional">
+        </div>
+        <div class="form-group">
+          <label>Default total flush weight (lbs)</label>
+          <input type="number" name="extraction_default_flush_total_weight_lbs" value="{{ system_settings.get('extraction_default_flush_total_weight_lbs', '') }}" step="0.1" min="0" placeholder="Optional">
+        </div>
+      </div>
+      <div class="form-row-3" style="margin-top:8px;">
         <div class="form-group" style="grid-column: span 2;">
           <label>Default CRC blend</label>
           <input type="text" name="extraction_default_crc_blend" value="{{ system_settings.get('extraction_default_crc_blend', '') }}" maxlength="200" placeholder="Optional default CRC blend">
         </div>
+        <div class="form-group"></div>
       </div>
     </div>
     <div class="form-group" style="margin-top:16px;">

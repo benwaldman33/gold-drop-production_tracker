@@ -54,7 +54,7 @@ Related mobile workflows:
 - It mirrors the same charge and lifecycle workflow the main app uses on `Floor Ops`.
 - After recording a charge, it can now open a dedicated standalone run-execution screen for the extractor workflow, and it can still open the main run form when deeper admin editing is needed.
 - On the `Reactors` board, use the large `Open Run` button on the reactor card before `Mark Running` when the current policy requires a linked run.
-- `Settings -> Operational Parameters -> Extraction run defaults` controls the initial values the standalone run screen opens with for blend, fill count, flush count, stringer baskets, and CRC blend.
+- `Settings -> Operational Parameters -> Extraction run defaults` controls the initial values the standalone run screen opens with for blend, fill count, total fill weight, flush count, total flush weight, stringer baskets, and CRC blend.
 
 ---
 

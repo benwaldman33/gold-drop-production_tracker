@@ -671,7 +671,9 @@ def test_mobile_extraction_board_and_lot_listing():
             for key, value in (
                 ("extraction_default_biomass_blend_milled_pct", "50"),
                 ("extraction_default_fill_count", "2"),
+                ("extraction_default_fill_total_weight_lbs", "47.5"),
                 ("extraction_default_flush_count", "3"),
+                ("extraction_default_flush_total_weight_lbs", "11.5"),
                 ("extraction_default_stringer_basket_count", "10"),
                 ("extraction_default_crc_blend", "House CRC Default"),
             ):
@@ -858,7 +860,9 @@ def test_mobile_extraction_run_execution_flow():
             for key, value in (
                 ("extraction_default_biomass_blend_milled_pct", "50"),
                 ("extraction_default_fill_count", "2"),
+                ("extraction_default_fill_total_weight_lbs", "47.5"),
                 ("extraction_default_flush_count", "3"),
+                ("extraction_default_flush_total_weight_lbs", "11.5"),
                 ("extraction_default_stringer_basket_count", "10"),
                 ("extraction_default_crc_blend", "House CRC Default"),
             ):
@@ -920,7 +924,9 @@ def test_mobile_extraction_run_execution_flow():
             assert run_payload["run"]["biomass_blend_milled_pct"] == 50.0
             assert run_payload["run"]["biomass_blend_unmilled_pct"] == 50.0
             assert run_payload["run"]["fill_count"] == 2
+            assert run_payload["run"]["fill_total_weight_lbs"] == 47.5
             assert run_payload["run"]["flush_count"] == 3
+            assert run_payload["run"]["flush_total_weight_lbs"] == 11.5
             assert run_payload["run"]["stringer_basket_count"] == 10
             assert run_payload["run"]["crc_blend"] == "House CRC Default"
             assert run_payload["run"]["inherited"]["tracking_id"]

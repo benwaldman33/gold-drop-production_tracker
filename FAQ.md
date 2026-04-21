@@ -446,7 +446,9 @@ Those defaults prepopulate the standalone run screen for new charge-linked runs,
 
 - milled / unmilled biomass blend
 - fill count
+- total fill weight
 - flush count
+- total flush weight
 - stringer basket count
 - CRC blend
 
