@@ -49,6 +49,6 @@
 - `Open Run` shows inherited reactor, source, strain, and biomass weight from the charge
 - `Start / Now` and `Stop / Now` buttons stamp the timer fields without typing
 - biomass blend slider updates milled / unmilled percentages to total `100`
-- saved extraction defaults from `Settings -> Operational Parameters` prepopulate the standalone run screen for new charge-linked runs
+- saved extraction defaults from `Settings -> Operational Parameters` prepopulate the standalone run screen for new charge-linked runs, including aggregate fill / flush weights when configured
 - fill, flush, and stringer basket counters respond to `- / +`
 - saving the run keeps the reactor-linked workflow intact and leaves `Open in Main App` available
