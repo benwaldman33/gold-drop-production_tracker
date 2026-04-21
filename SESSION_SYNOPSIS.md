@@ -1,122 +1,212 @@
-# Session Synopsis - 2026-04-18
+# Session Synopsis - 2026-04-20
 
-This file is a short continuity checkpoint so work can resume quickly after an interruption.
+This file is the current continuity checkpoint so work can resume quickly after an interruption.
 
 ## Current state
 
 - Local working branch: `Claude_Consolidation`
+- Local branch head: `15e58d1`
 - Production branch: `main`
-- `main` has already been merged and pushed with today's extractor workflow work
-- Latest pushed `main` merge commit at the time of this note: `dd63ff0`
+- Latest pushed `main` commit: `660bed5`
+- The extractor workflow is now live across:
+  - main app `Floor Ops`
+  - main app purchase / inventory lot actions
+  - standalone extraction lab iPad app
 
-## What shipped today
+## What is working now
 
-### 1. Extraction charge workflow
+### 1. Main extraction workflow
 
-Implemented and verified:
+Implemented and live:
 
-- persisted `ExtractionCharge` model in `models.py`
-- new shared service: `services/extraction_charge.py`
-- main app lot action: `Charge Lot` from `templates/purchase_form.html`
-- scan-driven charge flow:
-  - `/scan/lot/<tracking_id>`
-  - `/scan/lot/<tracking_id>/charge`
-- charge form template:
-  - `templates/extraction_charge_form.html`
-- run form integration:
-  - saved charge preloads `runs/new`
-  - saving the run links the `ExtractionCharge` to that run and marks it `applied`
-
-### 2. Layout fix
-
-There was a formatting issue on the extraction charge page.
-
-Cause:
-
-- `templates/extraction_charge_form.html` initially missed `{% extends "base.html" %}`
-
-Fix:
-
-- added the base template inheritance
-- verified with targeted regression
-- pushed and merged to `main`
-
-### 3. Reactor charge queue on Floor Ops
-
-Implemented and verified:
-
-- `gold_drop/floor_module.py` now builds reactor-oriented charge visibility from `ExtractionCharge`
-- `templates/floor_ops.html` now shows:
-  - `Pending Charges`
+- persisted `ExtractionCharge` lifecycle
+- lot charging from:
+  - `Purchases -> Edit -> Charge Lot`
+  - `Inventory -> Biomass On Hand -> Charge`
+  - scanned lot workflow
+- `Floor Ops` now shows:
+  - `Floor Snapshot`
+  - `Extraction Readiness`
+  - `Floor State Rollup`
+  - `Active Reactor Board`
   - `Reactor Charge Queue`
+  - `Reactor History Today`
+  - `Recent Scan Activity`
   - `Recently Applied Charges`
-  - `Open Run` links for applied charges
 
-This is the next extractor-facing slice after the basic charge workflow.
+### 2. Reactor lifecycle controls
+
+Implemented and live:
+
+- explicit charge states:
+  - `pending`
+  - `in_reactor`
+  - `running`
+  - `completed`
+  - `cancelled`
+- lifecycle actions on reactor cards:
+  - `Mark In Reactor`
+  - `Mark Running`
+  - `Mark Complete`
+  - `Cancel Charge`
+- same-day lifecycle visibility and history
+- settings controls under `Settings -> Operational Parameters` for:
+  - showing / hiding lifecycle states
+  - making states required / optional
+  - requiring a linked run before `Mark Running`
+  - board history visibility
+
+### 3. Standalone extraction lab app
+
+Implemented and live:
+
+- touch-first standalone app served from `/extraction-lab/`
+- `Home`
+- `Reactors`
+- `Lots`
+- `Scan / Enter Lot`
+- camera scan, Bluetooth scanner entry, and manual tracking-id entry
+- default `100 lbs` charge preset per reactor when available
+- additional presets:
+  - `Half lot`
+  - `Full lot`
+  - `Last used`
+- last-reactor recall
+- scan guidance and auto-focus for faster iPad use
+
+### 4. Standalone run execution workflow
+
+Implemented and live:
+
+- after charge, extractor can open a dedicated standalone run-execution screen
+- inherited context is prefilled from the charge:
+  - reactor
+  - source lot
+  - strain
+  - source / supplier
+  - biomass weight context
+- structured run execution fields now exist in the backend and main run form for:
+  - run/fill start and end
+  - biomass blend `% milled / % unmilled`
+  - flush count and total weight
+  - fill count and total weight
+  - stringer basket count
+  - CRC blend
+  - mixer start and end
+  - flush start and end
+  - notes
+- touch-first timer buttons are available for time capture instead of relying on keyboard entry
+
+### 5. Open Run usability fix
+
+Implemented and live:
+
+- on the standalone `Reactors` board, `Open Run` is now a full-size primary button in the same action area as:
+  - `Mark In Reactor`
+  - `Mark Running`
+  - `Mark Complete`
+- this was done because the small inline `Open Run` link was too easy to miss on iPad
 
 ## Tests status
 
-Full Python suite passed after the latest code changes:
+Latest verified status before closeout:
 
-- `124 passed`
+- standalone extraction app tests: `8 passed`
+- full Python suite: `138 passed`
 
-Targeted regression coverage was also added for:
+The following policy is in effect for future work:
 
-- scan -> charge form
-- charge -> run prefill
-- charge -> saved run linkage
-- floor queue pending/applied visibility
+- targeted tests during implementation/debugging
+- full Python suite before final commit
+- relevant standalone app test suites before final commit when those apps change
 
-No standalone app Node tests were needed for the latest reactor-queue slice because no standalone app code changed in that slice.
+## Deployment pattern now required for standalone extraction changes
 
-## Production status
+For extraction-app changes, production deployment requires both backend sync and static file copy:
 
-User reported:
+```bash
+cd /opt/gold-drop
+git fetch origin
+git checkout main
+git pull --ff-only origin main
+sudo systemctl restart golddrop
+sudo systemctl status golddrop --no-pager -l
+sudo rsync -av --delete /opt/gold-drop/standalone-extraction-lab-app/ /var/www/extraction-lab/
+```
 
-- extraction charge workflow was synced to production
-- layout fix was synced to production
-- the newest `Floor Ops` reactor charge queue changes have been merged and pushed to `main`
+Notes:
 
-The user said they plan to test the latest `Floor Ops` queue behavior in the morning.
+- no `nginx` reload is needed unless Nginx config itself changes
+- after `rsync`, the iPad browser must be reloaded
 
-## Morning test checklist
+## Known deferred issue
 
-The next thing to validate in production is:
+Slack integration is currently deferred pending Slack-side investigation.
 
-1. Open `Floor Ops`
-   - confirm `Pending Charges`
-   - confirm `Reactor Charge Queue`
-   - confirm `Recently Applied Charges`
+Current known state:
 
-2. Create a pending charge
-   - use `Charge Lot`
-   - record lbs / reactor / time
-   - stop before saving the run
-   - confirm it appears in the pending queue under the correct reactor
+- none of the Slack integration is believed working end-to-end right now
+- likely issue is on the Slack app / channel / scope side rather than Gold Drop code
+- previously observed channel-history failure:
+  - `Could not sync: #extraction-support`
+- likely causes already identified:
+  - bot not invited to channel
+  - channel may now be private
+  - missing `groups:read` / `groups:history`
+  - stale channel name vs channel ID
+  - app not reinstalled after scope/token changes
 
-3. Save the run
-   - confirm the charge disappears from pending
-   - confirm it appears in `Recently Applied Charges`
-   - confirm `Open Run` opens the correct run
+User planned next action on Slack:
 
-4. Regression check
-   - `Open Scan Page` still works
-   - `Open Charge Form` still works
-   - `Confirm Movement` still works
-   - `Confirm Testing` still works
+- check with the Slack Administrator to confirm what changed
 
-## Recommended next development step after morning validation
+Do not resume Slack code changes unless new evidence suggests the Gold Drop side is actually broken.
 
-If the queue tests pass, the next likely extractor-facing priorities are:
+## Immediate next production check
 
-1. tighten readiness rules if warnings should become blockers
-2. add stronger reactor-status visibility / active-charge handling
-3. add Slack-based extraction intake as an alternate frontend to the same `ExtractionCharge` event
+The latest thing shipped was the standalone `Open Run` button promotion.
+
+If resuming tomorrow, first confirm in production:
+
+1. open `/extraction-lab/` on the iPad
+2. go to `Reactors`
+3. confirm `Open Run` appears as a large button on reactor cards with linked charges
+4. confirm it is visually obvious before `Mark Running`
+5. confirm the button opens the standalone run-execution screen correctly
+
+## Recommended next development step
+
+The next major step should be the next slice of standalone extractor execution, not more buying/receiving work.
+
+Recommended priority order:
+
+1. deepen standalone run execution so extractors can complete more of the actual run from the iPad without bouncing into the admin app
+2. refine touch-first controls for any remaining Slack-message fields still not represented cleanly
+3. add run-state / execution-state continuity on the standalone side after the run is started
+4. after that, evaluate whether end-of-run outputs and exception handling should also live in the standalone app
+
+## Recommended concrete next sprint
+
+If there is no urgent bug tomorrow, the next sprint should likely focus on:
+
+1. standalone run execution polish
+   - review every field extractors currently send in Slack
+   - confirm none still require awkward manual typing
+   - convert any remaining free-text numeric inputs to counters / steppers / segmented controls where reasonable
+
+2. standalone run lifecycle continuity
+   - clearer state after `Open Run`
+   - better operator path once timing begins
+   - explicit save / continue / return-to-reactors flow
+
+3. optional run completion layer
+   - determine which completion fields belong in the standalone app versus the admin app
+   - only then build touch-first completion / closeout flow
 
 ## Local note
 
-There is a local screenshot file in the repo root that was intentionally not committed:
+There is still a local screenshot file in the repo root that was intentionally not committed:
 
 - `screenshot Start Extraction Charge.png`
 
-That file was only used to diagnose the unstyled charge page.
+That file should remain out of Git unless explicitly requested.
