@@ -4,6 +4,7 @@ import json
 
 from gold_drop.slack import _default_slack_run_field_rules
 from sqlalchemy.exc import OperationalError, ProgrammingError
+from services.extraction_run import EXTRACTION_RUN_DEFAULTS
 from services.bootstrap_helpers import (
     backfill_default_inventory_lots,
     backfill_purchase_approval,
@@ -77,6 +78,7 @@ def init_db(root):
         "biomass_purchase_weekly_target_potency_pct": ("0", "Weekly target weighted avg potency % (purchasing)"),
         "biomass_budget_target_potency_pct": ("0", "Target weighted avg potency % (purchasing)"),
     }
+    defaults.update(EXTRACTION_RUN_DEFAULTS)
     for key, (value, description) in defaults.items():
         if not root.db.session.get(root.SystemSetting, key):
             root.db.session.add(root.SystemSetting(key=key, value=value, description=description))

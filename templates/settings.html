@@ -199,6 +199,39 @@
       <div class="form-group"></div>
     </div>
     <div class="form-group" style="margin-top:16px;">
+      <label>Extraction run defaults</label>
+      <div class="text-sm" style="color:var(--text-muted); margin-bottom:8px;">
+        These values prepopulate the standalone extraction run screen so the iPad workflow starts from your most common operating assumptions.
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Default milled %</label>
+          <input type="number" name="extraction_default_biomass_blend_milled_pct" value="{{ system_settings.get('extraction_default_biomass_blend_milled_pct', '100') }}" step="1" min="0" max="100">
+          <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">
+            The unmilled % is automatically the remainder to 100 and the slider starts here.
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Default fill count</label>
+          <input type="number" name="extraction_default_fill_count" value="{{ system_settings.get('extraction_default_fill_count', '1') }}" step="1" min="0">
+        </div>
+        <div class="form-group">
+          <label>Default flush count</label>
+          <input type="number" name="extraction_default_flush_count" value="{{ system_settings.get('extraction_default_flush_count', '0') }}" step="1" min="0">
+        </div>
+      </div>
+      <div class="form-row-3" style="margin-top:8px;">
+        <div class="form-group">
+          <label>Default stringer basket count</label>
+          <input type="number" name="extraction_default_stringer_basket_count" value="{{ system_settings.get('extraction_default_stringer_basket_count', '0') }}" step="1" min="0">
+        </div>
+        <div class="form-group" style="grid-column: span 2;">
+          <label>Default CRC blend</label>
+          <input type="text" name="extraction_default_crc_blend" value="{{ system_settings.get('extraction_default_crc_blend', '') }}" maxlength="200" placeholder="Optional default CRC blend">
+        </div>
+      </div>
+    </div>
+    <div class="form-group" style="margin-top:16px;">
       <label>Reactor lifecycle controls</label>
       <div class="text-sm" style="color:var(--text-muted); margin-bottom:8px;">
         Decide which lifecycle states appear on `Floor Ops` and whether later transitions must wait for them.

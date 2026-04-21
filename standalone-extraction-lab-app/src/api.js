@@ -3,6 +3,14 @@ import { readJson, removeValue, writeJson } from "./storage.js";
 
 const STATE_KEY = "gold-drop-extraction-lab-state-v1";
 const SESSION_KEY = "gold-drop-extraction-lab-session-v1";
+const MOCK_RUN_DEFAULTS = {
+  biomass_blend_milled_pct: 100,
+  biomass_blend_unmilled_pct: 0,
+  flush_count: 0,
+  fill_count: 1,
+  stringer_basket_count: 0,
+  crc_blend: "",
+};
 
 function loadState() {
   return readJson(STATE_KEY, cloneSeedState());
@@ -138,14 +146,14 @@ function buildMockDraftRun(charge) {
     run_type: "standard",
     run_fill_started_at: String(charge.charged_at || "").slice(0, 16),
     run_fill_ended_at: "",
-    biomass_blend_milled_pct: 100,
-    biomass_blend_unmilled_pct: 0,
-    flush_count: null,
+    biomass_blend_milled_pct: MOCK_RUN_DEFAULTS.biomass_blend_milled_pct,
+    biomass_blend_unmilled_pct: MOCK_RUN_DEFAULTS.biomass_blend_unmilled_pct,
+    flush_count: MOCK_RUN_DEFAULTS.flush_count,
     flush_total_weight_lbs: null,
-    fill_count: 1,
+    fill_count: MOCK_RUN_DEFAULTS.fill_count,
     fill_total_weight_lbs: Number(charge.charged_weight_lbs || 0),
-    stringer_basket_count: null,
-    crc_blend: "",
+    stringer_basket_count: MOCK_RUN_DEFAULTS.stringer_basket_count,
+    crc_blend: MOCK_RUN_DEFAULTS.crc_blend,
     mixer_started_at: "",
     mixer_ended_at: "",
     flush_started_at: "",
@@ -169,14 +177,14 @@ function ensureMockRunForCharge(state, chargeId) {
     run_type: "standard",
     run_fill_started_at: String(charge.charged_at || "").slice(0, 16),
     run_fill_ended_at: "",
-    biomass_blend_milled_pct: 100,
-    biomass_blend_unmilled_pct: 0,
-    flush_count: null,
+    biomass_blend_milled_pct: MOCK_RUN_DEFAULTS.biomass_blend_milled_pct,
+    biomass_blend_unmilled_pct: MOCK_RUN_DEFAULTS.biomass_blend_unmilled_pct,
+    flush_count: MOCK_RUN_DEFAULTS.flush_count,
     flush_total_weight_lbs: null,
-    fill_count: 1,
+    fill_count: MOCK_RUN_DEFAULTS.fill_count,
     fill_total_weight_lbs: Number(charge.charged_weight_lbs || 0),
-    stringer_basket_count: null,
-    crc_blend: "",
+    stringer_basket_count: MOCK_RUN_DEFAULTS.stringer_basket_count,
+    crc_blend: MOCK_RUN_DEFAULTS.crc_blend,
     mixer_started_at: "",
     mixer_ended_at: "",
     flush_started_at: "",
