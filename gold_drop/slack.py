@@ -64,6 +64,33 @@ SLACK_MAPPING_SOURCE_HELP = {
     "recovery_at": "Line Recovery at: ...",
     "flush_at": "Line Flush at: ...",
 }
+SLACK_MAPPING_SOURCE_META = {
+    "__message_ts__": {"label": "Slack message timestamp", "description": SLACK_MAPPING_SOURCE_HELP["__message_ts__"]},
+    "slack_message_date": {"label": "Slack message date", "description": SLACK_MAPPING_SOURCE_HELP["slack_message_date"]},
+    "strain": {"label": "Strain", "description": SLACK_MAPPING_SOURCE_HELP["strain"]},
+    "source": {"label": "Source / supplier line", "description": SLACK_MAPPING_SOURCE_HELP["source"]},
+    "bio_lbs": {"label": "Biomass lbs (yield template)", "description": SLACK_MAPPING_SOURCE_HELP["bio_lbs"]},
+    "bio_weight_lbs": {"label": "Biomass weight lbs (production template)", "description": SLACK_MAPPING_SOURCE_HELP["bio_weight_lbs"]},
+    "wet_thca_g": {"label": "Wet THCA (g)", "description": SLACK_MAPPING_SOURCE_HELP["wet_thca_g"]},
+    "wet_hte_g": {"label": "Wet HTE (g)", "description": SLACK_MAPPING_SOURCE_HELP["wet_hte_g"]},
+    "wet_total_g": {"label": "Wet total (g)", "description": SLACK_MAPPING_SOURCE_HELP["wet_total_g"]},
+    "yield_pct_mentioned": {"label": "Yield % mentioned", "description": SLACK_MAPPING_SOURCE_HELP["yield_pct_mentioned"]},
+    "reactor": {"label": "Reactor token", "description": SLACK_MAPPING_SOURCE_HELP["reactor"]},
+    "notes_line": {"label": "Notes line", "description": SLACK_MAPPING_SOURCE_HELP["notes_line"]},
+    "message_kind": {"label": "Message kind", "description": SLACK_MAPPING_SOURCE_HELP["message_kind"]},
+    "end_time": {"label": "End time", "description": SLACK_MAPPING_SOURCE_HELP["end_time"]},
+    "mixer_time": {"label": "Mixer time", "description": SLACK_MAPPING_SOURCE_HELP["mixer_time"]},
+    "flush_time_start": {"label": "Flush start time", "description": SLACK_MAPPING_SOURCE_HELP["flush_time_start"]},
+    "recovery_at": {"label": "Recovery at", "description": SLACK_MAPPING_SOURCE_HELP["recovery_at"]},
+    "flush_at": {"label": "Flush at", "description": SLACK_MAPPING_SOURCE_HELP["flush_at"]},
+    "manifest_raw": {"label": "Manifest raw", "description": "Raw manifest text from a biomass intake message."},
+    "manifest_id_normalized": {"label": "Manifest ID normalized", "description": "Normalized manifest identifier derived from the Slack intake message."},
+    "manifest_wt_lbs": {"label": "Manifest weight lbs", "description": "Manifest weight from the intake message."},
+    "actual_wt_lbs": {"label": "Actual weight lbs", "description": "Actual received weight from the intake message."},
+    "discrepancy_lbs": {"label": "Discrepancy lbs", "description": "Difference between manifest and actual weight."},
+    "intake_received_date": {"label": "Intake received date", "description": "Received date parsed from a biomass intake message."},
+    "intake_order_date": {"label": "Intake order date", "description": "Order/intake date parsed from a biomass intake message."},
+}
 SLACK_MAPPING_TARGET_HELP = {
     "run_date": "Run date",
     "reactor_number": "Processing reactor 1-3 (use to_reactor_int)",
@@ -84,6 +111,27 @@ SLACK_MAPPING_TARGET_HELP = {
     "fuel_consumption": "Fuel consumption",
     "run_type": "Run type (string)",
     "notes": "Notes (concatenates multiple rules)",
+}
+SLACK_MAPPING_RUN_TARGET_META = {
+    "run_date": {"label": "Run date", "description": SLACK_MAPPING_TARGET_HELP["run_date"]},
+    "reactor_number": {"label": "Reactor number", "description": SLACK_MAPPING_TARGET_HELP["reactor_number"]},
+    "load_source_reactors": {"label": "Load source reactors", "description": SLACK_MAPPING_TARGET_HELP["load_source_reactors"]},
+    "bio_in_reactor_lbs": {"label": "Biomass in reactor lbs", "description": SLACK_MAPPING_TARGET_HELP["bio_in_reactor_lbs"]},
+    "bio_in_house_lbs": {"label": "Biomass in house lbs", "description": SLACK_MAPPING_TARGET_HELP["bio_in_house_lbs"]},
+    "grams_ran": {"label": "Grams ran", "description": SLACK_MAPPING_TARGET_HELP["grams_ran"]},
+    "wet_thca_g": {"label": "Wet THCA (g)", "description": SLACK_MAPPING_TARGET_HELP["wet_thca_g"]},
+    "wet_hte_g": {"label": "Wet HTE (g)", "description": SLACK_MAPPING_TARGET_HELP["wet_hte_g"]},
+    "dry_thca_g": {"label": "Dry THCA (g)", "description": SLACK_MAPPING_TARGET_HELP["dry_thca_g"]},
+    "dry_hte_g": {"label": "Dry HTE (g)", "description": SLACK_MAPPING_TARGET_HELP["dry_hte_g"]},
+    "overall_yield_pct": {"label": "Overall yield %", "description": SLACK_MAPPING_TARGET_HELP["overall_yield_pct"]},
+    "thca_yield_pct": {"label": "THCA yield %", "description": SLACK_MAPPING_TARGET_HELP["thca_yield_pct"]},
+    "hte_yield_pct": {"label": "HTE yield %", "description": SLACK_MAPPING_TARGET_HELP["hte_yield_pct"]},
+    "butane_in_house_lbs": {"label": "Butane in house lbs", "description": SLACK_MAPPING_TARGET_HELP["butane_in_house_lbs"]},
+    "solvent_ratio": {"label": "Solvent ratio", "description": SLACK_MAPPING_TARGET_HELP["solvent_ratio"]},
+    "system_temp": {"label": "System temperature", "description": SLACK_MAPPING_TARGET_HELP["system_temp"]},
+    "fuel_consumption": {"label": "Fuel consumption", "description": SLACK_MAPPING_TARGET_HELP["fuel_consumption"]},
+    "run_type": {"label": "Run type", "description": SLACK_MAPPING_TARGET_HELP["run_type"]},
+    "notes": {"label": "Notes", "description": SLACK_MAPPING_TARGET_HELP["notes"]},
 }
 SLACK_MAPPING_KIND_PRESETS = (
     ("all", "All message kinds"),
@@ -106,6 +154,80 @@ SLACK_MAPPING_DESTINATION_CHOICES = (
     ("strain", "Strains"),
     ("cost", "Costs"),
 )
+SLACK_MAPPING_DESTINATION_TARGET_META = {
+    "run": SLACK_MAPPING_RUN_TARGET_META,
+    "biomass": {
+        "supplier_name": {"label": "Supplier name", "description": "Supplier/farm name for a future biomass pipeline mapping."},
+        "strain": {"label": "Strain", "description": "Strain name for a future biomass pipeline mapping."},
+        "availability_date": {"label": "Availability date", "description": "Date the biomass is expected to be available."},
+        "declared_weight_lbs": {"label": "Declared weight lbs", "description": "Declared biomass weight in pounds."},
+        "declared_price_per_lb": {"label": "Declared price per lb", "description": "Expected or declared price per pound."},
+        "testing_notes": {"label": "Testing notes", "description": "Notes about testing or COA status."},
+        "queue_placement": {"label": "Queue placement", "description": "Biomass queue placement such as indoor/outdoor/aggregate."},
+        "notes": {"label": "Notes", "description": "General biomass pipeline notes."},
+    },
+    "purchase": {
+        "supplier_name": {"label": "Supplier name", "description": "Supplier/farm name on the purchase record."},
+        "purchase_date": {"label": "Purchase date", "description": "Purchase or order date."},
+        "delivery_date": {"label": "Delivery date", "description": "Actual or expected delivery date."},
+        "batch_id": {"label": "Batch ID", "description": "Batch or manifest identifier."},
+        "stated_weight_lbs": {"label": "Stated weight lbs", "description": "Invoice or stated biomass weight."},
+        "actual_weight_lbs": {"label": "Actual weight lbs", "description": "Actual received biomass weight."},
+        "stated_potency_pct": {"label": "Stated potency %", "description": "Declared potency percentage."},
+        "tested_potency_pct": {"label": "Tested potency %", "description": "Lab-tested potency percentage."},
+        "price_per_lb": {"label": "Price per lb", "description": "Purchase price per pound."},
+        "total_cost": {"label": "Total cost", "description": "Total purchase amount."},
+        "harvest_date": {"label": "Harvest date", "description": "Harvest date if known."},
+        "storage_note": {"label": "Storage note", "description": "Storage / handling note."},
+        "license_info": {"label": "License info", "description": "License or compliance information."},
+        "coa_status_text": {"label": "COA status", "description": "COA or testing status text."},
+        "queue_placement": {"label": "Queue placement", "description": "Biomass queue placement."},
+        "clean_or_dirty": {"label": "Clean or dirty", "description": "Clean / dirty classification."},
+        "indoor_outdoor": {"label": "Indoor / outdoor", "description": "Cultivation environment classification."},
+        "notes": {"label": "Notes", "description": "General purchase notes."},
+        "strain": {"label": "Strain", "description": "Primary strain label for the purchase."},
+    },
+    "inventory": {
+        "tracking_id": {"label": "Tracking ID", "description": "Lot tracking identifier."},
+        "strain_name": {"label": "Strain name", "description": "Lot strain name."},
+        "location": {"label": "Location", "description": "Current lot location."},
+        "floor_state": {"label": "Floor state", "description": "Operational floor state for the lot."},
+        "prep_state": {"label": "Prep state", "description": "Preparation state such as milled / not milled."},
+        "potency_pct": {"label": "Potency %", "description": "Lot potency percentage."},
+        "milled": {"label": "Milled", "description": "Whether the lot is milled."},
+        "notes": {"label": "Notes", "description": "Lot-level notes."},
+    },
+    "photo_library": {
+        "category": {"label": "Category", "description": "Photo library category."},
+        "tags": {"label": "Tags", "description": "Comma-separated tags."},
+        "caption": {"label": "Caption", "description": "Photo caption or summary."},
+        "source_context": {"label": "Source context", "description": "What workflow the photo came from."},
+        "notes": {"label": "Notes", "description": "Library note or description."},
+    },
+    "supplier": {
+        "name": {"label": "Supplier name", "description": "Supplier or farm name."},
+        "contact_name": {"label": "Contact name", "description": "Primary supplier contact."},
+        "contact_phone": {"label": "Contact phone", "description": "Primary supplier phone number."},
+        "contact_email": {"label": "Contact email", "description": "Primary supplier email."},
+        "location": {"label": "Location", "description": "Supplier location."},
+        "license_info": {"label": "License info", "description": "Supplier licensing or compliance details."},
+        "notes": {"label": "Notes", "description": "Supplier notes."},
+    },
+    "strain": {
+        "name": {"label": "Strain name", "description": "Displayed strain name."},
+        "canonical_name": {"label": "Canonical strain name", "description": "Canonicalized name used for mapping and cleanup."},
+        "supplier_name": {"label": "Supplier name", "description": "Supplier associated with the strain."},
+        "notes": {"label": "Notes", "description": "Strain notes or metadata."},
+    },
+    "cost": {
+        "cost_type": {"label": "Cost type", "description": "Cost category such as solvent or personnel."},
+        "name": {"label": "Cost name", "description": "Cost entry name."},
+        "total_cost": {"label": "Total cost", "description": "Total amount for the cost entry."},
+        "start_date": {"label": "Start date", "description": "Cost effective start date."},
+        "end_date": {"label": "End date", "description": "Cost effective end date."},
+        "notes": {"label": "Notes", "description": "Cost notes."},
+    },
+}
 SLACK_NON_RUN_TARGET_FIELD_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 SLACK_MAPPING_NON_RUN_TARGET_HINT = (
     "Snake_case field label for this module (real columns come when that destination ships)."
@@ -118,11 +240,40 @@ def _slack_mapping_grid_row_count(rules: list | None) -> int:
 
 
 def _slack_run_mappings_template_kwargs(rules: list, rules_json: str) -> dict:
+    source_choices = [
+        {
+            "value": key,
+            "label": f"{meta['label']} ({key})",
+        }
+        for key, meta in sorted(SLACK_MAPPING_SOURCE_META.items(), key=lambda item: item[1]["label"].lower())
+    ]
+    destination_target_choices = {
+        dest: [
+            {
+                "value": key,
+                "label": f"{meta['label']} ({key})",
+            }
+            for key, meta in sorted(meta_map.items(), key=lambda item: item[1]["label"].lower())
+        ]
+        for dest, meta_map in SLACK_MAPPING_DESTINATION_TARGET_META.items()
+    }
+    destination_target_values = {
+        dest: sorted(meta_map.keys())
+        for dest, meta_map in SLACK_MAPPING_DESTINATION_TARGET_META.items()
+    }
+    target_help = {}
+    for meta_map in SLACK_MAPPING_DESTINATION_TARGET_META.values():
+        for key, meta in meta_map.items():
+            target_help[key] = meta["description"]
     return {
         "rules": rules,
         "rules_json": rules_json,
+        "source_choices": source_choices,
         "source_keys": sorted(SLACK_MAPPING_ALLOWED_SOURCE_KEYS),
         "target_fields": sorted(SLACK_MAPPING_ALLOWED_TARGET_FIELDS),
+        "run_target_choices": destination_target_choices["run"],
+        "destination_target_choices": destination_target_choices,
+        "destination_target_values": destination_target_values,
         "destination_choices": SLACK_MAPPING_DESTINATION_CHOICES,
         "destination_choices_meta": [{"value": v, "label": lbl} for v, lbl in SLACK_MAPPING_DESTINATION_CHOICES],
         "destination_values": sorted(SLACK_MAPPING_ALLOWED_DESTINATIONS),
@@ -130,7 +281,7 @@ def _slack_run_mappings_template_kwargs(rules: list, rules_json: str) -> dict:
         "kind_presets_meta": [{"value": v, "label": lbl} for v, lbl in SLACK_MAPPING_KIND_PRESETS],
         "transform_types": SLACK_MAPPING_TRANSFORM_TYPES,
         "source_help": SLACK_MAPPING_SOURCE_HELP,
-        "target_help": SLACK_MAPPING_TARGET_HELP,
+        "target_help": target_help,
         "non_run_target_hint": SLACK_MAPPING_NON_RUN_TARGET_HINT,
         "rule_slots": _slack_mapping_grid_row_count(rules),
         "rule_slots_max": SLACK_RUN_MAPPING_MAX_FORM_ROWS,
@@ -360,10 +511,14 @@ def _slack_run_rules_from_mapping_form(form) -> list:
         destination = (form.get(f"rule_destination_{i}") or "run").strip() or "run"
         if destination not in SLACK_MAPPING_ALLOWED_DESTINATIONS:
             destination = "run"
+        target_pick = (form.get(f"rule_target_select_{i}") or "").strip()
+        target_custom = (form.get(f"rule_target_text_{i}") or "").strip()
         if destination == "run":
-            target_field = (form.get(f"rule_target_select_{i}") or "").strip()
+            target_field = target_pick
+        elif target_pick == "__custom__":
+            target_field = target_custom
         else:
-            target_field = (form.get(f"rule_target_text_{i}") or "").strip()
+            target_field = target_pick or target_custom
         if not source_key or not target_field:
             continue
         kinds_raw = (form.get(f"rule_kinds_{i}") or "all").strip()
