@@ -2,6 +2,7 @@
 
 import unittest
 from unittest.mock import MagicMock, patch
+from werkzeug.datastructures import MultiDict
 
 import app as app_module
 
@@ -261,6 +262,33 @@ class SlackMappingLogicTest(unittest.TestCase):
         )
         self.assertEqual(strain2, "Blue Dream BX1")
         self.assertIsNone(err2)
+
+    def test_mapping_form_uses_destination_dropdown_value(self) -> None:
+        form = MultiDict({
+            "rule_source_0": "manifest_wt_lbs",
+            "rule_destination_0": "purchase",
+            "rule_target_select_0": "stated_weight_lbs",
+            "rule_transform_0": "to_float",
+            "rule_transform_arg_0": "",
+        })
+        rules = app_module._slack_run_rules_from_mapping_form(form)
+        self.assertEqual(len(rules), 1)
+        self.assertEqual(rules[0]["destination"], "purchase")
+        self.assertEqual(rules[0]["target_field"], "stated_weight_lbs")
+
+    def test_mapping_form_uses_custom_target_when_selected(self) -> None:
+        form = MultiDict({
+            "rule_source_0": "source",
+            "rule_destination_0": "supplier",
+            "rule_target_select_0": "__custom__",
+            "rule_target_text_0": "farm_alias",
+            "rule_transform_0": "passthrough",
+            "rule_transform_arg_0": "",
+        })
+        rules = app_module._slack_run_rules_from_mapping_form(form)
+        self.assertEqual(len(rules), 1)
+        self.assertEqual(rules[0]["destination"], "supplier")
+        self.assertEqual(rules[0]["target_field"], "farm_alias")
 
     @patch.object(app_module.db.session, "query")
     def test_strain_candidates_weight_supplier_context(self, mock_query) -> None:

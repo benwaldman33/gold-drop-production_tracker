@@ -34,7 +34,11 @@ class SlackRunMappingsTemplateTest(unittest.TestCase):
         self.assertIn("slack-mapping-ui-json", html)
         self.assertIn("slack-mapping-help-json", html)
         self.assertIn('"ruleSlotsMax"', html)
-        self.assertIn("complete rules + two spare rows", html)
+        self.assertIn("Read rows left to right", html)
+        self.assertIn("Current recommendation", html)
+        self.assertIn("How to read the labels", html)
+        self.assertIn("Wet THCA (g) (wet_thca_g)", html)
+        self.assertIn("Custom field...", html)
 
     def test_renders_empty_rules_without_error(self) -> None:
         """Ensures transform_types|list and min grid rows (rule_slots) work."""

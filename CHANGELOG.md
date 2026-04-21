@@ -12,6 +12,7 @@
 - A new `standalone-extraction-lab-app` now mirrors the extractor workflow with a touch-first reactor board, lot browser, charge form, and lifecycle actions that still hand off into the main run form when needed.
 
 ### Changed
+- `Settings -> Slack -> field mappings` now uses friendlier business labels, destination-specific field pickers, and clearer guidance so Super Admins can map Slack fields without having to memorize raw snake_case target names.
 - Standalone extraction `Reactors` board filters now respect the selected `Board view` on live production data instead of always showing every reactor card.
 - The standalone extraction app now exposes a dedicated `Scan / Enter Lot` screen, camera/manual tracking-ID lookup, a default `100 lbs` charge preset per reactor, and a faster post-charge loop (`Open Run`, `Back to Reactors`, `Charge Another Lot`).
 - The standalone extraction app now auto-focuses the manual tracking-ID field, shows scan guidance on-screen, confirms successful lot resolution on the charge form, and remembers the last reactor used for the next charge.
