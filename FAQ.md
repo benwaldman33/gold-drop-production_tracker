@@ -72,13 +72,16 @@ The **Save Purchase** button at the top submits the same form as the one at the 
 ## Purchases - spreadsheet import
 
 **How do I import many purchases from Excel or CSV?**  
-Open **Purchases** and use **Import spreadsheet**. You can drag and drop a `.csv`, `.xlsx`, or `.xlsm` file or browse for it. The app detects the header row, maps common column names, shows row-level validation, and lets you commit the valid rows.
+Open **Purchases** and use **Import spreadsheet**. You can drag and drop a `.csv`, `.xlsx`, or `.xlsm` file or browse for it. The app detects the header row, suggests column mappings, lets you adjust them interactively, then shows row-level validation before you commit the valid rows.
 
 **Is purchase import the same as Import (runs)?**  
 No. The sidebar **Import** screen is for run-style Google Sheet exports. Purchases use **Import spreadsheet** on the Purchases page.
 
 **Why did a row fail validation?**  
 Common causes are missing purchase date or paid-date fallback, missing both invoice and actual weight, duplicate Batch ID / Manifest, or values that could not be parsed. The preview lists the reason per row.
+
+**Can the purchase importer handle more than the old accounting columns now?**
+Yes. Besides the usual vendor/date/weight/manifest/amount fields, the preview can map pipeline/testing fields and single-lot fields such as strain, lot location, lot floor state, milled flag, potency, and lot notes.
 
 **Are imported purchases approved automatically?**  
 No. They are created unapproved. If the spreadsheet asked for an on-hand status, the app downgrades it to a safe status such as **ordered** until someone approves the purchase and sets the real status.

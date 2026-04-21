@@ -32,7 +32,7 @@ def register_routes(app, root):
         return purchase_import_sample_view(root)
 
     app.add_url_rule("/purchases/import", endpoint="purchase_import", view_func=purchase_import, methods=["GET", "POST"])
-    app.add_url_rule("/purchases/import/preview", endpoint="purchase_import_preview", view_func=purchase_import_preview, methods=["GET"])
+    app.add_url_rule("/purchases/import/preview", endpoint="purchase_import_preview", view_func=purchase_import_preview, methods=["GET", "POST"])
     app.add_url_rule("/purchases/import/commit", endpoint="purchase_import_commit", view_func=purchase_import_commit, methods=["POST"])
     app.add_url_rule("/purchases/import/sample.csv", endpoint="purchase_import_sample", view_func=purchase_import_sample)
 
@@ -149,6 +149,17 @@ def purchase_import_normalize_indoor_outdoor(raw: str):
     return None, f"Invalid indoor/outdoor {raw!r}."
 
 
+def purchase_import_parse_optional_bool(value: str) -> bool | None:
+    text = (value or "").strip().lower()
+    if not text:
+        return None
+    if text in {"1", "true", "yes", "y", "milled"}:
+        return True
+    if text in {"0", "false", "no", "n", "not_milled", "unmilled"}:
+        return False
+    return None
+
+
 def purchase_import_validate_row(root, raw: dict):
     errors: list[str] = []
     supplier_name = (raw.get("supplier") or "").strip()
@@ -253,6 +264,79 @@ def purchase_import_validate_row(root, raw: dict):
     if io_err:
         errors.append(io_err)
 
+    availability_date = None
+    availability_raw = (raw.get("availability_date") or "").strip()
+    if availability_raw:
+        availability_date = purchase_import_parse_date(root, availability_raw)
+        if not availability_date:
+            errors.append("Availability date could not be parsed.")
+
+    declared_weight_lbs = None
+    declared_weight_raw = (raw.get("declared_weight_lbs") or "").strip()
+    if declared_weight_raw:
+        declared_weight_lbs = purchase_import_parse_optional_float(declared_weight_raw)
+        if declared_weight_lbs is None:
+            errors.append("Declared weight (lbs) is not a valid number.")
+        elif declared_weight_lbs < 0:
+            errors.append("Declared weight (lbs) cannot be negative.")
+
+    declared_price_per_lb = None
+    declared_price_raw = (raw.get("declared_price_per_lb") or "").strip()
+    if declared_price_raw:
+        declared_price_per_lb = purchase_import_parse_optional_float(declared_price_raw)
+        if declared_price_per_lb is None:
+            errors.append("Declared price per lb is not a valid number.")
+
+    testing_timing = None
+    testing_timing_raw = (raw.get("testing_timing") or "").strip()
+    if testing_timing_raw:
+        timing_key = testing_timing_raw.lower().replace(" ", "_").replace("-", "_")
+        if timing_key in {"before_delivery", "after_delivery"}:
+            testing_timing = timing_key
+        else:
+            errors.append("Testing timing must be before_delivery or after_delivery.")
+
+    testing_status = None
+    testing_status_raw = (raw.get("testing_status") or "").strip()
+    if testing_status_raw:
+        testing_key = testing_status_raw.lower().replace(" ", "_").replace("-", "_")
+        aliases = {"complete": "completed", "not_needed": "not_needed", "n_a": "not_needed"}
+        testing_key = aliases.get(testing_key, testing_key)
+        if testing_key in {"pending", "completed", "not_needed"}:
+            testing_status = testing_key
+        else:
+            errors.append("Testing status must be pending, completed, or not_needed.")
+
+    testing_date = None
+    testing_date_raw = (raw.get("testing_date") or "").strip()
+    if testing_date_raw:
+        testing_date = purchase_import_parse_date(root, testing_date_raw)
+        if not testing_date:
+            errors.append("Testing date could not be parsed.")
+
+    lot_weight_lbs = None
+    lot_weight_raw = (raw.get("lot_weight_lbs") or "").strip()
+    if lot_weight_raw:
+        lot_weight_lbs = purchase_import_parse_optional_float(lot_weight_raw)
+        if lot_weight_lbs is None:
+            errors.append("Lot weight (lbs) is not a valid number.")
+        elif lot_weight_lbs <= 0:
+            errors.append("Lot weight (lbs) must be greater than zero.")
+
+    lot_potency_pct = None
+    lot_potency_raw = (raw.get("lot_potency_pct") or "").strip()
+    if lot_potency_raw:
+        lot_potency_pct = purchase_import_parse_optional_float(lot_potency_raw)
+        if lot_potency_pct is None:
+            errors.append("Lot potency % is not a valid number.")
+
+    lot_milled = None
+    lot_milled_raw = (raw.get("lot_milled") or "").strip()
+    if lot_milled_raw:
+        lot_milled = purchase_import_parse_optional_bool(lot_milled_raw)
+        if lot_milled is None:
+            errors.append("Lot milled must be yes/no, true/false, or 1/0.")
+
     if errors:
         return errors, None
 
@@ -287,12 +371,41 @@ def purchase_import_validate_row(root, raw: dict):
         "license_info": (raw.get("license_info") or "").strip() or None,
         "coa_status_text": (raw.get("coa_status_text") or "").strip() or None,
         "notes": composed_notes,
+        "testing_notes": (raw.get("testing_notes") or "").strip() or None,
+        "delivery_notes": (raw.get("delivery_notes") or "").strip() or None,
         "queue_placement": qp,
         "clean_or_dirty": cd,
         "indoor_outdoor": io_val,
+        "availability_date": availability_date.isoformat() if availability_date else None,
+        "declared_weight_lbs": float(declared_weight_lbs) if declared_weight_lbs is not None else None,
+        "declared_price_per_lb": float(declared_price_per_lb) if declared_price_per_lb is not None else None,
+        "testing_timing": testing_timing,
+        "testing_status": testing_status,
+        "testing_date": testing_date.isoformat() if testing_date else None,
         "strain": (raw.get("strain") or "").strip() or None,
+        "lot_weight_lbs": float(lot_weight_lbs) if lot_weight_lbs is not None else None,
+        "lot_potency_pct": float(lot_potency_pct) if lot_potency_pct is not None else None,
+        "lot_milled": lot_milled,
+        "lot_floor_state": (raw.get("lot_floor_state") or "").strip() or None,
+        "lot_location": (raw.get("lot_location") or "").strip() or None,
+        "lot_notes": (raw.get("lot_notes") or "").strip() or None,
     }
     return [], norm
+
+
+def purchase_import_build_staged_rows(root, staged: dict) -> list[dict]:
+    rows = root.purchase_import_rows_from_mapping(
+        staged.get("data_rows") or [],
+        staged.get("mapping") or {},
+        int(staged.get("header_row_index") or 0),
+    )
+    staged_rows = []
+    for raw_row in rows:
+        row_copy = dict(raw_row)
+        sheet_row = row_copy.pop("_sheet_row", "")
+        errs, norm = purchase_import_validate_row(root, row_copy)
+        staged_rows.append({"sheet_row": sheet_row, "raw": row_copy, "errors": errs, "normalized": norm})
+    return staged_rows
 
 
 def purchase_import_commit_norm(root, norm: dict, *, create_suppliers: bool) -> None:
@@ -329,6 +442,16 @@ def purchase_import_commit_norm(root, norm: dict, *, create_suppliers: bool) -> 
     purchase.clean_or_dirty = norm.get("clean_or_dirty")
     purchase.indoor_outdoor = norm.get("indoor_outdoor")
     purchase.notes = norm.get("notes")
+    purchase.testing_notes = norm.get("testing_notes")
+    purchase.delivery_notes = norm.get("delivery_notes")
+    if norm.get("availability_date"):
+        purchase.availability_date = root.datetime.strptime(norm["availability_date"], "%Y-%m-%d").date()
+    purchase.declared_weight_lbs = norm.get("declared_weight_lbs")
+    purchase.declared_price_per_lb = norm.get("declared_price_per_lb")
+    purchase.testing_timing = norm.get("testing_timing")
+    purchase.testing_status = norm.get("testing_status")
+    if norm.get("testing_date"):
+        purchase.testing_date = root.datetime.strptime(norm["testing_date"], "%Y-%m-%d").date()
     if norm.get("harvest_date"):
         purchase.harvest_date = root.datetime.strptime(norm["harvest_date"], "%Y-%m-%d").date()
 
@@ -366,9 +489,30 @@ def purchase_import_commit_norm(root, norm: dict, *, create_suppliers: bool) -> 
         )
 
     strain = norm.get("strain")
-    if strain:
-        wlot = float(purchase.stated_weight_lbs)
-        root.db.session.add(root.PurchaseLot(purchase_id=purchase.id, strain_name=strain, weight_lbs=wlot, remaining_weight_lbs=wlot))
+    explicit_lot = bool(
+        strain
+        or norm.get("lot_floor_state")
+        or norm.get("lot_location")
+        or norm.get("lot_notes")
+        or norm.get("lot_potency_pct") is not None
+        or norm.get("lot_milled") is not None
+        or norm.get("lot_weight_lbs") is not None
+    )
+    if explicit_lot:
+        lot_weight = float(norm.get("lot_weight_lbs") or purchase.stated_weight_lbs)
+        root.db.session.add(
+            root.PurchaseLot(
+                purchase_id=purchase.id,
+                strain_name=strain or "Purchase total",
+                weight_lbs=lot_weight,
+                remaining_weight_lbs=lot_weight,
+                potency_pct=norm.get("lot_potency_pct"),
+                milled=bool(norm.get("lot_milled")) if norm.get("lot_milled") is not None else False,
+                floor_state=norm.get("lot_floor_state") or "inventory",
+                location=norm.get("lot_location"),
+                notes=norm.get("lot_notes"),
+            )
+        )
 
     maintain_purchase_inventory_lots(purchase, root.INVENTORY_ON_HAND_PURCHASE_STATUSES)
     enforce_weekly_biomass_purchase_limits(
@@ -392,19 +536,20 @@ def purchase_import_view(root):
         root.flash("The file is empty.", "error")
         return root.redirect(root.url_for("purchase_import"))
     try:
-        rows, parse_warnings = root.parse_purchase_spreadsheet_upload(f.filename, raw)
+        staged = root.parse_purchase_spreadsheet_upload_for_mapping(f.filename, raw)
     except ValueError as exc:
         root.flash(str(exc), "error")
         return root.redirect(root.url_for("purchase_import"))
-    staged_rows = []
-    for raw_row in rows:
-        row_copy = dict(raw_row)
-        sheet_row = row_copy.pop("_sheet_row", "")
-        errs, norm = purchase_import_validate_row(root, row_copy)
-        staged_rows.append({"sheet_row": sheet_row, "raw": row_copy, "errors": errs, "normalized": norm})
 
     token = root.secrets.token_urlsafe(32)
-    payload = {"filename": root.secure_filename(f.filename) or "upload", "parse_warnings": parse_warnings, "rows": staged_rows}
+    payload = {
+        "filename": root.secure_filename(f.filename) or "upload",
+        "parse_warnings": staged["warnings"],
+        "headers": staged["headers"],
+        "mapping": staged["mapping"],
+        "header_row_index": staged["header_row_index"],
+        "data_rows": staged["data_rows"],
+    }
     try:
         with open(purchase_import_staging_path(root, token), "w", encoding="utf-8") as out:
             root.json.dump(payload, out)
@@ -413,7 +558,7 @@ def purchase_import_view(root):
         return root.redirect(root.url_for("purchase_import"))
 
     root.session["purchase_import_token"] = token
-    for warning in parse_warnings:
+    for warning in staged["warnings"]:
         root.flash(warning, "warning")
     return root.redirect(root.url_for("purchase_import_preview"))
 
@@ -424,8 +569,42 @@ def purchase_import_preview_view(root):
     if not data:
         root.flash("No staged import found. Upload a file again.", "error")
         return root.redirect(root.url_for("purchase_import"))
-    ok_count = sum(1 for row in data["rows"] if not row.get("errors"))
-    return root.render_template("purchase_import_preview.html", staged=data, ok_count=ok_count)
+    if root.request.method == "POST":
+        new_mapping: dict[str, str] = {}
+        for header in data.get("headers") or []:
+            idx = str(header.get("index"))
+            field_name = (root.request.form.get(f"map_{idx}") or "").strip()
+            if field_name:
+                new_mapping[idx] = field_name
+        data["mapping"] = new_mapping
+        try:
+            with open(purchase_import_staging_path(root, token), "w", encoding="utf-8") as out:
+                root.json.dump(data, out)
+        except OSError:
+            root.flash("Could not update import mapping; try again.", "error")
+            return root.redirect(root.url_for("purchase_import_preview"))
+    staged_rows = purchase_import_build_staged_rows(root, data)
+    ok_count = sum(1 for row in staged_rows if not row.get("errors"))
+    mapped_headers = [
+        {
+            "index": header.get("index"),
+            "header": header.get("header"),
+            "normalized": header.get("normalized"),
+            "field": (data.get("mapping") or {}).get(str(header.get("index")), ""),
+            "field_label": root.PURCHASE_IMPORT_FIELDS.get((data.get("mapping") or {}).get(str(header.get("index")), ""), {}).get("label", ""),
+        }
+        for header in data.get("headers") or []
+    ]
+    mapped_preview_columns = [h for h in mapped_headers if h.get("field")]
+    return root.render_template(
+        "purchase_import_preview.html",
+        staged=data,
+        staged_rows=staged_rows,
+        ok_count=ok_count,
+        field_choices=root.purchase_import_field_choices(),
+        mapped_headers=mapped_headers,
+        mapped_preview_columns=mapped_preview_columns,
+    )
 
 
 def purchase_import_commit_view(root):
@@ -439,10 +618,11 @@ def purchase_import_commit_view(root):
     if not selected:
         root.flash("No rows selected to import.", "warning")
         return root.redirect(root.url_for("purchase_import_preview"))
+    staged_rows = purchase_import_build_staged_rows(root, data)
     imported = 0
     failed = 0
     fail_msgs = []
-    for i, row in enumerate(data["rows"]):
+    for i, row in enumerate(staged_rows):
         if i not in selected:
             continue
         if row.get("errors"):
@@ -481,8 +661,8 @@ def purchase_import_commit_view(root):
 
 def purchase_import_sample_view(root):
     lines = [
-        "Week,Purchase Date,Paid Date,Vendor,Amount,Payment Method,Invoice Weight,Actual Weight,Manifest",
-        "2/9-2/15,1/21/2026,2/10/2026,Example Farm,$4911.30,ACH,297.90,297.70,10187853",
+        "Week,Purchase Date,Paid Date,Vendor,Amount,Payment Method,Invoice Weight,Actual Weight,Manifest,Status,Strain,Testing Notes,Lot Location,Floor State",
+        "2/9-2/15,1/21/2026,2/10/2026,Example Farm,$4911.30,ACH,297.90,297.70,10187853,Delivered,Blue Dream,COA pending,Dock B,inventory",
     ]
     body = "\n".join(lines) + "\n"
     return root.Response(body, mimetype="text/csv; charset=utf-8", headers={"Content-Disposition": "attachment; filename=purchase_import_sample.csv"})
