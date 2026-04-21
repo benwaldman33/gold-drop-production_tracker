@@ -1,13 +1,13 @@
-# Session Synopsis - 2026-04-20
+# Session Synopsis - 2026-04-21
 
 This file is the current continuity checkpoint so work can resume quickly after an interruption.
 
 ## Current state
 
 - Local working branch: `Claude_Consolidation`
-- Local branch head: `15e58d1`
+- Local branch head: `87f16d1`
 - Production branch: `main`
-- Latest pushed `main` commit: `660bed5`
+- Latest pushed `main` commit: `2a94685`
 - The extractor workflow is now live across:
   - main app `Floor Ops`
   - main app purchase / inventory lot actions
@@ -96,8 +96,37 @@ Implemented and live:
   - flush start and end
   - notes
 - touch-first timer buttons are available for time capture instead of relying on keyboard entry
+- `Settings -> Operational Parameters -> Extraction run defaults` now prepopulates:
+  - default milled %
+  - fill count
+  - total fill weight
+  - flush count
+  - total flush weight
+  - stringer basket count
+  - CRC blend
 
-### 5. Open Run usability fix
+### 5. Guided run progression
+
+Implemented and live:
+
+- the standalone run screen now shows the current stage and the next allowed actions
+- progression is now guided through:
+  - `Start Run`
+  - `Start Mixer`
+  - `Stop Mixer`
+  - `Start Flush`
+  - `Stop Flush`
+  - `Mark Run Complete`
+- the mobile extraction run endpoint now returns a derived `progression` payload
+- `POST /api/mobile/v1/extraction/charges/<charge_id>/run` now accepts `progression_action`
+- a dedicated `run_completed_at` timestamp is now stored on `Run`
+- when a run is completed from the standalone workflow, the linked charge is also completed when that charge is still the active reactor event
+- the main run form now shows:
+  - current extraction progression stage
+  - progression description
+  - completed timestamp
+
+### 6. Open Run usability fix
 
 Implemented and live:
 
@@ -162,46 +191,48 @@ User planned next action on Slack:
 
 Do not resume Slack code changes unless new evidence suggests the Gold Drop side is actually broken.
 
-## Immediate next production check
+## Immediate checkpoint for tomorrow
 
-The latest thing shipped was the standalone `Open Run` button promotion.
+There is no urgent production bug open right now.
 
-If resuming tomorrow, first confirm in production:
+The next thing to do is not coding first. It is defining the real extractor workflow clearly enough to design the right screen.
 
-1. open `/extraction-lab/` on the iPad
-2. go to `Reactors`
-3. confirm `Open Run` appears as a large button on reactor cards with linked charges
-4. confirm it is visually obvious before `Mark Running`
-5. confirm the button opens the standalone run-execution screen correctly
+The specific new idea agreed tonight:
+
+- a reactor-centered guided operator screen
+- one screen per reactor
+- top-to-bottom process
+- sequential advancement by tapping buttons
+- fewer screen changes
+- less memory burden on the operator
 
 ## Recommended next development step
 
-The next major step should be the next slice of standalone extractor execution, not more buying/receiving work.
+The next major step should be a `Reactor Session` or similarly named guided workflow screen for operators.
 
-Recommended priority order:
+The goal is to make the extractor experience reactor-centered instead of screen-centered.
 
-1. deepen standalone run execution so extractors can complete more of the actual run from the iPad without bouncing into the admin app
-2. refine touch-first controls for any remaining Slack-message fields still not represented cleanly
-3. add run-state / execution-state continuity on the standalone side after the run is started
-4. after that, evaluate whether end-of-run outputs and exception handling should also live in the standalone app
+That screen should likely become the primary operator surface, while the existing board / charge / run screens remain the underlying system and fallback/admin paths.
 
-## Recommended concrete next sprint
+## Recommended concrete next session
 
-If there is no urgent bug tomorrow, the next sprint should likely focus on:
+Before more implementation, get absolute clarity on the workflow sequence.
 
-1. standalone run execution polish
-   - review every field extractors currently send in Slack
-   - confirm none still require awkward manual typing
-   - convert any remaining free-text numeric inputs to counters / steppers / segmented controls where reasonable
+Tomorrow's work should start by defining:
 
-2. standalone run lifecycle continuity
-   - clearer state after `Open Run`
-   - better operator path once timing begins
-   - explicit save / continue / return-to-reactors flow
+1. the exact step order for one reactor
+2. which steps are required
+3. which steps are optional
+4. which fields belong in each step
+5. which defaults should prepopulate each step
+6. which steps should be hidden until earlier steps are complete
+7. what the completion / closeout experience should be
 
-3. optional run completion layer
-   - determine which completion fields belong in the standalone app versus the admin app
-   - only then build touch-first completion / closeout flow
+Once that is defined, the next build should be:
+
+1. workflow spec for the guided reactor screen
+2. screen layout / step model
+3. implementation of the guided operator flow on top of the already-shipped charge + run progression system
 
 ## Local note
 
