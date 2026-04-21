@@ -35,11 +35,17 @@ test("mock api login, board, charge, and transition flow", async () => {
 
   const runPayload = await api.getChargeRun(created.charge.id);
   assert.equal(runPayload.run.reactor_number, 2);
+  assert.equal(runPayload.run.progression.stage_key, "ready_to_start");
+
+  const startedRun = await api.saveChargeRun(created.charge.id, {
+    progression_action: "start_run",
+  });
+  assert.equal(startedRun.run.progression.stage_key, "ready_to_mix");
+  assert.ok(startedRun.run.run_fill_started_at);
 
   const savedRun = await api.saveChargeRun(created.charge.id, {
     fill_count: 1,
     fill_total_weight_lbs: 22.5,
-    run_fill_started_at: "2026-04-19T09:10",
     notes: "Execution notes",
   });
   assert.equal(savedRun.run.fill_count, 1);

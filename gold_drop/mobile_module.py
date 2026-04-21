@@ -35,7 +35,7 @@ from services.extraction_charge import (
     parse_charge_datetime,
     update_charge_state,
 )
-from services.extraction_run import apply_execution_payload, draft_run_payload, ensure_run_for_charge, mobile_run_payload
+from services.extraction_run import apply_execution_payload, apply_progression_action, draft_run_payload, ensure_run_for_charge, mobile_run_payload
 from gold_drop.floor_module import (
     BOARD_VIEW_OPTIONS,
     _build_active_reactor_board,
@@ -1463,6 +1463,15 @@ def mobile_extraction_run_view(root, charge_id: str):
         had_run_before = bool(charge.run_id)
         run = ensure_run_for_charge(root, charge)
         apply_execution_payload(run, payload)
+        apply_progression_action(run, payload.get("progression_action"))
+        if (payload.get("progression_action") or "").strip() == "mark_complete" and (charge.status or "").strip() != "completed":
+            update_charge_state(
+                root,
+                charge,
+                "completed",
+                history_entries=charge_history_entries(root, charge.id, limit=20),
+                context={"source": "run_progression"},
+            )
         run.calculate_yields()
         run.calculate_cost()
         audit_mobile_action(

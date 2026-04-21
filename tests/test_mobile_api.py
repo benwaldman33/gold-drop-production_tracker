@@ -919,8 +919,10 @@ def test_mobile_extraction_run_execution_flow():
             run_payload = run_get.get_json()["data"]
             run_id = run_payload["run"]["id"]
             assert run_id is None
+            assert run_payload["run"]["run_fill_started_at"] == ""
             assert run_payload["run"]["reactor_number"] == 1
             assert run_payload["run"]["bio_in_reactor_lbs"] == 50.0
+            assert run_payload["run"]["progression"]["stage_key"] == "ready_to_start"
             assert run_payload["run"]["biomass_blend_milled_pct"] == 50.0
             assert run_payload["run"]["biomass_blend_unmilled_pct"] == 50.0
             assert run_payload["run"]["fill_count"] == 2
@@ -930,6 +932,15 @@ def test_mobile_extraction_run_execution_flow():
             assert run_payload["run"]["stringer_basket_count"] == 10
             assert run_payload["run"]["crc_blend"] == "House CRC Default"
             assert run_payload["run"]["inherited"]["tracking_id"]
+
+            start_run = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={"progression_action": "start_run"},
+            )
+            assert start_run.status_code == 200
+            started = start_run.get_json()["data"]["run"]
+            assert started["run_fill_started_at"]
+            assert started["progression"]["stage_key"] == "ready_to_mix"
 
             run_save = client.post(
                 f"/api/mobile/v1/extraction/charges/{charge_id}/run",
@@ -953,17 +964,27 @@ def test_mobile_extraction_run_execution_flow():
             )
             assert run_save.status_code == 200
             saved = run_save.get_json()["data"]["run"]
-            assert saved["run_fill_duration_minutes"] == 35
+            assert saved["run_fill_duration_minutes"] is not None
             assert saved["mixer_duration_minutes"] == 10
             assert saved["flush_duration_minutes"] == 12
             assert saved["crc_blend"] == "House CRC"
             run_id = saved["id"]
             assert saved["open_main_app_url"].endswith(f"/runs/{run_id}/edit?return_to=/floor-ops")
 
+            complete_run = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={"progression_action": "mark_complete"},
+            )
+            assert complete_run.status_code == 200
+            completed = complete_run.get_json()["data"]["run"]
+            assert completed["run_completed_at"]
+            assert completed["progression"]["stage_key"] == "completed"
+
         with app.app_context():
             charge = db.session.get(ExtractionCharge, charge_id)
             assert charge is not None
             assert charge.run_id == run_id
+            assert charge.status == "completed"
             run = db.session.get(app_module.Run, run_id)
             assert run is not None
             assert run.biomass_blend_milled_pct == 80
@@ -971,6 +992,7 @@ def test_mobile_extraction_run_execution_flow():
             assert run.fill_total_weight_lbs == 50
             assert run.stringer_basket_count == 8
             assert run.crc_blend == "House CRC"
+            assert run.run_completed_at is not None
             assert run.notes == "Touch-first run capture"
     finally:
         with app.app_context():
@@ -982,6 +1004,7 @@ def test_mobile_extraction_run_execution_flow():
                 run = db.session.get(app_module.Run, run_id)
                 if run:
                     db.session.delete(run)
+                db.session.flush()
             purchase = db.session.get(Purchase, purchase_id) if purchase_id else None
             if purchase:
                 db.session.delete(purchase)

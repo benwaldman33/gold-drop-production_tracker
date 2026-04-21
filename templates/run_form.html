@@ -274,6 +274,9 @@
 
     <div class="form-section">
       <h4>Execution</h4>
+      <div class="text-sm" style="color:var(--text-muted);margin-bottom:10px;">
+        <strong>{{ run_execution_fields.progression_stage_label }}</strong> — {{ run_execution_fields.progression_description }}
+      </div>
       <div class="form-row-3">
         <div class="form-group">
           <label>Run / Fill Start</label>
@@ -290,6 +293,14 @@
           <label>CRC Blend</label>
           <input type="text" name="crc_blend" value="{{ run.crc_blend if run and run.crc_blend else '' }}" maxlength="200" placeholder="Optional CRC blend">
         </div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Run Completed</label>
+          <input type="datetime-local" name="run_completed_at" value="{{ run_execution_fields.run_completed_at or '' }}">
+        </div>
+        <div class="form-group"></div>
+        <div class="form-group"></div>
       </div>
       <div class="form-row-3">
         <div class="form-group">
