@@ -51,4 +51,6 @@
 - biomass blend slider updates milled / unmilled percentages to total `100`
 - saved extraction defaults from `Settings -> Operational Parameters` prepopulate the standalone run screen for new charge-linked runs, including aggregate fill / flush weights when configured
 - fill, flush, and stringer basket counters respond to `- / +`
+- the run screen shows the current stage and advances correctly through `Start Run`, `Start Mixer`, `Stop Mixer`, `Start Flush`, `Stop Flush`, and `Mark Run Complete`
+- after `Mark Run Complete`, the run shows a completed state and the linked charge is no longer treated as active on the board
 - saving the run keeps the reactor-linked workflow intact and leaves `Open in Main App` available

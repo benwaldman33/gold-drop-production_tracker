@@ -29,6 +29,7 @@ This PRD describes the problem, users, workflows, data requirements, calculation
 - an explicit **reactor lifecycle** on top of charge events so floor operators can move material through `in_reactor -> running -> completed/cancelled` with policy-driven requirements
 - a filterable **reactor board** and same-day **reactor history** view so extractors can focus on the work that matters right now without opening every run
 - a dedicated **standalone extraction run execution** flow so extractors can capture execution details (timers, blend, fills, flushes, CRC, baskets, notes) without leaving the tablet workflow
+- a guided **standalone extraction run progression** flow so extractors can advance start, mixer, flush, and completion actions on the iPad instead of relying on Slack timestamps or the admin form
 - **settings-driven extraction defaults** so those repeated run inputs (blend, counts, aggregate weights, baskets, CRC note) can prepopulate the tablet workflow instead of being re-entered from scratch each time
 - readiness for future **connected scale** capture as a structured input channel
 

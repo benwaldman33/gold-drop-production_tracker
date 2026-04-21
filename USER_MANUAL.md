@@ -54,6 +54,7 @@ Related mobile workflows:
 - It mirrors the same charge and lifecycle workflow the main app uses on `Floor Ops`.
 - After recording a charge, it can now open a dedicated standalone run-execution screen for the extractor workflow, and it can still open the main run form when deeper admin editing is needed.
 - On the `Reactors` board, use the large `Open Run` button on the reactor card before `Mark Running` when the current policy requires a linked run.
+- Inside the standalone run screen, use the guided progression buttons to move the run forward with minimal typing: `Start Run`, `Start Mixer`, `Stop Mixer`, `Start Flush`, `Stop Flush`, and `Mark Run Complete`.
 - `Settings -> Operational Parameters -> Extraction run defaults` controls the initial values the standalone run screen opens with for blend, fill count, total fill weight, flush count, total flush weight, stringer baskets, and CRC blend.
 
 ---
@@ -364,6 +365,17 @@ It then lets extractors capture:
 The timer-heavy fields use touch-first buttons instead of keyboard entry:
 - `Start / Now`
 - `Stop / Now`
+
+The top of the run screen now shows the current stage and the next action buttons. The normal sequence is:
+
+- **Start Run**
+- **Start Mixer**
+- **Stop Mixer**
+- **Start Flush**
+- **Stop Flush**
+- **Mark Run Complete**
+
+Those buttons write the matching timestamps automatically. When the run is marked complete, the run stores a completed timestamp and the linked extraction charge moves to completed as well when that charge is still the active reactor event.
 
 Use **Open in Main App** only when a supervisor needs the full admin run form.
 

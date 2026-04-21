@@ -479,6 +479,7 @@ class Run(db.Model):
     mixer_ended_at = db.Column(db.DateTime)
     flush_started_at = db.Column(db.DateTime)
     flush_ended_at = db.Column(db.DateTime)
+    run_completed_at = db.Column(db.DateTime)
     # After dry HTE is separated from THCA: lab testing → clean (menu) or dirty (Prescott strip) → terp accounting.
     hte_pipeline_stage = db.Column(db.String(40))  # awaiting_lab, lab_clean, lab_dirty_queued_strip, terp_stripped
     hte_lab_result_paths_json = db.Column(db.Text)  # JSON array; COA / lab result images or PDFs under static/

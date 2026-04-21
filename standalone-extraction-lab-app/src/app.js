@@ -650,6 +650,33 @@ function renderTimerField(name, label, value, durationLabel, stopField = "", sto
   `;
 }
 
+function renderRunProgression(run) {
+  const progression = run.progression || {};
+  const actions = progression.actions || [];
+  return `
+    <section class="card">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">Run progression</div>
+          <h3>${escapeHtml(progression.stage_label || "Ready to start")}</h3>
+        </div>
+      </div>
+      <p class="subtle">${escapeHtml(progression.description || "Use the next progression action to guide the extractor through the run.")}</p>
+      ${progression.completed_at ? `<div class="text-sm" style="color:var(--text-muted);margin-top:8px;">Completed at ${escapeHtml(progression.completed_at)}</div>` : ""}
+      ${
+        actions.length
+          ? `<div class="action-grid" style="margin-top:14px;">${actions
+              .map(
+                (action) =>
+                  `<button class="btn btn-primary" type="button" data-action="run-progression" data-run-action="${escapeHtml(action.action_id)}">${escapeHtml(action.label)}</button>`,
+              )
+              .join("")}</div>`
+          : `<div class="text-sm" style="color:var(--text-muted);margin-top:10px;">No additional progression actions are available right now.</div>`
+      }
+    </section>
+  `;
+}
+
 function renderRunExecution() {
   const run = state.run;
   const lot = state.lot;
@@ -675,6 +702,7 @@ function renderRunExecution() {
           <div><span>Charged</span><strong>${escapeHtml(inherited.charged_at_label || "")}</strong></div>
         </div>
       </section>
+      ${renderRunProgression(run)}
       <form class="card charge-form" data-form="run-execution">
         <div class="section-head">
           <div>
@@ -743,6 +771,7 @@ function renderRunExecution() {
           <label for="notes">Notes</label>
           <textarea id="notes" name="notes" rows="4" placeholder="Operator notes">${escapeHtml(run.notes || "")}</textarea>
         </div>
+        <input type="hidden" name="run_completed_at" value="${escapeHtml(run.run_completed_at || "")}" />
         <div class="actions sticky-actions">
           <a class="btn btn-secondary" href="#/reactors">Back to Reactors</a>
           <a class="btn btn-secondary" href="${escapeHtml(run.open_main_app_url || "#")}">Open in Main App</a>
@@ -769,6 +798,7 @@ function bind() {
   app?.querySelector("[data-action='start-camera']")?.addEventListener("click", startCamera);
   app?.querySelector("[data-action='stop-camera']")?.addEventListener("click", stopCamera);
   app?.querySelectorAll("[data-action='transition-charge']").forEach((button) => button.addEventListener("click", handleTransition));
+  app?.querySelectorAll("[data-action='run-progression']").forEach((button) => button.addEventListener("click", handleRunProgression));
   app?.querySelector("[data-action='close-dialog']")?.addEventListener("click", () => {
     state.dialog = null;
     render();
@@ -932,7 +962,25 @@ async function handleRunSubmit(event) {
   event.preventDefault();
   if (!state.route.chargeId) return;
   const form = new FormData(event.currentTarget);
-  const payload = {
+  const payload = buildRunPayload(form);
+  state.loading = true;
+  render();
+  try {
+    const response = await api.saveChargeRun(state.route.chargeId, payload);
+    state.run = response.run;
+    state.lot = response.lot;
+    state.board = await api.getBoard("all");
+    showToast("Run execution saved.");
+  } catch (error) {
+    showToast(error.payload?.error?.message || error.message || "Unable to save run execution");
+  } finally {
+    state.loading = false;
+    render();
+  }
+}
+
+function buildRunPayload(form, progressionAction = "") {
+  return {
     run_fill_started_at: String(form.get("run_fill_started_at") || "").trim(),
     run_fill_ended_at: String(form.get("run_fill_ended_at") || "").trim(),
     biomass_blend_milled_pct: String(form.get("biomass_blend_milled_pct") || "").trim(),
@@ -947,8 +995,17 @@ async function handleRunSubmit(event) {
     mixer_ended_at: String(form.get("mixer_ended_at") || "").trim(),
     flush_started_at: String(form.get("flush_started_at") || "").trim(),
     flush_ended_at: String(form.get("flush_ended_at") || "").trim(),
+    run_completed_at: String(form.get("run_completed_at") || "").trim(),
+    progression_action: progressionAction,
     notes: String(form.get("notes") || "").trim(),
   };
+}
+
+async function handleRunProgression(event) {
+  if (!state.route.chargeId) return;
+  const formEl = app?.querySelector("form[data-form='run-execution']");
+  if (!formEl) return;
+  const payload = buildRunPayload(new FormData(formEl), event.currentTarget.dataset.runAction || "");
   state.loading = true;
   render();
   try {
@@ -956,9 +1013,9 @@ async function handleRunSubmit(event) {
     state.run = response.run;
     state.lot = response.lot;
     state.board = await api.getBoard("all");
-    showToast("Run execution saved.");
+    showToast("Run progression updated.");
   } catch (error) {
-    showToast(error.payload?.error?.message || error.message || "Unable to save run execution");
+    showToast(error.payload?.error?.message || error.message || "Unable to update run progression");
   } finally {
     state.loading = false;
     render();

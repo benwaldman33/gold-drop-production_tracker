@@ -101,6 +101,108 @@ function minutesBetween(startValue, endValue) {
   return Math.round(delta / 60000);
 }
 
+function nowLocalInputValue() {
+  const dt = new Date();
+  const offset = dt.getTimezoneOffset();
+  return new Date(dt.getTime() - offset * 60_000).toISOString().slice(0, 16);
+}
+
+function progressionForRun(run) {
+  if (run.run_completed_at) {
+    return {
+      stage_key: "completed",
+      stage_label: "Completed",
+      description: "This run has been marked complete in the standalone execution workflow.",
+      actions: [],
+      completed_at: run.run_completed_at,
+    };
+  }
+  if (run.flush_started_at && !run.flush_ended_at) {
+    return {
+      stage_key: "flushing",
+      stage_label: "Flush running",
+      description: "Flush timing is active. Stop it when the flush is done.",
+      actions: [{ action_id: "stop_flush", label: "Stop Flush" }],
+      completed_at: "",
+    };
+  }
+  if (run.flush_ended_at) {
+    return {
+      stage_key: "ready_to_complete",
+      stage_label: "Ready to complete",
+      description: "Core extraction steps are timed. Complete the run to close out the operator workflow.",
+      actions: [{ action_id: "mark_complete", label: "Mark Run Complete" }],
+      completed_at: "",
+    };
+  }
+  if (run.mixer_started_at && !run.mixer_ended_at) {
+    return {
+      stage_key: "mixing",
+      stage_label: "Mixer running",
+      description: "Mixer timing is active. Stop the mixer when that step is done.",
+      actions: [{ action_id: "stop_mixer", label: "Stop Mixer" }],
+      completed_at: "",
+    };
+  }
+  if (run.mixer_ended_at) {
+    return {
+      stage_key: "ready_to_flush",
+      stage_label: "Ready to flush",
+      description: "Mixer timing is complete. Start the flush when the reactor is ready.",
+      actions: [{ action_id: "start_flush", label: "Start Flush" }],
+      completed_at: "",
+    };
+  }
+  if (run.run_fill_started_at) {
+    return {
+      stage_key: "ready_to_mix",
+      stage_label: "Ready to mix",
+      description: "The run has started. Start the mixer when material is loaded.",
+      actions: [{ action_id: "start_mixer", label: "Start Mixer" }],
+      completed_at: "",
+    };
+  }
+  return {
+    stage_key: "ready_to_start",
+    stage_label: "Ready to start",
+    description: "Record the start of the run before moving into mixer work.",
+    actions: [{ action_id: "start_run", label: "Start Run" }],
+    completed_at: "",
+  };
+}
+
+function applyMockProgressionAction(run, action) {
+  const now = nowLocalInputValue();
+  if (action === "start_run") {
+    if (!run.run_fill_started_at) run.run_fill_started_at = now;
+    return;
+  }
+  if (action === "start_mixer") {
+    if (!run.run_fill_started_at) throw new Error("Start the run before starting the mixer.");
+    if (!run.mixer_started_at) run.mixer_started_at = now;
+    return;
+  }
+  if (action === "stop_mixer") {
+    if (!run.mixer_started_at) throw new Error("Start the mixer before stopping it.");
+    run.mixer_ended_at = now;
+    return;
+  }
+  if (action === "start_flush") {
+    if (!run.mixer_ended_at) throw new Error("Stop the mixer before starting the flush.");
+    if (!run.flush_started_at) run.flush_started_at = now;
+    return;
+  }
+  if (action === "stop_flush") {
+    if (!run.flush_started_at) throw new Error("Start the flush before stopping it.");
+    run.flush_ended_at = now;
+    return;
+  }
+  if (action === "mark_complete") {
+    if (!run.flush_ended_at) throw new Error("Stop the flush before completing the run.");
+    run.run_completed_at = now;
+  }
+}
+
 function buildMockRunPayload(state, charge, run) {
   const lot = state.lots.find((row) => row.id === charge.purchase_lot_id) || state.lots.find((row) => row.tracking_id === charge.tracking_id) || state.lots[0];
   return {
@@ -126,6 +228,8 @@ function buildMockRunPayload(state, charge, run) {
     flush_started_at: run.flush_started_at || "",
     flush_ended_at: run.flush_ended_at || "",
     flush_duration_minutes: minutesBetween(run.flush_started_at, run.flush_ended_at),
+    run_completed_at: run.run_completed_at || "",
+    progression: progressionForRun(run),
     notes: run.notes || "",
     inherited: {
       tracking_id: lot?.tracking_id || "",
@@ -146,7 +250,7 @@ function buildMockDraftRun(charge) {
     reactor_number: Number(charge.reactor_number || 1),
     bio_in_reactor_lbs: Number(charge.charged_weight_lbs || 0),
     run_type: "standard",
-    run_fill_started_at: String(charge.charged_at || "").slice(0, 16),
+    run_fill_started_at: "",
     run_fill_ended_at: "",
     biomass_blend_milled_pct: MOCK_RUN_DEFAULTS.biomass_blend_milled_pct,
     biomass_blend_unmilled_pct: MOCK_RUN_DEFAULTS.biomass_blend_unmilled_pct,
@@ -160,6 +264,7 @@ function buildMockDraftRun(charge) {
     mixer_ended_at: "",
     flush_started_at: "",
     flush_ended_at: "",
+    run_completed_at: "",
     notes: "",
   };
 }
@@ -177,7 +282,7 @@ function ensureMockRunForCharge(state, chargeId) {
     reactor_number: Number(charge.reactor_number || 1),
     bio_in_reactor_lbs: Number(charge.charged_weight_lbs || 0),
     run_type: "standard",
-    run_fill_started_at: String(charge.charged_at || "").slice(0, 16),
+    run_fill_started_at: "",
     run_fill_ended_at: "",
     biomass_blend_milled_pct: MOCK_RUN_DEFAULTS.biomass_blend_milled_pct,
     biomass_blend_unmilled_pct: MOCK_RUN_DEFAULTS.biomass_blend_unmilled_pct,
@@ -191,6 +296,7 @@ function ensureMockRunForCharge(state, chargeId) {
     mixer_ended_at: "",
     flush_started_at: "",
     flush_ended_at: "",
+    run_completed_at: "",
     notes: "",
   };
   state.runs.push(run);
@@ -451,6 +557,9 @@ export function createApiClient({ mode = "mock", apiBaseUrl = "", fetchImpl = fe
         ...run,
         ...payload,
       });
+      if (payload.progression_action) {
+        applyMockProgressionAction(run, payload.progression_action);
+      }
       saveState(state);
       return {
         charge: mockChargePayload(state, charge),

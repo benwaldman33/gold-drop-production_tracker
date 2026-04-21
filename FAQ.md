@@ -415,6 +415,21 @@ For run / fill time, mixer time, and flush time, use:
 
 The app stores the actual timestamps and also shows the derived duration in minutes when both endpoints are present.
 
+## How does the standalone extraction app guide the run after I tap Open Run?
+
+The run screen now shows the current stage and the next allowed actions directly on the page.
+
+The normal progression is:
+
+- `Start Run`
+- `Start Mixer`
+- `Stop Mixer`
+- `Start Flush`
+- `Stop Flush`
+- `Mark Run Complete`
+
+Each action stamps the matching time field and advances the run to the next stage. When the run is marked complete, the screen shows that completed state and the linked extraction charge is also marked complete when that charge is still the active reactor event.
+
 ## Can receiving staff correct a receipt after it was submitted?
 
 Yes, but only while the purchase's lots have not been used downstream.

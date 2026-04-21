@@ -1,10 +1,10 @@
 # Gold Drop - Next Sprint Implementation Plan
 
-The standalone extraction lab app now covers charge creation and scan-first lot entry. The next sprint should carry extractors through the actual run without forcing them back into the admin form.
+The standalone extraction lab app now covers charge creation, scan-first lot entry, structured run execution, and guided run progression through completion. The next sprint should carry the extractor through the end-of-run closeout without falling back to Slack or the admin-heavy main form.
 
 ## Sprint Focus
 
-Build `Standalone Extraction Run Execution` on top of the existing extraction charge workflow and standalone extraction app.
+Build `Standalone Extraction Run Closeout` on top of the existing charge, run-execution, and progression workflow.
 
 The business sequence remains:
 
@@ -12,14 +12,13 @@ The business sequence remains:
 2. Receive
 3. Find or scan the lot
 4. Charge into reactor / start extraction
-5. Record run execution details
-6. Complete / cancel / review
-
-Testing can still happen before buy, after receipt, or after extraction depending on supplier trust and process stage.
+5. Record run execution details and guided progression
+6. Capture end-of-run closeout and operator signoff
+7. Hand off to downstream review / analytics
 
 ## Product Goal
 
-Let extractors and assistant extractors stay inside the standalone extraction app after charge creation, capture the same execution details they currently type into Slack, and use touch-first timers instead of keyboard-heavy timestamp entry.
+Let extractors finish the normal production loop on the iPad by capturing the last operational details that still tend to live in Slack or memory, while keeping the workflow touch-first and audit-safe.
 
 ## Why This Is Next
 
@@ -27,157 +26,95 @@ The repo already has:
 
 - a deployed standalone extraction app
 - charge-first and scan-first entry
-- a reactor board with lifecycle transitions
-- canonical `ExtractionCharge` persistence
-- a main-app run form with lot allocations and downstream analytics
+- an active reactor board with lifecycle transitions and history
+- dedicated standalone run-execution screens with defaults and timers
+- guided run progression through `Start Run -> Start Mixer -> Stop Mixer -> Start Flush -> Stop Flush -> Mark Run Complete`
 
-What is still missing is the extractor’s actual execution loop:
+What is still missing is the extractor's closeout loop:
 
-- open a run directly from the charge
-- record fill / flush / mixer timing
-- capture blend and hardware counts
-- preserve inherited reactor / source / biomass data without re-entry
+- explicit end-of-run review on the tablet
+- cleaner capture of any last production notes or corrections before final handoff
+- clearer "this run is done" confirmation for the floor team
 
 ## User Stories
 
 ### Extractor
 
-- As an extractor, I can open a run directly from a charged reactor in the standalone app.
-- As an extractor, I can use `Start`, `Stop`, and `Now` style controls for timing fields instead of typing timestamps.
-- As an extractor, I can record fill, flush, CRC, and stringer-basket details in the same workflow where I already charge the lot.
+- As an extractor, I can finish a run on the iPad without jumping back to Slack for end-of-run notes.
+- As an extractor, I can see which completion details are still missing before I close the run.
+- As an extractor, I can confirm that a run is truly complete and hand it off cleanly.
 
 ### Assistant extractor
 
-- As an assistant extractor, I can see which values came from the charge step and which ones I still need to record.
-- As an assistant extractor, I can save execution details on an iPad with large controls and minimal keyboard use.
+- As an assistant extractor, I can open the current run and understand whether it is still in execution or already in closeout.
+- As an assistant extractor, I can add the final operational details with large controls instead of admin-form fields.
 
 ### Operations / audit
 
-- As operations, I keep the same canonical lot allocation and charge-to-run linkage as before.
-- As operations, the extracted run metadata is structured, queryable, and editable later from the main app.
+- As operations, I keep the same canonical run and charge history while making end-of-run operator data more consistent.
+- As operations, I can review completed runs later without reconstructing the operator story from Slack.
 
 ## Scope For This Sprint
 
 ### In scope
 
-- structured extraction run-execution fields on `Run`
-- schema bootstrap support for SQLite and PostgreSQL
-- mobile extraction endpoints to fetch and save a charge-linked standalone run
-- standalone run-execution screen inside `standalone-extraction-lab-app`
-- touch-first timer controls for:
-  - run / fill time
-  - mixer time
-  - flush start / end
-- inherited charge context on the run screen:
-  - reactor
-  - source
-  - strain
-  - biomass weight
-- first-pass structured fields for:
-  - biomass blend `% milled / % unmilled`
-  - number and weight of flushes
-  - number and weight of fills
-  - number of stringer baskets
-  - CRC blend
-  - notes
-- targeted regression coverage for extraction run API + standalone route handling
+- a dedicated standalone run-closeout step or panel
+- clearer `ready to complete` vs `completed` run messaging
+- touch-first capture for any remaining end-of-run fields that belong on the floor
+- completion review / confirmation before final closeout
+- operator-facing run summary after completion
+- regression coverage for closeout flow and main-app compatibility
 
 ### Out of scope
 
-- per-fill or per-flush child tables
-- full standalone yield-output editing
-- Slack parser expansion for the new run fields
-- scale capture directly inside the standalone run screen
-
-## Field Mapping
-
-### Inherited from charge / source lot
-
-- `Reactor`
-- `Strain`
-- `Source`
-- `Biomass Weight`
-- charge timestamp as the initial execution context
-
-### Captured in the standalone run workflow
-
-- `Run / Fill Start Time`
-- `Biomass Blend (% milled / % unmilled)`
-- `Number and Weight of Flushes`
-- `Number and Weight of Fills`
-- `Number of Stringer Baskets`
-- `CRC Blend`
-- `Mixer Time`
-- `Flush Start Time`
-- `Flush End Time`
-- `Notes`
+- full downstream yield accounting
+- lab / testing workflow changes
+- scale integrations inside closeout
+- Slack parser expansion for run-closeout fields
 
 ## UX Surfaces
 
-### 1. Run screen
+### 1. Standalone run closeout
 
-Add a dedicated standalone route:
+Extend the existing standalone route:
 
 - `#/runs/charge/<charge_id>`
 
-That screen should:
+with a stronger closeout state that:
 
-- show inherited charge / lot context at the top
-- show touch-first time controls
-- let operators save structured execution details without leaving the app
-- still offer `Open in Main App` as a secondary path
+- summarizes the run before completion
+- highlights missing required fields
+- makes the final confirmation obvious on the iPad
 
-### 2. Touch-first timers
+### 2. Post-complete handoff
 
-The standalone run screen should prefer buttons over manual datetime typing:
+After a run is completed, the standalone app should give operators simple next actions:
 
-- `Start / Now`
-- `Stop / Now`
+- `Back to Reactors`
+- `Charge Another Lot`
+- `Open Completed Run`
 
-This applies first to:
+### 3. Main-app visibility
 
-- run / fill timing
-- mixer timing
-- flush timing
-
-### 3. Counter-style controls
-
-For count fields, prefer quick `- / +` adjustments over typing:
-
-- flush count
-- fill count
-- stringer basket count
-
-### 4. Blend control
-
-Use a single slider for `% milled`, with `% unmilled` automatically derived to total `100`.
+The main app should continue to show the completed timestamps and execution details without any separate reconciliation step.
 
 ## Backend Changes
 
-### Run fields
+### Run closeout support
 
-Add structured execution fields to `Run`, including datetime, numeric, and text fields needed for the extractor workflow.
+Reuse the existing charge-linked run endpoints and progression model, extending them only if closeout requires additional structured fields or validation.
 
-### Extraction mobile API
+### Main-app compatibility
 
-Add a charge-linked run endpoint:
-
-- `GET /api/mobile/v1/extraction/charges/<charge_id>/run`
-- `POST /api/mobile/v1/extraction/charges/<charge_id>/run`
-
-Behavior:
-
-- `GET` returns either the linked run or a draft payload built from the charge without allocating inventory yet
-- `POST` creates the linked run on first save, applies the existing lot allocation, and stores the execution fields
+Keep the standard run form and reporting paths readable/editable with any new closeout data captured from the standalone app.
 
 ## Test Plan
 
 ### Targeted tests during implementation
 
-- mobile extraction run endpoint returns draft payloads and saved structured fields
-- charge-to-run linkage does not allocate inventory on `GET`
-- standalone route parsing includes `#/runs/charge/<charge_id>`
-- mock/live standalone API run methods unwrap correctly
+- standalone run closeout state and validation
+- mobile extraction run endpoint compatibility for completed runs
+- main-app run editing remains compatible with the saved closeout data
 
 ### Full-suite closeout before final commit
 
@@ -188,9 +125,7 @@ Behavior:
 
 This sprint is done when:
 
-- a charge can open a standalone run-execution screen
-- extractors can save structured execution fields without leaving the standalone app
-- timer buttons capture the relevant timestamps
-- inherited charge data is shown and not re-entered manually
-- the main app can still open and edit the saved run with the new fields
+- extractors can complete the practical end-of-run workflow on the tablet
+- the completion state is obvious in both the standalone app and the main app
+- operator closeout no longer depends on Slack for normal runs
 - tests and docs are updated

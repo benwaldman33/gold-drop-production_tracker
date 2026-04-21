@@ -128,7 +128,9 @@ Behavior:
 - lot payloads include readiness flags, warnings, and charge defaults for touch-first UIs
 - creating a charge stores a canonical `ExtractionCharge` with `source_mode="standalone_extraction"` and writes run-prefill session data for the existing main run form
 - lifecycle transitions reuse the same validation and audit history rules as the main reactor board
-- the charge-linked run endpoint returns a draft standalone run payload on `GET` without allocating inventory yet; the first `POST` creates the linked run, applies lot allocation, and stores structured execution fields such as blend, fill/flush totals, timer stamps, stringer baskets, CRC blend, and notes
+- the charge-linked run endpoint returns a draft standalone run payload on `GET` without allocating inventory yet; the payload now includes a derived `progression` object plus `run_completed_at`
+- `POST /api/mobile/v1/extraction/charges/<charge_id>/run` accepts both structured execution fields and an optional `progression_action`
+- the first `POST` creates the linked run, applies lot allocation, and stores structured execution fields such as blend, fill/flush totals, timer stamps, stringer baskets, CRC blend, notes, and completion timestamp
 
 ### Mobile Write Platform Rules
 

@@ -21,6 +21,44 @@ EXTRACTION_RUN_DEFAULTS = {
     "extraction_default_crc_blend": ("", "Default CRC blend note for extraction run drafts"),
 }
 
+RUN_PROGRESSION = {
+    "ready_to_start": {
+        "label": "Ready to start",
+        "description": "Record the start of the run before moving into mixer work.",
+        "actions": [{"action_id": "start_run", "label": "Start Run"}],
+    },
+    "ready_to_mix": {
+        "label": "Ready to mix",
+        "description": "The run has started. Start the mixer when material is loaded.",
+        "actions": [{"action_id": "start_mixer", "label": "Start Mixer"}],
+    },
+    "mixing": {
+        "label": "Mixer running",
+        "description": "Mixer timing is active. Stop the mixer when that step is done.",
+        "actions": [{"action_id": "stop_mixer", "label": "Stop Mixer"}],
+    },
+    "ready_to_flush": {
+        "label": "Ready to flush",
+        "description": "Mixer timing is complete. Start the flush when the reactor is ready.",
+        "actions": [{"action_id": "start_flush", "label": "Start Flush"}],
+    },
+    "flushing": {
+        "label": "Flush running",
+        "description": "Flush timing is active. Stop it when the flush is done.",
+        "actions": [{"action_id": "stop_flush", "label": "Stop Flush"}],
+    },
+    "ready_to_complete": {
+        "label": "Ready to complete",
+        "description": "Core extraction steps are timed. Complete the run to close out the operator workflow.",
+        "actions": [{"action_id": "mark_complete", "label": "Mark Run Complete"}],
+    },
+    "completed": {
+        "label": "Completed",
+        "description": "This run has been marked complete in the standalone execution workflow.",
+        "actions": [],
+    },
+}
+
 
 def _setting_float_or_none(root, key: str) -> float | None:
     raw = (root.SystemSetting.get(key, "") or "").strip()
@@ -51,6 +89,74 @@ def extraction_run_defaults(root) -> dict[str, float | int | str]:
         "stringer_basket_count": stringer_basket_count,
         "crc_blend": crc_blend,
     }
+
+
+def _utc_now_localized() -> datetime:
+    return datetime.now(app_display_zoneinfo()).astimezone(timezone.utc)
+
+
+def run_progression_payload(run) -> dict:
+    if run.run_completed_at:
+        stage_key = "completed"
+    elif run.flush_started_at and not run.flush_ended_at:
+        stage_key = "flushing"
+    elif run.flush_ended_at:
+        stage_key = "ready_to_complete"
+    elif run.mixer_started_at and not run.mixer_ended_at:
+        stage_key = "mixing"
+    elif run.mixer_ended_at:
+        stage_key = "ready_to_flush"
+    elif run.run_fill_started_at:
+        stage_key = "ready_to_mix"
+    else:
+        stage_key = "ready_to_start"
+    config = RUN_PROGRESSION[stage_key]
+    return {
+        "stage_key": stage_key,
+        "stage_label": config["label"],
+        "description": config["description"],
+        "actions": list(config["actions"]),
+        "completed_at": display_local_datetime(run.run_completed_at),
+    }
+
+
+def apply_progression_action(run, action_id: str | None) -> None:
+    action = (action_id or "").strip()
+    if not action:
+        return
+    now = _utc_now_localized()
+    if action == "start_run":
+        if run.run_fill_started_at is None:
+            run.run_fill_started_at = now
+        return
+    if action == "start_mixer":
+        if run.run_fill_started_at is None:
+            raise ValueError("Start the run before starting the mixer.")
+        if run.mixer_started_at is None:
+            run.mixer_started_at = now
+        return
+    if action == "stop_mixer":
+        if run.mixer_started_at is None:
+            raise ValueError("Start the mixer before stopping it.")
+        run.mixer_ended_at = now
+        return
+    if action == "start_flush":
+        if run.mixer_ended_at is None:
+            raise ValueError("Stop the mixer before starting the flush.")
+        if run.flush_started_at is None:
+            run.flush_started_at = now
+        return
+    if action == "stop_flush":
+        if run.flush_started_at is None:
+            raise ValueError("Start the flush before stopping it.")
+        run.flush_ended_at = now
+        return
+    if action == "mark_complete":
+        if run.flush_ended_at is None:
+            raise ValueError("Stop the flush before completing the run.")
+        run.run_completed_at = now
+        return
+    raise ValueError("Unknown run progression action.")
 
 
 def parse_local_datetime(raw_value: str | None) -> datetime | None:
@@ -119,26 +225,39 @@ def _clamped_percent(value, *, field: str) -> float | None:
 
 
 def apply_execution_payload(run, payload: dict) -> None:
-    milled_pct = _clamped_percent(payload.get("biomass_blend_milled_pct"), field="Milled blend %")
-    unmilled_pct = _clamped_percent(payload.get("biomass_blend_unmilled_pct"), field="Unmilled blend %")
-    if milled_pct is not None and unmilled_pct is not None and abs((milled_pct + unmilled_pct) - 100.0) > 0.6:
-        raise ValueError("Milled and unmilled blend percentages must total 100.")
+    if "biomass_blend_milled_pct" in payload or "biomass_blend_unmilled_pct" in payload:
+        milled_pct = _clamped_percent(
+            payload.get("biomass_blend_milled_pct", run.biomass_blend_milled_pct), field="Milled blend %"
+        )
+        unmilled_pct = _clamped_percent(
+            payload.get("biomass_blend_unmilled_pct", run.biomass_blend_unmilled_pct), field="Unmilled blend %"
+        )
+        if milled_pct is not None and unmilled_pct is not None and abs((milled_pct + unmilled_pct) - 100.0) > 0.6:
+            raise ValueError("Milled and unmilled blend percentages must total 100.")
+        run.biomass_blend_milled_pct = milled_pct
+        run.biomass_blend_unmilled_pct = unmilled_pct
 
-    run.run_fill_started_at = parse_local_datetime(payload.get("run_fill_started_at"))
-    run.run_fill_ended_at = parse_local_datetime(payload.get("run_fill_ended_at"))
-    run.biomass_blend_milled_pct = milled_pct
-    run.biomass_blend_unmilled_pct = unmilled_pct
-    run.flush_count = _opt_int(payload.get("flush_count"), field="Flush count")
-    run.flush_total_weight_lbs = _opt_float(payload.get("flush_total_weight_lbs"), field="Flush total weight")
-    run.fill_count = _opt_int(payload.get("fill_count"), field="Fill count")
-    run.fill_total_weight_lbs = _opt_float(payload.get("fill_total_weight_lbs"), field="Fill total weight")
-    run.stringer_basket_count = _opt_int(payload.get("stringer_basket_count"), field="Stringer basket count")
-    run.crc_blend = (payload.get("crc_blend") or "").strip() or None
-    run.mixer_started_at = parse_local_datetime(payload.get("mixer_started_at"))
-    run.mixer_ended_at = parse_local_datetime(payload.get("mixer_ended_at"))
-    run.flush_started_at = parse_local_datetime(payload.get("flush_started_at"))
-    run.flush_ended_at = parse_local_datetime(payload.get("flush_ended_at"))
-    run.notes = (payload.get("notes") or "").strip() or None
+    field_map = (
+        ("run_fill_started_at", parse_local_datetime),
+        ("run_fill_ended_at", parse_local_datetime),
+        ("flush_count", lambda value: _opt_int(value, field="Flush count")),
+        ("flush_total_weight_lbs", lambda value: _opt_float(value, field="Flush total weight")),
+        ("fill_count", lambda value: _opt_int(value, field="Fill count")),
+        ("fill_total_weight_lbs", lambda value: _opt_float(value, field="Fill total weight")),
+        ("stringer_basket_count", lambda value: _opt_int(value, field="Stringer basket count")),
+        ("mixer_started_at", parse_local_datetime),
+        ("mixer_ended_at", parse_local_datetime),
+        ("flush_started_at", parse_local_datetime),
+        ("flush_ended_at", parse_local_datetime),
+        ("run_completed_at", parse_local_datetime),
+    )
+    for key, parser in field_map:
+        if key in payload:
+            setattr(run, key, parser(payload.get(key)))
+    if "crc_blend" in payload:
+        run.crc_blend = (payload.get("crc_blend") or "").strip() or None
+    if "notes" in payload:
+        run.notes = (payload.get("notes") or "").strip() or None
 
 
 def _draft_run_for_charge(root, charge):
@@ -152,7 +271,6 @@ def _draft_run_for_charge(root, charge):
         run_type="standard",
         created_by=getattr(root.current_user, "id", None),
     )
-    run.run_fill_started_at = charge.charged_at
     run.biomass_blend_milled_pct = defaults["biomass_blend_milled_pct"]
     run.biomass_blend_unmilled_pct = defaults["biomass_blend_unmilled_pct"]
     run.fill_count = defaults["fill_count"]
@@ -234,6 +352,8 @@ def mobile_run_payload(root, run, charge) -> dict:
         "flush_started_at": display_local_datetime(run.flush_started_at),
         "flush_ended_at": display_local_datetime(run.flush_ended_at),
         "flush_duration_minutes": duration_minutes(run.flush_started_at, run.flush_ended_at),
+        "run_completed_at": display_local_datetime(run.run_completed_at),
+        "progression": run_progression_payload(run),
         "notes": run.notes,
         "inherited": {
             "tracking_id": lot.tracking_id if lot else None,
