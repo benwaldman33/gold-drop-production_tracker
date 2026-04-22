@@ -118,6 +118,7 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 - **Supplier Performance** — All-time, 90-day, and last-batch analytics per farm
 - **Supplier Merge / Correction** — Super Admins can preview and merge duplicate suppliers from the supplier record page; linked purchases, lots, lab tests, attachments, and photos are rehomed while lineage is preserved
 - **Supplier duplicate warnings** — Main-app supplier creation and the standalone buyer flow now warn on typo-close supplier names before saving, while the existing merge workflow remains available for cleanup when duplicates already exist.
+- **Supplier spreadsheet import** — Upload **.csv**, **.xlsx**, or **.xlsm** via **Suppliers -> Import spreadsheet**. The app detects headers, lets admins remap columns interactively, previews duplicate-aware results, and can either create new suppliers or update exact-name matches. This uses the same `services/import_framework.py` foundation as purchase imports.
 - **Strain Performance** — Compare yields and cost/gram across strains and suppliers
 - **Data Quality Controls** — Flag runs missing $/lb; optionally exclude unpriced runs from analytics
 - **CSV Import/Export** — **Runs** (and related operational history): Import from Google Sheets via **Import** with deduplication; export filtered views from list screens. **Purchases** use the dedicated **Import spreadsheet** flow (see above), not the legacy Import screen.

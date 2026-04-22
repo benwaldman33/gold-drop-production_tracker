@@ -681,6 +681,15 @@ SQLite adds the sync config table in `_ensure_sqlite_schema()`; other engines re
 - **Templates:** `purchase_import.html`, `purchase_import_preview.html`. Client still uses `DataTransfer` so drag-and-drop assigns `input.files` in modern browsers.
 - **Dependency:** `openpyxl>=3.1.0` in `requirements.txt`.
 
+## Supplier spreadsheet import
+
+- **Framework usage:** the supplier importer reuses `services/import_framework.py` for upload parsing, header detection, and row extraction from saved mappings.
+- **Metadata:** `supplier_import.py` defines `SUPPLIER_IMPORT_FIELDS`, header alias groups, mapping choices, and `parse_supplier_spreadsheet_upload_for_mapping(...)`.
+- **Routes:** `GET/POST /suppliers/import`, `GET/POST /suppliers/import/preview`, `POST /suppliers/import/commit`, `GET /suppliers/import/sample.csv` in `gold_drop/suppliers_module.py`.
+- **Preview behavior:** preview stores raw headers + current mapping in a temp staging file, shows mapped rows, and labels each row as **create** or **update** depending on whether an exact case-insensitive supplier name match already exists.
+- **Commit rules:** exact-name matches can be updated only when the user checks **Update existing suppliers**; otherwise the row fails with a clear message. New rows still surface close-match duplicate hints in preview using the existing `supplier_duplicate_candidates(...)` logic.
+- **Field coverage:** supplier name, contact name, contact phone, contact email, location, notes, and active flag.
+
 ## Batch list editing
 
 - **Module:** `batch_edit.py` — pure apply helpers: `parse_uuid_ids`, `apply_batch_runs`, `apply_batch_purchases` (returns `touched` purchases for hooks), `apply_batch_biomass`, `apply_batch_suppliers`, `apply_batch_costs`, `apply_batch_inventory_lots`, `apply_batch_strain_rename`. Max **200** UUIDs per batch. Strain rename uses `STRAIN_PAIR_SEP` (`\\x1f`) between strain name and supplier name in checkbox values / query params.

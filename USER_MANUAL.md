@@ -651,6 +651,20 @@ If it really is a different supplier with a similar name, use the explicit confi
 
 Super Admins can also open a supplier record and use **Merge Supplier** to combine duplicates safely. The merge screen shows an impact summary first, then archives the source supplier, moves linked records to the target supplier, and keeps lineage and audit history intact.
 
+### Importing suppliers from a spreadsheet
+Use **Suppliers** -> **Import spreadsheet** when you have many suppliers in Excel or CSV.
+
+1. Drag a **.csv**, **.xlsx**, or **.xlsm** file onto the drop zone (or click to browse). Upload starts automatically after you pick a file.
+2. The app finds a header row and suggests mappings for columns like supplier name, contact name, phone, email, location, notes, and active status.
+3. On the preview page, adjust any column mappings you want before importing.
+4. Review the action column:
+   - **Create** means the row will create a new supplier.
+   - **Update** means the supplier name already matches an existing supplier exactly.
+5. If you want exact name matches to overwrite the existing supplier, turn on **Update existing suppliers** before importing.
+6. Confirm import.
+
+**Tip:** The preview also shows possible duplicate hints for new suppliers with close-but-not-exact names, so you can catch typo-close rows before creating more cleanup work.
+
 ---
 
 ## Strains (Performance)
