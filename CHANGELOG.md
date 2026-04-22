@@ -12,6 +12,7 @@
 - A new `standalone-extraction-lab-app` now mirrors the extractor workflow with a touch-first reactor board, lot browser, charge form, and lifecycle actions that still hand off into the main run form when needed.
 
 ### Changed
+- `Suppliers` now includes `Import spreadsheet`, built on the same shared import framework as Purchases: upload, interactive column mapping, preview, duplicate-aware hints, and optional update of exact-name matches.
 - `Purchases -> Import spreadsheet` now stages uploads through an interactive column-mapping preview, supports a broader set of purchase, pipeline/testing, and lot fields, and uses a reusable import-framework helper instead of a fixed header-only flow.
 - `Settings -> Slack -> field mappings` now uses friendlier business labels, destination-specific field pickers, and clearer guidance so Super Admins can map Slack fields without having to memorize raw snake_case target names.
 - Standalone extraction `Reactors` board filters now respect the selected `Board view` on live production data instead of always showing every reactor card.

@@ -83,6 +83,12 @@ Common causes are missing purchase date or paid-date fallback, missing both invo
 **Can the purchase importer handle more than the old accounting columns now?**
 Yes. Besides the usual vendor/date/weight/manifest/amount fields, the preview can map pipeline/testing fields and single-lot fields such as strain, lot location, lot floor state, milled flag, potency, and lot notes.
 
+**How do I import suppliers from Excel or CSV?**
+Open **Suppliers** and use **Import spreadsheet**. You can drag and drop a `.csv`, `.xlsx`, or `.xlsm` file or browse for it. The app detects the header row, lets you map columns interactively, shows duplicate-aware preview hints, and then imports the selected rows.
+
+**Can supplier import update an existing supplier instead of creating a duplicate?**
+Yes. If the supplier name matches an existing supplier exactly (case-insensitive), the preview marks that row as an update candidate. Turn on **Update existing suppliers** during commit if you want those rows to overwrite the matching supplier record.
+
 **Are imported purchases approved automatically?**  
 No. They are created unapproved. If the spreadsheet asked for an on-hand status, the app downgrades it to a safe status such as **ordered** until someone approves the purchase and sets the real status.
 

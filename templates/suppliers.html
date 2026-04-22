@@ -17,6 +17,7 @@
     <a href="{{ url_for('export_csv', entity='suppliers') }}" class="btn btn-secondary">Export Suppliers CSV</a>
     <a href="{{ url_for('export_csv', entity='strains') }}" class="btn btn-secondary">Export Strains CSV</a>
   {% if current_user.can_edit %}
+  <a href="{{ url_for('supplier_import') }}" class="btn btn-secondary">Import spreadsheet</a>
   <a href="{{ url_for('supplier_new') }}" class="btn btn-primary">+ Add Supplier</a>
   {% endif %}
   </div>
