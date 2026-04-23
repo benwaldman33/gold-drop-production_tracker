@@ -1,131 +1,283 @@
 # Gold Drop - Next Sprint Implementation Plan
 
-The standalone extraction lab app now covers charge creation, scan-first lot entry, structured run execution, and guided run progression through completion. The next sprint should carry the extractor through the end-of-run closeout without falling back to Slack or the admin-heavy main form.
+The reactor-side extraction workflow is now live through charge creation, standalone run execution, and guided run progression. The next major product area starts **after extraction has already happened** and the run outputs exist.
+
+This plan is now anchored to the `Extraction & Post-Processing Flowchart` provided on `2026-04-22`.
 
 ## Sprint Focus
 
-Build `Standalone Extraction Run Closeout` on top of the existing charge, run-execution, and progression workflow.
+Build `Post-Extraction Workflow Orchestration` on top of the existing extraction system.
 
-The business sequence remains:
+The business sequence is now:
 
 1. Buy
 2. Receive
-3. Find or scan the lot
-4. Charge into reactor / start extraction
-5. Record run execution details and guided progression
-6. Capture end-of-run closeout and operator signoff
-7. Hand off to downstream review / analytics
+3. Inventory / lot tracking
+4. Charge into reactor
+5. Execute extraction run
+6. Record initial outputs (`wet THCA`, `wet HTE`)
+7. Route material through the correct post-extraction path
+8. Record downstream holds, decisions, and queue placements
 
 ## Product Goal
 
-Let extractors finish the normal production loop on the iPad by capturing the last operational details that still tend to live in Slack or memory, while keeping the workflow touch-first and audit-safe.
+Let operators and supervisors move material from the completed extraction run into the correct **THCA** and **HTE** downstream paths without relying on Slack messages, memory, or ad hoc notes.
+
+The system should become the source of truth for:
+
+- which post-extraction path a run took
+- what timed holds happened
+- what decisions were made
+- whether material was held, reworked, or routed to a downstream queue
 
 ## Why This Is Next
 
-The repo already has:
+The current system already covers the extraction-side workflow:
 
-- a deployed standalone extraction app
-- charge-first and scan-first entry
-- an active reactor board with lifecycle transitions and history
-- dedicated standalone run-execution screens with defaults and timers
-- guided run progression through `Start Run -> Start Mixer -> Stop Mixer -> Start Flush -> Stop Flush -> Mark Run Complete`
+- lot charging
+- active reactor board
+- standalone extraction app
+- guided run progression through completion
+- settings-driven defaults for repeated extraction inputs
 
-What is still missing is the extractor's closeout loop:
+What is still missing is the workflow **after outputs are collected**:
 
-- explicit end-of-run review on the tablet
-- cleaner capture of any last production notes or corrections before final handoff
-- clearer "this run is done" confirmation for the floor team
+- run-type branching after extraction
+- post-processing timers and hold states
+- explicit THCA and HTE path decisions
+- downstream queue / hold / rework routing
+- traceable disposition of extracted material
+
+## Source Workflow To Implement
+
+### Start condition
+
+This workflow begins **after extraction run execution**, not before.
+
+The source run already exists, and the system has or should have:
+
+- reactor
+- source lot(s)
+- run metadata
+- wet THCA output
+- wet HTE output
+
+### Run-type branch
+
+After extraction, the operator must identify which run path applies:
+
+1. `100 lb pot pour`
+2. `200 lb minor run`
+
+### Pot pour path
+
+`100 lb pot pour` currently follows:
+
+1. warm off-gas area
+2. 10 days
+3. stir daily once
+4. move to post-processing lab
+5. centrifuge process
+6. outputs collected `THCA + HTE`
+7. record final weights
+8. end
+
+### Minor run path
+
+`200 lb minor run` currently follows:
+
+1. initial outputs `THCA + HTE`
+2. split into:
+   - `THCA path`
+   - `HTE path`
+
+### THCA path
+
+Current target flow:
+
+1. THCA oven
+2. 16 hours
+3. mill THCA
+4. product-path decision:
+   - sell THCA
+   - make LD
+   - formulate in badders / sugars
+5. decarb sample for LD clarity
+6. upload picture
+7. end
+
+### HTE path
+
+Current target flow:
+
+1. landing zone
+2. off-gas 48 hours
+3. tested
+4. clean decision:
+   - if no: move to cage upstairs for terp stripping / CDTs
+   - if yes: terp tube refinement
+5. oil darker / thick / harder to filter decision:
+   - if yes:
+     - Prescott machine
+     - testing
+     - potency decision:
+       - low -> held for HP base oil
+       - high -> held to be made into distillate
+   - if no:
+     - clean HTE
+     - menu ready path
+     - terp profile standard for Liquid Loud decision:
+       - yes -> hold ~2kg for Liquid Loud processing, then move to GoldDrop production queue
+       - no -> move to GoldDrop production queue
+6. end
+
+## Gap Analysis Against Current System
+
+### Already implemented
+
+- extraction-side run execution
+- guided progression through extraction completion
+- wet output capture support on the run
+- HTE pipeline concepts already exist in the data model and reporting surfaces
+- department/reporting language already references parts of the HTE downstream path
+
+### Missing
+
+- explicit `run type` selection for the post-extraction branch
+- post-extraction workflow screen(s)
+- timed holds for:
+  - 10-day warm off-gas
+  - 48-hour off-gas
+  - 16-hour THCA oven
+- explicit branch tracking for:
+  - THCA path
+  - HTE path
+- decision nodes captured as structured data instead of notes
+- hold / rework / downstream queue states
+- post-processing operator workflow surfaces
+- final disposition tracking for:
+  - sell THCA
+  - make LD
+  - formulate into badders / sugars
+  - HP base oil hold
+  - distillate hold
+  - Liquid Loud hold
+  - GoldDrop production queue
+
+## Recommended Build Order
+
+### Phase 1 - Post-extraction session foundation
+
+Build a new post-extraction session layer linked to a completed run.
+
+Scope:
+
+- select `100 lb pot pour` vs `200 lb minor run`
+- record initial outputs:
+  - wet THCA
+  - wet HTE
+- create canonical post-extraction session records tied to the run
+
+### Phase 2 - THCA and HTE path state tracking
+
+Add structured path/state models for downstream workflow.
+
+Scope:
+
+- THCA path states
+- HTE path states
+- timed holds
+- explicit branch decisions
+- same-day / current-state visibility in the app
+
+### Phase 3 - Guided downstream operator screens
+
+Add touch-first workflow screens similar to the standalone extraction approach.
+
+Scope:
+
+- guided post-extraction session screen
+- top-to-bottom operator sequence
+- minimal keyboard entry
+- timers and decision buttons
+
+### Phase 4 - Queue and hold destinations
+
+Turn final path decisions into operational queue states.
+
+Scope:
+
+- GoldDrop production queue
+- Liquid Loud hold
+- HP base oil hold
+- distillate hold
+- terp stripping / cage hold
+
+### Phase 5 - Reporting / department alignment
+
+Align the existing department and reporting surfaces with the new structured data.
+
+Scope:
+
+- testing page
+- HTE / terp / distillation views
+- post-processing summary views
+- better current-state and disposition visibility
 
 ## User Stories
 
-### Extractor
+### Extractor / post-processing operator
 
-- As an extractor, I can finish a run on the iPad without jumping back to Slack for end-of-run notes.
-- As an extractor, I can see which completion details are still missing before I close the run.
-- As an extractor, I can confirm that a run is truly complete and hand it off cleanly.
+- As an operator, I can record whether a completed run is a pot pour or minor run.
+- As an operator, I can move THCA and HTE through their downstream paths without relying on Slack notes.
+- As an operator, I can start and stop the required hold/timer steps with one tap.
+- As an operator, I can record downstream decisions as structured actions instead of free-text only.
 
-### Assistant extractor
+### Supervisor
 
-- As an assistant extractor, I can open the current run and understand whether it is still in execution or already in closeout.
-- As an assistant extractor, I can add the final operational details with large controls instead of admin-form fields.
+- As a supervisor, I can see exactly where each run's outputs are in post-processing.
+- As a supervisor, I can see whether material is held, queued, clean, dirty, stripped, or routed elsewhere.
+- As a supervisor, I can review the downstream decision history with timestamps.
 
-### Operations / audit
+### Operations / reporting
 
-- As operations, I keep the same canonical run and charge history while making end-of-run operator data more consistent.
-- As operations, I can review completed runs later without reconstructing the operator story from Slack.
+- As operations, I can report THCA and HTE post-processing paths from system data instead of reconstructing them from Slack.
+- As operations, I can separate extraction execution from post-extraction disposition while preserving traceability.
 
-## Scope For This Sprint
+## UX Direction
 
-### In scope
+The likely operator surface should mirror the reactor-centered idea already discussed for extraction:
 
-- a dedicated standalone run-closeout step or panel
-- clearer `ready to complete` vs `completed` run messaging
-- touch-first capture for any remaining end-of-run fields that belong on the floor
-- completion review / confirmation before final closeout
-- operator-facing run summary after completion
-- regression coverage for closeout flow and main-app compatibility
+- one guided workflow screen per post-extraction session or output path
+- top-to-bottom flow
+- large tap targets
+- timers for hold steps
+- structured decision buttons for branch points
 
-### Out of scope
+This should be designed only after the team confirms the exact real-world workflow sequence.
 
-- full downstream yield accounting
-- lab / testing workflow changes
-- scale integrations inside closeout
-- Slack parser expansion for run-closeout fields
+## Immediate Next Session
 
-## UX Surfaces
+Do not build the downstream UI yet.
 
-### 1. Standalone run closeout
+First:
 
-Extend the existing standalone route:
+1. confirm the real operator workflow with the team
+2. validate which steps are required vs optional
+3. validate which decisions must be structured
+4. confirm whether THCA and HTE should be managed as one shared screen or two linked workflow screens
 
-- `#/runs/charge/<charge_id>`
+After that, the first implementation slice should be:
 
-with a stronger closeout state that:
+`Phase 1 - Post-extraction session foundation`
 
-- summarizes the run before completion
-- highlights missing required fields
-- makes the final confirmation obvious on the iPad
+## Definition Of Done For Planning
 
-### 2. Post-complete handoff
+This planning pass is complete when:
 
-After a run is completed, the standalone app should give operators simple next actions:
-
-- `Back to Reactors`
-- `Charge Another Lot`
-- `Open Completed Run`
-
-### 3. Main-app visibility
-
-The main app should continue to show the completed timestamps and execution details without any separate reconciliation step.
-
-## Backend Changes
-
-### Run closeout support
-
-Reuse the existing charge-linked run endpoints and progression model, extending them only if closeout requires additional structured fields or validation.
-
-### Main-app compatibility
-
-Keep the standard run form and reporting paths readable/editable with any new closeout data captured from the standalone app.
-
-## Test Plan
-
-### Targeted tests during implementation
-
-- standalone run closeout state and validation
-- mobile extraction run endpoint compatibility for completed runs
-- main-app run editing remains compatible with the saved closeout data
-
-### Full-suite closeout before final commit
-
-- standalone extraction app test suite
-- full Python suite
-
-## Definition Of Done
-
-This sprint is done when:
-
-- extractors can complete the practical end-of-run workflow on the tablet
-- the completion state is obvious in both the standalone app and the main app
-- operator closeout no longer depends on Slack for normal runs
-- tests and docs are updated
+- the system boundary is clear:
+  - extraction workflow ends at run completion / initial outputs
+  - post-extraction workflow begins after that
+- the target downstream paths are documented
+- the build order is defined
+- future implementation can start without re-litigating where extraction ends and post-processing begins
