@@ -155,6 +155,29 @@ HP_BASE_OIL_QUEUE_EVENT_LABELS = {
     "send_back": "Sent back",
 }
 
+DISTILLATE_QUEUE_ACTIONS = (
+    ("mark_reviewed", "Mark Reviewed"),
+    ("confirm_hold", "Confirm Hold"),
+    ("release_complete", "Release Complete"),
+    ("send_back", "Send Back For Re-routing"),
+)
+
+DISTILLATE_QUEUE_STATE_LABELS = {
+    "new_in_queue": "New on hold",
+    "reviewed": "Reviewed",
+    "confirmed_hold": "Hold confirmed",
+    "released_complete": "Released complete",
+    "sent_back": "Sent back",
+}
+
+DISTILLATE_QUEUE_EVENT_LABELS = {
+    "entered_queue": "Entered hold",
+    "mark_reviewed": "Marked reviewed",
+    "confirm_hold": "Hold confirmed",
+    "release_complete": "Released complete",
+    "send_back": "Sent back",
+}
+
 DESTINATION_QUEUE_CONFIGS = {
     "golddrop_queue": {
         "title": "GoldDrop Production Queue",
@@ -278,6 +301,36 @@ DESTINATION_QUEUE_CONFIGS = {
             "send_back": "Run sent back for downstream re-routing.",
         },
     },
+    "hold_distillate": {
+        "title": "Distillate Hold",
+        "badge_label": "Distillate hold",
+        "summary_description": "Runs being held for distillate production decisions.",
+        "empty_text": "No runs are currently in the Distillate hold.",
+        "open_button_label": "Open Distillate Hold",
+        "view_endpoint": "distillate_queue",
+        "action_endpoint": "distillate_queue_action",
+        "storage_field": "hte_potency_disposition",
+        "active_value": "hold_distillate",
+        "state_labels": DISTILLATE_QUEUE_STATE_LABELS,
+        "event_labels": DISTILLATE_QUEUE_EVENT_LABELS,
+        "actions": DISTILLATE_QUEUE_ACTIONS,
+        "default_state": "new_in_queue",
+        "action_state_map": {
+            "mark_reviewed": "reviewed",
+            "confirm_hold": "confirmed_hold",
+            "release_complete": "released_complete",
+            "send_back": "sent_back",
+        },
+        "help_text": "Use this surface to confirm the distillate hold, complete the release, or send the run back for re-routing.",
+        "entered_note": "Entered distillate hold.",
+        "source_label": "distillate_queue",
+        "action_messages": {
+            "mark_reviewed": "Run marked reviewed in Distillate hold.",
+            "confirm_hold": "Run hold confirmed for distillate.",
+            "release_complete": "Run released from Distillate hold.",
+            "send_back": "Run sent back for downstream re-routing.",
+        },
+    },
 }
 
 
@@ -310,6 +363,10 @@ def register_routes(app, root):
     def hp_base_oil_queue():
         return destination_queue_view(root, "hold_hp_base_oil")
 
+    @root.login_required
+    def distillate_queue():
+        return destination_queue_view(root, "hold_distillate")
+
     @root.editor_required
     def floor_charge_transition(charge_id):
         return floor_charge_transition_view(root, charge_id)
@@ -334,6 +391,10 @@ def register_routes(app, root):
     def hp_base_oil_queue_action(run_id):
         return destination_queue_action_view(root, run_id, "hold_hp_base_oil")
 
+    @root.editor_required
+    def distillate_queue_action(run_id):
+        return destination_queue_action_view(root, run_id, "hold_distillate")
+
     app.add_url_rule("/floor-ops", endpoint="floor_ops", view_func=floor_ops)
     app.add_url_rule("/scan", endpoint="scan_center", view_func=scan_center)
     app.add_url_rule("/downstream-queues", endpoint="downstream_queues", view_func=downstream_queues)
@@ -341,12 +402,14 @@ def register_routes(app, root):
     app.add_url_rule("/downstream-queues/liquid-loud", endpoint="liquid_loud_queue", view_func=liquid_loud_queue)
     app.add_url_rule("/downstream-queues/terp-strip", endpoint="terp_strip_queue", view_func=terp_strip_queue)
     app.add_url_rule("/downstream-queues/hp-base-oil", endpoint="hp_base_oil_queue", view_func=hp_base_oil_queue)
+    app.add_url_rule("/downstream-queues/distillate", endpoint="distillate_queue", view_func=distillate_queue)
     app.add_url_rule("/floor-ops/charges/<charge_id>/transition", endpoint="floor_charge_transition", view_func=floor_charge_transition, methods=["POST"])
     app.add_url_rule("/downstream-queues/runs/<run_id>/move", endpoint="downstream_queue_move", view_func=downstream_queue_move, methods=["POST"])
     app.add_url_rule("/downstream-queues/golddrop/runs/<run_id>/action", endpoint="golddrop_queue_action", view_func=golddrop_queue_action, methods=["POST"])
     app.add_url_rule("/downstream-queues/liquid-loud/runs/<run_id>/action", endpoint="liquid_loud_queue_action", view_func=liquid_loud_queue_action, methods=["POST"])
     app.add_url_rule("/downstream-queues/terp-strip/runs/<run_id>/action", endpoint="terp_strip_queue_action", view_func=terp_strip_queue_action, methods=["POST"])
     app.add_url_rule("/downstream-queues/hp-base-oil/runs/<run_id>/action", endpoint="hp_base_oil_queue_action", view_func=hp_base_oil_queue_action, methods=["POST"])
+    app.add_url_rule("/downstream-queues/distillate/runs/<run_id>/action", endpoint="distillate_queue_action", view_func=distillate_queue_action, methods=["POST"])
 
 
 FLOOR_STATE_LABELS = {
@@ -1023,7 +1086,7 @@ def destination_queue_action_view(root, run_id, queue_key: str):
             run.hte_pipeline_stage = "terp_stripped"
         elif action == "send_back":
             run.hte_queue_destination = None
-    elif queue_key == "hold_hp_base_oil":
+    elif queue_key in {"hold_hp_base_oil", "hold_distillate"}:
         if action == "release_complete":
             run.hte_potency_disposition = None
         elif action == "send_back":

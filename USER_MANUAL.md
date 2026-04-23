@@ -574,6 +574,20 @@ Use these when a run has already been routed to that downstream destination and 
 
 This page is for low-potency output held for HP base oil decisions. `Release Complete` clears the hold when that downstream decision is finished.
 
+### Distillate Hold
+
+`Distillate Hold` is now also a dedicated downstream destination page reached from **Downstream Queues -> Open Distillate Hold**.
+
+Use it when high-potency output is being held to be made into distillate.
+
+Actions:
+- `Mark Reviewed`
+- `Confirm Hold`
+- `Release Complete`
+- `Send Back For Re-routing`
+
+This mirrors the HP base oil hold pattern, but for the distillate path instead of the low-potency hold path.
+
 Use **Confirm Movement** to record a standard movement action:
 - move to vault
 - move to reactor staging

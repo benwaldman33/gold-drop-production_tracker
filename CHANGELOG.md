@@ -16,6 +16,7 @@
 - Phase 4 downstream queue surfaces are now live in the main app: `Downstream Queues` groups completed post-extraction runs into `Needs Queue Decision`, `GoldDrop production queue`, `Liquid Loud hold`, `Terp strip / CDT cage`, `HP base oil hold`, and `Distillate hold`, with move/complete actions that update the existing run-level destination fields.
 - The first destination-specific queue workflow is now live: `GoldDrop Production Queue` has its own dedicated main-app page with queue state history plus `Mark Reviewed`, `Queue For Production`, `Release Complete`, and `Send Back For Re-routing` actions.
 - Additional destination-specific downstream workflows are now live in the main app: `Liquid Loud Hold`, `Terp Strip / CDT Cage`, and `HP Base Oil Hold` each now have dedicated queue pages with queue history plus destination-specific next-step actions instead of forcing supervisors to manage those holds from the generic routing board only.
+- `Distillate Hold` now also has its own dedicated downstream workflow page, matching the same queue-history and action pattern as the other destination-specific hold surfaces.
 
 ### Changed
 - `Inventory` now includes `Import spreadsheet`, built on the shared import framework as a controlled update-only workflow over existing lots matched by tracking ID. It supports the same safe lot-edit fields as the manual lot editor: strain, potency, location, floor state, milled state, and notes.
@@ -71,6 +72,7 @@
 - Added downstream queue regression coverage for queue grouping, queue move actions, and run-form return context from the new queue page.
 - Added dedicated GoldDrop queue regression coverage for queue-page rendering, queue event history, and review/release actions.
 - Added dedicated downstream destination queue regression coverage for Liquid Loud release-to-GoldDrop flow, Terp Strip / CDT cage progression, and HP Base Oil hold confirmation/release actions.
+- Added dedicated Distillate hold regression coverage for queue-page rendering plus confirm/release actions.
 
 ## 2026-04-11
 

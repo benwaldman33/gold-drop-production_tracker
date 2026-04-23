@@ -122,6 +122,7 @@ No. Each of those destinations now has its own dedicated workflow page opened fr
 - **Liquid Loud Hold**: mark reviewed, reserve for Liquid Loud, release to GoldDrop production queue, release complete, or send back for re-routing
 - **Terp Strip / CDT Cage**: mark reviewed, queue Prescott, mark strip complete, or send back for re-routing
 - **HP Base Oil Hold**: mark reviewed, confirm hold, release complete, or send back for re-routing
+- **Distillate Hold**: mark reviewed, confirm hold, release complete, or send back for re-routing
 
 **Does strain import create a new strain table?**
 No. Strain Performance is derived from lot strain names. The importer is a safe bulk-rename workflow over matching `PurchaseLot` rows for a supplier and current strain name.

@@ -279,6 +279,7 @@ Phase 5 is now also shipped for:
 - `Liquid Loud Hold`
 - `Terp Strip / CDT Cage`
 - `HP Base Oil Hold`
+- `Distillate Hold`
 
 Current implementation for those additional destinations:
 - each has its own dedicated queue page opened from `Downstream Queues`
