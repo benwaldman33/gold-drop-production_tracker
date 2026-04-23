@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Strain import preview{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Strain rename import preview</h2>
+  <div class="btn-group">
+    <a href="{{ url_for('strain_import') }}" class="btn btn-secondary">&larr; Upload another file</a>
+    <a href="{{ url_for('strains_list') }}" class="btn btn-secondary">Strains</a>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <p class="text-sm cell-muted" style="margin:0 0 8px 0;">
+    File: <strong>{{ staged.filename }}</strong> -
+    {{ staged_rows|length }} row(s), <strong>{{ ok_count }}</strong> ready to import.
+  </p>
+  <p class="text-sm cell-muted" style="margin:0;">
+    This importer renames existing lot strain labels for a supplier. It does not create a separate strain master record.
+  </p>
+</div>
+
+<form method="POST" action="{{ url_for('strain_import_preview') }}" class="card" style="margin-bottom:16px;">
+  <div class="card-header"><h3>Column mapping</h3></div>
+  <div style="overflow-x:auto;">
+    <table style="min-width:980px;width:100%;">
+      <thead>
+        <tr>
+          <th>Spreadsheet column</th>
+          <th>Normalized key</th>
+          <th>Map to strain import field</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for header in mapped_headers %}
+        <tr>
+          <td>
+            <strong>{{ header.header }}</strong>
+            {% if header.field_label %}
+            <div class="text-sm cell-muted">Suggested: {{ header.field_label }}</div>
+            {% endif %}
+          </td>
+          <td class="text-mono">{{ header.normalized or '—' }}</td>
+          <td>
+            <select name="map_{{ header.index }}">
+              {% for item in field_choices %}
+              <option value="{{ item.value }}" {% if header.field == item.value %}selected{% endif %}>{{ item.label }}</option>
+              {% endfor %}
+            </select>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="btn-group" style="margin-top:16px;">
+    <button type="submit" class="btn btn-secondary">Refresh preview</button>
+  </div>
+</form>
+
+<form method="POST" action="{{ url_for('strain_import_commit') }}">
+  <div class="card" style="overflow-x:auto;">
+    <table style="min-width:1200px;width:100%;">
+      <thead>
+        <tr>
+          <th style="width:40px;">Import</th>
+          <th>Row</th>
+          {% for header in mapped_preview_columns %}
+          <th>{{ header.field_label or header.field }}</th>
+          {% endfor %}
+          <th>Matched lots</th>
+          <th>Issues</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in staged_rows %}
+        {% set ok = not row.errors %}
+        <tr {% if not ok %}style="opacity:0.75;"{% endif %}>
+          <td>
+            {% if ok %}
+            <input type="checkbox" name="row_idx" value="{{ loop.index0 }}" checked>
+            {% else %}
+            <span class="text-sm cell-muted">—</span>
+            {% endif %}
+          </td>
+          <td>{{ row.sheet_row }}</td>
+          {% for header in mapped_preview_columns %}
+          <td>
+            {% set value = row.raw.get(header.field, '') %}
+            {% if value %}
+            {{ value }}
+            {% else %}
+            <span class="cell-muted">—</span>
+            {% endif %}
+          </td>
+          {% endfor %}
+          <td class="text-mono">
+            {% if row.normalized %}
+            {{ row.normalized.matched_lot_count }}
+            {% else %}
+            —
+            {% endif %}
+          </td>
+          <td class="text-sm">
+            {% if row.errors %}
+              {% for e in row.errors %}<div style="color:var(--danger,#c44);">{{ e }}</div>{% endfor %}
+            {% else %}
+              <span class="cell-muted">OK</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="btn-group" style="margin-top:16px;">
+    <button type="submit" class="btn btn-primary">Import selected rows</button>
+  </div>
+</form>
+{% endblock %}

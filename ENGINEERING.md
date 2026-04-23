@@ -690,6 +690,15 @@ SQLite adds the sync config table in `_ensure_sqlite_schema()`; other engines re
 - **Commit rules:** exact-name matches can be updated only when the user checks **Update existing suppliers**; otherwise the row fails with a clear message. New rows still surface close-match duplicate hints in preview using the existing `supplier_duplicate_candidates(...)` logic.
 - **Field coverage:** supplier name, contact name, contact phone, contact email, location, notes, and active flag.
 
+## Strain spreadsheet import
+
+- **Framework usage:** the strain importer also reuses `services/import_framework.py` for upload parsing, header detection, and row extraction from saved mappings.
+- **Metadata:** `strain_import.py` defines `STRAIN_IMPORT_FIELDS`, header alias groups, mapping choices, and `parse_strain_spreadsheet_upload_for_mapping(...)`.
+- **Routes:** `GET/POST /strains/import`, `GET/POST /strains/import/preview`, `POST /strains/import/commit`, `GET /strains/import/sample.csv` in `gold_drop/strains_module.py`.
+- **Semantics:** because Strain Performance is derived from `PurchaseLot.strain_name`, this importer is intentionally a **rename workflow**, not master-data creation. Each row matches on supplier + current strain name and rewrites matching `PurchaseLot` rows to the new strain name.
+- **Preview behavior:** preview shows mapped rows plus the count of matched lots for each supplier/current-strain pair before commit.
+- **Commit rules:** rows fail if the supplier does not exist, if the current strain name cannot be found for that supplier, or if the current and new strain names are identical.
+
 ## Batch list editing
 
 - **Module:** `batch_edit.py` — pure apply helpers: `parse_uuid_ids`, `apply_batch_runs`, `apply_batch_purchases` (returns `touched` purchases for hooks), `apply_batch_biomass`, `apply_batch_suppliers`, `apply_batch_costs`, `apply_batch_inventory_lots`, `apply_batch_strain_rename`. Max **200** UUIDs per batch. Strain rename uses `STRAIN_PAIR_SEP` (`\\x1f`) between strain name and supplier name in checkbox values / query params.
