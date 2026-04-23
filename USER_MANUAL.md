@@ -676,6 +676,21 @@ If the “exclude runs missing $/lb” setting is enabled, these analytics ignor
 
 Editors can select two or more rows and use **Batch rename…** to set one **new strain name** on all **purchase lots** that match each selected strain+supplier combination. Read the warning on the batch screen—this is a bulk rename, not the same as editing a single lot (see **Batch editing from list screens**).
 
+### Importing strain renames from a spreadsheet
+Use **Strains** -> **Import spreadsheet** when you have many strain label cleanups to apply at once.
+
+1. Drag a **.csv**, **.xlsx**, or **.xlsm** file onto the drop zone (or click to browse). Upload starts automatically after you pick a file.
+2. The app finds a header row and suggests mappings for:
+   - **Supplier name**
+   - **Current strain name**
+   - **New strain name**
+   - optional **Notes**
+3. On the preview page, adjust any column mappings you want before importing.
+4. Review the **Matched lots** column to confirm how many purchase lots will be renamed for each row.
+5. Confirm import.
+
+**Important:** This importer does **not** create a separate strain master record. It safely renames the `strain_name` on matching purchase lots for the supplier/current-strain pair you specify.
+
 ---
 
 ## Photo Library
