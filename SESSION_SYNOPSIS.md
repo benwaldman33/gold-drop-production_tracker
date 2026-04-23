@@ -141,6 +141,11 @@ Implemented and live:
 Latest verified status before closeout:
 
 - standalone extraction app tests: `8 passed`
+- Phase 1 post-extraction foundation is now implemented on the run itself:
+  - downstream pathway select (`100 lb pot pour` / `200 lb minor run`)
+  - `Start Post-Extraction`
+  - `Confirm Initial Outputs`
+  - wet THCA / wet HTE confirmation gate
 - full Python suite: `138 passed`
 
 The following policy is in effect for future work:

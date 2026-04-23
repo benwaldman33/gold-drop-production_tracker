@@ -59,6 +59,14 @@ RUN_PROGRESSION = {
     },
 }
 
+POST_EXTRACTION_PATHWAY_OPTIONS = [
+    ("", "Not set"),
+    ("pot_pour_100", "100 lb pot pour"),
+    ("minor_run_200", "200 lb minor run"),
+]
+
+POST_EXTRACTION_PATHWAY_LABELS = {value: label for value, label in POST_EXTRACTION_PATHWAY_OPTIONS if value}
+
 
 def _setting_float_or_none(root, key: str) -> float | None:
     raw = (root.SystemSetting.get(key, "") or "").strip()
@@ -120,6 +128,41 @@ def run_progression_payload(run) -> dict:
     }
 
 
+def post_extraction_progression_payload(run) -> dict:
+    pathway = (getattr(run, "post_extraction_pathway", None) or "").strip()
+    if not getattr(run, "run_completed_at", None):
+        return {
+            "stage_key": "blocked_until_run_complete",
+            "stage_label": "Complete extraction first",
+            "description": "Post-extraction handoff begins only after the extraction run is marked complete.",
+            "actions": [],
+            "pathway_label": POST_EXTRACTION_PATHWAY_LABELS.get(pathway, ""),
+        }
+    if not getattr(run, "post_extraction_started_at", None):
+        return {
+            "stage_key": "ready_to_start",
+            "stage_label": "Ready to start post-extraction",
+            "description": "Select the downstream pathway and start the post-extraction session.",
+            "actions": [{"action_id": "start_post_extraction", "label": "Start Post-Extraction"}],
+            "pathway_label": POST_EXTRACTION_PATHWAY_LABELS.get(pathway, ""),
+        }
+    if not getattr(run, "post_extraction_initial_outputs_recorded_at", None):
+        return {
+            "stage_key": "ready_to_confirm_initial_outputs",
+            "stage_label": "Ready to confirm initial outputs",
+            "description": "Record the initial wet THCA and wet HTE outputs to hand this run into downstream processing.",
+            "actions": [{"action_id": "confirm_initial_outputs", "label": "Confirm Initial Outputs"}],
+            "pathway_label": POST_EXTRACTION_PATHWAY_LABELS.get(pathway, ""),
+        }
+    return {
+        "stage_key": "session_started",
+        "stage_label": "Post-extraction session started",
+        "description": "The run has been handed off into the downstream post-extraction workflow foundation.",
+        "actions": [],
+        "pathway_label": POST_EXTRACTION_PATHWAY_LABELS.get(pathway, ""),
+    }
+
+
 def apply_progression_action(run, action_id: str | None) -> None:
     action = (action_id or "").strip()
     if not action:
@@ -157,6 +200,32 @@ def apply_progression_action(run, action_id: str | None) -> None:
         run.run_completed_at = now
         return
     raise ValueError("Unknown run progression action.")
+
+
+def apply_post_extraction_action(run, action_id: str | None) -> None:
+    action = (action_id or "").strip()
+    if not action:
+        return
+    if run.run_completed_at is None:
+        raise ValueError("Complete the extraction run before starting post-extraction.")
+    now = _utc_now_localized()
+    pathway = (getattr(run, "post_extraction_pathway", None) or "").strip()
+    if action == "start_post_extraction":
+        if not pathway:
+            raise ValueError("Select the post-extraction pathway before starting the session.")
+        if run.post_extraction_started_at is None:
+            run.post_extraction_started_at = now
+        return
+    if action == "confirm_initial_outputs":
+        if run.post_extraction_started_at is None:
+            raise ValueError("Start the post-extraction session before confirming outputs.")
+        if not pathway:
+            raise ValueError("Select the post-extraction pathway before confirming outputs.")
+        if run.wet_thca_g is None or run.wet_hte_g is None:
+            raise ValueError("Enter both wet THCA and wet HTE before confirming the initial outputs.")
+        run.post_extraction_initial_outputs_recorded_at = now
+        return
+    raise ValueError("Unknown post-extraction action.")
 
 
 def parse_local_datetime(raw_value: str | None) -> datetime | None:
@@ -225,6 +294,14 @@ def _clamped_percent(value, *, field: str) -> float | None:
 
 
 def apply_execution_payload(run, payload: dict) -> None:
+    if "run_type" in payload:
+        run.run_type = (payload.get("run_type") or "").strip() or "standard"
+
+    if "wet_hte_g" in payload:
+        run.wet_hte_g = _opt_float(payload.get("wet_hte_g"), field="Wet HTE")
+    if "wet_thca_g" in payload:
+        run.wet_thca_g = _opt_float(payload.get("wet_thca_g"), field="Wet THCA")
+
     if "biomass_blend_milled_pct" in payload or "biomass_blend_unmilled_pct" in payload:
         milled_pct = _clamped_percent(
             payload.get("biomass_blend_milled_pct", run.biomass_blend_milled_pct), field="Milled blend %"
@@ -258,6 +335,16 @@ def apply_execution_payload(run, payload: dict) -> None:
         run.crc_blend = (payload.get("crc_blend") or "").strip() or None
     if "notes" in payload:
         run.notes = (payload.get("notes") or "").strip() or None
+    if "post_extraction_pathway" in payload:
+        pathway = (payload.get("post_extraction_pathway") or "").strip()
+        allowed = {value for value, _label in POST_EXTRACTION_PATHWAY_OPTIONS}
+        if pathway not in allowed:
+            raise ValueError("Post-extraction pathway is invalid.")
+        run.post_extraction_pathway = pathway or None
+    if "post_extraction_started_at" in payload:
+        run.post_extraction_started_at = parse_local_datetime(payload.get("post_extraction_started_at"))
+    if "post_extraction_initial_outputs_recorded_at" in payload:
+        run.post_extraction_initial_outputs_recorded_at = parse_local_datetime(payload.get("post_extraction_initial_outputs_recorded_at"))
 
 
 def _draft_run_for_charge(root, charge):
@@ -354,6 +441,15 @@ def mobile_run_payload(root, run, charge) -> dict:
         "flush_duration_minutes": duration_minutes(run.flush_started_at, run.flush_ended_at),
         "run_completed_at": display_local_datetime(run.run_completed_at),
         "progression": run_progression_payload(run),
+        "wet_hte_g": float(run.wet_hte_g or 0) if run.wet_hte_g is not None else None,
+        "wet_thca_g": float(run.wet_thca_g or 0) if run.wet_thca_g is not None else None,
+        "post_extraction_pathway": run.post_extraction_pathway or "",
+        "post_extraction_pathway_options": [
+            {"value": value, "label": label} for value, label in POST_EXTRACTION_PATHWAY_OPTIONS
+        ],
+        "post_extraction_started_at": display_local_datetime(run.post_extraction_started_at),
+        "post_extraction_initial_outputs_recorded_at": display_local_datetime(run.post_extraction_initial_outputs_recorded_at),
+        "post_extraction": post_extraction_progression_payload(run),
         "notes": run.notes,
         "inherited": {
             "tracking_id": lot.tracking_id if lot else None,

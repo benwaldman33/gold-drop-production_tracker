@@ -932,6 +932,8 @@ def test_mobile_extraction_run_execution_flow():
             assert run_payload["run"]["stringer_basket_count"] == 10
             assert run_payload["run"]["crc_blend"] == "House CRC Default"
             assert run_payload["run"]["inherited"]["tracking_id"]
+            assert run_payload["run"]["post_extraction"]["stage_key"] == "blocked_until_run_complete"
+            assert run_payload["run"]["post_extraction_pathway_options"]
 
             start_run = client.post(
                 f"/api/mobile/v1/extraction/charges/{charge_id}/run",
@@ -980,6 +982,55 @@ def test_mobile_extraction_run_execution_flow():
             assert completed["run_completed_at"]
             assert completed["progression"]["stage_key"] == "completed"
 
+            blocked_start = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={"post_extraction_action": "start_post_extraction"},
+            )
+            assert blocked_start.status_code == 400
+            assert "Select the post-extraction pathway" in blocked_start.get_json()["error"]["message"]
+
+            choose_pathway = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={"post_extraction_pathway": "minor_run_200"},
+            )
+            assert choose_pathway.status_code == 200
+            chose_pathway = choose_pathway.get_json()["data"]["run"]
+            assert chose_pathway["post_extraction"]["stage_key"] == "ready_to_start"
+
+            start_post = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={
+                    "post_extraction_pathway": "minor_run_200",
+                    "post_extraction_action": "start_post_extraction",
+                },
+            )
+            assert start_post.status_code == 200
+            started_post = start_post.get_json()["data"]["run"]
+            assert started_post["post_extraction_started_at"]
+            assert started_post["post_extraction"]["stage_key"] == "ready_to_confirm_initial_outputs"
+
+            blocked_confirm = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={"post_extraction_action": "confirm_initial_outputs"},
+            )
+            assert blocked_confirm.status_code == 400
+            assert "Enter both wet THCA and wet HTE" in blocked_confirm.get_json()["error"]["message"]
+
+            confirm_outputs = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={
+                    "wet_hte_g": 1800,
+                    "wet_thca_g": 4200,
+                    "post_extraction_action": "confirm_initial_outputs",
+                },
+            )
+            assert confirm_outputs.status_code == 200
+            confirmed_outputs = confirm_outputs.get_json()["data"]["run"]
+            assert confirmed_outputs["wet_hte_g"] == 1800.0
+            assert confirmed_outputs["wet_thca_g"] == 4200.0
+            assert confirmed_outputs["post_extraction_initial_outputs_recorded_at"]
+            assert confirmed_outputs["post_extraction"]["stage_key"] == "session_started"
+
         with app.app_context():
             charge = db.session.get(ExtractionCharge, charge_id)
             assert charge is not None
@@ -993,6 +1044,11 @@ def test_mobile_extraction_run_execution_flow():
             assert run.stringer_basket_count == 8
             assert run.crc_blend == "House CRC"
             assert run.run_completed_at is not None
+            assert run.post_extraction_pathway == "minor_run_200"
+            assert run.post_extraction_started_at is not None
+            assert run.post_extraction_initial_outputs_recorded_at is not None
+            assert run.wet_hte_g == 1800
+            assert run.wet_thca_g == 4200
             assert run.notes == "Touch-first run capture"
     finally:
         with app.app_context():

@@ -37,6 +37,7 @@ This PRD describes the problem, users, workflows, data requirements, calculation
 - a dedicated **standalone extraction run execution** flow so extractors can capture execution details (timers, blend, fills, flushes, CRC, baskets, notes) without leaving the tablet workflow
 - a guided **standalone extraction run progression** flow so extractors can advance start, mixer, flush, and completion actions on the iPad instead of relying on Slack timestamps or the admin form
 - **settings-driven extraction defaults** so those repeated run inputs (blend, counts, aggregate weights, baskets, CRC note) can prepopulate the tablet workflow instead of being re-entered from scratch each time
+- a shipped **Phase 1 post-extraction foundation** on the same run so operators can choose the downstream pathway (`100 lb pot pour` vs `200 lb minor run`), start the post-extraction handoff, and confirm the initial wet THCA / wet HTE outputs before the later THCA / HTE-specific workflow screens exist
 - readiness for future **connected scale** capture as a structured input channel
 
 Current implementation note: the active modular extraction surface now includes dashboard, field intake, runs, purchases, biomass, costs, inventory, batch edit, suppliers/photos, purchase import, strains, settings, Slack integration, and startup bootstrap modules. This remains an engineering delivery change only; product behavior and operator-facing workflow are intended to stay the same.

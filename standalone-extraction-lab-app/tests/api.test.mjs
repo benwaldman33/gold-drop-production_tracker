@@ -44,12 +44,50 @@ test("mock api login, board, charge, and transition flow", async () => {
   assert.ok(startedRun.run.run_fill_started_at);
 
   const savedRun = await api.saveChargeRun(created.charge.id, {
+    run_fill_started_at: "2026-04-19T09:05",
+    run_fill_ended_at: "2026-04-19T09:40",
+    mixer_started_at: "2026-04-19T09:10",
+    mixer_ended_at: "2026-04-19T09:20",
+    flush_started_at: "2026-04-19T09:21",
+    flush_ended_at: "2026-04-19T09:33",
     fill_count: 1,
     fill_total_weight_lbs: 22.5,
     notes: "Execution notes",
   });
   assert.equal(savedRun.run.fill_count, 1);
   assert.equal(savedRun.run.notes, "Execution notes");
+
+  const completeRun = await api.saveChargeRun(created.charge.id, {
+    progression_action: "mark_complete",
+  });
+  assert.equal(completeRun.run.progression.stage_key, "completed");
+  assert.equal(completeRun.run.post_extraction.stage_key, "ready_to_start");
+
+  await assert.rejects(
+    () =>
+      api.saveChargeRun(created.charge.id, {
+        post_extraction_action: "start_post_extraction",
+      }),
+    /Select the post-extraction pathway/,
+  );
+
+  const startedPostExtraction = await api.saveChargeRun(created.charge.id, {
+    post_extraction_pathway: "minor_run_200",
+    post_extraction_action: "start_post_extraction",
+  });
+  assert.equal(startedPostExtraction.run.post_extraction.stage_key, "ready_to_confirm_initial_outputs");
+  assert.equal(startedPostExtraction.run.post_extraction_pathway, "minor_run_200");
+  assert.ok(startedPostExtraction.run.post_extraction_started_at);
+
+  const confirmedOutputs = await api.saveChargeRun(created.charge.id, {
+    wet_hte_g: 900,
+    wet_thca_g: 2100,
+    post_extraction_action: "confirm_initial_outputs",
+  });
+  assert.equal(confirmedOutputs.run.post_extraction.stage_key, "session_started");
+  assert.ok(confirmedOutputs.run.post_extraction_initial_outputs_recorded_at);
+  assert.equal(confirmedOutputs.run.wet_hte_g, 900);
+  assert.equal(confirmedOutputs.run.wet_thca_g, 2100);
 });
 
 test("live api unwraps extraction mobile envelopes", async () => {
