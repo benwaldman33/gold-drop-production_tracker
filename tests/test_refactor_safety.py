@@ -2732,6 +2732,116 @@ def test_hp_base_oil_queue_actions_render_and_release():
             db.session.commit()
 
 
+def test_distillate_queue_actions_render_and_release():
+    app = app_module.app
+    run_id = None
+    purchase_id = None
+    supplier_id = None
+    lot_id = None
+    try:
+        with app.app_context():
+            admin_id = app_module.User.query.filter_by(username="admin").first().id
+            supplier = Supplier(name="Distillate Queue Supplier", is_active=True)
+            db.session.add(supplier)
+            db.session.flush()
+            supplier_id = supplier.id
+            purchase = Purchase(
+                supplier_id=supplier.id,
+                purchase_date=date(2026, 4, 23),
+                delivery_date=date(2026, 4, 23),
+                status="delivered",
+                stated_weight_lbs=62,
+                purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+                testing_status="completed",
+                clean_or_dirty="clean",
+                batch_id=f"DST-{app_module.gen_uuid()[:6]}",
+            )
+            db.session.add(purchase)
+            db.session.flush()
+            purchase_id = purchase.id
+            lot = PurchaseLot(
+                purchase_id=purchase.id,
+                strain_name="Distillate Dream",
+                tracking_id="DST-LOT-1",
+                weight_lbs=62,
+                remaining_weight_lbs=22,
+                floor_state="inventory",
+                milled=True,
+            )
+            db.session.add(lot)
+            db.session.flush()
+            lot_id = lot.id
+            run = app_module.Run(
+                run_date=date(2026, 4, 23),
+                reactor_number=4,
+                run_type="standard",
+                bio_in_reactor_lbs=40,
+                wet_hte_g=780,
+                wet_thca_g=2050,
+                created_by=admin_id,
+                run_completed_at=app_module.datetime.now(app_module.timezone.utc),
+                post_extraction_pathway="minor_run_200",
+                post_extraction_started_at=app_module.datetime.now(app_module.timezone.utc),
+                post_extraction_initial_outputs_recorded_at=app_module.datetime.now(app_module.timezone.utc),
+                hte_potency_disposition="hold_distillate",
+            )
+            db.session.add(run)
+            db.session.flush()
+            run_id = run.id
+            db.session.add(app_module.RunInput(run_id=run.id, lot_id=lot.id, weight_lbs=40))
+            db.session.commit()
+
+        with app.test_client() as client:
+            _login(client, "admin")
+            page = client.get("/downstream-queues/distillate")
+            assert page.status_code == 200
+            assert b"Distillate Hold" in page.data
+            assert b"Confirm Hold" in page.data
+            assert b"Release Complete" in page.data
+
+            confirmed = client.post(
+                f"/downstream-queues/distillate/runs/{run_id}/action",
+                data={"queue_action": "confirm_hold", "queue_notes": "Distillate hold confirmed"},
+                follow_redirects=False,
+            )
+            assert confirmed.status_code in (302, 303)
+
+            released = client.post(
+                f"/downstream-queues/distillate/runs/{run_id}/action",
+                data={"queue_action": "release_complete"},
+                follow_redirects=False,
+            )
+            assert released.status_code in (302, 303)
+
+        with app.app_context():
+            run = db.session.get(app_module.Run, run_id)
+            assert run is not None
+            assert run.hte_potency_disposition is None
+            events = (
+                app_module.DownstreamQueueEvent.query.filter_by(run_id=run_id, queue_key="hold_distillate")
+                .order_by(app_module.DownstreamQueueEvent.created_at.asc())
+                .all()
+            )
+            assert [event.action_key for event in events] == ["confirm_hold", "release_complete"]
+    finally:
+        with app.app_context():
+            app_module.DownstreamQueueEvent.query.filter_by(run_id=run_id).delete(synchronize_session=False)
+            app_module.RunInput.query.filter_by(run_id=run_id).delete(synchronize_session=False)
+            run = db.session.get(app_module.Run, run_id) if run_id else None
+            if run:
+                db.session.delete(run)
+            lot = db.session.get(PurchaseLot, lot_id) if lot_id else None
+            if lot:
+                db.session.delete(lot)
+            purchase = db.session.get(Purchase, purchase_id) if purchase_id else None
+            if purchase:
+                db.session.delete(purchase)
+            supplier = db.session.get(Supplier, supplier_id) if supplier_id else None
+            if supplier:
+                db.session.delete(supplier)
+            db.session.commit()
+
+
 def test_inventory_lot_edit_updates_only_lot_fields_and_returns_to_inventory():
     app = app_module.app
     with app.app_context():

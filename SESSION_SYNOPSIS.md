@@ -182,6 +182,7 @@ Implemented and live:
 - `Liquid Loud Hold` now has its own dedicated main-app page
 - `Terp Strip / CDT Cage` now has its own dedicated main-app page
 - `HP Base Oil Hold` now has its own dedicated main-app page
+- `Distillate Hold` now has its own dedicated main-app page
 - all three use the same additive `DownstreamQueueEvent` history model as GoldDrop
 - `Liquid Loud Hold` can:
   - `Mark Reviewed`
@@ -195,6 +196,11 @@ Implemented and live:
   - `Strip Complete`
   - `Send Back For Re-routing`
 - `HP Base Oil Hold` can:
+  - `Mark Reviewed`
+  - `Confirm Hold`
+  - `Release Complete`
+  - `Send Back For Re-routing`
+- `Distillate Hold` can:
   - `Mark Reviewed`
   - `Confirm Hold`
   - `Release Complete`
@@ -230,7 +236,8 @@ Latest verified status before closeout:
   - `Liquid Loud Hold`
   - `Terp Strip / CDT Cage`
   - `HP Base Oil Hold`
-- full Python suite: `163 passed`
+  - `Distillate Hold`
+- full Python suite: `164 passed`
 
 The following policy is in effect for future work:
 

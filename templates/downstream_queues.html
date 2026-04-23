@@ -38,6 +38,8 @@
     <a href="{{ url_for('terp_strip_queue') }}" class="btn btn-secondary btn-sm">Open Terp Strip Cage</a>
     {% elif section.key == 'hold_hp_base_oil' %}
     <a href="{{ url_for('hp_base_oil_queue') }}" class="btn btn-secondary btn-sm">Open HP Base Oil Hold</a>
+    {% elif section.key == 'hold_distillate' %}
+    <a href="{{ url_for('distillate_queue') }}" class="btn btn-secondary btn-sm">Open Distillate Hold</a>
     {% endif %}
   </div>
   {% if section["items"] %}
