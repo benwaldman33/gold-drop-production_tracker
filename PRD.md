@@ -41,6 +41,7 @@ This PRD describes the problem, users, workflows, data requirements, calculation
 - a shipped **Phase 2 downstream state layer** on the same run so pot-pour timing, THCA-path timing/destination, and HTE-path timing/decision/queue state can be captured before the final guided downstream workflow screens are built
 - a shipped **Phase 3 guided downstream operator flow** in the standalone extraction app so operators can work through the downstream branch in a numbered, pathway-driven sequence while the main app remains the supervisor edit surface
 - a shipped **Phase 4 downstream queue surface** in the main app so supervisors can move completed post-extraction runs between `GoldDrop production queue`, `Liquid Loud hold`, `Terp strip / CDT cage`, `HP base oil hold`, and `Distillate hold` without working directly from raw run fields
+- a shipped **Phase 5 destination-specific queue workflow** for `GoldDrop production queue`, including queue-state history and explicit supervisor actions after a run is already placed in that destination
 - readiness for future **connected scale** capture as a structured input channel
 
 Current implementation note: the active modular extraction surface now includes dashboard, field intake, runs, purchases, biomass, costs, inventory, batch edit, suppliers/photos, purchase import, strains, settings, Slack integration, and startup bootstrap modules. This remains an engineering delivery change only; product behavior and operator-facing workflow are intended to stay the same.

@@ -251,6 +251,31 @@ Current implementation:
 - unresolved minor-run outputs show up under `Needs Queue Decision`
 - queue cards show run, source context, wet/dry outputs, THCA destination, HTE decision labels, and `Open Run`
 - direct move actions update the existing run-level queue / hold fields and preserve audit history
+
+### Phase 5 - Destination-specific queue workflow
+
+Deepen one downstream destination into a real working queue instead of a generic bucket.
+
+Scope:
+
+- dedicated `GoldDrop Production Queue` page
+- queue-state history per run
+- explicit next-step actions after placement
+- queue completion / release and send-back handling
+
+**Status:** shipped for `GoldDrop production queue`.
+
+Current implementation:
+- dedicated `/downstream-queues/golddrop` page
+- additive `DownstreamQueueEvent` table for queue action history
+- queue actions:
+  - `Mark Reviewed`
+  - `Queue For Production`
+  - `Release Complete`
+  - `Send Back For Re-routing`
+- queue notes and timestamped history shown on each card
+
+What remains for later phases is repeating this pattern for the other downstream destinations.
 - top-to-bottom operator sequence
 - minimal keyboard entry
 - timers and decision buttons

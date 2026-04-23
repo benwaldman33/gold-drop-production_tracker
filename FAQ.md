@@ -109,6 +109,12 @@ Yes. On **Downstream Queues**, each card has a destination dropdown and **Apply*
 **What happens if I open a run from Downstream Queues?**
 The run form now preserves that context and shows **Back to Downstream Queues** so you can return to the queue board after review or correction.
 
+**What is the `GoldDrop Production Queue` page for?**
+It is the first destination-specific downstream workflow page. Use it after a run is already assigned to `GoldDrop production queue` and you need to mark review, queue it for production, release it complete, or send it back for re-routing.
+
+**Does GoldDrop Production Queue keep action history?**
+Yes. The page records queue events with timestamps, operator names, and optional notes so supervisors can see what happened to a queued run over time.
+
 **Does strain import create a new strain table?**
 No. Strain Performance is derived from lot strain names. The importer is a safe bulk-rename workflow over matching `PurchaseLot` rows for a supplier and current strain name.
 

@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}GoldDrop Production Queue{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>GoldDrop Production Queue</h2>
+  <div class="btn-group">
+    <a href="{{ url_for('downstream_queues') }}" class="btn btn-secondary">Back to Downstream Queues</a>
+    <a href="{{ url_for('runs_list') }}" class="btn btn-secondary">Open Runs</a>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:18px;">
+  <div class="card-header">
+    <h3>Queue Summary</h3>
+    <span class="text-sm cell-muted">{{ queue.count }} run{% if queue.count != 1 %}s{% endif %} currently staged for GoldDrop production planning</span>
+  </div>
+  {% if queue["items"] %}
+  <div class="summary-row">
+    {% for item in queue["items"] %}
+    <div class="card" style="min-width:320px;flex:1 1 320px;margin:0;">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
+        <div>
+          <div class="summary-label">Run {{ item.run_date_label }} &middot; Reactor {{ item.reactor_number }}</div>
+          <div class="summary-value" style="font-size:1.25rem;">{{ item.queue_state_label }}</div>
+        </div>
+        <span class="badge badge-gold">GoldDrop queue</span>
+      </div>
+      <div class="floor-event-list" style="margin-top:12px;">
+        <div class="floor-event-row" style="text-align:left;">
+          <div class="text-sm"><strong>{{ item.strain_summary }}</strong></div>
+          <div class="text-sm cell-muted" style="margin-top:4px;">{{ item.supplier_summary }}</div>
+          {% if item.tracking_ids %}
+          <div class="text-sm cell-muted" style="margin-top:4px;">Lots: {{ item.tracking_ids | join(', ') }}</div>
+          {% endif %}
+          <div class="text-sm cell-muted" style="margin-top:8px;">
+            Wet THCA {{ "{:,.0f}".format(item.wet_thca_g or 0) }} g &middot;
+            Wet HTE {{ "{:,.0f}".format(item.wet_hte_g or 0) }} g
+          </div>
+          <div class="text-sm cell-muted" style="margin-top:4px;">
+            Dry THCA {{ "{:,.0f}".format(item.dry_thca_g or 0) }} g &middot;
+            Dry HTE {{ "{:,.0f}".format(item.dry_hte_g or 0) }} g
+          </div>
+          {% if item.thca_destination_label %}
+          <div class="text-sm cell-muted" style="margin-top:8px;">THCA destination: {{ item.thca_destination_label }}</div>
+          {% endif %}
+          <div class="summary-footnote" style="margin-top:10px;">Use this surface to mark review, queue production, complete release, or send the run back for re-routing.</div>
+          <div class="form-actions" style="justify-content:flex-start;margin-top:10px;">
+            <a href="{{ url_for('run_edit', run_id=item.run_id, return_to=request.full_path.rstrip('?')) }}" class="btn btn-secondary btn-sm">Open Run</a>
+          </div>
+          <form method="POST" action="{{ url_for('golddrop_queue_action', run_id=item.run_id) }}" style="margin-top:12px;">
+            <div class="form-actions" style="justify-content:flex-start;gap:8px;flex-wrap:wrap;">
+              {% for action_value, action_label in item.available_actions %}
+              <button type="submit" name="queue_action" value="{{ action_value }}" class="btn btn-primary btn-sm">{{ action_label }}</button>
+              {% endfor %}
+            </div>
+            <div style="margin-top:10px;">
+              <label class="text-sm cell-muted" for="queue_notes_{{ item.run_id }}">Queue note (optional)</label>
+              <input id="queue_notes_{{ item.run_id }}" type="text" name="queue_notes" placeholder="Add a short production-planning note">
+            </div>
+          </form>
+        </div>
+      </div>
+      {% if item.history %}
+      <div style="margin-top:12px;">
+        <div class="summary-label">Queue History</div>
+        <div class="floor-event-list" style="margin-top:8px;">
+          {% for entry in item.history %}
+          <div class="floor-event-row" style="text-align:left;">
+            <div class="text-sm"><strong>{{ entry.action_label }}</strong></div>
+            <div class="text-sm cell-muted" style="margin-top:4px;">{{ entry.timestamp_label }}{% if entry.creator_name %} &middot; {{ entry.creator_name }}{% endif %}</div>
+            {% if entry.notes %}
+            <div class="text-sm" style="margin-top:4px;">{{ entry.notes }}</div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="text-sm cell-muted">No runs are currently in the GoldDrop production queue.</p>
+  {% endif %}
+</div>
+{% endblock %}

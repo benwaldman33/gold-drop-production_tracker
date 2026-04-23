@@ -513,6 +513,33 @@ Use the destination dropdown on a queue card to:
 
 When you open a run from this page, the main run form now shows **Back to Downstream Queues** so you can return to the same supervisor queue surface.
 
+### GoldDrop Production Queue
+
+`GoldDrop production queue` now also has its own dedicated page for the first destination-specific downstream workflow.
+
+Open it from:
+- **Downstream Queues** using **Open GoldDrop Queue**
+
+Use this page when a run is already routed to `GoldDrop production queue` and you need to track what happened next.
+
+Each queue card shows:
+- current queue state
+- source strain / supplier / lot context
+- wet and dry THCA / HTE totals
+- queue history with timestamps and operator names
+
+Available actions:
+- `Mark Reviewed`
+- `Queue For Production`
+- `Release Complete`
+- `Send Back For Re-routing`
+
+Use **Queue note (optional)** to capture a short planning or handoff note alongside the queue action.
+
+`Release Complete` removes the run from the GoldDrop queue.
+
+`Send Back For Re-routing` removes it from the queue so it can be routed again from **Downstream Queues**.
+
 Use **Confirm Movement** to record a standard movement action:
 - move to vault
 - move to reactor staging

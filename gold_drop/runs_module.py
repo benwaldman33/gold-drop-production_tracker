@@ -155,7 +155,7 @@ def _safe_run_return_url(root, raw_return_to: str, *, default_endpoint: str = "r
 def _run_return_label(root, return_to: str) -> str:
     if return_to == root.url_for("floor_ops") or return_to.startswith(f"{root.url_for('floor_ops')}?"):
         return "Back to Floor Ops"
-    if return_to == root.url_for("downstream_queues") or return_to.startswith(f"{root.url_for('downstream_queues')}?"):
+    if return_to == root.url_for("downstream_queues") or return_to.startswith(root.url_for("downstream_queues")):
         return "Back to Downstream Queues"
     if return_to == root.url_for("inventory") or return_to.startswith(f"{root.url_for('inventory')}?"):
         return "Back to Inventory"
