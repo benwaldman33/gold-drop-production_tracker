@@ -178,6 +178,17 @@ Scope:
   - wet HTE
 - create canonical post-extraction session records tied to the run
 
+**Status:** shipped on the existing `Run` record.
+
+Current implementation:
+- `post_extraction_pathway`
+- `post_extraction_started_at`
+- `post_extraction_initial_outputs_recorded_at`
+- touch-first `Start Post-Extraction` and `Confirm Initial Outputs` actions in the standalone extraction run screen
+- matching visibility/editing on the main run form
+
+What remains for later phases is the actual THCA-path / HTE-path branching and orchestration after this handoff.
+
 ### Phase 2 - THCA and HTE path state tracking
 
 Add structured path/state models for downstream workflow.

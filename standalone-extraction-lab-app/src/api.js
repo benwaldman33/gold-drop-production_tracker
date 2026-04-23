@@ -171,6 +171,48 @@ function progressionForRun(run) {
   };
 }
 
+function postExtractionForRun(run) {
+  const pathwayMap = {
+    pot_pour_100: "100 lb pot pour",
+    minor_run_200: "200 lb minor run",
+  };
+  const pathwayLabel = pathwayMap[run.post_extraction_pathway] || "";
+  if (!run.run_completed_at) {
+    return {
+      stage_key: "blocked_until_run_complete",
+      stage_label: "Complete extraction first",
+      description: "Post-extraction handoff begins only after the extraction run is marked complete.",
+      actions: [],
+      pathway_label: pathwayLabel,
+    };
+  }
+  if (!run.post_extraction_started_at) {
+    return {
+      stage_key: "ready_to_start",
+      stage_label: "Ready to start post-extraction",
+      description: "Select the downstream pathway and start the post-extraction session.",
+      actions: [{ action_id: "start_post_extraction", label: "Start Post-Extraction" }],
+      pathway_label: pathwayLabel,
+    };
+  }
+  if (!run.post_extraction_initial_outputs_recorded_at) {
+    return {
+      stage_key: "ready_to_confirm_initial_outputs",
+      stage_label: "Ready to confirm initial outputs",
+      description: "Record the initial wet THCA and wet HTE outputs to hand this run into downstream processing.",
+      actions: [{ action_id: "confirm_initial_outputs", label: "Confirm Initial Outputs" }],
+      pathway_label: pathwayLabel,
+    };
+  }
+  return {
+    stage_key: "session_started",
+    stage_label: "Post-extraction session started",
+    description: "This run is now handed off into the downstream post-extraction workflow foundation.",
+    actions: [],
+    pathway_label: pathwayLabel,
+  };
+}
+
 function applyMockProgressionAction(run, action) {
   const now = nowLocalInputValue();
   if (action === "start_run") {
@@ -203,6 +245,22 @@ function applyMockProgressionAction(run, action) {
   }
 }
 
+function applyMockPostExtractionAction(run, action) {
+  const now = nowLocalInputValue();
+  if (!run.run_completed_at) throw new Error("Complete the extraction run before starting post-extraction.");
+  if (action === "start_post_extraction") {
+    if (!run.post_extraction_pathway) throw new Error("Select the post-extraction pathway before starting the session.");
+    if (!run.post_extraction_started_at) run.post_extraction_started_at = now;
+    return;
+  }
+  if (action === "confirm_initial_outputs") {
+    if (!run.post_extraction_started_at) throw new Error("Start the post-extraction session before confirming outputs.");
+    if (!run.post_extraction_pathway) throw new Error("Select the post-extraction pathway before confirming outputs.");
+    if (run.wet_thca_g == null || run.wet_hte_g == null) throw new Error("Enter both wet THCA and wet HTE before confirming the initial outputs.");
+    run.post_extraction_initial_outputs_recorded_at = now;
+  }
+}
+
 function buildMockRunPayload(state, charge, run) {
   const lot = state.lots.find((row) => row.id === charge.purchase_lot_id) || state.lots.find((row) => row.tracking_id === charge.tracking_id) || state.lots[0];
   return {
@@ -230,6 +288,17 @@ function buildMockRunPayload(state, charge, run) {
     flush_duration_minutes: minutesBetween(run.flush_started_at, run.flush_ended_at),
     run_completed_at: run.run_completed_at || "",
     progression: progressionForRun(run),
+    wet_hte_g: run.wet_hte_g ?? null,
+    wet_thca_g: run.wet_thca_g ?? null,
+    post_extraction_pathway: run.post_extraction_pathway || "",
+    post_extraction_pathway_options: [
+      { value: "", label: "Not set" },
+      { value: "pot_pour_100", label: "100 lb pot pour" },
+      { value: "minor_run_200", label: "200 lb minor run" },
+    ],
+    post_extraction_started_at: run.post_extraction_started_at || "",
+    post_extraction_initial_outputs_recorded_at: run.post_extraction_initial_outputs_recorded_at || "",
+    post_extraction: postExtractionForRun(run),
     notes: run.notes || "",
     inherited: {
       tracking_id: lot?.tracking_id || "",
@@ -265,6 +334,11 @@ function buildMockDraftRun(charge) {
     flush_started_at: "",
     flush_ended_at: "",
     run_completed_at: "",
+    wet_hte_g: null,
+    wet_thca_g: null,
+    post_extraction_pathway: "",
+    post_extraction_started_at: "",
+    post_extraction_initial_outputs_recorded_at: "",
     notes: "",
   };
 }
@@ -297,6 +371,11 @@ function ensureMockRunForCharge(state, chargeId) {
     flush_started_at: "",
     flush_ended_at: "",
     run_completed_at: "",
+    wet_hte_g: null,
+    wet_thca_g: null,
+    post_extraction_pathway: "",
+    post_extraction_started_at: "",
+    post_extraction_initial_outputs_recorded_at: "",
     notes: "",
   };
   state.runs.push(run);
@@ -559,6 +638,9 @@ export function createApiClient({ mode = "mock", apiBaseUrl = "", fetchImpl = fe
       });
       if (payload.progression_action) {
         applyMockProgressionAction(run, payload.progression_action);
+      }
+      if (payload.post_extraction_action) {
+        applyMockPostExtractionAction(run, payload.post_extraction_action);
       }
       saveState(state);
       return {

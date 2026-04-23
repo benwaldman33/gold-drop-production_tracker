@@ -387,6 +387,34 @@
     </div>
 
     <div class="form-section">
+      <h4>Post-Extraction Foundation</h4>
+      <div class="text-sm" style="color:var(--text-muted);margin-bottom:10px;">
+        <strong>{{ run_execution_fields.post_extraction_stage_label }}</strong> — {{ run_execution_fields.post_extraction_description }}
+        {% if run_execution_fields.post_extraction_pathway_label %}
+        <div style="margin-top:4px;">Current pathway: <strong>{{ run_execution_fields.post_extraction_pathway_label }}</strong></div>
+        {% endif %}
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Post-extraction pathway</label>
+          <select name="post_extraction_pathway">
+            {% for val, label in post_extraction_pathway_options %}
+            <option value="{{ val }}" {% if (run and (run.post_extraction_pathway or '') == val) or (not run and val == '') %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Post-extraction started</label>
+          <input type="datetime-local" name="post_extraction_started_at" value="{{ run_execution_fields.post_extraction_started_at or '' }}">
+        </div>
+        <div class="form-group">
+          <label>Initial outputs confirmed</label>
+          <input type="datetime-local" name="post_extraction_initial_outputs_recorded_at" value="{{ run_execution_fields.post_extraction_initial_outputs_recorded_at or '' }}">
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
       <h4>HTE — lab &amp; terp pipeline</h4>
       <p class="text-sm" style="color:var(--text-muted); margin:0 0 12px 0; max-width:720px;">
         After dry HTE is separated from THCA, track lab testing and downstream terp stripping (Terp Tubes / Prescott).

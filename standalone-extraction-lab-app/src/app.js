@@ -677,6 +677,33 @@ function renderRunProgression(run) {
   `;
 }
 
+function renderPostExtractionProgression(run) {
+  const post = run.post_extraction || {};
+  const actions = post.actions || [];
+  return `
+    <section class="card">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">Post-extraction handoff</div>
+          <h3>${escapeHtml(post.stage_label || "Not started")}</h3>
+        </div>
+      </div>
+      <p class="subtle">${escapeHtml(post.description || "Start the downstream handoff once extraction is complete.")}</p>
+      ${post.pathway_label ? `<div class="text-sm" style="color:var(--text-muted);margin-top:8px;">Pathway: ${escapeHtml(post.pathway_label)}</div>` : ""}
+      ${
+        actions.length
+          ? `<div class="action-grid" style="margin-top:14px;">${actions
+              .map(
+                (action) =>
+                  `<button class="btn btn-primary" type="button" data-action="post-extraction-progression" data-post-action="${escapeHtml(action.action_id)}">${escapeHtml(action.label)}</button>`,
+              )
+              .join("")}</div>`
+          : `<div class="text-sm" style="color:var(--text-muted);margin-top:10px;">No downstream handoff action is available right now.</div>`
+      }
+    </section>
+  `;
+}
+
 function renderRunExecution() {
   const run = state.run;
   const lot = state.lot;
@@ -703,6 +730,7 @@ function renderRunExecution() {
         </div>
       </section>
       ${renderRunProgression(run)}
+      ${renderPostExtractionProgression(run)}
       <form class="card charge-form" data-form="run-execution">
         <div class="section-head">
           <div>
@@ -771,6 +799,43 @@ function renderRunExecution() {
           <label for="notes">Notes</label>
           <textarea id="notes" name="notes" rows="4" placeholder="Operator notes">${escapeHtml(run.notes || "")}</textarea>
         </div>
+        <div class="section-head" style="margin-top:12px;">
+          <div>
+            <div class="eyebrow">Post-extraction foundation</div>
+            <h3>Start the downstream session from this same run record.</h3>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label for="post_extraction_pathway">Downstream pathway</label>
+            <select id="post_extraction_pathway" name="post_extraction_pathway">
+              ${(run.post_extraction_pathway_options || [])
+                .map(
+                  (option) =>
+                    `<option value="${escapeHtml(option.value)}" ${String(run.post_extraction_pathway || "") === String(option.value) ? "selected" : ""}>${escapeHtml(option.label)}</option>`,
+                )
+                .join("")}
+            </select>
+          </div>
+          <div class="field">
+            <label for="post_extraction_started_at">Post-extraction started</label>
+            <input id="post_extraction_started_at" name="post_extraction_started_at" type="datetime-local" value="${escapeHtml(run.post_extraction_started_at || "")}" />
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label for="wet_hte_g">Wet HTE (g)</label>
+            <input id="wet_hte_g" name="wet_hte_g" type="number" value="${escapeHtml(String(run.wet_hte_g ?? ""))}" min="0" step="0.1" placeholder="Initial wet HTE output" />
+          </div>
+          <div class="field">
+            <label for="wet_thca_g">Wet THCA (g)</label>
+            <input id="wet_thca_g" name="wet_thca_g" type="number" value="${escapeHtml(String(run.wet_thca_g ?? ""))}" min="0" step="0.1" placeholder="Initial wet THCA output" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="post_extraction_initial_outputs_recorded_at">Initial outputs confirmed</label>
+          <input id="post_extraction_initial_outputs_recorded_at" name="post_extraction_initial_outputs_recorded_at" type="datetime-local" value="${escapeHtml(run.post_extraction_initial_outputs_recorded_at || "")}" />
+        </div>
         <input type="hidden" name="run_completed_at" value="${escapeHtml(run.run_completed_at || "")}" />
         <div class="actions sticky-actions">
           <a class="btn btn-secondary" href="#/reactors">Back to Reactors</a>
@@ -799,6 +864,7 @@ function bind() {
   app?.querySelector("[data-action='stop-camera']")?.addEventListener("click", stopCamera);
   app?.querySelectorAll("[data-action='transition-charge']").forEach((button) => button.addEventListener("click", handleTransition));
   app?.querySelectorAll("[data-action='run-progression']").forEach((button) => button.addEventListener("click", handleRunProgression));
+  app?.querySelectorAll("[data-action='post-extraction-progression']").forEach((button) => button.addEventListener("click", handlePostExtractionProgression));
   app?.querySelector("[data-action='close-dialog']")?.addEventListener("click", () => {
     state.dialog = null;
     render();
@@ -996,6 +1062,11 @@ function buildRunPayload(form, progressionAction = "") {
     flush_started_at: String(form.get("flush_started_at") || "").trim(),
     flush_ended_at: String(form.get("flush_ended_at") || "").trim(),
     run_completed_at: String(form.get("run_completed_at") || "").trim(),
+    wet_hte_g: String(form.get("wet_hte_g") || "").trim(),
+    wet_thca_g: String(form.get("wet_thca_g") || "").trim(),
+    post_extraction_pathway: String(form.get("post_extraction_pathway") || "").trim(),
+    post_extraction_started_at: String(form.get("post_extraction_started_at") || "").trim(),
+    post_extraction_initial_outputs_recorded_at: String(form.get("post_extraction_initial_outputs_recorded_at") || "").trim(),
     progression_action: progressionAction,
     notes: String(form.get("notes") || "").trim(),
   };
@@ -1016,6 +1087,30 @@ async function handleRunProgression(event) {
     showToast("Run progression updated.");
   } catch (error) {
     showToast(error.payload?.error?.message || error.message || "Unable to update run progression");
+  } finally {
+    state.loading = false;
+    render();
+  }
+}
+
+async function handlePostExtractionProgression(event) {
+  if (!state.route.chargeId) return;
+  const formEl = app?.querySelector("form[data-form='run-execution']");
+  if (!formEl) return;
+  const payload = {
+    ...buildRunPayload(new FormData(formEl)),
+    post_extraction_action: event.currentTarget.dataset.postAction || "",
+  };
+  state.loading = true;
+  render();
+  try {
+    const response = await api.saveChargeRun(state.route.chargeId, payload);
+    state.run = response.run;
+    state.lot = response.lot;
+    state.board = await api.getBoard("all");
+    showToast("Post-extraction handoff updated.");
+  } catch (error) {
+    showToast(error.payload?.error?.message || error.message || "Unable to update post-extraction handoff");
   } finally {
     state.loading = false;
     render();

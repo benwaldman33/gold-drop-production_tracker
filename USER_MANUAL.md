@@ -397,6 +397,28 @@ The top of the run screen now shows the current stage and the next action button
 
 Those buttons write the matching timestamps automatically. When the run is marked complete, the run stores a completed timestamp and the linked extraction charge moves to completed as well when that charge is still the active reactor event.
 
+### Post-extraction handoff (Phase 1)
+
+After **Mark Run Complete**, the same standalone run screen now opens the first downstream handoff step.
+
+1. Choose the **Downstream pathway**:
+- `100 lb pot pour`
+- `200 lb minor run`
+
+2. Tap **Start Post-Extraction**.
+- The extraction run must already be complete.
+- A pathway must be selected first.
+
+3. Enter the initial output weights:
+- `Wet HTE (g)`
+- `Wet THCA (g)`
+
+4. Tap **Confirm Initial Outputs**.
+- Both wet output fields are required before confirmation.
+- The run stores the downstream start time and the initial-output confirmation time.
+
+This is the current Phase 1 foundation only. The later THCA-path / HTE-path workflow screens are still planned. For now, the system stores the chosen pathway and the initial downstream handoff on the run itself so the team has a structured starting point for post-extraction orchestration.
+
 Use **Open in Main App** only when a supervisor needs the full admin run form.
 
 Use **Confirm Movement** to record a standard movement action:

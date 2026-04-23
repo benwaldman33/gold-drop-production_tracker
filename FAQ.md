@@ -451,6 +451,18 @@ The normal progression is:
 
 Each action stamps the matching time field and advances the run to the next stage. When the run is marked complete, the screen shows that completed state and the linked extraction charge is also marked complete when that charge is still the active reactor event.
 
+## What happens after I mark the extraction run complete?
+
+Phase 1 of post-extraction now begins on the same run screen. After completion, choose the downstream pathway (`100 lb pot pour` or `200 lb minor run`), tap `Start Post-Extraction`, and then confirm the initial wet THCA / wet HTE outputs.
+
+## Why won’t the app let me start post-extraction yet?
+
+The handoff is gated. You must first complete the extraction run, then select the downstream pathway before `Start Post-Extraction` is allowed.
+
+## Why won’t the app let me confirm the initial outputs?
+
+You must first start the post-extraction session and enter both `Wet THCA (g)` and `Wet HTE (g)`. Phase 1 is only the downstream handoff foundation; later THCA / HTE-specific orchestration is planned on top of it.
+
 ## Can receiving staff correct a receipt after it was submitted?
 
 Yes, but only while the purchase's lots have not been used downstream.
