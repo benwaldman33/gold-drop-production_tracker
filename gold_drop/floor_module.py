@@ -10,6 +10,13 @@ from services.extraction_charge import (
     reactor_lifecycle_settings,
     update_charge_state,
 )
+from services.extraction_run import (
+    HTE_POTENCY_DISPOSITION_LABELS,
+    HTE_QUEUE_DESTINATION_LABELS,
+    POST_EXTRACTION_PATHWAY_LABELS,
+    THCA_DESTINATION_LABELS,
+    display_local_timestamp,
+)
 
 BOARD_VIEW_OPTIONS = (
     ("all", "All reactors"),
@@ -18,6 +25,39 @@ BOARD_VIEW_OPTIONS = (
     ("running", "Running only"),
     ("completed_today", "Completed today"),
     ("cancelled_today", "Cancelled today"),
+)
+
+DOWNSTREAM_QUEUE_SECTIONS = (
+    (
+        "needs_routing",
+        "Needs Queue Decision",
+        "Minor-run outputs that have started post-extraction but still need a downstream destination or hold.",
+    ),
+    (
+        "golddrop_queue",
+        "GoldDrop Production Queue",
+        "Runs ready to move into GoldDrop production planning.",
+    ),
+    (
+        "liquid_loud_hold",
+        "Liquid Loud Hold",
+        "Material being held back for Liquid Loud processing.",
+    ),
+    (
+        "terp_strip_cage",
+        "Terp Strip / CDT Cage",
+        "Dirty or hard-to-filter HTE queued for upstairs terp stripping / CDT handling.",
+    ),
+    (
+        "hold_hp_base_oil",
+        "HP Base Oil Hold",
+        "Low-potency output held for HP base oil decisions.",
+    ),
+    (
+        "hold_distillate",
+        "Distillate Hold",
+        "High-potency output held to be made into distillate.",
+    ),
 )
 
 
@@ -30,13 +70,23 @@ def register_routes(app, root):
     def scan_center():
         return scan_center_view(root)
 
+    @root.login_required
+    def downstream_queues():
+        return downstream_queues_view(root)
+
     @root.editor_required
     def floor_charge_transition(charge_id):
         return floor_charge_transition_view(root, charge_id)
 
+    @root.editor_required
+    def downstream_queue_move(run_id):
+        return downstream_queue_move_view(root, run_id)
+
     app.add_url_rule("/floor-ops", endpoint="floor_ops", view_func=floor_ops)
     app.add_url_rule("/scan", endpoint="scan_center", view_func=scan_center)
+    app.add_url_rule("/downstream-queues", endpoint="downstream_queues", view_func=downstream_queues)
     app.add_url_rule("/floor-ops/charges/<charge_id>/transition", endpoint="floor_charge_transition", view_func=floor_charge_transition, methods=["POST"])
+    app.add_url_rule("/downstream-queues/runs/<run_id>/move", endpoint="downstream_queue_move", view_func=downstream_queue_move, methods=["POST"])
 
 
 FLOOR_STATE_LABELS = {
@@ -329,6 +379,121 @@ def _reactor_card_actions(settings, charge):
     return actions
 
 
+def _downstream_active_queue(run):
+    potency_hold = (getattr(run, "hte_potency_disposition", None) or "").strip()
+    if potency_hold in {"hold_hp_base_oil", "hold_distillate"}:
+        return potency_hold
+    queue_destination = (getattr(run, "hte_queue_destination", None) or "").strip()
+    if queue_destination in {"golddrop_queue", "liquid_loud_hold", "terp_strip_cage"}:
+        return queue_destination
+    pathway = (getattr(run, "post_extraction_pathway", None) or "").strip()
+    if pathway == "minor_run_200" and getattr(run, "post_extraction_initial_outputs_recorded_at", None):
+        return "needs_routing"
+    return None
+
+
+def _downstream_move_options():
+    return [
+        {"value": "golddrop_queue", "label": "Move to GoldDrop production queue"},
+        {"value": "liquid_loud_hold", "label": "Move to Liquid Loud hold"},
+        {"value": "terp_strip_cage", "label": "Send to Terp strip / CDT cage"},
+        {"value": "hold_hp_base_oil", "label": "Hold for HP base oil"},
+        {"value": "hold_distillate", "label": "Hold for distillate"},
+    ]
+
+
+def _downstream_next_step(item):
+    queue_key = item["queue_key"]
+    if queue_key == "needs_routing":
+        return "Choose the next downstream destination or hold for this HTE output."
+    if queue_key == "golddrop_queue":
+        return "Ready for GoldDrop production planning and handoff."
+    if queue_key == "liquid_loud_hold":
+        return "Hold until Liquid Loud allocation and release are decided."
+    if queue_key == "terp_strip_cage":
+        return "Await upstairs terp strip / CDT work or Prescott handling."
+    if queue_key == "hold_hp_base_oil":
+        return "Held until HP base oil disposition is scheduled."
+    if queue_key == "hold_distillate":
+        return "Held until distillate production scheduling is confirmed."
+    return "Open the run for supervisor review."
+
+
+def _build_downstream_queue_item(root, run):
+    allocations = list(run.inputs.all())
+    lots = [allocation.lot for allocation in allocations if allocation.lot]
+    strain_names = sorted({(lot.strain_name or "").strip() for lot in lots if (lot.strain_name or "").strip()})
+    supplier_names = sorted({(lot.supplier_name or "").strip() for lot in lots if (lot.supplier_name or "").strip()})
+    tracking_ids = [lot.tracking_id for lot in lots if lot.tracking_id]
+    queue_key = _downstream_active_queue(run)
+    return {
+        "run_id": run.id,
+        "run_date_label": run.run_date.strftime("%Y-%m-%d") if run.run_date else "Unknown date",
+        "reactor_number": run.reactor_number,
+        "queue_key": queue_key,
+        "pathway_label": POST_EXTRACTION_PATHWAY_LABELS.get((run.post_extraction_pathway or "").strip(), "Not set"),
+        "strain_summary": ", ".join(strain_names) if strain_names else "Unknown strain",
+        "supplier_summary": ", ".join(supplier_names) if supplier_names else "Unknown supplier",
+        "tracking_ids": tracking_ids,
+        "wet_hte_g": float(run.wet_hte_g or 0),
+        "wet_thca_g": float(run.wet_thca_g or 0),
+        "dry_hte_g": float(run.dry_hte_g or 0),
+        "dry_thca_g": float(run.dry_thca_g or 0),
+        "post_extraction_started_at_label": display_local_timestamp(getattr(run, "post_extraction_started_at", None)),
+        "outputs_confirmed_at_label": display_local_timestamp(getattr(run, "post_extraction_initial_outputs_recorded_at", None)),
+        "thca_destination_label": THCA_DESTINATION_LABELS.get((run.thca_destination or "").strip(), ""),
+        "hte_clean_decision_label": {"clean": "Clean", "dirty": "Dirty"}.get((run.hte_clean_decision or "").strip(), ""),
+        "hte_filter_outcome_label": {"standard": "Standard refinement path", "needs_prescott": "Needs Prescott"}.get((run.hte_filter_outcome or "").strip(), ""),
+        "hte_queue_destination_label": HTE_QUEUE_DESTINATION_LABELS.get((run.hte_queue_destination or "").strip(), ""),
+        "hte_potency_disposition_label": HTE_POTENCY_DISPOSITION_LABELS.get((run.hte_potency_disposition or "").strip(), ""),
+    }
+
+
+def _build_downstream_queues(root):
+    runs = (
+        root.Run.query.filter(
+            root.Run.deleted_at.is_(None),
+            root.Run.run_completed_at.isnot(None),
+            root.Run.post_extraction_started_at.isnot(None),
+            root.Run.post_extraction_initial_outputs_recorded_at.isnot(None),
+        )
+        .order_by(root.Run.run_date.desc(), root.Run.created_at.desc())
+        .limit(120)
+        .all()
+    )
+    section_map = {
+        key: {
+            "key": key,
+            "label": label,
+            "description": description,
+            "items": [],
+        }
+        for key, label, description in DOWNSTREAM_QUEUE_SECTIONS
+    }
+    for run in runs:
+        item = _build_downstream_queue_item(root, run)
+        queue_key = item["queue_key"]
+        if not queue_key:
+            continue
+        item["next_step"] = _downstream_next_step(item)
+        section_map[queue_key]["items"].append(item)
+    sections = [section_map[key] for key, _label, _description in DOWNSTREAM_QUEUE_SECTIONS]
+    summary_cards = [
+        {
+            "key": section["key"],
+            "label": section["label"],
+            "count": len(section["items"]),
+        }
+        for section in sections
+    ]
+    return {
+        "sections": sections,
+        "summary_cards": summary_cards,
+        "move_options": _downstream_move_options(),
+        "active_count": sum(card["count"] for card in summary_cards),
+    }
+
+
 def floor_ops_view(root):
     recent_scans = root.LotScanEvent.query.order_by(root.LotScanEvent.created_at.desc()).limit(12).all()
     recent_captures = root.WeightCapture.query.order_by(root.WeightCapture.created_at.desc()).limit(12).all()
@@ -371,6 +536,14 @@ def floor_ops_view(root):
     )
 
 
+def downstream_queues_view(root):
+    queues = _build_downstream_queues(root)
+    return root.render_template(
+        "downstream_queues.html",
+        downstream_queues=queues,
+    )
+
+
 def scan_center_view(root):
     recent_scans = root.LotScanEvent.query.order_by(root.LotScanEvent.created_at.desc()).limit(6).all()
     return root.render_template("scan_center.html", recent_scans=recent_scans)
@@ -410,3 +583,48 @@ def floor_charge_transition_view(root, charge_id):
         root.app.logger.exception("Error updating reactor charge state")
         root.flash("Error updating reactor charge state.", "error")
     return root.redirect(root.url_for("floor_ops"))
+
+
+def downstream_queue_move_view(root, run_id):
+    run = root.db.session.get(root.Run, run_id)
+    if run is None or run.deleted_at is not None:
+        root.flash("Run not found.", "error")
+        return root.redirect(root.url_for("downstream_queues"))
+    if run.run_completed_at is None or run.post_extraction_initial_outputs_recorded_at is None:
+        root.flash("This run is not ready for downstream queue management yet.", "error")
+        return root.redirect(root.url_for("downstream_queues"))
+
+    previous_queue = _downstream_active_queue(run)
+    target = (root.request.form.get("target_destination") or "").strip()
+    if target not in {"golddrop_queue", "liquid_loud_hold", "terp_strip_cage", "hold_hp_base_oil", "hold_distillate", "complete"}:
+        root.flash("Choose a valid downstream destination.", "error")
+        return root.redirect(root.url_for("downstream_queues"))
+
+    if target == "complete":
+        run.hte_queue_destination = None
+        run.hte_potency_disposition = None
+        message = "Downstream queue item marked complete."
+    elif target in {"hold_hp_base_oil", "hold_distillate"}:
+        run.hte_potency_disposition = target
+        run.hte_queue_destination = None
+        message = f"Run moved to {HTE_POTENCY_DISPOSITION_LABELS[target]}."
+    else:
+        run.hte_queue_destination = target
+        run.hte_potency_disposition = None
+        message = f"Run moved to {HTE_QUEUE_DESTINATION_LABELS[target]}."
+
+    root.log_audit(
+        "update",
+        "run",
+        run.id,
+        details=root.json.dumps(
+            {
+                "source": "downstream_queues",
+                "previous_queue": previous_queue,
+                "target_destination": target,
+            }
+        ),
+    )
+    root.db.session.commit()
+    root.flash(message, "success")
+    return root.redirect(root.url_for("downstream_queues"))

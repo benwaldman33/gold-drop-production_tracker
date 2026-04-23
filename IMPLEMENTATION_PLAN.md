@@ -218,6 +218,39 @@ Add touch-first workflow screens similar to the standalone extraction approach.
 Scope:
 
 - guided post-extraction session screen
+- touch-first branching for `100 lb pot pour` vs `200 lb minor run`
+- numbered step cards and tap-first decision controls in the standalone extraction app
+
+**Status:** shipped in the standalone extraction app.
+
+Current implementation:
+- pathway-first guided downstream workflow on `Open Run`
+- numbered step cards for post-extraction handoff plus pot-pour / minor-run branches
+- tap-first decision buttons for THCA destination and HTE downstream decisions
+- main run form retained as the supervisor correction/edit surface
+
+### Phase 4 - Queue and hold operational surfaces
+
+Build working queue pages from the downstream destination data already stored on the run.
+
+Scope:
+
+- `Needs Queue Decision`
+- `GoldDrop production queue`
+- `Liquid Loud hold`
+- `Terp strip / CDT cage`
+- `HP base oil hold`
+- `Distillate hold`
+- direct move / complete actions without opening every run first
+
+**Status:** shipped in the main app.
+
+Current implementation:
+- new `Downstream Queues` page in the sidebar
+- queue grouping derived from `hte_queue_destination` and `hte_potency_disposition`
+- unresolved minor-run outputs show up under `Needs Queue Decision`
+- queue cards show run, source context, wet/dry outputs, THCA destination, HTE decision labels, and `Open Run`
+- direct move actions update the existing run-level queue / hold fields and preserve audit history
 - top-to-bottom operator sequence
 - minimal keyboard entry
 - timers and decision buttons
