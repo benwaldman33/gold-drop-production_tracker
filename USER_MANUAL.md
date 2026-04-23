@@ -419,6 +419,51 @@ After **Mark Run Complete**, the same standalone run screen now opens the first 
 
 This is the current Phase 1 foundation only. The later THCA-path / HTE-path workflow screens are still planned. For now, the system stores the chosen pathway and the initial downstream handoff on the run itself so the team has a structured starting point for post-extraction orchestration.
 
+### Downstream state tracking (Phase 2)
+
+The same run screen now stores the first structured downstream fields instead of leaving that state in Slack or free-text notes.
+
+#### Pot pour path
+
+Use these fields when the downstream pathway is `100 lb pot pour`:
+- `Warm Off-Gas Start`
+- `Warm Off-Gas End`
+- `Daily Stirs`
+- `Centrifuged At`
+
+#### THCA path
+
+Use these fields to track the THCA side after the run:
+- `THCA Oven Start`
+- `THCA Oven End`
+- `Milled At`
+- `THCA Destination`
+
+`THCA Destination` supports:
+- `Sell THCA`
+- `Make LD`
+- `Formulate in badders / sugars`
+
+#### HTE path
+
+Use these fields to track the HTE side after the run:
+- `HTE Off-Gas Start`
+- `HTE Off-Gas End`
+- `Clean Decision`
+- `Filter Outcome`
+- `Prescott Processed At`
+- `Potency Disposition`
+- `Queue Destination`
+
+Typical queue / disposition values now supported:
+- `GoldDrop production queue`
+- `Liquid Loud hold`
+- `Terp stripping / CDT cage`
+- `Hold for HP base oil`
+- `Hold to be made into distillate`
+
+This is still not the final downstream operator workflow. It is the structured data foundation for the later guided THCA / HTE workflow screens.
+
 Use **Open in Main App** only when a supervisor needs the full admin run form.
 
 Use **Confirm Movement** to record a standard movement action:

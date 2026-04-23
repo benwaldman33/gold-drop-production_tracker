@@ -483,6 +483,21 @@ class Run(db.Model):
     post_extraction_pathway = db.Column(db.String(30))  # pot_pour_100, minor_run_200
     post_extraction_started_at = db.Column(db.DateTime)
     post_extraction_initial_outputs_recorded_at = db.Column(db.DateTime)
+    pot_pour_offgas_started_at = db.Column(db.DateTime)
+    pot_pour_offgas_completed_at = db.Column(db.DateTime)
+    pot_pour_daily_stir_count = db.Column(db.Integer)
+    pot_pour_centrifuged_at = db.Column(db.DateTime)
+    thca_oven_started_at = db.Column(db.DateTime)
+    thca_oven_completed_at = db.Column(db.DateTime)
+    thca_milled_at = db.Column(db.DateTime)
+    thca_destination = db.Column(db.String(40))  # sell_thca, make_ld, formulate_badders_sugars
+    hte_offgas_started_at = db.Column(db.DateTime)
+    hte_offgas_completed_at = db.Column(db.DateTime)
+    hte_clean_decision = db.Column(db.String(20))  # clean, dirty
+    hte_filter_outcome = db.Column(db.String(30))  # standard, needs_prescott
+    hte_prescott_processed_at = db.Column(db.DateTime)
+    hte_potency_disposition = db.Column(db.String(40))  # hold_hp_base_oil, hold_distillate
+    hte_queue_destination = db.Column(db.String(40))  # golddrop_queue, liquid_loud_hold, terp_strip_cage
     # After dry HTE is separated from THCA: lab testing → clean (menu) or dirty (Prescott strip) → terp accounting.
     hte_pipeline_stage = db.Column(db.String(40))  # awaiting_lab, lab_clean, lab_dirty_queued_strip, terp_stripped
     hte_lab_result_paths_json = db.Column(db.Text)  # JSON array; COA / lab result images or PDFs under static/

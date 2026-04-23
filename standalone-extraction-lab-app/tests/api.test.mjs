@@ -82,12 +82,20 @@ test("mock api login, board, charge, and transition flow", async () => {
   const confirmedOutputs = await api.saveChargeRun(created.charge.id, {
     wet_hte_g: 900,
     wet_thca_g: 2100,
+    thca_destination: "make_ld",
+    hte_clean_decision: "dirty",
+    hte_filter_outcome: "needs_prescott",
+    hte_queue_destination: "liquid_loud_hold",
     post_extraction_action: "confirm_initial_outputs",
   });
   assert.equal(confirmedOutputs.run.post_extraction.stage_key, "session_started");
   assert.ok(confirmedOutputs.run.post_extraction_initial_outputs_recorded_at);
   assert.equal(confirmedOutputs.run.wet_hte_g, 900);
   assert.equal(confirmedOutputs.run.wet_thca_g, 2100);
+  assert.equal(confirmedOutputs.run.thca_destination, "make_ld");
+  assert.equal(confirmedOutputs.run.hte_clean_decision, "dirty");
+  assert.equal(confirmedOutputs.run.hte_filter_outcome, "needs_prescott");
+  assert.equal(confirmedOutputs.run.hte_queue_destination, "liquid_loud_hold");
 });
 
 test("live api unwraps extraction mobile envelopes", async () => {

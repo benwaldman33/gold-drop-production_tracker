@@ -201,6 +201,16 @@ Scope:
 - explicit branch decisions
 - same-day / current-state visibility in the app
 
+**Status:** shipped on the existing `Run` record.
+
+Current implementation:
+- pot-pour warm off-gas start/end, stir count, and centrifuge timestamp
+- THCA oven start/end, milling timestamp, and THCA destination
+- HTE off-gas start/end, clean/dirty decision, filter outcome, Prescott timestamp, potency disposition, and queue destination
+- matching fields on both the main run form and the standalone extraction run screen
+
+What remains for later phases is the guided downstream operator workflow on top of these stored states.
+
 ### Phase 3 - Guided downstream operator screens
 
 Add touch-first workflow screens similar to the standalone extraction approach.

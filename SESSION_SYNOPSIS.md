@@ -146,6 +146,10 @@ Latest verified status before closeout:
   - `Start Post-Extraction`
   - `Confirm Initial Outputs`
   - wet THCA / wet HTE confirmation gate
+- Phase 2 downstream state tracking is now also implemented on the same run:
+  - pot-pour warm off-gas timing, stir count, centrifuge handoff
+  - THCA oven timing, milling time, THCA destination
+  - HTE off-gas timing, clean/dirty, Prescott, potency, and queue-routing fields
 - full Python suite: `138 passed`
 
 The following policy is in effect for future work:

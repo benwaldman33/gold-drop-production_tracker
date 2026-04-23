@@ -11,6 +11,7 @@
 - `Settings -> Operational Parameters` now includes reactor lifecycle controls so Super Admin can show/hide each lifecycle state, make states required or optional, require a linked run before `Mark Running`, and choose whether state history is shown on the active reactor board.
 - A new `standalone-extraction-lab-app` now mirrors the extractor workflow with a touch-first reactor board, lot browser, charge form, and lifecycle actions that still hand off into the main run form when needed.
 - Phase 1 of post-extraction orchestration is now live on the existing run: operators can select the downstream pathway (`100 lb pot pour` or `200 lb minor run`), start the post-extraction handoff, and confirm the initial wet THCA / wet HTE outputs from the standalone extraction run screen or the main run form.
+- Phase 2 downstream state tracking is now live on the run record: operators can capture pot-pour warm off-gas timing and stir count, THCA oven/milling/destination, and HTE off-gas / clean-dirty / Prescott / queue-routing decisions before a dedicated downstream screen exists.
 
 ### Changed
 - `Inventory` now includes `Import spreadsheet`, built on the shared import framework as a controlled update-only workflow over existing lots matched by tracking ID. It supports the same safe lot-edit fields as the manual lot editor: strain, potency, location, floor state, milled state, and notes.
@@ -24,6 +25,7 @@
 - The standalone extraction app now includes a dedicated run-execution screen tied to each charge, with touch-first timers for run/fill, mixer, and flush timing plus structured fields for blend, fills, flushes, stringer baskets, CRC blend, and notes.
 - The standalone extraction run screen now shows guided progression actions (`Start Run`, `Start Mixer`, `Stop Mixer`, `Start Flush`, `Stop Flush`, `Mark Run Complete`) so operators can advance the run from the tablet without relying on typed Slack timestamps.
 - The standalone extraction run screen now continues directly into a post-extraction foundation card, with gated actions for `Start Post-Extraction` and `Confirm Initial Outputs` plus the shared wet THCA / wet HTE fields and the chosen downstream pathway.
+- The standalone extraction run screen now also includes touch-first downstream state capture for pot-pour warm off-gas, THCA oven/milling/destination, and HTE off-gas plus clean/dirty, Prescott, potency, and queue-routing decisions.
 - The standalone extraction reactor board now renders `Open Run` as a full-size primary action next to the lifecycle buttons so operators do not have to hunt for a small inline link before `Mark Running`.
 - The main app sidebar now scrolls independently, so lower navigation items and `Logout` remain reachable on normal-height screens even as the left pane grows.
 - `Settings -> Operational Parameters` now includes `Extraction run defaults`, letting operators preconfigure the standalone extraction run screen's default milled/unmilled blend, fill count, total fill weight, flush count, total flush weight, stringer basket count, and CRC blend.
@@ -31,6 +33,7 @@
 - The main run form now stores the new extraction execution fields so supervisors can still review or edit the same data from the admin UI.
 - The main run form now also shows the current extraction progression stage and stores a dedicated run-completed timestamp for supervisor review and corrections.
 - The main run form now shows the Phase 1 post-extraction foundation state, including the selected downstream pathway and the timestamps for post-extraction start and initial-output confirmation.
+- The main run form now exposes the same Phase 2 downstream fields as the standalone app so supervisors can review or correct pot-pour, THCA-path, and HTE-path state directly on the run.
 - Purchase edit now round-trips `availability_date` and `testing_notes` so values saved from the mobile opportunity flow remain visible and editable in the main app.
 - Standalone buying copy now uses clearer "ready to record delivery" wording instead of the older "delivery capture" phrasing.
 - Supplier creation now warns on typo-close duplicate names in the standalone buyer app and on the main supplier create page before saving a new record.
@@ -55,6 +58,7 @@
 - Added extraction-charge, floor-queue, lifecycle-settings, inventory-action, and Slack-charge regression coverage for scan-to-charge, charge prefill into new run, charge-to-run linkage, pending/applied reactor queue visibility, active reactor board status rendering, direct inventory lot actions, lifecycle transition enforcement, cancel resolution redirects, and Slack import charge creation / split-allocation rejection; combined with the new extraction standalone coverage, the full Python suite now passes with `136` tests.
 - Added standalone extraction mobile API regression coverage for workflow toggles, board and lot reads, charge creation, and lifecycle transitions, plus a standalone extraction app Node suite covering route parsing, touch-charge helpers, and API envelope handling.
 - Added Phase 1 post-extraction regression coverage for charge-linked run handoff, pathway selection enforcement, wet-output confirmation enforcement, and standalone extraction mock API progression through the new post-extraction stage.
+- Extended the extraction mobile and standalone regression coverage for Phase 2 downstream state fields, including pot-pour timing, THCA destination, and HTE decision / queue fields on the shared charge-linked run payload.
 
 ## 2026-04-11
 

@@ -1022,6 +1022,21 @@ def test_mobile_extraction_run_execution_flow():
                     "wet_hte_g": 1800,
                     "wet_thca_g": 4200,
                     "post_extraction_action": "confirm_initial_outputs",
+                    "pot_pour_offgas_started_at": "2026-04-19T10:00",
+                    "pot_pour_offgas_completed_at": "2026-04-19T12:00",
+                    "pot_pour_daily_stir_count": 2,
+                    "pot_pour_centrifuged_at": "2026-04-20T09:00",
+                    "thca_oven_started_at": "2026-04-19T12:30",
+                    "thca_oven_completed_at": "2026-04-20T04:30",
+                    "thca_milled_at": "2026-04-20T08:00",
+                    "thca_destination": "make_ld",
+                    "hte_offgas_started_at": "2026-04-19T10:30",
+                    "hte_offgas_completed_at": "2026-04-21T10:30",
+                    "hte_clean_decision": "dirty",
+                    "hte_filter_outcome": "needs_prescott",
+                    "hte_prescott_processed_at": "2026-04-21T15:00",
+                    "hte_potency_disposition": "hold_distillate",
+                    "hte_queue_destination": "liquid_loud_hold",
                 },
             )
             assert confirm_outputs.status_code == 200
@@ -1030,6 +1045,10 @@ def test_mobile_extraction_run_execution_flow():
             assert confirmed_outputs["wet_thca_g"] == 4200.0
             assert confirmed_outputs["post_extraction_initial_outputs_recorded_at"]
             assert confirmed_outputs["post_extraction"]["stage_key"] == "session_started"
+            assert confirmed_outputs["thca_destination"] == "make_ld"
+            assert confirmed_outputs["hte_clean_decision"] == "dirty"
+            assert confirmed_outputs["hte_filter_outcome"] == "needs_prescott"
+            assert confirmed_outputs["hte_queue_destination"] == "liquid_loud_hold"
 
         with app.app_context():
             charge = db.session.get(ExtractionCharge, charge_id)
@@ -1049,6 +1068,12 @@ def test_mobile_extraction_run_execution_flow():
             assert run.post_extraction_initial_outputs_recorded_at is not None
             assert run.wet_hte_g == 1800
             assert run.wet_thca_g == 4200
+            assert run.pot_pour_daily_stir_count == 2
+            assert run.thca_destination == "make_ld"
+            assert run.hte_clean_decision == "dirty"
+            assert run.hte_filter_outcome == "needs_prescott"
+            assert run.hte_potency_disposition == "hold_distillate"
+            assert run.hte_queue_destination == "liquid_loud_hold"
             assert run.notes == "Touch-first run capture"
     finally:
         with app.app_context():

@@ -463,6 +463,15 @@ The handoff is gated. You must first complete the extraction run, then select th
 
 You must first start the post-extraction session and enter both `Wet THCA (g)` and `Wet HTE (g)`. Phase 1 is only the downstream handoff foundation; later THCA / HTE-specific orchestration is planned on top of it.
 
+## Can we record downstream THCA / HTE state yet?
+
+Yes, on the same run record. The current Phase 2 fields cover:
+- pot-pour warm off-gas timing, stir count, and centrifuge handoff
+- THCA oven timing, milling time, and THCA destination
+- HTE off-gas timing, clean / dirty decision, Prescott decision, potency disposition, and queue destination
+
+There is not a separate downstream app screen yet. For now, those fields live on the main run form and the standalone extraction run screen.
+
 ## Can receiving staff correct a receipt after it was submitted?
 
 Yes, but only while the purchase's lots have not been used downstream.
