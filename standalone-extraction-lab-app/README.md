@@ -11,6 +11,7 @@ Touch-first operator app for the extraction lab workflow. It mirrors the main ap
 - touch-friendly extraction charge form with `100 lbs`, `Half lot`, `Full lot`, and `Last used` presets plus last-reactor recall
 - standalone run-execution screen with timer controls, guided progression actions, blend capture, fill / flush fields, CRC blend, baskets, and notes
 - settings-driven defaults for common run fields so the screen opens with the site's usual blend, aggregate weight, and count assumptions
+- guided downstream workflow on the same `Open Run` screen, with pathway-driven steps for post-extraction handoff plus pot-pour or minor-run downstream decisions
 - reactor lifecycle actions from the board
 - full-size `Open Run` button on reactor cards so the linked-run step is obvious on iPad
 - handoff link into the main run form after recording a charge
@@ -35,3 +36,4 @@ By default the dev server runs at `http://127.0.0.1:4175` and proxies `/api/*` t
 6. Record the charge, then choose `Open Run`, `Open Run in Main App`, `Back to Reactors`, or `Charge Another Lot`.
 7. In `Open Run`, use the touch-first timers and counters to capture execution details without leaving the tablet workflow.
 8. Use the progression buttons in order: `Start Run`, `Start Mixer`, `Stop Mixer`, `Start Flush`, `Stop Flush`, and `Mark Run Complete`.
+9. Continue into the downstream workflow on the same screen: choose the pathway, start post-extraction, confirm initial wet outputs, then work top-to-bottom through the relevant downstream branch.

@@ -12,6 +12,7 @@
 - A new `standalone-extraction-lab-app` now mirrors the extractor workflow with a touch-first reactor board, lot browser, charge form, and lifecycle actions that still hand off into the main run form when needed.
 - Phase 1 of post-extraction orchestration is now live on the existing run: operators can select the downstream pathway (`100 lb pot pour` or `200 lb minor run`), start the post-extraction handoff, and confirm the initial wet THCA / wet HTE outputs from the standalone extraction run screen or the main run form.
 - Phase 2 downstream state tracking is now live on the run record: operators can capture pot-pour warm off-gas timing and stir count, THCA oven/milling/destination, and HTE off-gas / clean-dirty / Prescott / queue-routing decisions before a dedicated downstream screen exists.
+- Phase 3 guided downstream workflow is now live in the standalone extraction app, turning the downstream portion of `Open Run` into a numbered, pathway-driven sequence instead of a flat block of fields.
 
 ### Changed
 - `Inventory` now includes `Import spreadsheet`, built on the shared import framework as a controlled update-only workflow over existing lots matched by tracking ID. It supports the same safe lot-edit fields as the manual lot editor: strain, potency, location, floor state, milled state, and notes.
@@ -26,6 +27,7 @@
 - The standalone extraction run screen now shows guided progression actions (`Start Run`, `Start Mixer`, `Stop Mixer`, `Start Flush`, `Stop Flush`, `Mark Run Complete`) so operators can advance the run from the tablet without relying on typed Slack timestamps.
 - The standalone extraction run screen now continues directly into a post-extraction foundation card, with gated actions for `Start Post-Extraction` and `Confirm Initial Outputs` plus the shared wet THCA / wet HTE fields and the chosen downstream pathway.
 - The standalone extraction run screen now also includes touch-first downstream state capture for pot-pour warm off-gas, THCA oven/milling/destination, and HTE off-gas plus clean/dirty, Prescott, potency, and queue-routing decisions.
+- The standalone extraction run screen now promotes those downstream controls into a guided workflow stack with numbered steps, pathway-specific sequencing, and tap-first choice buttons so operators can work top-to-bottom on one screen.
 - The standalone extraction reactor board now renders `Open Run` as a full-size primary action next to the lifecycle buttons so operators do not have to hunt for a small inline link before `Mark Running`.
 - The main app sidebar now scrolls independently, so lower navigation items and `Logout` remain reachable on normal-height screens even as the left pane grows.
 - `Settings -> Operational Parameters` now includes `Extraction run defaults`, letting operators preconfigure the standalone extraction run screen's default milled/unmilled blend, fill count, total fill weight, flush count, total flush weight, stringer basket count, and CRC blend.

@@ -464,6 +464,26 @@ Typical queue / disposition values now supported:
 
 This is still not the final downstream operator workflow. It is the structured data foundation for the later guided THCA / HTE workflow screens.
 
+### Guided downstream workflow on the iPad
+
+The standalone extraction app now turns the downstream portion of **Open Run** into a guided sequence instead of leaving operators on one flat form.
+
+The sequence is:
+
+1. Choose the downstream pathway.
+2. Start post-extraction.
+3. Confirm the initial wet THCA / wet HTE outputs.
+4. Follow the branch-specific steps:
+- `100 lb pot pour`:
+  - warm off-gas
+  - daily stir count
+  - centrifuge handoff
+- `200 lb minor run`:
+  - THCA branch
+  - HTE branch
+
+The key difference is that the screen now works top-to-bottom, with numbered step cards and tap-first choice buttons for pathway and decision fields. The main app still keeps the full raw fields for supervisor editing.
+
 Use **Open in Main App** only when a supervisor needs the full admin run form.
 
 Use **Confirm Movement** to record a standard movement action:

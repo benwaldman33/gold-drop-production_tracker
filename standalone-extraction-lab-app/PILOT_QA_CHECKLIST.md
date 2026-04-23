@@ -54,3 +54,12 @@
 - the run screen shows the current stage and advances correctly through `Start Run`, `Start Mixer`, `Stop Mixer`, `Start Flush`, `Stop Flush`, and `Mark Run Complete`
 - after `Mark Run Complete`, the run shows a completed state and the linked charge is no longer treated as active on the board
 - saving the run keeps the reactor-linked workflow intact and leaves `Open in Main App` available
+
+## Guided downstream workflow
+
+- after run completion, the downstream workflow shows numbered steps instead of one flat downstream block
+- tapping a pathway button updates the visible downstream branch without losing unsaved form values
+- `Start Post-Extraction` and `Confirm Initial Outputs` still work from the guided step cards
+- `100 lb pot pour` shows warm off-gas, stir count, and centrifuge steps
+- `200 lb minor run` shows THCA-path and HTE-path steps
+- downstream choice buttons (THCA destination, clean/dirty, filter outcome, potency disposition, queue destination) stay highlighted after selection

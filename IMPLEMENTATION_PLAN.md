@@ -222,6 +222,16 @@ Scope:
 - minimal keyboard entry
 - timers and decision buttons
 
+**Status:** shipped inside the standalone extraction run screen.
+
+Current implementation:
+- numbered downstream workflow steps
+- pathway-driven sequence on the tablet
+- branch-specific pot-pour vs minor-run step blocks
+- tap-first choice buttons for pathway and downstream decisions
+
+What remains for later phases is a fuller downstream queue / hold surface and role-specific views beyond the extraction tablet.
+
 ### Phase 4 - Queue and hold destinations
 
 Turn final path decisions into operational queue states.
