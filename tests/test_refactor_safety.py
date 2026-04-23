@@ -2394,6 +2394,344 @@ def test_golddrop_queue_actions_update_history_and_release_run():
             db.session.commit()
 
 
+def test_liquid_loud_queue_page_and_release_to_golddrop():
+    app = app_module.app
+    run_id = None
+    purchase_id = None
+    supplier_id = None
+    lot_id = None
+    try:
+        with app.app_context():
+            admin_id = app_module.User.query.filter_by(username="admin").first().id
+            supplier = Supplier(name="Liquid Loud Queue Supplier", is_active=True)
+            db.session.add(supplier)
+            db.session.flush()
+            supplier_id = supplier.id
+            purchase = Purchase(
+                supplier_id=supplier.id,
+                purchase_date=date(2026, 4, 23),
+                delivery_date=date(2026, 4, 23),
+                status="delivered",
+                stated_weight_lbs=55,
+                purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+                testing_status="completed",
+                clean_or_dirty="clean",
+                batch_id=f"LLQ-{app_module.gen_uuid()[:6]}",
+            )
+            db.session.add(purchase)
+            db.session.flush()
+            purchase_id = purchase.id
+            lot = PurchaseLot(
+                purchase_id=purchase.id,
+                strain_name="Liquid Loud Dream",
+                tracking_id="LLQ-LOT-1",
+                weight_lbs=55,
+                remaining_weight_lbs=15,
+                floor_state="inventory",
+                milled=True,
+            )
+            db.session.add(lot)
+            db.session.flush()
+            lot_id = lot.id
+            run = app_module.Run(
+                run_date=date(2026, 4, 23),
+                reactor_number=1,
+                run_type="standard",
+                bio_in_reactor_lbs=40,
+                wet_hte_g=1000,
+                wet_thca_g=2200,
+                created_by=admin_id,
+                run_completed_at=app_module.datetime.now(app_module.timezone.utc),
+                post_extraction_pathway="minor_run_200",
+                post_extraction_started_at=app_module.datetime.now(app_module.timezone.utc),
+                post_extraction_initial_outputs_recorded_at=app_module.datetime.now(app_module.timezone.utc),
+                hte_queue_destination="liquid_loud_hold",
+            )
+            db.session.add(run)
+            db.session.flush()
+            run_id = run.id
+            db.session.add(app_module.RunInput(run_id=run.id, lot_id=lot.id, weight_lbs=40))
+            db.session.add(
+                app_module.DownstreamQueueEvent(
+                    run_id=run.id,
+                    queue_key="liquid_loud_hold",
+                    action_key="entered_queue",
+                    notes="Held for Liquid Loud review",
+                    created_by=admin_id,
+                )
+            )
+            db.session.commit()
+
+        with app.test_client() as client:
+            _login(client, "admin")
+            page = client.get("/downstream-queues/liquid-loud")
+            assert page.status_code == 200
+            assert b"Liquid Loud Hold" in page.data
+            assert b"Reserve For Liquid Loud" in page.data
+            assert b"Release To GoldDrop Queue" in page.data
+
+            moved = client.post(
+                f"/downstream-queues/liquid-loud/runs/{run_id}/action",
+                data={"queue_action": "release_to_golddrop", "queue_notes": "Released to GoldDrop"},
+                follow_redirects=False,
+            )
+            assert moved.status_code in (302, 303)
+            assert moved.headers["Location"].endswith("/downstream-queues/golddrop")
+
+        with app.app_context():
+            run = db.session.get(app_module.Run, run_id)
+            assert run is not None
+            assert run.hte_queue_destination == "golddrop_queue"
+            events = (
+                app_module.DownstreamQueueEvent.query.filter_by(run_id=run_id)
+                .order_by(app_module.DownstreamQueueEvent.created_at.asc())
+                .all()
+            )
+            assert [event.queue_key for event in events[-2:]] == ["liquid_loud_hold", "golddrop_queue"]
+            assert events[-2].action_key == "release_to_golddrop"
+            assert events[-1].action_key == "entered_queue"
+    finally:
+        with app.app_context():
+            app_module.DownstreamQueueEvent.query.filter_by(run_id=run_id).delete(synchronize_session=False)
+            app_module.RunInput.query.filter_by(run_id=run_id).delete(synchronize_session=False)
+            run = db.session.get(app_module.Run, run_id) if run_id else None
+            if run:
+                db.session.delete(run)
+            lot = db.session.get(PurchaseLot, lot_id) if lot_id else None
+            if lot:
+                db.session.delete(lot)
+            purchase = db.session.get(Purchase, purchase_id) if purchase_id else None
+            if purchase:
+                db.session.delete(purchase)
+            supplier = db.session.get(Supplier, supplier_id) if supplier_id else None
+            if supplier:
+                db.session.delete(supplier)
+            db.session.commit()
+
+
+def test_terp_strip_queue_actions_update_pipeline_state():
+    app = app_module.app
+    run_id = None
+    purchase_id = None
+    supplier_id = None
+    lot_id = None
+    try:
+        with app.app_context():
+            admin_id = app_module.User.query.filter_by(username="admin").first().id
+            supplier = Supplier(name="Terp Strip Queue Supplier", is_active=True)
+            db.session.add(supplier)
+            db.session.flush()
+            supplier_id = supplier.id
+            purchase = Purchase(
+                supplier_id=supplier.id,
+                purchase_date=date(2026, 4, 23),
+                delivery_date=date(2026, 4, 23),
+                status="delivered",
+                stated_weight_lbs=60,
+                purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+                testing_status="completed",
+                clean_or_dirty="clean",
+                batch_id=f"TSQ-{app_module.gen_uuid()[:6]}",
+            )
+            db.session.add(purchase)
+            db.session.flush()
+            purchase_id = purchase.id
+            lot = PurchaseLot(
+                purchase_id=purchase.id,
+                strain_name="Terp Strip Dream",
+                tracking_id="TSQ-LOT-1",
+                weight_lbs=60,
+                remaining_weight_lbs=20,
+                floor_state="inventory",
+                milled=True,
+            )
+            db.session.add(lot)
+            db.session.flush()
+            lot_id = lot.id
+            run = app_module.Run(
+                run_date=date(2026, 4, 23),
+                reactor_number=2,
+                run_type="standard",
+                bio_in_reactor_lbs=40,
+                wet_hte_g=800,
+                wet_thca_g=2100,
+                created_by=admin_id,
+                run_completed_at=app_module.datetime.now(app_module.timezone.utc),
+                post_extraction_pathway="minor_run_200",
+                post_extraction_started_at=app_module.datetime.now(app_module.timezone.utc),
+                post_extraction_initial_outputs_recorded_at=app_module.datetime.now(app_module.timezone.utc),
+                hte_queue_destination="terp_strip_cage",
+                hte_clean_decision="dirty",
+            )
+            db.session.add(run)
+            db.session.flush()
+            run_id = run.id
+            db.session.add(app_module.RunInput(run_id=run.id, lot_id=lot.id, weight_lbs=40))
+            db.session.commit()
+
+        with app.test_client() as client:
+            _login(client, "admin")
+            page = client.get("/downstream-queues/terp-strip")
+            assert page.status_code == 200
+            assert b"Terp Strip / CDT Cage" in page.data
+            assert b"Queue Prescott" in page.data
+            assert b"Strip Complete" in page.data
+
+            prescott = client.post(
+                f"/downstream-queues/terp-strip/runs/{run_id}/action",
+                data={"queue_action": "queue_prescott"},
+                follow_redirects=False,
+            )
+            assert prescott.status_code in (302, 303)
+
+            complete = client.post(
+                f"/downstream-queues/terp-strip/runs/{run_id}/action",
+                data={"queue_action": "strip_complete"},
+                follow_redirects=False,
+            )
+            assert complete.status_code in (302, 303)
+
+        with app.app_context():
+            run = db.session.get(app_module.Run, run_id)
+            assert run is not None
+            assert run.hte_filter_outcome == "needs_prescott"
+            assert run.hte_pipeline_stage == "terp_stripped"
+            assert run.hte_queue_destination is None
+            events = (
+                app_module.DownstreamQueueEvent.query.filter_by(run_id=run_id, queue_key="terp_strip_cage")
+                .order_by(app_module.DownstreamQueueEvent.created_at.asc())
+                .all()
+            )
+            assert [event.action_key for event in events] == ["queue_prescott", "strip_complete"]
+    finally:
+        with app.app_context():
+            app_module.DownstreamQueueEvent.query.filter_by(run_id=run_id).delete(synchronize_session=False)
+            app_module.RunInput.query.filter_by(run_id=run_id).delete(synchronize_session=False)
+            run = db.session.get(app_module.Run, run_id) if run_id else None
+            if run:
+                db.session.delete(run)
+            lot = db.session.get(PurchaseLot, lot_id) if lot_id else None
+            if lot:
+                db.session.delete(lot)
+            purchase = db.session.get(Purchase, purchase_id) if purchase_id else None
+            if purchase:
+                db.session.delete(purchase)
+            supplier = db.session.get(Supplier, supplier_id) if supplier_id else None
+            if supplier:
+                db.session.delete(supplier)
+            db.session.commit()
+
+
+def test_hp_base_oil_queue_actions_render_and_release():
+    app = app_module.app
+    run_id = None
+    purchase_id = None
+    supplier_id = None
+    lot_id = None
+    try:
+        with app.app_context():
+            admin_id = app_module.User.query.filter_by(username="admin").first().id
+            supplier = Supplier(name="HP Base Oil Queue Supplier", is_active=True)
+            db.session.add(supplier)
+            db.session.flush()
+            supplier_id = supplier.id
+            purchase = Purchase(
+                supplier_id=supplier.id,
+                purchase_date=date(2026, 4, 23),
+                delivery_date=date(2026, 4, 23),
+                status="delivered",
+                stated_weight_lbs=58,
+                purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+                testing_status="completed",
+                clean_or_dirty="clean",
+                batch_id=f"HBO-{app_module.gen_uuid()[:6]}",
+            )
+            db.session.add(purchase)
+            db.session.flush()
+            purchase_id = purchase.id
+            lot = PurchaseLot(
+                purchase_id=purchase.id,
+                strain_name="Base Oil Dream",
+                tracking_id="HBO-LOT-1",
+                weight_lbs=58,
+                remaining_weight_lbs=18,
+                floor_state="inventory",
+                milled=True,
+            )
+            db.session.add(lot)
+            db.session.flush()
+            lot_id = lot.id
+            run = app_module.Run(
+                run_date=date(2026, 4, 23),
+                reactor_number=3,
+                run_type="standard",
+                bio_in_reactor_lbs=40,
+                wet_hte_g=750,
+                wet_thca_g=2000,
+                created_by=admin_id,
+                run_completed_at=app_module.datetime.now(app_module.timezone.utc),
+                post_extraction_pathway="minor_run_200",
+                post_extraction_started_at=app_module.datetime.now(app_module.timezone.utc),
+                post_extraction_initial_outputs_recorded_at=app_module.datetime.now(app_module.timezone.utc),
+                hte_potency_disposition="hold_hp_base_oil",
+            )
+            db.session.add(run)
+            db.session.flush()
+            run_id = run.id
+            db.session.add(app_module.RunInput(run_id=run.id, lot_id=lot.id, weight_lbs=40))
+            db.session.commit()
+
+        with app.test_client() as client:
+            _login(client, "admin")
+            page = client.get("/downstream-queues/hp-base-oil")
+            assert page.status_code == 200
+            assert b"HP Base Oil Hold" in page.data
+            assert b"Confirm Hold" in page.data
+            assert b"Release Complete" in page.data
+
+            reviewed = client.post(
+                f"/downstream-queues/hp-base-oil/runs/{run_id}/action",
+                data={"queue_action": "confirm_hold", "queue_notes": "Hold confirmed"},
+                follow_redirects=False,
+            )
+            assert reviewed.status_code in (302, 303)
+
+            released = client.post(
+                f"/downstream-queues/hp-base-oil/runs/{run_id}/action",
+                data={"queue_action": "release_complete"},
+                follow_redirects=False,
+            )
+            assert released.status_code in (302, 303)
+
+        with app.app_context():
+            run = db.session.get(app_module.Run, run_id)
+            assert run is not None
+            assert run.hte_potency_disposition is None
+            events = (
+                app_module.DownstreamQueueEvent.query.filter_by(run_id=run_id, queue_key="hold_hp_base_oil")
+                .order_by(app_module.DownstreamQueueEvent.created_at.asc())
+                .all()
+            )
+            assert [event.action_key for event in events] == ["confirm_hold", "release_complete"]
+    finally:
+        with app.app_context():
+            app_module.DownstreamQueueEvent.query.filter_by(run_id=run_id).delete(synchronize_session=False)
+            app_module.RunInput.query.filter_by(run_id=run_id).delete(synchronize_session=False)
+            run = db.session.get(app_module.Run, run_id) if run_id else None
+            if run:
+                db.session.delete(run)
+            lot = db.session.get(PurchaseLot, lot_id) if lot_id else None
+            if lot:
+                db.session.delete(lot)
+            purchase = db.session.get(Purchase, purchase_id) if purchase_id else None
+            if purchase:
+                db.session.delete(purchase)
+            supplier = db.session.get(Supplier, supplier_id) if supplier_id else None
+            if supplier:
+                db.session.delete(supplier)
+            db.session.commit()
+
+
 def test_inventory_lot_edit_updates_only_lot_fields_and_returns_to_inventory():
     app = app_module.app
     with app.app_context():

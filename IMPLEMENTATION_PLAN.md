@@ -275,7 +275,20 @@ Current implementation:
   - `Send Back For Re-routing`
 - queue notes and timestamped history shown on each card
 
-What remains for later phases is repeating this pattern for the other downstream destinations.
+Phase 5 is now also shipped for:
+- `Liquid Loud Hold`
+- `Terp Strip / CDT Cage`
+- `HP Base Oil Hold`
+
+Current implementation for those additional destinations:
+- each has its own dedicated queue page opened from `Downstream Queues`
+- each page shows queue history via `DownstreamQueueEvent`
+- each page exposes destination-specific next-step actions instead of only the generic move dropdown
+- `Liquid Loud Hold` can release directly into `GoldDrop Production Queue`
+- `Terp Strip / CDT Cage` can mark Prescott handling and strip completion
+- `HP Base Oil Hold` can confirm or release the low-potency hold
+
+What remains for later phases is repeating this pattern for the remaining downstream destinations and then layering role-specific views on top.
 - top-to-bottom operator sequence
 - minimal keyboard entry
 - timers and decision buttons

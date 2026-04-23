@@ -540,6 +540,40 @@ Use **Queue note (optional)** to capture a short planning or handoff note alongs
 
 `Send Back For Re-routing` removes it from the queue so it can be routed again from **Downstream Queues**.
 
+### Liquid Loud Hold, Terp Strip / CDT Cage, and HP Base Oil Hold
+
+The other downstream destinations now also have dedicated workflow pages reached from **Downstream Queues**:
+- **Open Liquid Loud Hold**
+- **Open Terp Strip Cage**
+- **Open HP Base Oil Hold**
+
+Use these when a run has already been routed to that downstream destination and you want a cleaner operational surface than the generic routing board.
+
+#### Liquid Loud Hold
+- `Mark Reviewed`
+- `Reserve For Liquid Loud`
+- `Release To GoldDrop Queue`
+- `Release Complete`
+- `Send Back For Re-routing`
+
+`Release To GoldDrop Queue` moves the run directly into the dedicated **GoldDrop Production Queue** and preserves queue history on both sides.
+
+#### Terp Strip / CDT Cage
+- `Mark Reviewed`
+- `Queue Prescott`
+- `Strip Complete`
+- `Send Back For Re-routing`
+
+`Queue Prescott` marks the HTE filter outcome as needing Prescott handling. `Strip Complete` removes the run from the cage and marks the HTE pipeline stage as stripped.
+
+#### HP Base Oil Hold
+- `Mark Reviewed`
+- `Confirm Hold`
+- `Release Complete`
+- `Send Back For Re-routing`
+
+This page is for low-potency output held for HP base oil decisions. `Release Complete` clears the hold when that downstream decision is finished.
+
 Use **Confirm Movement** to record a standard movement action:
 - move to vault
 - move to reactor staging

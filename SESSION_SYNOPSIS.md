@@ -175,6 +175,31 @@ Implemented and live:
 - queue actions are stored in the new additive `DownstreamQueueEvent` table so production gets history without any destructive schema rewrite
 - opening a run from this page now cleanly returns through the downstream queue context
 
+### 9. Additional destination-specific queue workflows
+
+Implemented and live:
+
+- `Liquid Loud Hold` now has its own dedicated main-app page
+- `Terp Strip / CDT Cage` now has its own dedicated main-app page
+- `HP Base Oil Hold` now has its own dedicated main-app page
+- all three use the same additive `DownstreamQueueEvent` history model as GoldDrop
+- `Liquid Loud Hold` can:
+  - `Mark Reviewed`
+  - `Reserve For Liquid Loud`
+  - `Release To GoldDrop Queue`
+  - `Release Complete`
+  - `Send Back For Re-routing`
+- `Terp Strip / CDT Cage` can:
+  - `Mark Reviewed`
+  - `Queue Prescott`
+  - `Strip Complete`
+  - `Send Back For Re-routing`
+- `HP Base Oil Hold` can:
+  - `Mark Reviewed`
+  - `Confirm Hold`
+  - `Release Complete`
+  - `Send Back For Re-routing`
+
 ## Tests status
 
 Latest verified status before closeout:
@@ -201,7 +226,11 @@ Latest verified status before closeout:
   - dedicated queue page
   - queue-state history
   - review / production / release / send-back actions
-- full Python suite: `160 passed`
+- Phase 5 destination-specific queue workflow is now also implemented for:
+  - `Liquid Loud Hold`
+  - `Terp Strip / CDT Cage`
+  - `HP Base Oil Hold`
+- full Python suite: `163 passed`
 
 The following policy is in effect for future work:
 

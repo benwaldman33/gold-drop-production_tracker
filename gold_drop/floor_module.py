@@ -83,6 +83,203 @@ GOLDDROP_QUEUE_EVENT_LABELS = {
     "send_back": "Sent back",
 }
 
+LIQUID_LOUD_QUEUE_ACTIONS = (
+    ("mark_reviewed", "Mark Reviewed"),
+    ("reserve_for_liquid_loud", "Reserve For Liquid Loud"),
+    ("release_to_golddrop", "Release To GoldDrop Queue"),
+    ("release_complete", "Release Complete"),
+    ("send_back", "Send Back For Re-routing"),
+)
+
+LIQUID_LOUD_QUEUE_STATE_LABELS = {
+    "new_in_queue": "New in hold",
+    "reviewed": "Reviewed",
+    "reserved_for_liquid_loud": "Reserved for Liquid Loud",
+    "released_to_golddrop": "Released to GoldDrop queue",
+    "released_complete": "Released complete",
+    "sent_back": "Sent back",
+}
+
+LIQUID_LOUD_QUEUE_EVENT_LABELS = {
+    "entered_queue": "Entered hold",
+    "mark_reviewed": "Marked reviewed",
+    "reserve_for_liquid_loud": "Reserved for Liquid Loud",
+    "release_to_golddrop": "Released to GoldDrop queue",
+    "release_complete": "Released complete",
+    "send_back": "Sent back",
+}
+
+TERP_STRIP_QUEUE_ACTIONS = (
+    ("mark_reviewed", "Mark Reviewed"),
+    ("queue_prescott", "Queue Prescott"),
+    ("strip_complete", "Strip Complete"),
+    ("send_back", "Send Back For Re-routing"),
+)
+
+TERP_STRIP_QUEUE_STATE_LABELS = {
+    "new_in_queue": "New in cage",
+    "reviewed": "Reviewed",
+    "queued_prescott": "Queued for Prescott",
+    "strip_complete": "Strip complete",
+    "sent_back": "Sent back",
+}
+
+TERP_STRIP_QUEUE_EVENT_LABELS = {
+    "entered_queue": "Entered cage",
+    "mark_reviewed": "Marked reviewed",
+    "queue_prescott": "Queued Prescott",
+    "strip_complete": "Strip complete",
+    "send_back": "Sent back",
+}
+
+HP_BASE_OIL_QUEUE_ACTIONS = (
+    ("mark_reviewed", "Mark Reviewed"),
+    ("confirm_hold", "Confirm Hold"),
+    ("release_complete", "Release Complete"),
+    ("send_back", "Send Back For Re-routing"),
+)
+
+HP_BASE_OIL_QUEUE_STATE_LABELS = {
+    "new_in_queue": "New on hold",
+    "reviewed": "Reviewed",
+    "confirmed_hold": "Hold confirmed",
+    "released_complete": "Released complete",
+    "sent_back": "Sent back",
+}
+
+HP_BASE_OIL_QUEUE_EVENT_LABELS = {
+    "entered_queue": "Entered hold",
+    "mark_reviewed": "Marked reviewed",
+    "confirm_hold": "Hold confirmed",
+    "release_complete": "Released complete",
+    "send_back": "Sent back",
+}
+
+DESTINATION_QUEUE_CONFIGS = {
+    "golddrop_queue": {
+        "title": "GoldDrop Production Queue",
+        "badge_label": "GoldDrop queue",
+        "summary_description": "Runs currently staged for GoldDrop production planning.",
+        "empty_text": "No runs are currently in the GoldDrop production queue.",
+        "open_button_label": "Open GoldDrop Queue",
+        "view_endpoint": "golddrop_production_queue",
+        "action_endpoint": "golddrop_queue_action",
+        "storage_field": "hte_queue_destination",
+        "active_value": "golddrop_queue",
+        "state_labels": GOLDDROP_QUEUE_STATE_LABELS,
+        "event_labels": GOLDDROP_QUEUE_EVENT_LABELS,
+        "actions": GOLDDROP_QUEUE_ACTIONS,
+        "default_state": "new_in_queue",
+        "action_state_map": {
+            "mark_reviewed": "reviewed",
+            "queue_for_production": "queued_for_production",
+            "release_complete": "released_complete",
+            "send_back": "sent_back",
+        },
+        "help_text": "Use this surface to mark review, queue production, complete release, or send the run back for re-routing.",
+        "entered_note": "Entered GoldDrop production queue.",
+        "source_label": "golddrop_production_queue",
+        "action_messages": {
+            "mark_reviewed": "Run marked reviewed in GoldDrop production queue.",
+            "queue_for_production": "Run marked queued for production.",
+            "release_complete": "Run released from GoldDrop production queue.",
+            "send_back": "Run sent back for downstream re-routing.",
+        },
+    },
+    "liquid_loud_hold": {
+        "title": "Liquid Loud Hold",
+        "badge_label": "Liquid Loud hold",
+        "summary_description": "Runs being held back for Liquid Loud allocation and release decisions.",
+        "empty_text": "No runs are currently in the Liquid Loud hold.",
+        "open_button_label": "Open Liquid Loud Hold",
+        "view_endpoint": "liquid_loud_queue",
+        "action_endpoint": "liquid_loud_queue_action",
+        "storage_field": "hte_queue_destination",
+        "active_value": "liquid_loud_hold",
+        "state_labels": LIQUID_LOUD_QUEUE_STATE_LABELS,
+        "event_labels": LIQUID_LOUD_QUEUE_EVENT_LABELS,
+        "actions": LIQUID_LOUD_QUEUE_ACTIONS,
+        "default_state": "new_in_queue",
+        "action_state_map": {
+            "mark_reviewed": "reviewed",
+            "reserve_for_liquid_loud": "reserved_for_liquid_loud",
+            "release_to_golddrop": "released_to_golddrop",
+            "release_complete": "released_complete",
+            "send_back": "sent_back",
+        },
+        "help_text": "Use this surface to reserve material for Liquid Loud, release it into GoldDrop production, complete the hold, or send it back for re-routing.",
+        "entered_note": "Entered Liquid Loud hold.",
+        "source_label": "liquid_loud_queue",
+        "action_messages": {
+            "mark_reviewed": "Run marked reviewed in Liquid Loud hold.",
+            "reserve_for_liquid_loud": "Run reserved for Liquid Loud.",
+            "release_to_golddrop": "Run released from Liquid Loud hold into GoldDrop production queue.",
+            "release_complete": "Run released from Liquid Loud hold.",
+            "send_back": "Run sent back for downstream re-routing.",
+        },
+    },
+    "terp_strip_cage": {
+        "title": "Terp Strip / CDT Cage",
+        "badge_label": "Terp strip cage",
+        "summary_description": "Runs staged for upstairs terp stripping, CDT handling, or Prescott work.",
+        "empty_text": "No runs are currently in the Terp Strip / CDT cage.",
+        "open_button_label": "Open Terp Strip Cage",
+        "view_endpoint": "terp_strip_queue",
+        "action_endpoint": "terp_strip_queue_action",
+        "storage_field": "hte_queue_destination",
+        "active_value": "terp_strip_cage",
+        "state_labels": TERP_STRIP_QUEUE_STATE_LABELS,
+        "event_labels": TERP_STRIP_QUEUE_EVENT_LABELS,
+        "actions": TERP_STRIP_QUEUE_ACTIONS,
+        "default_state": "new_in_queue",
+        "action_state_map": {
+            "mark_reviewed": "reviewed",
+            "queue_prescott": "queued_prescott",
+            "strip_complete": "strip_complete",
+            "send_back": "sent_back",
+        },
+        "help_text": "Use this surface to review dirty HTE, queue Prescott handling, complete strip work, or send the run back for re-routing.",
+        "entered_note": "Entered Terp strip / CDT cage.",
+        "source_label": "terp_strip_queue",
+        "action_messages": {
+            "mark_reviewed": "Run marked reviewed in Terp strip / CDT cage.",
+            "queue_prescott": "Run marked queued for Prescott handling.",
+            "strip_complete": "Run marked strip complete.",
+            "send_back": "Run sent back for downstream re-routing.",
+        },
+    },
+    "hold_hp_base_oil": {
+        "title": "HP Base Oil Hold",
+        "badge_label": "HP base oil hold",
+        "summary_description": "Runs being held for HP base oil disposition decisions.",
+        "empty_text": "No runs are currently in the HP base oil hold.",
+        "open_button_label": "Open HP Base Oil Hold",
+        "view_endpoint": "hp_base_oil_queue",
+        "action_endpoint": "hp_base_oil_queue_action",
+        "storage_field": "hte_potency_disposition",
+        "active_value": "hold_hp_base_oil",
+        "state_labels": HP_BASE_OIL_QUEUE_STATE_LABELS,
+        "event_labels": HP_BASE_OIL_QUEUE_EVENT_LABELS,
+        "actions": HP_BASE_OIL_QUEUE_ACTIONS,
+        "default_state": "new_in_queue",
+        "action_state_map": {
+            "mark_reviewed": "reviewed",
+            "confirm_hold": "confirmed_hold",
+            "release_complete": "released_complete",
+            "send_back": "sent_back",
+        },
+        "help_text": "Use this surface to confirm the HP base oil hold, complete the release, or send the run back for re-routing.",
+        "entered_note": "Entered HP base oil hold.",
+        "source_label": "hp_base_oil_queue",
+        "action_messages": {
+            "mark_reviewed": "Run marked reviewed in HP base oil hold.",
+            "confirm_hold": "Run hold confirmed for HP base oil.",
+            "release_complete": "Run released from HP base oil hold.",
+            "send_back": "Run sent back for downstream re-routing.",
+        },
+    },
+}
+
 
 def register_routes(app, root):
     @root.login_required
@@ -101,6 +298,18 @@ def register_routes(app, root):
     def golddrop_production_queue():
         return golddrop_production_queue_view(root)
 
+    @root.login_required
+    def liquid_loud_queue():
+        return destination_queue_view(root, "liquid_loud_hold")
+
+    @root.login_required
+    def terp_strip_queue():
+        return destination_queue_view(root, "terp_strip_cage")
+
+    @root.login_required
+    def hp_base_oil_queue():
+        return destination_queue_view(root, "hold_hp_base_oil")
+
     @root.editor_required
     def floor_charge_transition(charge_id):
         return floor_charge_transition_view(root, charge_id)
@@ -113,13 +322,31 @@ def register_routes(app, root):
     def golddrop_queue_action(run_id):
         return golddrop_queue_action_view(root, run_id)
 
+    @root.editor_required
+    def liquid_loud_queue_action(run_id):
+        return destination_queue_action_view(root, run_id, "liquid_loud_hold")
+
+    @root.editor_required
+    def terp_strip_queue_action(run_id):
+        return destination_queue_action_view(root, run_id, "terp_strip_cage")
+
+    @root.editor_required
+    def hp_base_oil_queue_action(run_id):
+        return destination_queue_action_view(root, run_id, "hold_hp_base_oil")
+
     app.add_url_rule("/floor-ops", endpoint="floor_ops", view_func=floor_ops)
     app.add_url_rule("/scan", endpoint="scan_center", view_func=scan_center)
     app.add_url_rule("/downstream-queues", endpoint="downstream_queues", view_func=downstream_queues)
     app.add_url_rule("/downstream-queues/golddrop", endpoint="golddrop_production_queue", view_func=golddrop_production_queue)
+    app.add_url_rule("/downstream-queues/liquid-loud", endpoint="liquid_loud_queue", view_func=liquid_loud_queue)
+    app.add_url_rule("/downstream-queues/terp-strip", endpoint="terp_strip_queue", view_func=terp_strip_queue)
+    app.add_url_rule("/downstream-queues/hp-base-oil", endpoint="hp_base_oil_queue", view_func=hp_base_oil_queue)
     app.add_url_rule("/floor-ops/charges/<charge_id>/transition", endpoint="floor_charge_transition", view_func=floor_charge_transition, methods=["POST"])
     app.add_url_rule("/downstream-queues/runs/<run_id>/move", endpoint="downstream_queue_move", view_func=downstream_queue_move, methods=["POST"])
     app.add_url_rule("/downstream-queues/golddrop/runs/<run_id>/action", endpoint="golddrop_queue_action", view_func=golddrop_queue_action, methods=["POST"])
+    app.add_url_rule("/downstream-queues/liquid-loud/runs/<run_id>/action", endpoint="liquid_loud_queue_action", view_func=liquid_loud_queue_action, methods=["POST"])
+    app.add_url_rule("/downstream-queues/terp-strip/runs/<run_id>/action", endpoint="terp_strip_queue_action", view_func=terp_strip_queue_action, methods=["POST"])
+    app.add_url_rule("/downstream-queues/hp-base-oil/runs/<run_id>/action", endpoint="hp_base_oil_queue_action", view_func=hp_base_oil_queue_action, methods=["POST"])
 
 
 FLOOR_STATE_LABELS = {
@@ -494,57 +721,65 @@ def _build_downstream_queue_item(root, run):
     }
 
 
-def _golddrop_queue_history(root, run_id: str):
+def _destination_queue_history(root, run_id: str, queue_key: str):
     return (
-        root.DownstreamQueueEvent.query.filter_by(run_id=run_id, queue_key="golddrop_queue")
+        root.DownstreamQueueEvent.query.filter_by(run_id=run_id, queue_key=queue_key)
         .order_by(root.DownstreamQueueEvent.created_at.desc())
         .all()
     )
 
 
-def _golddrop_queue_state(root, run):
-    history = _golddrop_queue_history(root, run.id)
+def _destination_queue_state(root, run, queue_key: str):
+    config = DESTINATION_QUEUE_CONFIGS[queue_key]
+    history = _destination_queue_history(root, run.id, queue_key)
     if not history:
-        return "new_in_queue", history
+        return config["default_state"], history
     latest = (history[0].action_key or "").strip()
-    if latest in {"mark_reviewed", "queue_for_production", "release_complete", "send_back"}:
-        mapping = {
-            "mark_reviewed": "reviewed",
-            "queue_for_production": "queued_for_production",
-            "release_complete": "released_complete",
-            "send_back": "sent_back",
-        }
-        return mapping[latest], history
-    return "new_in_queue", history
+    state_key = config["action_state_map"].get(latest, config["default_state"])
+    return state_key, history
 
 
-def _build_golddrop_queue_detail(root):
-    runs = (
+def _destination_queue_query(root, queue_key: str):
+    config = DESTINATION_QUEUE_CONFIGS[queue_key]
+    column = getattr(root.Run, config["storage_field"])
+    return (
         root.Run.query.filter(
             root.Run.deleted_at.is_(None),
-            root.Run.hte_queue_destination == "golddrop_queue",
+            column == config["active_value"],
         )
         .order_by(root.Run.run_date.desc(), root.Run.created_at.desc())
         .all()
     )
+
+
+def _build_destination_queue_detail(root, queue_key: str):
+    config = DESTINATION_QUEUE_CONFIGS[queue_key]
+    runs = _destination_queue_query(root, queue_key)
     items = []
     for run in runs:
         base = _build_downstream_queue_item(root, run)
-        state_key, history = _golddrop_queue_state(root, run)
+        state_key, history = _destination_queue_state(root, run, queue_key)
         base["queue_state_key"] = state_key
-        base["queue_state_label"] = GOLDDROP_QUEUE_STATE_LABELS[state_key]
+        base["queue_state_label"] = config["state_labels"][state_key]
         base["history"] = [
             {
-                "action_label": GOLDDROP_QUEUE_EVENT_LABELS.get(entry.action_key, entry.action_key.replace("_", " ").title()),
+                "action_label": config["event_labels"].get(entry.action_key, entry.action_key.replace("_", " ").title()),
                 "timestamp_label": display_local_timestamp(entry.created_at),
                 "notes": entry.notes,
                 "creator_name": entry.creator.display_name if entry.creator and entry.creator.display_name else None,
             }
             for entry in history[:8]
         ]
-        base["available_actions"] = list(GOLDDROP_QUEUE_ACTIONS)
+        base["available_actions"] = list(config["actions"])
         items.append(base)
     return {
+        "queue_key": queue_key,
+        "title": config["title"],
+        "badge_label": config["badge_label"],
+        "summary_description": config["summary_description"],
+        "empty_text": config["empty_text"],
+        "help_text": config["help_text"],
+        "action_endpoint": config["action_endpoint"],
         "count": len(items),
         "items": items,
     }
@@ -646,11 +881,12 @@ def downstream_queues_view(root):
 
 
 def golddrop_production_queue_view(root):
-    queue = _build_golddrop_queue_detail(root)
-    return root.render_template(
-        "golddrop_production_queue.html",
-        queue=queue,
-    )
+    return destination_queue_view(root, "golddrop_queue")
+
+
+def destination_queue_view(root, queue_key: str):
+    queue = _build_destination_queue_detail(root, queue_key)
+    return root.render_template("downstream_destination_queue.html", queue=queue)
 
 
 def scan_center_view(root):
@@ -721,8 +957,8 @@ def downstream_queue_move_view(root, run_id):
         run.hte_queue_destination = target
         run.hte_potency_disposition = None
         message = f"Run moved to {HTE_QUEUE_DESTINATION_LABELS[target]}."
-        if target == "golddrop_queue":
-            _log_downstream_queue_event(root, run, "golddrop_queue", "entered_queue", notes="Entered GoldDrop production queue.")
+    if target in DESTINATION_QUEUE_CONFIGS:
+        _log_downstream_queue_event(root, run, target, "entered_queue", notes=DESTINATION_QUEUE_CONFIGS[target]["entered_note"])
 
     root.log_audit(
         "update",
@@ -742,46 +978,74 @@ def downstream_queue_move_view(root, run_id):
 
 
 def golddrop_queue_action_view(root, run_id):
+    return destination_queue_action_view(root, run_id, "golddrop_queue")
+
+
+def destination_queue_action_view(root, run_id, queue_key: str):
+    config = DESTINATION_QUEUE_CONFIGS[queue_key]
     run = root.db.session.get(root.Run, run_id)
     if run is None or run.deleted_at is not None:
         root.flash("Run not found.", "error")
-        return root.redirect(root.url_for("golddrop_production_queue"))
-    if (run.hte_queue_destination or "").strip() != "golddrop_queue":
-        root.flash("This run is not currently in the GoldDrop production queue.", "error")
-        return root.redirect(root.url_for("golddrop_production_queue"))
+        return root.redirect(root.url_for(config["view_endpoint"]))
+    if _downstream_active_queue(run) != queue_key:
+        root.flash(f"This run is not currently in the {config['title']}.", "error")
+        return root.redirect(root.url_for(config["view_endpoint"]))
 
     action = (root.request.form.get("queue_action") or "").strip()
     notes = (root.request.form.get("queue_notes") or "").strip() or None
-    allowed = {value for value, _label in GOLDDROP_QUEUE_ACTIONS}
+    allowed = {value for value, _label in config["actions"]}
     if action not in allowed:
-        root.flash("Choose a valid GoldDrop queue action.", "error")
-        return root.redirect(root.url_for("golddrop_production_queue"))
+        root.flash(f"Choose a valid {config['title']} action.", "error")
+        return root.redirect(root.url_for(config["view_endpoint"]))
 
-    if action == "release_complete":
-        run.hte_queue_destination = None
-        message = "Run released from GoldDrop production queue."
-    elif action == "send_back":
-        run.hte_queue_destination = None
-        run.hte_potency_disposition = None
-        message = "Run sent back for downstream re-routing."
-    elif action == "queue_for_production":
-        message = "Run marked queued for production."
-    else:
-        message = "Run marked reviewed in GoldDrop production queue."
+    if queue_key == "golddrop_queue":
+        if action == "release_complete":
+            run.hte_queue_destination = None
+        elif action == "send_back":
+            run.hte_queue_destination = None
+            run.hte_potency_disposition = None
+    elif queue_key == "liquid_loud_hold":
+        if action == "release_to_golddrop":
+            run.hte_queue_destination = "golddrop_queue"
+            run.hte_potency_disposition = None
+        elif action == "release_complete":
+            run.hte_queue_destination = None
+            run.hte_potency_disposition = None
+        elif action == "send_back":
+            run.hte_queue_destination = None
+            run.hte_potency_disposition = None
+    elif queue_key == "terp_strip_cage":
+        if action == "queue_prescott":
+            run.hte_filter_outcome = "needs_prescott"
+            run.hte_pipeline_stage = "lab_dirty_queued_strip"
+        elif action == "strip_complete":
+            run.hte_queue_destination = None
+            run.hte_pipeline_stage = "terp_stripped"
+        elif action == "send_back":
+            run.hte_queue_destination = None
+    elif queue_key == "hold_hp_base_oil":
+        if action == "release_complete":
+            run.hte_potency_disposition = None
+        elif action == "send_back":
+            run.hte_potency_disposition = None
 
-    _log_downstream_queue_event(root, run, "golddrop_queue", action, notes=notes)
+    _log_downstream_queue_event(root, run, queue_key, action, notes=notes)
+    if queue_key == "liquid_loud_hold" and action == "release_to_golddrop":
+        _log_downstream_queue_event(root, run, "golddrop_queue", "entered_queue", notes=DESTINATION_QUEUE_CONFIGS["golddrop_queue"]["entered_note"])
     root.log_audit(
         "update",
         "run",
         run.id,
         details=root.json.dumps(
             {
-                "source": "golddrop_production_queue",
+                "source": config["source_label"],
+                "queue_key": queue_key,
                 "queue_action": action,
                 "notes": notes,
             }
         ),
     )
     root.db.session.commit()
-    root.flash(message, "success")
-    return root.redirect(root.url_for("golddrop_production_queue"))
+    root.flash(config["action_messages"][action], "success")
+    next_endpoint = "golddrop_production_queue" if queue_key == "liquid_loud_hold" and action == "release_to_golddrop" else config["view_endpoint"]
+    return root.redirect(root.url_for(next_endpoint))
