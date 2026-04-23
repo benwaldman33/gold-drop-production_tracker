@@ -1,17 +1,16 @@
-# Session Synopsis - 2026-04-21
+# Session Synopsis - 2026-04-23
 
 This file is the current continuity checkpoint so work can resume quickly after an interruption.
 
 ## Current state
 
 - Local working branch: `Claude_Consolidation`
-- Local branch head: `87f16d1`
 - Production branch: `main`
-- Latest pushed `main` commit: `2a94685`
 - The extractor workflow is now live across:
   - main app `Floor Ops`
   - main app purchase / inventory lot actions
   - standalone extraction lab iPad app
+  - main app `Downstream Queues`
 
 ## What is working now
 
@@ -136,6 +135,27 @@ Implemented and live:
   - `Mark Complete`
 - this was done because the small inline `Open Run` link was too easy to miss on iPad
 
+### 7. Post-extraction queue surfaces
+
+Implemented and live:
+
+- the main app now includes `Downstream Queues`
+- queue sections currently include:
+  - `Needs Queue Decision`
+  - `GoldDrop production queue`
+  - `Liquid Loud hold`
+  - `Terp strip / CDT cage`
+  - `HP base oil hold`
+  - `Distillate hold`
+- queue cards show:
+  - run date and reactor
+  - source strain / supplier / tracking IDs
+  - wet and dry THCA / HTE totals
+  - current THCA destination and HTE decision context when present
+  - `Open Run`
+- supervisors can move a run between downstream queues/holds or mark the queue item complete without editing the full run
+- opening a run from this page now preserves `Back to Downstream Queues`
+
 ## Tests status
 
 Latest verified status before closeout:
@@ -154,7 +174,11 @@ Latest verified status before closeout:
   - numbered downstream steps on `Open Run`
   - pathway-driven sequence
   - tap-first choice buttons for downstream decisions
-- full Python suite: `138 passed`
+- Phase 4 downstream queue surfaces are now implemented in the main app:
+  - queue grouping and unresolved-routing visibility
+  - move/complete actions
+  - run-form return context from queue cards
+- full Python suite: `158 passed`
 
 The following policy is in effect for future work:
 
@@ -208,13 +232,7 @@ Do not resume Slack code changes unless new evidence suggests the Gold Drop side
 
 There is no urgent production bug open right now.
 
-The extraction-side workflow is intentionally paused at the design boundary.
-
-The important clarification from the latest session:
-
-- the newly supplied flow chart is **not** the extraction workflow itself
-- it is the workflow **after extraction is complete**
-- the next product area is therefore **post-extraction / post-processing orchestration**
+The active work area is now the post-extraction / post-processing workflow, not the upstream extraction reactor flow.
 
 ## Current planning baseline
 
@@ -244,44 +262,32 @@ with downstream:
 
 ## Recommended next development step
 
-Do not continue coding the extraction UX until the team confirms the real-world downstream process.
+The next major build should be the next post-extraction phase after queues:
 
-The next major build should be:
+- turn the downstream queue surfaces into richer role-based work queues with next-step actions and completion/rework handling by destination
 
-- `Phase 1 - Post-extraction session foundation`
+Likely next queue-oriented surfaces:
 
-which will introduce:
-
-- run-type selection after extraction
-- initial output capture confirmation
-- a canonical post-extraction session linked to the run
+1. `GoldDrop production queue`
+2. `Liquid Loud hold`
+3. `Terp strip / CDT cage`
+4. `HP base oil hold`
+5. `Distillate hold`
 
 ## Recommended concrete next session
 
-Before more implementation:
+When work resumes, decide the first destination-specific queue to deepen and confirm:
 
-1. confirm the team-approved downstream workflow sequence
-2. confirm which steps are required vs optional
-3. confirm which decisions must be structured data
-4. confirm whether THCA and HTE should be handled on one combined downstream screen or two linked screens
+1. what the operator sees as the "next action" for that queue
+2. whether queue completion should simply clear the queue or stamp a dedicated downstream completion state later
+3. whether each queue needs its own role-specific screen or can stay on one shared board for now
+4. which destination should become the first detailed workflow after queue placement
 
-Only after that should development begin on the post-extraction workflow.
+The likely implementation order is:
 
-Tomorrow's work should start by defining:
-
-1. the exact step order for one reactor
-2. which steps are required
-3. which steps are optional
-4. which fields belong in each step
-5. which defaults should prepopulate each step
-6. which steps should be hidden until earlier steps are complete
-7. what the completion / closeout experience should be
-
-Once that is defined, the next build should be:
-
-1. workflow spec for the guided reactor screen
-2. screen layout / step model
-3. implementation of the guided operator flow on top of the already-shipped charge + run progression system
+1. queue-specific next-step actions and labels
+2. destination-specific detail surfaces
+3. stronger downstream completion/rework tracking
 
 ## Local note
 

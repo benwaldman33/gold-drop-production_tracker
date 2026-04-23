@@ -98,6 +98,17 @@ Open **Inventory** and use **Import spreadsheet**. You can drag and drop a `.csv
 **Can Inventory import create new lots or change lot weights?**
 No. Inventory import is intentionally limited to the same safe lot fields available in the manual lot editor: strain, potency, location, floor state, milled state, and notes. It does not create new lots or rewrite tracking IDs, original lot weights, remaining pounds, or allocation balances.
 
+## Post-extraction queues
+
+**Where do post-extraction queue decisions show up in the main app?**
+Open **Downstream Queues** from the left sidebar. It groups completed post-extraction runs into `Needs Queue Decision`, `GoldDrop production queue`, `Liquid Loud hold`, `Terp strip / CDT cage`, `HP base oil hold`, and `Distillate hold`.
+
+**Can I move a run from one downstream queue to another without editing the whole run?**
+Yes. On **Downstream Queues**, each card has a destination dropdown and **Apply** button. Use that to move the run into another queue/hold or mark the downstream queue item complete.
+
+**What happens if I open a run from Downstream Queues?**
+The run form now preserves that context and shows **Back to Downstream Queues** so you can return to the queue board after review or correction.
+
 **Does strain import create a new strain table?**
 No. Strain Performance is derived from lot strain names. The importer is a safe bulk-rename workflow over matching `PurchaseLot` rows for a supplier and current strain name.
 

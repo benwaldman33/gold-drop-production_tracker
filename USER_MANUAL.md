@@ -24,6 +24,7 @@ Use the left sidebar:
 - **Biomass purchasing**: buyer weekly snapshot, field submission queues, and reviewed history
 - **Departments**: hub of department-focused pages (same data as the rest of the app; quick links and rollups per team—finance, purchasing, intake, extraction, THCA/HTE/Liquid Diamonds, terpenes, testing, bulk sales)
 - **Runs**: extraction runs log + cost/yield outputs
+- **Downstream Queues**: supervisor-facing post-extraction routing board for completed runs that now need a downstream destination or hold
 - **Inventory**: on-hand lots + in-transit purchases, including lot tracking IDs and remaining pounds
 - **Purchases**: batch-level purchase records + batch IDs (same underlying rows as **Biomass Pipeline**); **Approve purchase** when your role allows; **Import spreadsheet** for bulk purchase upload; row **batch edit** on the list
 - **Costs**: operational cost entries (solvent/personnel/overhead)
@@ -485,6 +486,32 @@ The sequence is:
 The key difference is that the screen now works top-to-bottom, with numbered step cards and tap-first choice buttons for pathway and decision fields. The main app still keeps the full raw fields for supervisor editing.
 
 Use **Open in Main App** only when a supervisor needs the full admin run form.
+
+### Downstream Queues in the main app
+
+After a completed run has started post-extraction and the initial wet outputs are confirmed, supervisors can use **Downstream Queues** in the left sidebar to manage the next destination without opening every run one by one.
+
+The page currently groups runs into:
+- `Needs Queue Decision`
+- `GoldDrop production queue`
+- `Liquid Loud hold`
+- `Terp strip / CDT cage`
+- `HP base oil hold`
+- `Distillate hold`
+
+For each queue card, the page shows:
+- run date and reactor
+- source strain / supplier / tracking IDs
+- wet and dry THCA / HTE totals
+- current THCA destination and HTE decision context when available
+- a direct **Open Run** action
+
+Use the destination dropdown on a queue card to:
+- move a run to another downstream queue
+- move it into a potency-based hold
+- or mark the downstream queue item complete
+
+When you open a run from this page, the main run form now shows **Back to Downstream Queues** so you can return to the same supervisor queue surface.
 
 Use **Confirm Movement** to record a standard movement action:
 - move to vault
