@@ -28,10 +28,10 @@
           <span class="icon">⚗️</span><span>Runs</span>
         </a>
         <a href="{{ url_for('floor_ops') }}" class="{% if request.endpoint in ('floor_ops', 'scan_center', 'scan_lot') %}active{% endif %}">
-          <span class="icon">ðŸ“±</span><span>Floor Ops</span>
+          <span class="icon">📱</span><span>Floor Ops</span>
         </a>
         <a href="{{ url_for('downstream_queues') }}" class="{% if request.endpoint == 'downstream_queues' %}active{% endif %}">
-          <span class="icon">ðŸ§­</span><span>Downstream Queues</span>
+          <span class="icon">🧭</span><span>Downstream Queues</span>
         </a>
         {% if current_user.is_authenticated and cross_site_ops_enabled %}
         <a href="{{ url_for('cross_site_ops') }}" class="{% if request.endpoint == 'cross_site_ops' %}active{% endif %}">
