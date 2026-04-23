@@ -415,6 +415,70 @@
     </div>
 
     <div class="form-section">
+      <h4>Pot Pour Path</h4>
+      <p class="text-sm" style="color:var(--text-muted);margin:0 0 12px 0;max-width:720px;">
+        Use when the downstream pathway is <strong>100 lb pot pour</strong>. Track the warm off-gas window, daily stir count, and centrifuge handoff.
+      </p>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Warm off-gas start</label>
+          <input type="datetime-local" name="pot_pour_offgas_started_at" value="{{ run_execution_fields.pot_pour_offgas_started_at or '' }}">
+        </div>
+        <div class="form-group">
+          <label>Warm off-gas end</label>
+          <input type="datetime-local" name="pot_pour_offgas_completed_at" value="{{ run_execution_fields.pot_pour_offgas_completed_at or '' }}">
+          {% if run_execution_fields.pot_pour_offgas_duration_minutes is not none %}
+          <span class="text-sm" style="color:var(--text-muted);display:block;margin-top:4px;">{{ run_execution_fields.pot_pour_offgas_duration_minutes }} minute(s)</span>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label>Daily stir count</label>
+          <input type="number" name="pot_pour_daily_stir_count" value="{% if run and run.pot_pour_daily_stir_count is not none %}{{ run.pot_pour_daily_stir_count }}{% endif %}" min="0" step="1">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Centrifuged at</label>
+          <input type="datetime-local" name="pot_pour_centrifuged_at" value="{{ run_execution_fields.pot_pour_centrifuged_at or '' }}">
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h4>THCA Path</h4>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>THCA oven start</label>
+          <input type="datetime-local" name="thca_oven_started_at" value="{{ run_execution_fields.thca_oven_started_at or '' }}">
+        </div>
+        <div class="form-group">
+          <label>THCA oven end</label>
+          <input type="datetime-local" name="thca_oven_completed_at" value="{{ run_execution_fields.thca_oven_completed_at or '' }}">
+          {% if run_execution_fields.thca_oven_duration_minutes is not none %}
+          <span class="text-sm" style="color:var(--text-muted);display:block;margin-top:4px;">{{ run_execution_fields.thca_oven_duration_minutes }} minute(s)</span>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label>Milled at</label>
+          <input type="datetime-local" name="thca_milled_at" value="{{ run_execution_fields.thca_milled_at or '' }}">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>THCA destination</label>
+          <select name="thca_destination">
+            {% for val, label in thca_destination_options %}
+            <option value="{{ val }}" {% if (run and (run.thca_destination or '') == val) or (not run and val == '') %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          {% if run_execution_fields.thca_destination_label %}
+          <span class="text-sm" style="color:var(--text-muted);display:block;margin-top:4px;">Current: {{ run_execution_fields.thca_destination_label }}</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
       <h4>HTE — lab &amp; terp pipeline</h4>
       <p class="text-sm" style="color:var(--text-muted); margin:0 0 12px 0; max-width:720px;">
         After dry HTE is separated from THCA, track lab testing and downstream terp stripping (Terp Tubes / Prescott).
@@ -436,6 +500,62 @@
         <div class="form-group">
           <label>Retail distillate (g)</label>
           <input type="number" name="hte_distillate_retail_g" value="{% if run and run.hte_distillate_retail_g is not none %}{{ run.hte_distillate_retail_g }}{% endif %}" step="0.01" placeholder="After strip">
+        </div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>HTE off-gas start</label>
+          <input type="datetime-local" name="hte_offgas_started_at" value="{{ run_execution_fields.hte_offgas_started_at or '' }}">
+        </div>
+        <div class="form-group">
+          <label>HTE off-gas end</label>
+          <input type="datetime-local" name="hte_offgas_completed_at" value="{{ run_execution_fields.hte_offgas_completed_at or '' }}">
+          {% if run_execution_fields.hte_offgas_duration_minutes is not none %}
+          <span class="text-sm" style="color:var(--text-muted);display:block;margin-top:4px;">{{ run_execution_fields.hte_offgas_duration_minutes }} minute(s)</span>
+          {% endif %}
+        </div>
+        <div class="form-group">
+          <label>Clean decision</label>
+          <select name="hte_clean_decision">
+            {% for val, label in hte_clean_decision_options %}
+            <option value="{{ val }}" {% if (run and (run.hte_clean_decision or '') == val) or (not run and val == '') %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Filter outcome</label>
+          <select name="hte_filter_outcome">
+            {% for val, label in hte_filter_outcome_options %}
+            <option value="{{ val }}" {% if (run and (run.hte_filter_outcome or '') == val) or (not run and val == '') %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Prescott processed at</label>
+          <input type="datetime-local" name="hte_prescott_processed_at" value="{{ run_execution_fields.hte_prescott_processed_at or '' }}">
+        </div>
+        <div class="form-group">
+          <label>Potency disposition</label>
+          <select name="hte_potency_disposition">
+            {% for val, label in hte_potency_disposition_options %}
+            <option value="{{ val }}" {% if (run and (run.hte_potency_disposition or '') == val) or (not run and val == '') %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Queue destination</label>
+          <select name="hte_queue_destination">
+            {% for val, label in hte_queue_destination_options %}
+            <option value="{{ val }}" {% if (run and (run.hte_queue_destination or '') == val) or (not run and val == '') %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          <span class="text-sm" style="color:var(--text-muted);display:block;margin-top:4px;">
+            Use for Liquid Loud holds, GoldDrop production queue moves, or terp-strip cage routing.
+          </span>
         </div>
       </div>
       {% if hte_lab_paths %}

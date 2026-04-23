@@ -211,6 +211,36 @@ def ensure_sqlite_schema(root) -> None:
             root.db.session.execute(text("ALTER TABLE runs ADD COLUMN post_extraction_started_at DATETIME"))
         if "post_extraction_initial_outputs_recorded_at" not in cols:
             root.db.session.execute(text("ALTER TABLE runs ADD COLUMN post_extraction_initial_outputs_recorded_at DATETIME"))
+        if "pot_pour_offgas_started_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN pot_pour_offgas_started_at DATETIME"))
+        if "pot_pour_offgas_completed_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN pot_pour_offgas_completed_at DATETIME"))
+        if "pot_pour_daily_stir_count" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN pot_pour_daily_stir_count INTEGER"))
+        if "pot_pour_centrifuged_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN pot_pour_centrifuged_at DATETIME"))
+        if "thca_oven_started_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN thca_oven_started_at DATETIME"))
+        if "thca_oven_completed_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN thca_oven_completed_at DATETIME"))
+        if "thca_milled_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN thca_milled_at DATETIME"))
+        if "thca_destination" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN thca_destination VARCHAR(40)"))
+        if "hte_offgas_started_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN hte_offgas_started_at DATETIME"))
+        if "hte_offgas_completed_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN hte_offgas_completed_at DATETIME"))
+        if "hte_clean_decision" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN hte_clean_decision VARCHAR(20)"))
+        if "hte_filter_outcome" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN hte_filter_outcome VARCHAR(30)"))
+        if "hte_prescott_processed_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN hte_prescott_processed_at DATETIME"))
+        if "hte_potency_disposition" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN hte_potency_disposition VARCHAR(40)"))
+        if "hte_queue_destination" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN hte_queue_destination VARCHAR(40)"))
 
     if has_table("purchase_lots"):
         cols = column_names("purchase_lots")
@@ -397,6 +427,21 @@ def ensure_postgres_run_execution_columns(root) -> None:
         "ALTER TABLE runs ADD COLUMN IF NOT EXISTS post_extraction_pathway VARCHAR(30)",
         "ALTER TABLE runs ADD COLUMN IF NOT EXISTS post_extraction_started_at TIMESTAMP",
         "ALTER TABLE runs ADD COLUMN IF NOT EXISTS post_extraction_initial_outputs_recorded_at TIMESTAMP",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS pot_pour_offgas_started_at TIMESTAMP",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS pot_pour_offgas_completed_at TIMESTAMP",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS pot_pour_daily_stir_count INTEGER",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS pot_pour_centrifuged_at TIMESTAMP",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS thca_oven_started_at TIMESTAMP",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS thca_oven_completed_at TIMESTAMP",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS thca_milled_at TIMESTAMP",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS thca_destination VARCHAR(40)",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS hte_offgas_started_at TIMESTAMP",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS hte_offgas_completed_at TIMESTAMP",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS hte_clean_decision VARCHAR(20)",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS hte_filter_outcome VARCHAR(30)",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS hte_prescott_processed_at TIMESTAMP",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS hte_potency_disposition VARCHAR(40)",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS hte_queue_destination VARCHAR(40)",
     ):
         root.db.session.execute(text(stmt))
     root.db.session.commit()

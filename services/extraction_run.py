@@ -66,6 +66,38 @@ POST_EXTRACTION_PATHWAY_OPTIONS = [
 ]
 
 POST_EXTRACTION_PATHWAY_LABELS = {value: label for value, label in POST_EXTRACTION_PATHWAY_OPTIONS if value}
+THCA_DESTINATION_OPTIONS = [
+    ("", "Not set"),
+    ("sell_thca", "Sell THCA"),
+    ("make_ld", "Make LD"),
+    ("formulate_badders_sugars", "Formulate in badders / sugars"),
+]
+THCA_DESTINATION_LABELS = {value: label for value, label in THCA_DESTINATION_OPTIONS if value}
+HTE_CLEAN_DECISION_OPTIONS = [
+    ("", "Not set"),
+    ("clean", "Clean"),
+    ("dirty", "Dirty"),
+]
+HTE_CLEAN_DECISION_LABELS = {value: label for value, label in HTE_CLEAN_DECISION_OPTIONS if value}
+HTE_FILTER_OUTCOME_OPTIONS = [
+    ("", "Not set"),
+    ("standard", "Standard refinement path"),
+    ("needs_prescott", "Oil darker / thick / harder to filter — use Prescott"),
+]
+HTE_FILTER_OUTCOME_LABELS = {value: label for value, label in HTE_FILTER_OUTCOME_OPTIONS if value}
+HTE_POTENCY_DISPOSITION_OPTIONS = [
+    ("", "Not set"),
+    ("hold_hp_base_oil", "Hold for HP base oil"),
+    ("hold_distillate", "Hold to be made into distillate"),
+]
+HTE_POTENCY_DISPOSITION_LABELS = {value: label for value, label in HTE_POTENCY_DISPOSITION_OPTIONS if value}
+HTE_QUEUE_DESTINATION_OPTIONS = [
+    ("", "Not set"),
+    ("golddrop_queue", "GoldDrop production queue"),
+    ("liquid_loud_hold", "Liquid Loud hold"),
+    ("terp_strip_cage", "Terp stripping / CDT cage"),
+]
+HTE_QUEUE_DESTINATION_LABELS = {value: label for value, label in HTE_QUEUE_DESTINATION_OPTIONS if value}
 
 
 def _setting_float_or_none(root, key: str) -> float | None:
@@ -266,6 +298,19 @@ def duration_minutes(start_at: datetime | None, end_at: datetime | None) -> int 
     return int(round(delta_seconds / 60.0))
 
 
+def downstream_state_payload(run) -> dict:
+    return {
+        "thca_destination_label": THCA_DESTINATION_LABELS.get(getattr(run, "thca_destination", None) or "", ""),
+        "hte_clean_decision_label": HTE_CLEAN_DECISION_LABELS.get(getattr(run, "hte_clean_decision", None) or "", ""),
+        "hte_filter_outcome_label": HTE_FILTER_OUTCOME_LABELS.get(getattr(run, "hte_filter_outcome", None) or "", ""),
+        "hte_potency_disposition_label": HTE_POTENCY_DISPOSITION_LABELS.get(getattr(run, "hte_potency_disposition", None) or "", ""),
+        "hte_queue_destination_label": HTE_QUEUE_DESTINATION_LABELS.get(getattr(run, "hte_queue_destination", None) or "", ""),
+        "pot_pour_offgas_duration_hours": duration_minutes(getattr(run, "pot_pour_offgas_started_at", None), getattr(run, "pot_pour_offgas_completed_at", None)),
+        "thca_oven_duration_hours": duration_minutes(getattr(run, "thca_oven_started_at", None), getattr(run, "thca_oven_completed_at", None)),
+        "hte_offgas_duration_hours": duration_minutes(getattr(run, "hte_offgas_started_at", None), getattr(run, "hte_offgas_completed_at", None)),
+    }
+
+
 def _opt_float(value, *, field: str) -> float | None:
     if value in (None, ""):
         return None
@@ -345,6 +390,56 @@ def apply_execution_payload(run, payload: dict) -> None:
         run.post_extraction_started_at = parse_local_datetime(payload.get("post_extraction_started_at"))
     if "post_extraction_initial_outputs_recorded_at" in payload:
         run.post_extraction_initial_outputs_recorded_at = parse_local_datetime(payload.get("post_extraction_initial_outputs_recorded_at"))
+    if "pot_pour_offgas_started_at" in payload:
+        run.pot_pour_offgas_started_at = parse_local_datetime(payload.get("pot_pour_offgas_started_at"))
+    if "pot_pour_offgas_completed_at" in payload:
+        run.pot_pour_offgas_completed_at = parse_local_datetime(payload.get("pot_pour_offgas_completed_at"))
+    if "pot_pour_daily_stir_count" in payload:
+        run.pot_pour_daily_stir_count = _opt_int(payload.get("pot_pour_daily_stir_count"), field="Pot pour stir count")
+    if "pot_pour_centrifuged_at" in payload:
+        run.pot_pour_centrifuged_at = parse_local_datetime(payload.get("pot_pour_centrifuged_at"))
+    if "thca_oven_started_at" in payload:
+        run.thca_oven_started_at = parse_local_datetime(payload.get("thca_oven_started_at"))
+    if "thca_oven_completed_at" in payload:
+        run.thca_oven_completed_at = parse_local_datetime(payload.get("thca_oven_completed_at"))
+    if "thca_milled_at" in payload:
+        run.thca_milled_at = parse_local_datetime(payload.get("thca_milled_at"))
+    if "thca_destination" in payload:
+        destination = (payload.get("thca_destination") or "").strip()
+        allowed = {value for value, _label in THCA_DESTINATION_OPTIONS}
+        if destination not in allowed:
+            raise ValueError("THCA destination is invalid.")
+        run.thca_destination = destination or None
+    if "hte_offgas_started_at" in payload:
+        run.hte_offgas_started_at = parse_local_datetime(payload.get("hte_offgas_started_at"))
+    if "hte_offgas_completed_at" in payload:
+        run.hte_offgas_completed_at = parse_local_datetime(payload.get("hte_offgas_completed_at"))
+    if "hte_clean_decision" in payload:
+        decision = (payload.get("hte_clean_decision") or "").strip()
+        allowed = {value for value, _label in HTE_CLEAN_DECISION_OPTIONS}
+        if decision not in allowed:
+            raise ValueError("HTE clean decision is invalid.")
+        run.hte_clean_decision = decision or None
+    if "hte_filter_outcome" in payload:
+        outcome = (payload.get("hte_filter_outcome") or "").strip()
+        allowed = {value for value, _label in HTE_FILTER_OUTCOME_OPTIONS}
+        if outcome not in allowed:
+            raise ValueError("HTE filter outcome is invalid.")
+        run.hte_filter_outcome = outcome or None
+    if "hte_prescott_processed_at" in payload:
+        run.hte_prescott_processed_at = parse_local_datetime(payload.get("hte_prescott_processed_at"))
+    if "hte_potency_disposition" in payload:
+        disposition = (payload.get("hte_potency_disposition") or "").strip()
+        allowed = {value for value, _label in HTE_POTENCY_DISPOSITION_OPTIONS}
+        if disposition not in allowed:
+            raise ValueError("HTE potency disposition is invalid.")
+        run.hte_potency_disposition = disposition or None
+    if "hte_queue_destination" in payload:
+        destination = (payload.get("hte_queue_destination") or "").strip()
+        allowed = {value for value, _label in HTE_QUEUE_DESTINATION_OPTIONS}
+        if destination not in allowed:
+            raise ValueError("HTE queue destination is invalid.")
+        run.hte_queue_destination = destination or None
 
 
 def _draft_run_for_charge(root, charge):
@@ -450,6 +545,27 @@ def mobile_run_payload(root, run, charge) -> dict:
         "post_extraction_started_at": display_local_datetime(run.post_extraction_started_at),
         "post_extraction_initial_outputs_recorded_at": display_local_datetime(run.post_extraction_initial_outputs_recorded_at),
         "post_extraction": post_extraction_progression_payload(run),
+        "pot_pour_offgas_started_at": display_local_datetime(run.pot_pour_offgas_started_at),
+        "pot_pour_offgas_completed_at": display_local_datetime(run.pot_pour_offgas_completed_at),
+        "pot_pour_daily_stir_count": run.pot_pour_daily_stir_count,
+        "pot_pour_centrifuged_at": display_local_datetime(run.pot_pour_centrifuged_at),
+        "thca_oven_started_at": display_local_datetime(run.thca_oven_started_at),
+        "thca_oven_completed_at": display_local_datetime(run.thca_oven_completed_at),
+        "thca_milled_at": display_local_datetime(run.thca_milled_at),
+        "thca_destination": run.thca_destination or "",
+        "thca_destination_options": [{"value": value, "label": label} for value, label in THCA_DESTINATION_OPTIONS],
+        "hte_offgas_started_at": display_local_datetime(run.hte_offgas_started_at),
+        "hte_offgas_completed_at": display_local_datetime(run.hte_offgas_completed_at),
+        "hte_clean_decision": run.hte_clean_decision or "",
+        "hte_clean_decision_options": [{"value": value, "label": label} for value, label in HTE_CLEAN_DECISION_OPTIONS],
+        "hte_filter_outcome": run.hte_filter_outcome or "",
+        "hte_filter_outcome_options": [{"value": value, "label": label} for value, label in HTE_FILTER_OUTCOME_OPTIONS],
+        "hte_prescott_processed_at": display_local_datetime(run.hte_prescott_processed_at),
+        "hte_potency_disposition": run.hte_potency_disposition or "",
+        "hte_potency_disposition_options": [{"value": value, "label": label} for value, label in HTE_POTENCY_DISPOSITION_OPTIONS],
+        "hte_queue_destination": run.hte_queue_destination or "",
+        "hte_queue_destination_options": [{"value": value, "label": label} for value, label in HTE_QUEUE_DESTINATION_OPTIONS],
+        "downstream": downstream_state_payload(run),
         "notes": run.notes,
         "inherited": {
             "tracking_id": lot.tracking_id if lot else None,

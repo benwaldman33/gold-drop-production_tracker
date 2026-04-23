@@ -213,6 +213,43 @@ function postExtractionForRun(run) {
   };
 }
 
+function downstreamForRun(run) {
+  const labels = {
+    thca_destination: {
+      sell_thca: "Sell THCA",
+      make_ld: "Make LD",
+      formulate_badders_sugars: "Formulate in badders / sugars",
+    },
+    hte_clean_decision: {
+      clean: "Clean",
+      dirty: "Dirty",
+    },
+    hte_filter_outcome: {
+      standard: "Standard refinement path",
+      needs_prescott: "Oil darker / thick / harder to filter — use Prescott",
+    },
+    hte_potency_disposition: {
+      hold_hp_base_oil: "Hold for HP base oil",
+      hold_distillate: "Hold to be made into distillate",
+    },
+    hte_queue_destination: {
+      golddrop_queue: "GoldDrop production queue",
+      liquid_loud_hold: "Liquid Loud hold",
+      terp_strip_cage: "Terp stripping / CDT cage",
+    },
+  };
+  return {
+    thca_destination_label: labels.thca_destination[run.thca_destination] || "",
+    hte_clean_decision_label: labels.hte_clean_decision[run.hte_clean_decision] || "",
+    hte_filter_outcome_label: labels.hte_filter_outcome[run.hte_filter_outcome] || "",
+    hte_potency_disposition_label: labels.hte_potency_disposition[run.hte_potency_disposition] || "",
+    hte_queue_destination_label: labels.hte_queue_destination[run.hte_queue_destination] || "",
+    pot_pour_offgas_duration_minutes: minutesBetween(run.pot_pour_offgas_started_at, run.pot_pour_offgas_completed_at),
+    thca_oven_duration_minutes: minutesBetween(run.thca_oven_started_at, run.thca_oven_completed_at),
+    hte_offgas_duration_minutes: minutesBetween(run.hte_offgas_started_at, run.hte_offgas_completed_at),
+  };
+}
+
 function applyMockProgressionAction(run, action) {
   const now = nowLocalInputValue();
   if (action === "start_run") {
@@ -299,6 +336,49 @@ function buildMockRunPayload(state, charge, run) {
     post_extraction_started_at: run.post_extraction_started_at || "",
     post_extraction_initial_outputs_recorded_at: run.post_extraction_initial_outputs_recorded_at || "",
     post_extraction: postExtractionForRun(run),
+    pot_pour_offgas_started_at: run.pot_pour_offgas_started_at || "",
+    pot_pour_offgas_completed_at: run.pot_pour_offgas_completed_at || "",
+    pot_pour_daily_stir_count: run.pot_pour_daily_stir_count ?? null,
+    pot_pour_centrifuged_at: run.pot_pour_centrifuged_at || "",
+    thca_oven_started_at: run.thca_oven_started_at || "",
+    thca_oven_completed_at: run.thca_oven_completed_at || "",
+    thca_milled_at: run.thca_milled_at || "",
+    thca_destination: run.thca_destination || "",
+    thca_destination_options: [
+      { value: "", label: "Not set" },
+      { value: "sell_thca", label: "Sell THCA" },
+      { value: "make_ld", label: "Make LD" },
+      { value: "formulate_badders_sugars", label: "Formulate in badders / sugars" },
+    ],
+    hte_offgas_started_at: run.hte_offgas_started_at || "",
+    hte_offgas_completed_at: run.hte_offgas_completed_at || "",
+    hte_clean_decision: run.hte_clean_decision || "",
+    hte_clean_decision_options: [
+      { value: "", label: "Not set" },
+      { value: "clean", label: "Clean" },
+      { value: "dirty", label: "Dirty" },
+    ],
+    hte_filter_outcome: run.hte_filter_outcome || "",
+    hte_filter_outcome_options: [
+      { value: "", label: "Not set" },
+      { value: "standard", label: "Standard refinement path" },
+      { value: "needs_prescott", label: "Oil darker / thick / harder to filter — use Prescott" },
+    ],
+    hte_prescott_processed_at: run.hte_prescott_processed_at || "",
+    hte_potency_disposition: run.hte_potency_disposition || "",
+    hte_potency_disposition_options: [
+      { value: "", label: "Not set" },
+      { value: "hold_hp_base_oil", label: "Hold for HP base oil" },
+      { value: "hold_distillate", label: "Hold to be made into distillate" },
+    ],
+    hte_queue_destination: run.hte_queue_destination || "",
+    hte_queue_destination_options: [
+      { value: "", label: "Not set" },
+      { value: "golddrop_queue", label: "GoldDrop production queue" },
+      { value: "liquid_loud_hold", label: "Liquid Loud hold" },
+      { value: "terp_strip_cage", label: "Terp stripping / CDT cage" },
+    ],
+    downstream: downstreamForRun(run),
     notes: run.notes || "",
     inherited: {
       tracking_id: lot?.tracking_id || "",
@@ -339,6 +419,21 @@ function buildMockDraftRun(charge) {
     post_extraction_pathway: "",
     post_extraction_started_at: "",
     post_extraction_initial_outputs_recorded_at: "",
+    pot_pour_offgas_started_at: "",
+    pot_pour_offgas_completed_at: "",
+    pot_pour_daily_stir_count: null,
+    pot_pour_centrifuged_at: "",
+    thca_oven_started_at: "",
+    thca_oven_completed_at: "",
+    thca_milled_at: "",
+    thca_destination: "",
+    hte_offgas_started_at: "",
+    hte_offgas_completed_at: "",
+    hte_clean_decision: "",
+    hte_filter_outcome: "",
+    hte_prescott_processed_at: "",
+    hte_potency_disposition: "",
+    hte_queue_destination: "",
     notes: "",
   };
 }
@@ -376,6 +471,21 @@ function ensureMockRunForCharge(state, chargeId) {
     post_extraction_pathway: "",
     post_extraction_started_at: "",
     post_extraction_initial_outputs_recorded_at: "",
+    pot_pour_offgas_started_at: "",
+    pot_pour_offgas_completed_at: "",
+    pot_pour_daily_stir_count: null,
+    pot_pour_centrifuged_at: "",
+    thca_oven_started_at: "",
+    thca_oven_completed_at: "",
+    thca_milled_at: "",
+    thca_destination: "",
+    hte_offgas_started_at: "",
+    hte_offgas_completed_at: "",
+    hte_clean_decision: "",
+    hte_filter_outcome: "",
+    hte_prescott_processed_at: "",
+    hte_potency_disposition: "",
+    hte_queue_destination: "",
     notes: "",
   };
   state.runs.push(run);
