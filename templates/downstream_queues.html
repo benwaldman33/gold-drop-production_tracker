@@ -32,6 +32,12 @@
     <span class="text-sm cell-muted">{{ section.description }}</span>
     {% if section.key == 'golddrop_queue' %}
     <a href="{{ url_for('golddrop_production_queue') }}" class="btn btn-secondary btn-sm">Open GoldDrop Queue</a>
+    {% elif section.key == 'liquid_loud_hold' %}
+    <a href="{{ url_for('liquid_loud_queue') }}" class="btn btn-secondary btn-sm">Open Liquid Loud Hold</a>
+    {% elif section.key == 'terp_strip_cage' %}
+    <a href="{{ url_for('terp_strip_queue') }}" class="btn btn-secondary btn-sm">Open Terp Strip Cage</a>
+    {% elif section.key == 'hold_hp_base_oil' %}
+    <a href="{{ url_for('hp_base_oil_queue') }}" class="btn btn-secondary btn-sm">Open HP Base Oil Hold</a>
     {% endif %}
   </div>
   {% if section["items"] %}

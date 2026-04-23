@@ -115,6 +115,14 @@ It is the first destination-specific downstream workflow page. Use it after a ru
 **Does GoldDrop Production Queue keep action history?**
 Yes. The page records queue events with timestamps, operator names, and optional notes so supervisors can see what happened to a queued run over time.
 
+**Are Liquid Loud, Terp Strip / CDT cage, and HP Base Oil still handled only from the main routing board?**
+No. Each of those destinations now has its own dedicated workflow page opened from **Downstream Queues**.
+
+**What can I do on the dedicated downstream destination pages?**
+- **Liquid Loud Hold**: mark reviewed, reserve for Liquid Loud, release to GoldDrop production queue, release complete, or send back for re-routing
+- **Terp Strip / CDT Cage**: mark reviewed, queue Prescott, mark strip complete, or send back for re-routing
+- **HP Base Oil Hold**: mark reviewed, confirm hold, release complete, or send back for re-routing
+
 **Does strain import create a new strain table?**
 No. Strain Performance is derived from lot strain names. The importer is a safe bulk-rename workflow over matching `PurchaseLot` rows for a supplier and current strain name.
 
