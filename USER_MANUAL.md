@@ -255,6 +255,26 @@ Each on-hand row now also gives direct action buttons:
 - `Label` opens the printable lot label
 - `Journey` opens the purchase journey filtered to that lot
 
+Use **Inventory -> Import spreadsheet** when you need to update many existing lots at once from Excel or CSV.
+
+That importer:
+- matches rows by **Tracking ID**
+- lets you remap spreadsheet columns before commit
+- previews exactly which lot each row will update
+- supports only the same safe lot-edit fields already available in `Edit`:
+  - strain
+  - potency
+  - location
+  - floor state
+  - milled state
+  - notes
+
+It does **not** create lots or change:
+- tracking IDs
+- original lot weight
+- remaining pounds
+- live allocation balances
+
 Lots may also show a **tracking ID**. This is the permanent machine-readable identity for that physical lot and now drives the printed barcode and scan route for that lot.
 
 Where available, use the **Label** action from Inventory, Purchases, or Journey to print a lot-facing label page. The label now renders a printable **Code 39 barcode**, a **QR code**, and the scan route for that exact lot.

@@ -12,6 +12,7 @@
 - A new `standalone-extraction-lab-app` now mirrors the extractor workflow with a touch-first reactor board, lot browser, charge form, and lifecycle actions that still hand off into the main run form when needed.
 
 ### Changed
+- `Inventory` now includes `Import spreadsheet`, built on the shared import framework as a controlled update-only workflow over existing lots matched by tracking ID. It supports the same safe lot-edit fields as the manual lot editor: strain, potency, location, floor state, milled state, and notes.
 - `Strains` now includes `Import spreadsheet`, built on the shared import framework as a safe supplier+current-strain -> new-strain rename workflow over matching purchase lots.
 - `Suppliers` now includes `Import spreadsheet`, built on the same shared import framework as Purchases: upload, interactive column mapping, preview, duplicate-aware hints, and optional update of exact-name matches.
 - `Purchases -> Import spreadsheet` now stages uploads through an interactive column-mapping preview, supports a broader set of purchase, pipeline/testing, and lot fields, and uses a reusable import-framework helper instead of a fixed header-only flow.
@@ -45,6 +46,7 @@
 - Slack import preview now includes `Create extraction charge from Slack`, which records a canonical `ExtractionCharge` from the Slack message, tags it with `source_mode="slack"`, and opens `runs/new` with that saved charge attached.
 
 ### Tests
+- Added inventory import regression coverage for header detection, manual mapping overrides, preview rendering, and tracked lot updates by tracking ID.
 - Added regression coverage for purchase edit round-trip of mobile opportunity fields, dedicated inventory lot editing, inventory label return paths, and confirmed-lot splitting from remaining inventory (`tests/test_refactor_safety.py`).
 - Added duplicate-supplier regression coverage for mobile supplier create, main supplier create, and standalone buyer duplicate matching.
 - Added extraction-charge, floor-queue, lifecycle-settings, inventory-action, and Slack-charge regression coverage for scan-to-charge, charge prefill into new run, charge-to-run linkage, pending/applied reactor queue visibility, active reactor board status rendering, direct inventory lot actions, lifecycle transition enforcement, cancel resolution redirects, and Slack import charge creation / split-allocation rejection; combined with the new extraction standalone coverage, the full Python suite now passes with `136` tests.

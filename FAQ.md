@@ -92,6 +92,12 @@ Yes. If the supplier name matches an existing supplier exactly (case-insensitive
 **How do I import strain changes from Excel or CSV?**
 Open **Strains** and use **Import spreadsheet**. You can drag and drop a `.csv`, `.xlsx`, or `.xlsm` file or browse for it. The app detects the header row, lets you map columns interactively, and previews how many purchase lots will be renamed for each row before you commit.
 
+**How do I bulk update Inventory lots from a spreadsheet?**
+Open **Inventory** and use **Import spreadsheet**. You can drag and drop a `.csv`, `.xlsx`, or `.xlsm` file or browse for it. The app detects the header row, lets you map columns interactively, matches each row to an existing lot by **Tracking ID**, and previews the exact field changes before you commit.
+
+**Can Inventory import create new lots or change lot weights?**
+No. Inventory import is intentionally limited to the same safe lot fields available in the manual lot editor: strain, potency, location, floor state, milled state, and notes. It does not create new lots or rewrite tracking IDs, original lot weights, remaining pounds, or allocation balances.
+
 **Does strain import create a new strain table?**
 No. Strain Performance is derived from lot strain names. The importer is a safe bulk-rename workflow over matching `PurchaseLot` rows for a supplier and current strain name.
 

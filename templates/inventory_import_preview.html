@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Inventory import preview{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Inventory import preview</h2>
+  <div class="btn-group">
+    <a href="{{ url_for('inventory_import') }}" class="btn btn-secondary">&larr; Upload another file</a>
+    <a href="{{ url_for('inventory') }}" class="btn btn-secondary">Inventory</a>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <p class="text-sm cell-muted" style="margin:0 0 8px 0;">
+    File: <strong>{{ staged.filename }}</strong> -
+    {{ staged_rows|length }} row(s), <strong>{{ ok_count }}</strong> ready to import.
+  </p>
+  <p class="text-sm cell-muted" style="margin:0;">
+    Map each spreadsheet column to an inventory lot field. This importer updates existing lots by tracking ID only.
+    Populated cells overwrite the current lot value; blank cells leave the current value unchanged.
+  </p>
+</div>
+
+<form method="POST" action="{{ url_for('inventory_import_preview') }}" class="card" style="margin-bottom:16px;">
+  <div class="card-header"><h3>Column mapping</h3></div>
+  <div style="overflow-x:auto;">
+    <table style="min-width:980px;width:100%;">
+      <thead>
+        <tr>
+          <th>Spreadsheet column</th>
+          <th>Normalized key</th>
+          <th>Map to inventory field</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for header in mapped_headers %}
+        <tr>
+          <td>
+            <strong>{{ header.header }}</strong>
+            {% if header.field_label %}
+            <div class="text-sm cell-muted">Suggested: {{ header.field_label }}</div>
+            {% endif %}
+          </td>
+          <td class="text-mono">{{ header.normalized or '—' }}</td>
+          <td>
+            <select name="map_{{ header.index }}">
+              {% for item in field_choices %}
+              <option value="{{ item.value }}" {% if header.field == item.value %}selected{% endif %}>{{ item.label }}</option>
+              {% endfor %}
+            </select>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="btn-group" style="margin-top:16px;">
+    <button type="submit" class="btn btn-secondary">Refresh preview</button>
+  </div>
+</form>
+
+<form method="POST" action="{{ url_for('inventory_import_commit') }}">
+  <div class="card" style="overflow-x:auto;">
+    <table style="min-width:1280px;width:100%;">
+      <thead>
+        <tr>
+          <th style="width:40px;">Import</th>
+          <th>Row</th>
+          <th>Action</th>
+          <th>Matched lot</th>
+          {% for header in mapped_preview_columns %}
+          <th>{{ header.field_label or header.field }}</th>
+          {% endfor %}
+          <th>Changes / issues</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in staged_rows %}
+        {% set ok = not row.errors %}
+        <tr {% if not ok %}style="opacity:0.75;"{% endif %}>
+          <td>
+            {% if ok %}
+            <input type="checkbox" name="row_idx" value="{{ loop.index0 }}" checked>
+            {% else %}
+            <span class="text-sm cell-muted">—</span>
+            {% endif %}
+          </td>
+          <td>{{ row.sheet_row }}</td>
+          <td><span class="badge badge-gray">Update</span></td>
+          <td class="text-sm">
+            {% if row.normalized %}
+            <div><strong>{{ row.normalized.tracking_id }}</strong></div>
+            <div class="cell-muted">{{ row.normalized.current_strain_name }}</div>
+            <div class="cell-muted">{{ row.normalized.supplier_name or 'Unknown supplier' }}</div>
+            {% else %}
+            <span class="cell-muted">—</span>
+            {% endif %}
+          </td>
+          {% for header in mapped_preview_columns %}
+          <td>
+            {% set value = row.raw.get(header.field, '') %}
+            {% if value %}
+            {{ value }}
+            {% else %}
+            <span class="cell-muted">—</span>
+            {% endif %}
+          </td>
+          {% endfor %}
+          <td class="text-sm">
+            {% if row.errors %}
+              {% for e in row.errors %}<div style="color:var(--danger,#c44);">{{ e }}</div>{% endfor %}
+            {% else %}
+              {% for change in row.normalized.change_summary %}
+              <div><strong>{{ change.field.replace('_', ' ').title() }}</strong>: <span class="cell-muted">{{ change.from or 'blank' }}</span> → {{ change.to or 'blank' }}</div>
+              {% endfor %}
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="btn-group" style="margin-top:16px;">
+    <button type="submit" class="btn btn-primary">Import selected rows</button>
+  </div>
+</form>
+{% endblock %}
