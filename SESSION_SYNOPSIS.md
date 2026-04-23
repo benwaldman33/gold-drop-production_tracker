@@ -156,6 +156,25 @@ Implemented and live:
 - supervisors can move a run between downstream queues/holds or mark the queue item complete without editing the full run
 - opening a run from this page now preserves `Back to Downstream Queues`
 
+### 8. GoldDrop production queue workflow
+
+Implemented and live:
+
+- `GoldDrop Production Queue` now has its own dedicated main-app page
+- the queue page is reached from `Downstream Queues -> Open GoldDrop Queue`
+- each queue card now shows:
+  - current queue state
+  - source strain / supplier / lot context
+  - wet and dry THCA / HTE totals
+  - queue history with timestamps and operator names
+- queue actions now include:
+  - `Mark Reviewed`
+  - `Queue For Production`
+  - `Release Complete`
+  - `Send Back For Re-routing`
+- queue actions are stored in the new additive `DownstreamQueueEvent` table so production gets history without any destructive schema rewrite
+- opening a run from this page now cleanly returns through the downstream queue context
+
 ## Tests status
 
 Latest verified status before closeout:
@@ -178,7 +197,11 @@ Latest verified status before closeout:
   - queue grouping and unresolved-routing visibility
   - move/complete actions
   - run-form return context from queue cards
-- full Python suite: `158 passed`
+- Phase 5 destination-specific queue workflow is now implemented for `GoldDrop Production Queue`:
+  - dedicated queue page
+  - queue-state history
+  - review / production / release / send-back actions
+- full Python suite: `160 passed`
 
 The following policy is in effect for future work:
 

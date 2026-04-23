@@ -60,6 +60,29 @@ DOWNSTREAM_QUEUE_SECTIONS = (
     ),
 )
 
+GOLDDROP_QUEUE_ACTIONS = (
+    ("mark_reviewed", "Mark Reviewed"),
+    ("queue_for_production", "Queue For Production"),
+    ("release_complete", "Release Complete"),
+    ("send_back", "Send Back For Re-routing"),
+)
+
+GOLDDROP_QUEUE_STATE_LABELS = {
+    "new_in_queue": "New in queue",
+    "reviewed": "Reviewed",
+    "queued_for_production": "Queued for production",
+    "released_complete": "Released complete",
+    "sent_back": "Sent back",
+}
+
+GOLDDROP_QUEUE_EVENT_LABELS = {
+    "entered_queue": "Entered queue",
+    "mark_reviewed": "Marked reviewed",
+    "queue_for_production": "Queued for production",
+    "release_complete": "Released complete",
+    "send_back": "Sent back",
+}
+
 
 def register_routes(app, root):
     @root.login_required
@@ -74,6 +97,10 @@ def register_routes(app, root):
     def downstream_queues():
         return downstream_queues_view(root)
 
+    @root.login_required
+    def golddrop_production_queue():
+        return golddrop_production_queue_view(root)
+
     @root.editor_required
     def floor_charge_transition(charge_id):
         return floor_charge_transition_view(root, charge_id)
@@ -82,11 +109,17 @@ def register_routes(app, root):
     def downstream_queue_move(run_id):
         return downstream_queue_move_view(root, run_id)
 
+    @root.editor_required
+    def golddrop_queue_action(run_id):
+        return golddrop_queue_action_view(root, run_id)
+
     app.add_url_rule("/floor-ops", endpoint="floor_ops", view_func=floor_ops)
     app.add_url_rule("/scan", endpoint="scan_center", view_func=scan_center)
     app.add_url_rule("/downstream-queues", endpoint="downstream_queues", view_func=downstream_queues)
+    app.add_url_rule("/downstream-queues/golddrop", endpoint="golddrop_production_queue", view_func=golddrop_production_queue)
     app.add_url_rule("/floor-ops/charges/<charge_id>/transition", endpoint="floor_charge_transition", view_func=floor_charge_transition, methods=["POST"])
     app.add_url_rule("/downstream-queues/runs/<run_id>/move", endpoint="downstream_queue_move", view_func=downstream_queue_move, methods=["POST"])
+    app.add_url_rule("/downstream-queues/golddrop/runs/<run_id>/action", endpoint="golddrop_queue_action", view_func=golddrop_queue_action, methods=["POST"])
 
 
 FLOOR_STATE_LABELS = {
@@ -402,6 +435,18 @@ def _downstream_move_options():
     ]
 
 
+def _log_downstream_queue_event(root, run, queue_key: str, action_key: str, *, notes: str | None = None):
+    event = root.DownstreamQueueEvent(
+        run_id=run.id,
+        queue_key=queue_key,
+        action_key=action_key,
+        notes=notes,
+        created_by=getattr(root.current_user, "id", None),
+    )
+    root.db.session.add(event)
+    return event
+
+
 def _downstream_next_step(item):
     queue_key = item["queue_key"]
     if queue_key == "needs_routing":
@@ -446,6 +491,62 @@ def _build_downstream_queue_item(root, run):
         "hte_filter_outcome_label": {"standard": "Standard refinement path", "needs_prescott": "Needs Prescott"}.get((run.hte_filter_outcome or "").strip(), ""),
         "hte_queue_destination_label": HTE_QUEUE_DESTINATION_LABELS.get((run.hte_queue_destination or "").strip(), ""),
         "hte_potency_disposition_label": HTE_POTENCY_DISPOSITION_LABELS.get((run.hte_potency_disposition or "").strip(), ""),
+    }
+
+
+def _golddrop_queue_history(root, run_id: str):
+    return (
+        root.DownstreamQueueEvent.query.filter_by(run_id=run_id, queue_key="golddrop_queue")
+        .order_by(root.DownstreamQueueEvent.created_at.desc())
+        .all()
+    )
+
+
+def _golddrop_queue_state(root, run):
+    history = _golddrop_queue_history(root, run.id)
+    if not history:
+        return "new_in_queue", history
+    latest = (history[0].action_key or "").strip()
+    if latest in {"mark_reviewed", "queue_for_production", "release_complete", "send_back"}:
+        mapping = {
+            "mark_reviewed": "reviewed",
+            "queue_for_production": "queued_for_production",
+            "release_complete": "released_complete",
+            "send_back": "sent_back",
+        }
+        return mapping[latest], history
+    return "new_in_queue", history
+
+
+def _build_golddrop_queue_detail(root):
+    runs = (
+        root.Run.query.filter(
+            root.Run.deleted_at.is_(None),
+            root.Run.hte_queue_destination == "golddrop_queue",
+        )
+        .order_by(root.Run.run_date.desc(), root.Run.created_at.desc())
+        .all()
+    )
+    items = []
+    for run in runs:
+        base = _build_downstream_queue_item(root, run)
+        state_key, history = _golddrop_queue_state(root, run)
+        base["queue_state_key"] = state_key
+        base["queue_state_label"] = GOLDDROP_QUEUE_STATE_LABELS[state_key]
+        base["history"] = [
+            {
+                "action_label": GOLDDROP_QUEUE_EVENT_LABELS.get(entry.action_key, entry.action_key.replace("_", " ").title()),
+                "timestamp_label": display_local_timestamp(entry.created_at),
+                "notes": entry.notes,
+                "creator_name": entry.creator.display_name if entry.creator and entry.creator.display_name else None,
+            }
+            for entry in history[:8]
+        ]
+        base["available_actions"] = list(GOLDDROP_QUEUE_ACTIONS)
+        items.append(base)
+    return {
+        "count": len(items),
+        "items": items,
     }
 
 
@@ -544,6 +645,14 @@ def downstream_queues_view(root):
     )
 
 
+def golddrop_production_queue_view(root):
+    queue = _build_golddrop_queue_detail(root)
+    return root.render_template(
+        "golddrop_production_queue.html",
+        queue=queue,
+    )
+
+
 def scan_center_view(root):
     recent_scans = root.LotScanEvent.query.order_by(root.LotScanEvent.created_at.desc()).limit(6).all()
     return root.render_template("scan_center.html", recent_scans=recent_scans)
@@ -612,6 +721,8 @@ def downstream_queue_move_view(root, run_id):
         run.hte_queue_destination = target
         run.hte_potency_disposition = None
         message = f"Run moved to {HTE_QUEUE_DESTINATION_LABELS[target]}."
+        if target == "golddrop_queue":
+            _log_downstream_queue_event(root, run, "golddrop_queue", "entered_queue", notes="Entered GoldDrop production queue.")
 
     root.log_audit(
         "update",
@@ -628,3 +739,49 @@ def downstream_queue_move_view(root, run_id):
     root.db.session.commit()
     root.flash(message, "success")
     return root.redirect(root.url_for("downstream_queues"))
+
+
+def golddrop_queue_action_view(root, run_id):
+    run = root.db.session.get(root.Run, run_id)
+    if run is None or run.deleted_at is not None:
+        root.flash("Run not found.", "error")
+        return root.redirect(root.url_for("golddrop_production_queue"))
+    if (run.hte_queue_destination or "").strip() != "golddrop_queue":
+        root.flash("This run is not currently in the GoldDrop production queue.", "error")
+        return root.redirect(root.url_for("golddrop_production_queue"))
+
+    action = (root.request.form.get("queue_action") or "").strip()
+    notes = (root.request.form.get("queue_notes") or "").strip() or None
+    allowed = {value for value, _label in GOLDDROP_QUEUE_ACTIONS}
+    if action not in allowed:
+        root.flash("Choose a valid GoldDrop queue action.", "error")
+        return root.redirect(root.url_for("golddrop_production_queue"))
+
+    if action == "release_complete":
+        run.hte_queue_destination = None
+        message = "Run released from GoldDrop production queue."
+    elif action == "send_back":
+        run.hte_queue_destination = None
+        run.hte_potency_disposition = None
+        message = "Run sent back for downstream re-routing."
+    elif action == "queue_for_production":
+        message = "Run marked queued for production."
+    else:
+        message = "Run marked reviewed in GoldDrop production queue."
+
+    _log_downstream_queue_event(root, run, "golddrop_queue", action, notes=notes)
+    root.log_audit(
+        "update",
+        "run",
+        run.id,
+        details=root.json.dumps(
+            {
+                "source": "golddrop_production_queue",
+                "queue_action": action,
+                "notes": notes,
+            }
+        ),
+    )
+    root.db.session.commit()
+    root.flash(message, "success")
+    return root.redirect(root.url_for("golddrop_production_queue"))

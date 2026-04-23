@@ -14,6 +14,7 @@
 - Phase 2 downstream state tracking is now live on the run record: operators can capture pot-pour warm off-gas timing and stir count, THCA oven/milling/destination, and HTE off-gas / clean-dirty / Prescott / queue-routing decisions before a dedicated downstream screen exists.
 - Phase 3 guided downstream workflow is now live in the standalone extraction app, turning the downstream portion of `Open Run` into a numbered, pathway-driven sequence instead of a flat block of fields.
 - Phase 4 downstream queue surfaces are now live in the main app: `Downstream Queues` groups completed post-extraction runs into `Needs Queue Decision`, `GoldDrop production queue`, `Liquid Loud hold`, `Terp strip / CDT cage`, `HP base oil hold`, and `Distillate hold`, with move/complete actions that update the existing run-level destination fields.
+- The first destination-specific queue workflow is now live: `GoldDrop Production Queue` has its own dedicated main-app page with queue state history plus `Mark Reviewed`, `Queue For Production`, `Release Complete`, and `Send Back For Re-routing` actions.
 
 ### Changed
 - `Inventory` now includes `Import spreadsheet`, built on the shared import framework as a controlled update-only workflow over existing lots matched by tracking ID. It supports the same safe lot-edit fields as the manual lot editor: strain, potency, location, floor state, milled state, and notes.
@@ -31,6 +32,7 @@
 - The standalone extraction run screen now promotes those downstream controls into a guided workflow stack with numbered steps, pathway-specific sequencing, and tap-first choice buttons so operators can work top-to-bottom on one screen.
 - The main app now includes a dedicated `Downstream Queues` page plus sidebar navigation, giving supervisors an operational surface for post-extraction routing instead of forcing them to work from raw run-form fields only.
 - Opening a run from `Downstream Queues` now preserves a `Back to Downstream Queues` return path in the run form.
+- Opening a run from the dedicated `GoldDrop Production Queue` page now also returns cleanly to that queue surface via `Back to Downstream Queues`.
 - The standalone extraction reactor board now renders `Open Run` as a full-size primary action next to the lifecycle buttons so operators do not have to hunt for a small inline link before `Mark Running`.
 - The main app sidebar now scrolls independently, so lower navigation items and `Logout` remain reachable on normal-height screens even as the left pane grows.
 - `Settings -> Operational Parameters` now includes `Extraction run defaults`, letting operators preconfigure the standalone extraction run screen's default milled/unmilled blend, fill count, total fill weight, flush count, total flush weight, stringer basket count, and CRC blend.
@@ -65,6 +67,7 @@
 - Added Phase 1 post-extraction regression coverage for charge-linked run handoff, pathway selection enforcement, wet-output confirmation enforcement, and standalone extraction mock API progression through the new post-extraction stage.
 - Extended the extraction mobile and standalone regression coverage for Phase 2 downstream state fields, including pot-pour timing, THCA destination, and HTE decision / queue fields on the shared charge-linked run payload.
 - Added downstream queue regression coverage for queue grouping, queue move actions, and run-form return context from the new queue page.
+- Added dedicated GoldDrop queue regression coverage for queue-page rendering, queue event history, and review/release actions.
 
 ## 2026-04-11
 

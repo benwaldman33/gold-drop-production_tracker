@@ -42,7 +42,7 @@ from flask_login import (login_user, logout_user, login_required,
 from sqlalchemy import func, desc, and_, or_, text, select, exists
 from werkzeug.utils import secure_filename
 
-from models import (db, User, Supplier, Purchase, PurchaseLot, Run, RunInput, ExtractionCharge,
+from models import (db, User, Supplier, Purchase, PurchaseLot, Run, RunInput, ExtractionCharge, DownstreamQueueEvent,
                     KpiTarget, SystemSetting, AuditLog, BiomassAvailability, CostEntry,
                     FieldAccessToken, FieldPurchaseSubmission, LabTest, SupplierAttachment, PhotoAsset,
                     SlackIngestedMessage, SlackChannelSyncConfig, LotScanEvent, ScaleDevice, WeightCapture, gen_uuid)

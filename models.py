@@ -814,6 +814,20 @@ class AuditLog(db.Model):
     user = db.relationship("User", backref="audit_logs")
 
 
+class DownstreamQueueEvent(db.Model):
+    __tablename__ = "downstream_queue_events"
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    run_id = db.Column(db.String(36), db.ForeignKey("runs.id"), nullable=False, index=True)
+    queue_key = db.Column(db.String(40), nullable=False, index=True)
+    action_key = db.Column(db.String(40), nullable=False)
+    notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    created_by = db.Column(db.String(36), db.ForeignKey("users.id"))
+
+    run = db.relationship("Run", backref=db.backref("downstream_queue_events", lazy="dynamic", cascade="all, delete-orphan"))
+    creator = db.relationship("User", foreign_keys=[created_by])
+
+
 class CostEntry(db.Model):
     """Track operational costs: solvents, personnel, overhead."""
     __tablename__ = "cost_entries"
