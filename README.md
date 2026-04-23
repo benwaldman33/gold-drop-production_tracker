@@ -74,6 +74,7 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 - **Costs** — Enter solvent/personnel/overhead costs with date ranges; allocated into $/g
 - **Cost Allocation Settings** — Choose THCA vs HTE allocation (uniform, 50/50, custom %)
 - **Inventory** — Track biomass on hand, in transit, and days of supply, with per-lot remaining pounds and lot tracking IDs tied into live label / scan workflows; on-hand rows now include direct `Edit`, `Charge`, and `Scan` actions for faster operator navigation, and `Edit` now opens a dedicated lot form so lot-level changes do not accidentally alter purchase-level inventory status
+- **Inventory spreadsheet import** — Upload **.csv**, **.xlsx**, or **.xlsm** via **Inventory -> Import spreadsheet**. The app detects headers, lets purchase editors remap columns interactively, previews matched lots by tracking ID, and then applies only the safe lot-edit fields already supported in the UI: strain, potency, location, floor state, milled state, and notes. It intentionally does **not** create lots or rewrite weights / tracking IDs.
 - **Purchases** — Record purchases with potency-based pricing and true-up tracking, including pipeline-side `availability_date`, testing notes, and post-confirmation lot management from the main purchase form
 - **Batch Journey** — Per-purchase lifecycle timeline (UI + API + export): open from Purchases list (**Journey**) or Purchase edit (**View Journey**) to see derived stages (`declared`, `testing`, `committed`, `delivered`, `inventory`, `extraction`, `post_processing`, `sales`) plus explicit **inventory lots**, **run allocations**, tracking IDs, remaining pounds, and drill links.
 - **Purchase spreadsheet import** — Upload **.csv**, **.xlsx**, or **.xlsm** via **Purchases → Import spreadsheet** (drag-and-drop or browse). The app detects the header row, suggests mappings, lets admins remap columns interactively, then previews row-level validation before import. It now supports the main purchase fields plus pipeline/testing and single-lot fields such as strain, lot location, floor state, milled flag, and lot notes. Commit still creates **unapproved** purchases (on-hand statuses from the file are capped to **ordered** until **Approve purchase**). Optional auto-create suppliers. See `purchase_import.py` and `services/import_framework.py`.
@@ -165,6 +166,7 @@ gold-drop/
 ├── app.py              # Entrypoint shim + Flask app factory (`create_app`)
 ├── models.py           # SQLAlchemy database models
 ├── purchase_import.py  # Purchase spreadsheet parsing + header alias map (CSV / Excel)
+├── inventory_import.py # Inventory lot-update spreadsheet parsing + header alias map
 ├── batch_edit.py       # Batch update helpers (runs, purchases, biomass, suppliers, costs, lots, strain rename)
 ├── gold_drop/
 │   ├── __init__.py     # Package entrypoint exposing `create_app`
@@ -195,6 +197,8 @@ gold-drop/
     ├── dept_index.html     # Department hub tiles
     ├── dept_view.html      # Single department intro + stats + quick links
     ├── inventory.html      # Inventory position view
+    ├── inventory_import.html       # Inventory lot update upload (drag-and-drop)
+    ├── inventory_import_preview.html # Parsed lot updates + validation before commit
     ├── purchases.html      # Purchase list view (batch selection + link to import)
     ├── purchase_form.html  # New/edit purchase form
     ├── purchase_import.html        # Purchase spreadsheet upload (drag-and-drop)
@@ -577,6 +581,8 @@ The system will:
 ### Purchases (accounting / procurement spreadsheets)
 
 Use **Purchases → Import spreadsheet** (not the **Import** menu used for runs). Supports **.csv**, **.xlsx**, and **.xlsm**; drag a file onto the drop zone or browse. After upload you get an interactive **column mapping** screen plus a row-by-row validation preview; commit imports selected valid rows. A **sample CSV** is available from the import page. Requires **`openpyxl`** (see `requirements.txt`) for Excel files.
+
+Use **Inventory → Import spreadsheet** when you need to bulk update existing lots already in the system. It uses the same interactive mapping/preview framework, but it is intentionally narrower: rows are matched by **Tracking ID**, and only the same lot-level fields available in **Edit Lot** can be changed (strain, potency, location, floor state, milled, notes). Lot weights, remaining pounds, allocations, and tracking IDs are not importable through this path.
 
 ---
 

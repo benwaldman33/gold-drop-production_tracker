@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Import inventory lot updates{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Import inventory lot updates</h2>
+  <div class="btn-group">
+    <a href="{{ url_for('inventory') }}" class="btn btn-secondary">&larr; Back to Inventory</a>
+    <a href="{{ url_for('inventory_import_sample') }}" class="btn btn-secondary">Download sample CSV</a>
+  </div>
+</div>
+
+<div class="card">
+  <p class="text-sm cell-muted" style="margin-bottom:16px;line-height:1.6;">
+    Upload a <strong>.csv</strong>, <strong>.xlsx</strong>, or <strong>.xlsm</strong> file to update existing lots by
+    <strong>Tracking ID</strong>. This importer intentionally mirrors the safe lot-edit fields already available in the app:
+    strain, potency, location, floor state, milled state, and notes. It does <strong>not</strong> create new lots or change
+    lot weights, remaining weights, tracking IDs, or allocations. Blank cells do not overwrite current values.
+  </p>
+  <form id="inventory-import-form" method="POST" enctype="multipart/form-data" style="margin:0;">
+    <input type="file" id="inventory-import-file" name="spreadsheet" accept=".csv,.xlsx,.xlsm" style="display:none;">
+    <div id="inventory-import-drop"
+         style="border:2px dashed var(--dark-border);border-radius:var(--radius);padding:36px 24px;text-align:center;background:var(--dark);cursor:pointer;">
+      <p style="margin:0 0 8px;font-weight:600;color:var(--text-primary);">Drag and drop your file here</p>
+      <p class="text-sm cell-muted" style="margin:0;">or click to browse - then upload starts automatically</p>
+      <p id="inventory-import-filename" class="text-sm" style="margin-top:12px;color:var(--gold);"></p>
+    </div>
+  </form>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var form = document.getElementById('inventory-import-form');
+  var input = document.getElementById('inventory-import-file');
+  var drop = document.getElementById('inventory-import-drop');
+  var nameEl = document.getElementById('inventory-import-filename');
+  if (!form || !input || !drop) return;
+
+  function submitIfFile() {
+    if (input.files && input.files.length) {
+      nameEl.textContent = input.files[0].name;
+      form.submit();
+    }
+  }
+
+  drop.addEventListener('click', function () { input.click(); });
+  input.addEventListener('change', submitIfFile);
+
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      drop.style.borderColor = 'var(--gold)';
+    });
+  });
+  ['dragleave', 'drop'].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      drop.style.borderColor = 'var(--dark-border)';
+    });
+  });
+  drop.addEventListener('drop', function (e) {
+    var dt = e.dataTransfer;
+    if (!dt || !dt.files || !dt.files.length) return;
+    var dtx = new DataTransfer();
+    dtx.items.add(dt.files[0]);
+    input.files = dtx.files;
+    submitIfFile();
+  });
+})();
+</script>
+{% endblock %}

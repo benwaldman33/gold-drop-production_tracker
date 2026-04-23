@@ -699,6 +699,16 @@ SQLite adds the sync config table in `_ensure_sqlite_schema()`; other engines re
 - **Preview behavior:** preview shows mapped rows plus the count of matched lots for each supplier/current-strain pair before commit.
 - **Commit rules:** rows fail if the supplier does not exist, if the current strain name cannot be found for that supplier, or if the current and new strain names are identical.
 
+## Inventory spreadsheet import
+
+- **Framework usage:** the inventory importer also reuses `services/import_framework.py` for upload parsing, header detection, and row extraction from saved mappings.
+- **Metadata:** `inventory_import.py` defines `INVENTORY_IMPORT_FIELDS`, header alias groups, mapping choices, and `parse_inventory_spreadsheet_upload_for_mapping(...)`.
+- **Routes:** `GET/POST /inventory/import`, `GET/POST /inventory/import/preview`, `POST /inventory/import/commit`, `GET /inventory/import/sample.csv` in `gold_drop/inventory_module.py`.
+- **Semantics:** this is intentionally a **controlled lot-update workflow**, not a lot-creation importer. Rows must match an existing active `PurchaseLot` by `tracking_id`.
+- **Field coverage:** only the same fields supported by the dedicated lot editor: `strain_name`, `potency_pct`, `location`, `floor_state`, `milled`, and `notes`.
+- **Safety rules:** blank mapped values do not clear existing lot fields; weights, remaining lbs, allocations, and tracking identity are not importable through this path.
+- **Preview behavior:** preview shows the matched lot, incoming mapped values, and a derived field-by-field change summary before commit.
+
 ## Batch list editing
 
 - **Module:** `batch_edit.py` — pure apply helpers: `parse_uuid_ids`, `apply_batch_runs`, `apply_batch_purchases` (returns `touched` purchases for hooks), `apply_batch_biomass`, `apply_batch_suppliers`, `apply_batch_costs`, `apply_batch_inventory_lots`, `apply_batch_strain_rename`. Max **200** UUIDs per batch. Strain rename uses `STRAIN_PAIR_SEP` (`\\x1f`) between strain name and supplier name in checkbox values / query params.
