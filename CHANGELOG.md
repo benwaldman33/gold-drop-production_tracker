@@ -33,6 +33,7 @@
 - The main app now includes a dedicated `Downstream Queues` page plus sidebar navigation, giving supervisors an operational surface for post-extraction routing instead of forcing them to work from raw run-form fields only.
 - Opening a run from `Downstream Queues` now preserves a `Back to Downstream Queues` return path in the run form.
 - Opening a run from the dedicated `GoldDrop Production Queue` page now also returns cleanly to that queue surface via `Back to Downstream Queues`.
+- The main app sidebar template now uses clean Unicode icons again, fixing the stray leading characters that appeared before `Downstream Queues` and other navigation labels when mixed-encoding bytes slipped into `base.html`.
 - The standalone extraction reactor board now renders `Open Run` as a full-size primary action next to the lifecycle buttons so operators do not have to hunt for a small inline link before `Mark Running`.
 - The main app sidebar now scrolls independently, so lower navigation items and `Logout` remain reachable on normal-height screens even as the left pane grows.
 - `Settings -> Operational Parameters` now includes `Extraction run defaults`, letting operators preconfigure the standalone extraction run screen's default milled/unmilled blend, fill count, total fill weight, flush count, total flush weight, stringer basket count, and CRC blend.
