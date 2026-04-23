@@ -191,32 +191,68 @@ User planned next action on Slack:
 
 Do not resume Slack code changes unless new evidence suggests the Gold Drop side is actually broken.
 
-## Immediate checkpoint for tomorrow
+## Immediate checkpoint
 
 There is no urgent production bug open right now.
 
-The next thing to do is not coding first. It is defining the real extractor workflow clearly enough to design the right screen.
+The extraction-side workflow is intentionally paused at the design boundary.
 
-The specific new idea agreed tonight:
+The important clarification from the latest session:
 
-- a reactor-centered guided operator screen
-- one screen per reactor
-- top-to-bottom process
-- sequential advancement by tapping buttons
-- fewer screen changes
-- less memory burden on the operator
+- the newly supplied flow chart is **not** the extraction workflow itself
+- it is the workflow **after extraction is complete**
+- the next product area is therefore **post-extraction / post-processing orchestration**
+
+## Current planning baseline
+
+`IMPLEMENTATION_PLAN.md` has been replaced with the new planning target:
+
+- `Post-Extraction Workflow Orchestration`
+
+The documented source flow now begins after:
+
+- charge
+- reactor execution
+- guided run progression
+- initial output capture
+
+and then branches into:
+
+- `100 lb pot pour`
+- `200 lb minor run`
+
+with downstream:
+
+- `THCA path`
+- `HTE path`
+- timers / hold steps
+- decision gates
+- queue / hold / rework outcomes
 
 ## Recommended next development step
 
-The next major step should be a `Reactor Session` or similarly named guided workflow screen for operators.
+Do not continue coding the extraction UX until the team confirms the real-world downstream process.
 
-The goal is to make the extractor experience reactor-centered instead of screen-centered.
+The next major build should be:
 
-That screen should likely become the primary operator surface, while the existing board / charge / run screens remain the underlying system and fallback/admin paths.
+- `Phase 1 - Post-extraction session foundation`
+
+which will introduce:
+
+- run-type selection after extraction
+- initial output capture confirmation
+- a canonical post-extraction session linked to the run
 
 ## Recommended concrete next session
 
-Before more implementation, get absolute clarity on the workflow sequence.
+Before more implementation:
+
+1. confirm the team-approved downstream workflow sequence
+2. confirm which steps are required vs optional
+3. confirm which decisions must be structured data
+4. confirm whether THCA and HTE should be handled on one combined downstream screen or two linked screens
+
+Only after that should development begin on the post-extraction workflow.
 
 Tomorrow's work should start by defining:
 
