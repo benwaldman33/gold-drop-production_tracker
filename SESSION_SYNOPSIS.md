@@ -150,6 +150,10 @@ Latest verified status before closeout:
   - pot-pour warm off-gas timing, stir count, centrifuge handoff
   - THCA oven timing, milling time, THCA destination
   - HTE off-gas timing, clean/dirty, Prescott, potency, and queue-routing fields
+- Phase 3 guided downstream workflow is now implemented in the standalone extraction app:
+  - numbered downstream steps on `Open Run`
+  - pathway-driven sequence
+  - tap-first choice buttons for downstream decisions
 - full Python suite: `138 passed`
 
 The following policy is in effect for future work:

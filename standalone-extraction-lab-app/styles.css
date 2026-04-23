@@ -439,6 +439,86 @@ textarea {
   gap: 12px;
 }
 
+.workflow-stack,
+.workflow-grid,
+.workflow-step,
+.workflow-step-body {
+  display: grid;
+  gap: 14px;
+}
+
+.workflow-step {
+  border-radius: 22px;
+  border: 1px solid rgba(120, 76, 35, 0.14);
+  background: rgba(255, 247, 235, 0.72);
+  padding: 18px;
+}
+
+.workflow-step.state-done {
+  border-color: rgba(31, 122, 78, 0.22);
+  background: rgba(31, 122, 78, 0.08);
+}
+
+.workflow-step.state-current {
+  border-color: rgba(211, 107, 17, 0.28);
+  background: rgba(255, 230, 196, 0.72);
+}
+
+.workflow-step-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+}
+
+.workflow-step-index,
+.workflow-step-state {
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-weight: 800;
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.workflow-step-index {
+  background: rgba(120, 76, 35, 0.1);
+  color: var(--accent-dark);
+}
+
+.workflow-step-state {
+  background: rgba(120, 76, 35, 0.08);
+  color: var(--text-muted);
+}
+
+.workflow-step.state-done .workflow-step-state {
+  background: rgba(31, 122, 78, 0.14);
+  color: var(--success);
+}
+
+.workflow-step.state-current .workflow-step-state {
+  background: rgba(211, 107, 17, 0.18);
+  color: var(--accent-dark);
+}
+
+.workflow-step-copy h3 {
+  margin: 0;
+}
+
+.choice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.workflow-choice {
+  min-height: 58px;
+}
+
+.workflow-choice.is-active {
+  box-shadow: 0 0 0 2px rgba(211, 107, 17, 0.18);
+}
+
 .counter-row {
   display: grid;
   grid-template-columns: 64px minmax(0, 1fr) 64px;

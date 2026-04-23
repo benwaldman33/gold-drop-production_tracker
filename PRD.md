@@ -39,6 +39,7 @@ This PRD describes the problem, users, workflows, data requirements, calculation
 - **settings-driven extraction defaults** so those repeated run inputs (blend, counts, aggregate weights, baskets, CRC note) can prepopulate the tablet workflow instead of being re-entered from scratch each time
 - a shipped **Phase 1 post-extraction foundation** on the same run so operators can choose the downstream pathway (`100 lb pot pour` vs `200 lb minor run`), start the post-extraction handoff, and confirm the initial wet THCA / wet HTE outputs before the later THCA / HTE-specific workflow screens exist
 - a shipped **Phase 2 downstream state layer** on the same run so pot-pour timing, THCA-path timing/destination, and HTE-path timing/decision/queue state can be captured before the final guided downstream workflow screens are built
+- a shipped **Phase 3 guided downstream operator flow** in the standalone extraction app so operators can work through the downstream branch in a numbered, pathway-driven sequence while the main app remains the supervisor edit surface
 - readiness for future **connected scale** capture as a structured input channel
 
 Current implementation note: the active modular extraction surface now includes dashboard, field intake, runs, purchases, biomass, costs, inventory, batch edit, suppliers/photos, purchase import, strains, settings, Slack integration, and startup bootstrap modules. This remains an engineering delivery change only; product behavior and operator-facing workflow are intended to stay the same.

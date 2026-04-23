@@ -472,6 +472,16 @@ Yes, on the same run record. The current Phase 2 fields cover:
 
 There is not a separate downstream app screen yet. For now, those fields live on the main run form and the standalone extraction run screen.
 
+## Is the downstream workflow still just a long form?
+
+No on the tablet side. The standalone extraction app now turns the downstream part of `Open Run` into a guided sequence:
+- choose pathway
+- start post-extraction
+- confirm initial outputs
+- then follow the relevant pot-pour or minor-run branch steps
+
+The main app still shows the raw editable fields for supervisor review and corrections.
+
 ## Can receiving staff correct a receipt after it was submitted?
 
 Yes, but only while the purchase's lots have not been used downstream.

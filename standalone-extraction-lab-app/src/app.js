@@ -704,6 +704,229 @@ function renderPostExtractionProgression(run) {
   `;
 }
 
+function renderChoiceButtons(field, currentValue, options, accent = "primary") {
+  return `
+    <input type="hidden" name="${escapeHtml(field)}" value="${escapeHtml(String(currentValue || ""))}" />
+    <div class="choice-grid">
+      ${options
+        .filter((option) => option.value)
+        .map(
+          (option) =>
+            `<button class="btn ${String(currentValue || "") === String(option.value) ? `btn-${accent} is-active` : "btn-secondary"} workflow-choice" type="button" data-action="set-field" data-field="${escapeHtml(field)}" data-value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</button>`,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderWorkflowStep(stepNumber, stateKey, eyebrow, title, description, body) {
+  const labelMap = {
+    done: "Done",
+    current: "Current",
+    ready: "Ready",
+    pending: "Pending",
+  };
+  return `
+    <article class="workflow-step state-${escapeHtml(stateKey)}">
+      <div class="workflow-step-head">
+        <div class="workflow-step-index">${escapeHtml(String(stepNumber))}</div>
+        <div class="workflow-step-copy">
+          <div class="eyebrow">${escapeHtml(eyebrow)}</div>
+          <h3>${escapeHtml(title)}</h3>
+          <p class="subtle">${escapeHtml(description)}</p>
+        </div>
+        <div class="workflow-step-state">${escapeHtml(labelMap[stateKey] || "Pending")}</div>
+      </div>
+      <div class="workflow-step-body">${body}</div>
+    </article>
+  `;
+}
+
+function renderGuidedDownstreamWorkflow(run) {
+  const post = run.post_extraction || {};
+  const pathway = run.post_extraction_pathway || "";
+  const startAction = (post.actions || []).find((action) => action.action_id === "start_post_extraction");
+  const confirmAction = (post.actions || []).find((action) => action.action_id === "confirm_initial_outputs");
+  const potPourActive = pathway === "pot_pour_100";
+  const minorRunActive = pathway === "minor_run_200";
+  const pathwayStep = renderWorkflowStep(
+    1,
+    pathway ? "done" : "current",
+    "Choose the branch",
+    "Downstream pathway",
+    "Pick the downstream branch before the post-extraction session starts.",
+    renderChoiceButtons("post_extraction_pathway", pathway, run.post_extraction_pathway_options || []),
+  );
+
+  const handoffStep = renderWorkflowStep(
+    2,
+    run.post_extraction_started_at ? "done" : pathway ? "current" : "pending",
+    "Start the handoff",
+    "Post-extraction session",
+    "Start the downstream handoff once the extraction run is complete.",
+    `
+      <div class="field">
+        <label for="post_extraction_started_at">Started At</label>
+        <input id="post_extraction_started_at" name="post_extraction_started_at" type="datetime-local" value="${escapeHtml(run.post_extraction_started_at || "")}" />
+      </div>
+      ${startAction ? `<button class="btn btn-primary" type="button" data-action="post-extraction-progression" data-post-action="${escapeHtml(startAction.action_id)}">${escapeHtml(startAction.label)}</button>` : `<div class="subtle">Downstream handoff has already started.</div>`}
+    `,
+  );
+
+  const outputsStep = renderWorkflowStep(
+    3,
+    run.post_extraction_initial_outputs_recorded_at ? "done" : run.post_extraction_started_at ? "current" : "pending",
+    "Confirm the split",
+    "Initial wet outputs",
+    "Record the first wet THCA and wet HTE outputs before the material moves deeper into downstream processing.",
+    `
+      <div class="grid-2">
+        <div class="field">
+          <label for="wet_hte_g">Wet HTE (g)</label>
+          <input id="wet_hte_g" name="wet_hte_g" type="number" value="${escapeHtml(String(run.wet_hte_g ?? ""))}" min="0" step="0.1" placeholder="Initial wet HTE output" />
+        </div>
+        <div class="field">
+          <label for="wet_thca_g">Wet THCA (g)</label>
+          <input id="wet_thca_g" name="wet_thca_g" type="number" value="${escapeHtml(String(run.wet_thca_g ?? ""))}" min="0" step="0.1" placeholder="Initial wet THCA output" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="post_extraction_initial_outputs_recorded_at">Confirmed At</label>
+        <input id="post_extraction_initial_outputs_recorded_at" name="post_extraction_initial_outputs_recorded_at" type="datetime-local" value="${escapeHtml(run.post_extraction_initial_outputs_recorded_at || "")}" />
+      </div>
+      ${confirmAction ? `<button class="btn btn-primary" type="button" data-action="post-extraction-progression" data-post-action="${escapeHtml(confirmAction.action_id)}">${escapeHtml(confirmAction.label)}</button>` : `<div class="subtle">Initial outputs are already confirmed.</div>`}
+    `,
+  );
+
+  const steps = [pathwayStep, handoffStep, outputsStep];
+
+  if (potPourActive) {
+    steps.push(
+      renderWorkflowStep(
+        4,
+        run.pot_pour_offgas_completed_at ? "done" : run.pot_pour_offgas_started_at ? "current" : "ready",
+        "Pot pour hold",
+        "Warm off-gas window",
+        "Track the warm off-gas hold for the 100 lb pot pour branch.",
+        `
+          <div class="grid-2">
+            ${renderTimerField("pot_pour_offgas_started_at", "Warm Off-Gas Start", run.pot_pour_offgas_started_at, run.downstream?.pot_pour_offgas_duration_minutes != null ? `${run.downstream.pot_pour_offgas_duration_minutes} minute(s) recorded` : "", "pot_pour_offgas_completed_at", run.pot_pour_offgas_completed_at)}
+            <div class="field timer-card">
+              <label for="pot_pour_offgas_completed_at_display">Warm Off-Gas End</label>
+              <input id="pot_pour_offgas_completed_at_display" type="datetime-local" value="${escapeHtml(run.pot_pour_offgas_completed_at || "")}" disabled />
+              <div class="subtle">Stop is captured from the Warm Off-Gas timer.</div>
+            </div>
+          </div>
+        `,
+      ),
+      renderWorkflowStep(
+        5,
+        run.pot_pour_centrifuged_at ? "done" : "ready",
+        "Pot pour finish",
+        "Daily stir + centrifuge handoff",
+        "Capture the repeated stir count and the centrifuge handoff to finish the pot pour branch.",
+        `
+          <div class="grid-2">
+            <div class="field counter-card">
+              <label>Daily Stirs</label>
+              <div class="counter-row">
+                <button class="btn btn-secondary" type="button" data-action="adjust-count" data-field="pot_pour_daily_stir_count" data-delta="-1">-</button>
+                <input type="number" name="pot_pour_daily_stir_count" value="${escapeHtml(String(run.pot_pour_daily_stir_count ?? ""))}" min="0" step="1" />
+                <button class="btn btn-secondary" type="button" data-action="adjust-count" data-field="pot_pour_daily_stir_count" data-delta="1">+</button>
+              </div>
+            </div>
+            <div class="field">
+              <label for="pot_pour_centrifuged_at">Centrifuged At</label>
+              <input id="pot_pour_centrifuged_at" name="pot_pour_centrifuged_at" type="datetime-local" value="${escapeHtml(run.pot_pour_centrifuged_at || "")}" />
+            </div>
+          </div>
+        `,
+      ),
+    );
+  }
+
+  if (minorRunActive) {
+    steps.push(
+      renderWorkflowStep(
+        4,
+        run.thca_destination ? "done" : "ready",
+        "THCA branch",
+        "Oven, mill, and choose destination",
+        "Track the THCA branch from oven through the final destination decision.",
+        `
+          <div class="grid-2">
+            ${renderTimerField("thca_oven_started_at", "THCA Oven Start", run.thca_oven_started_at, run.downstream?.thca_oven_duration_minutes != null ? `${run.downstream.thca_oven_duration_minutes} minute(s) recorded` : "", "thca_oven_completed_at", run.thca_oven_completed_at)}
+            <div class="field timer-card">
+              <label for="thca_oven_completed_at_display">THCA Oven End</label>
+              <input id="thca_oven_completed_at_display" type="datetime-local" value="${escapeHtml(run.thca_oven_completed_at || "")}" disabled />
+              <div class="subtle">Stop is captured from the THCA Oven timer.</div>
+            </div>
+          </div>
+          <div class="field">
+            <label for="thca_milled_at">Milled At</label>
+            <input id="thca_milled_at" name="thca_milled_at" type="datetime-local" value="${escapeHtml(run.thca_milled_at || "")}" />
+          </div>
+          <div class="field">
+            <label>THCA Destination</label>
+            ${renderChoiceButtons("thca_destination", run.thca_destination, run.thca_destination_options || [])}
+          </div>
+        `,
+      ),
+      renderWorkflowStep(
+        5,
+        run.hte_queue_destination || run.hte_potency_disposition || run.hte_clean_decision ? "current" : "ready",
+        "HTE branch",
+        "Off-gas, quality decisions, and final queue",
+        "Track the HTE side through off-gas, clean/dirty assessment, Prescott handling, and the final queue or hold.",
+        `
+          <div class="grid-2">
+            ${renderTimerField("hte_offgas_started_at", "HTE Off-Gas Start", run.hte_offgas_started_at, run.downstream?.hte_offgas_duration_minutes != null ? `${run.downstream.hte_offgas_duration_minutes} minute(s) recorded` : "", "hte_offgas_completed_at", run.hte_offgas_completed_at)}
+            <div class="field timer-card">
+              <label for="hte_offgas_completed_at_display">HTE Off-Gas End</label>
+              <input id="hte_offgas_completed_at_display" type="datetime-local" value="${escapeHtml(run.hte_offgas_completed_at || "")}" disabled />
+              <div class="subtle">Stop is captured from the HTE Off-Gas timer.</div>
+            </div>
+          </div>
+          <div class="field">
+            <label>Clean Decision</label>
+            ${renderChoiceButtons("hte_clean_decision", run.hte_clean_decision, run.hte_clean_decision_options || [])}
+          </div>
+          <div class="field">
+            <label>Filter Outcome</label>
+            ${renderChoiceButtons("hte_filter_outcome", run.hte_filter_outcome, run.hte_filter_outcome_options || [])}
+          </div>
+          <div class="grid-2">
+            <div class="field">
+              <label for="hte_prescott_processed_at">Prescott Processed At</label>
+              <input id="hte_prescott_processed_at" name="hte_prescott_processed_at" type="datetime-local" value="${escapeHtml(run.hte_prescott_processed_at || "")}" />
+            </div>
+            <div class="field">
+              <label>Potency Disposition</label>
+              ${renderChoiceButtons("hte_potency_disposition", run.hte_potency_disposition, run.hte_potency_disposition_options || [])}
+            </div>
+          </div>
+          <div class="field">
+            <label>Queue Destination</label>
+            ${renderChoiceButtons("hte_queue_destination", run.hte_queue_destination, run.hte_queue_destination_options || [])}
+          </div>
+        `,
+      ),
+    );
+  }
+
+  return `
+    <section class="card workflow-stack">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">Guided downstream workflow</div>
+          <h3>Work top to bottom and save as you move.</h3>
+        </div>
+      </div>
+      <div class="workflow-grid">${steps.join("")}</div>
+    </section>
+  `;
+}
+
 function renderRunExecution() {
   const run = state.run;
   const lot = state.lot;
@@ -738,6 +961,7 @@ function renderRunExecution() {
             <h3>Capture the extraction details the lab team currently sends in Slack.</h3>
           </div>
         </div>
+        ${renderGuidedDownstreamWorkflow(run)}
         <div class="grid-2">
           ${renderTimerField("run_fill_started_at", "Run / Fill Start", run.run_fill_started_at, run.run_fill_duration_minutes != null ? `${run.run_fill_duration_minutes} minute(s) recorded` : "", "run_fill_ended_at", run.run_fill_ended_at)}
           ${renderTimerField("mixer_started_at", "Mixer Time", run.mixer_started_at, run.mixer_duration_minutes != null ? `${run.mixer_duration_minutes} minute(s) recorded` : "", "mixer_ended_at", run.mixer_ended_at)}
@@ -799,143 +1023,6 @@ function renderRunExecution() {
           <label for="notes">Notes</label>
           <textarea id="notes" name="notes" rows="4" placeholder="Operator notes">${escapeHtml(run.notes || "")}</textarea>
         </div>
-        <div class="section-head" style="margin-top:12px;">
-          <div>
-            <div class="eyebrow">Post-extraction foundation</div>
-            <h3>Start the downstream session from this same run record.</h3>
-          </div>
-        </div>
-        <div class="grid-2">
-          <div class="field">
-            <label for="post_extraction_pathway">Downstream pathway</label>
-            <select id="post_extraction_pathway" name="post_extraction_pathway">
-              ${(run.post_extraction_pathway_options || [])
-                .map(
-                  (option) =>
-                    `<option value="${escapeHtml(option.value)}" ${String(run.post_extraction_pathway || "") === String(option.value) ? "selected" : ""}>${escapeHtml(option.label)}</option>`,
-                )
-                .join("")}
-            </select>
-          </div>
-          <div class="field">
-            <label for="post_extraction_started_at">Post-extraction started</label>
-            <input id="post_extraction_started_at" name="post_extraction_started_at" type="datetime-local" value="${escapeHtml(run.post_extraction_started_at || "")}" />
-          </div>
-        </div>
-        <div class="grid-2">
-          <div class="field">
-            <label for="wet_hte_g">Wet HTE (g)</label>
-            <input id="wet_hte_g" name="wet_hte_g" type="number" value="${escapeHtml(String(run.wet_hte_g ?? ""))}" min="0" step="0.1" placeholder="Initial wet HTE output" />
-          </div>
-          <div class="field">
-            <label for="wet_thca_g">Wet THCA (g)</label>
-            <input id="wet_thca_g" name="wet_thca_g" type="number" value="${escapeHtml(String(run.wet_thca_g ?? ""))}" min="0" step="0.1" placeholder="Initial wet THCA output" />
-          </div>
-        </div>
-        <div class="field">
-          <label for="post_extraction_initial_outputs_recorded_at">Initial outputs confirmed</label>
-          <input id="post_extraction_initial_outputs_recorded_at" name="post_extraction_initial_outputs_recorded_at" type="datetime-local" value="${escapeHtml(run.post_extraction_initial_outputs_recorded_at || "")}" />
-        </div>
-        <div class="section-head" style="margin-top:12px;">
-          <div>
-            <div class="eyebrow">Pot pour path</div>
-            <h3>Warm off-gas, stir count, and centrifuge handoff for 100 lb pot pours.</h3>
-          </div>
-        </div>
-        <div class="grid-2">
-          ${renderTimerField("pot_pour_offgas_started_at", "Warm Off-Gas Start", run.pot_pour_offgas_started_at, run.downstream?.pot_pour_offgas_duration_minutes != null ? `${run.downstream.pot_pour_offgas_duration_minutes} minute(s) recorded` : "", "pot_pour_offgas_completed_at", run.pot_pour_offgas_completed_at)}
-          <div class="field timer-card">
-            <label for="pot_pour_offgas_completed_at_display">Warm Off-Gas End</label>
-            <input id="pot_pour_offgas_completed_at_display" type="datetime-local" value="${escapeHtml(run.pot_pour_offgas_completed_at || "")}" disabled />
-            <div class="subtle">Stop is captured from the Warm Off-Gas timer.</div>
-          </div>
-        </div>
-        <div class="grid-2">
-          <div class="field counter-card">
-            <label>Daily Stirs</label>
-            <div class="counter-row">
-              <button class="btn btn-secondary" type="button" data-action="adjust-count" data-field="pot_pour_daily_stir_count" data-delta="-1">-</button>
-              <input type="number" name="pot_pour_daily_stir_count" value="${escapeHtml(String(run.pot_pour_daily_stir_count ?? ""))}" min="0" step="1" />
-              <button class="btn btn-secondary" type="button" data-action="adjust-count" data-field="pot_pour_daily_stir_count" data-delta="1">+</button>
-            </div>
-          </div>
-          <div class="field">
-            <label for="pot_pour_centrifuged_at">Centrifuged At</label>
-            <input id="pot_pour_centrifuged_at" name="pot_pour_centrifuged_at" type="datetime-local" value="${escapeHtml(run.pot_pour_centrifuged_at || "")}" />
-          </div>
-        </div>
-        <div class="section-head" style="margin-top:12px;">
-          <div>
-            <div class="eyebrow">THCA path</div>
-            <h3>Track the oven window, milling handoff, and final THCA destination.</h3>
-          </div>
-        </div>
-        <div class="grid-2">
-          ${renderTimerField("thca_oven_started_at", "THCA Oven Start", run.thca_oven_started_at, run.downstream?.thca_oven_duration_minutes != null ? `${run.downstream.thca_oven_duration_minutes} minute(s) recorded` : "", "thca_oven_completed_at", run.thca_oven_completed_at)}
-          <div class="field timer-card">
-            <label for="thca_oven_completed_at_display">THCA Oven End</label>
-            <input id="thca_oven_completed_at_display" type="datetime-local" value="${escapeHtml(run.thca_oven_completed_at || "")}" disabled />
-            <div class="subtle">Stop is captured from the THCA Oven timer.</div>
-          </div>
-        </div>
-        <div class="grid-2">
-          <div class="field">
-            <label for="thca_milled_at">Milled At</label>
-            <input id="thca_milled_at" name="thca_milled_at" type="datetime-local" value="${escapeHtml(run.thca_milled_at || "")}" />
-          </div>
-          <div class="field">
-            <label for="thca_destination">THCA Destination</label>
-            <select id="thca_destination" name="thca_destination">
-              ${(run.thca_destination_options || []).map((option) => `<option value="${escapeHtml(option.value)}" ${String(run.thca_destination || "") === String(option.value) ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
-            </select>
-          </div>
-        </div>
-        <div class="section-head" style="margin-top:12px;">
-          <div>
-            <div class="eyebrow">HTE path</div>
-            <h3>Track off-gas timing, clean/dirty decisions, Prescott handling, and destination queue.</h3>
-          </div>
-        </div>
-        <div class="grid-2">
-          ${renderTimerField("hte_offgas_started_at", "HTE Off-Gas Start", run.hte_offgas_started_at, run.downstream?.hte_offgas_duration_minutes != null ? `${run.downstream.hte_offgas_duration_minutes} minute(s) recorded` : "", "hte_offgas_completed_at", run.hte_offgas_completed_at)}
-          <div class="field timer-card">
-            <label for="hte_offgas_completed_at_display">HTE Off-Gas End</label>
-            <input id="hte_offgas_completed_at_display" type="datetime-local" value="${escapeHtml(run.hte_offgas_completed_at || "")}" disabled />
-            <div class="subtle">Stop is captured from the HTE Off-Gas timer.</div>
-          </div>
-        </div>
-        <div class="grid-2">
-          <div class="field">
-            <label for="hte_clean_decision">Clean Decision</label>
-            <select id="hte_clean_decision" name="hte_clean_decision">
-              ${(run.hte_clean_decision_options || []).map((option) => `<option value="${escapeHtml(option.value)}" ${String(run.hte_clean_decision || "") === String(option.value) ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
-            </select>
-          </div>
-          <div class="field">
-            <label for="hte_filter_outcome">Filter Outcome</label>
-            <select id="hte_filter_outcome" name="hte_filter_outcome">
-              ${(run.hte_filter_outcome_options || []).map((option) => `<option value="${escapeHtml(option.value)}" ${String(run.hte_filter_outcome || "") === String(option.value) ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
-            </select>
-          </div>
-        </div>
-        <div class="grid-2">
-          <div class="field">
-            <label for="hte_prescott_processed_at">Prescott Processed At</label>
-            <input id="hte_prescott_processed_at" name="hte_prescott_processed_at" type="datetime-local" value="${escapeHtml(run.hte_prescott_processed_at || "")}" />
-          </div>
-          <div class="field">
-            <label for="hte_potency_disposition">Potency Disposition</label>
-            <select id="hte_potency_disposition" name="hte_potency_disposition">
-              ${(run.hte_potency_disposition_options || []).map((option) => `<option value="${escapeHtml(option.value)}" ${String(run.hte_potency_disposition || "") === String(option.value) ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
-            </select>
-          </div>
-        </div>
-        <div class="field">
-          <label for="hte_queue_destination">Queue Destination</label>
-          <select id="hte_queue_destination" name="hte_queue_destination">
-            ${(run.hte_queue_destination_options || []).map((option) => `<option value="${escapeHtml(option.value)}" ${String(run.hte_queue_destination || "") === String(option.value) ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
-          </select>
-        </div>
         <input type="hidden" name="run_completed_at" value="${escapeHtml(run.run_completed_at || "")}" />
         <div class="actions sticky-actions">
           <a class="btn btn-secondary" href="#/reactors">Back to Reactors</a>
@@ -956,6 +1043,7 @@ function bind() {
   app?.querySelector("form[data-form='run-execution']")?.addEventListener("submit", handleRunSubmit);
   app?.querySelectorAll("[data-action='adjust-weight']").forEach((button) => button.addEventListener("click", handleWeightAdjust));
   app?.querySelectorAll("[data-action='adjust-count']").forEach((button) => button.addEventListener("click", handleCountAdjust));
+  app?.querySelectorAll("[data-action='set-field']").forEach((button) => button.addEventListener("click", handleSetFieldValue));
   app?.querySelectorAll("[data-action='set-preset-weight']").forEach((button) => button.addEventListener("click", handlePresetWeight));
   app?.querySelector("[data-action='set-now']")?.addEventListener("click", handleSetNow);
   app?.querySelectorAll("[data-action='timer-stamp']").forEach((button) => button.addEventListener("click", handleTimerStamp));
@@ -1045,6 +1133,28 @@ function handleCountAdjust(event) {
   const delta = Number(event.currentTarget.dataset.delta || 0);
   const current = Math.max(0, Number(input.value || 0) || 0);
   input.value = String(Math.max(0, current + delta));
+}
+
+function syncRunDraftFromForm() {
+  const formEl = app?.querySelector("form[data-form='run-execution']");
+  if (!formEl || !state.run) return;
+  state.run = {
+    ...state.run,
+    ...buildRunPayload(new FormData(formEl)),
+  };
+}
+
+function handleSetFieldValue(event) {
+  const field = event.currentTarget.dataset.field;
+  const value = String(event.currentTarget.dataset.value || "");
+  const input = app?.querySelector(`[name='${field}']`);
+  if (!input) return;
+  input.value = value;
+  app
+    ?.querySelectorAll(`[data-action='set-field'][data-field='${field}']`)
+    .forEach((button) => button.classList.toggle("is-active", String(button.dataset.value || "") === value));
+  syncRunDraftFromForm();
+  render();
 }
 
 function presetWeightValue(preset, maxWeight) {
