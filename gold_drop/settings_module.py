@@ -426,6 +426,10 @@ def settings_view(root):
                 ("extraction_default_flush_count", 0.0, 0.0, None),
                 ("extraction_default_flush_total_weight_lbs", None, 0.0, None),
                 ("extraction_default_stringer_basket_count", 0.0, 0.0, None),
+                ("extraction_target_primary_soak_minutes", 30.0, 0.0, None),
+                ("extraction_target_mixer_minutes", 5.0, 0.0, None),
+                ("extraction_target_flush_minutes", 10.0, 0.0, None),
+                ("extraction_target_final_purge_minutes", None, 0.0, None),
             )
             for key, fallback, min_value, max_value in extraction_default_specs:
                 raw = (root.request.form.get(key) or "").strip()
@@ -444,6 +448,10 @@ def settings_view(root):
                         "extraction_default_fill_count",
                         "extraction_default_flush_count",
                         "extraction_default_stringer_basket_count",
+                        "extraction_target_primary_soak_minutes",
+                        "extraction_target_mixer_minutes",
+                        "extraction_target_flush_minutes",
+                        "extraction_target_final_purge_minutes",
                     }:
                         parsed = int(parsed)
                 desc = EXTRACTION_RUN_DEFAULTS[key][1]

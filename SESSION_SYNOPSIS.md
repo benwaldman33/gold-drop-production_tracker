@@ -333,6 +333,8 @@ The active work area is now the extraction booth SOP alignment layer that sits b
   - booth-stage progression from vacuum confirmation through shutdown completion
   - booth-specific validation for solvent charge, flush temps, flow resumed, final clarity, and shutdown checklist
   - booth evidence upload support for solvent chiller and plate temperature photos
+  - exception/retry loops for flow adjustment and additional final-purge work
+  - timing targets and timing-status payloads for the core booth timers
 
 ### In progress
 
@@ -341,13 +343,13 @@ The active work area is now the extraction booth SOP alignment layer that sits b
   - matching the written extraction booth procedure more closely
   - strengthening supervisor review and audit visibility
   - deciding how to handle SOP deviations and exception paths
+  - making timed booth steps visible against SOP targets
 
 ### Next
 
 - deepen the extraction booth workflow where the SOP still exceeds the current system:
-  - enforce or highlight required durations
-  - add clearer exception/deviation handling
-  - add supervisor review surfaces for booth history, evidence, and completion
+  - add supervisor review surfaces for booth history, evidence, timing status, and completion
+  - decide whether any timing targets should become warnings only vs hard gates
 - after that, resume the downstream queue-deepening work from the stronger extraction foundation
 
 ## Current planning baseline
@@ -410,7 +412,7 @@ The likely implementation order is:
 Current booth-SOP rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `c1b2b94`
+- commit: `pending current sprint closeout`
 
 Production deployment steps:
 
@@ -423,6 +425,8 @@ Production deployment steps:
 4. reload the tablet browser
 5. verify on a live extraction run:
    - progression begins at `Confirm Vacuum Down`
+   - booth timing controls show target durations
+   - flow / clarity retry loops work without dead-ending the run
    - shutdown reaches `Mark Run Complete`
    - `Booth evidence` uploads work for temperature photos
 

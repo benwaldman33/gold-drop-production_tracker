@@ -36,6 +36,8 @@ test("mock api login, board, charge, and transition flow", async () => {
   const runPayload = await api.getChargeRun(created.charge.id);
   assert.equal(runPayload.run.reactor_number, 2);
   assert.equal(runPayload.run.progression.stage_key, "ready_to_confirm_vacuum");
+  assert.equal(runPayload.run.timing_controls.primary_soak.status, "not_started");
+  assert.equal(runPayload.run.booth.timing_targets.primary_soak_minutes, 30);
 
   const confirmedVacuum = await api.saveChargeRun(created.charge.id, {
     progression_action: "confirm_vacuum_down",
@@ -66,6 +68,8 @@ test("mock api login, board, charge, and transition flow", async () => {
   });
   assert.equal(savedRun.run.fill_count, 1);
   assert.equal(savedRun.run.notes, "Execution notes");
+  assert.equal(savedRun.run.timing_controls.primary_soak.status, "on_target");
+  assert.equal(savedRun.run.timing_controls.mixer.status, "on_target");
 
   const filterClear = await api.saveChargeRun(created.charge.id, { progression_action: "confirm_filter_clear" });
   assert.equal(filterClear.run.progression.stage_key, "ready_to_start_pressurization");
@@ -152,6 +156,80 @@ test("mock api login, board, charge, and transition flow", async () => {
   assert.equal(confirmedOutputs.run.hte_clean_decision, "dirty");
   assert.equal(confirmedOutputs.run.hte_filter_outcome, "needs_prescott");
   assert.equal(confirmedOutputs.run.hte_queue_destination, "liquid_loud_hold");
+});
+
+test("mock api supports extraction exception-handling loops", async () => {
+  const api = createApiClient({ mode: "mock" });
+  await api.login("extractor1", "secret");
+  const lot = (await api.listLots("Blue"))[0];
+  const created = await api.createCharge(lot.id, {
+    charged_weight_lbs: 22.5,
+    reactor_number: 1,
+    charged_at: "2026-04-19T09:10",
+    notes: "Exception loop charge",
+  });
+
+  const actions = [
+    { progression_action: "confirm_vacuum_down" },
+    { primary_solvent_charge_lbs: 500, progression_action: "record_solvent_charge" },
+    { progression_action: "start_primary_soak" },
+    { mixer_started_at: "2026-04-19T09:10", mixer_ended_at: "2026-04-19T09:20" },
+    { progression_action: "confirm_filter_clear" },
+    { progression_action: "start_pressurization" },
+    { progression_action: "begin_recovery" },
+    { progression_action: "begin_flush_cycle" },
+    { flush_solvent_chiller_temp_f: -45, flush_plate_temp_f: -41, progression_action: "verify_flush_temps" },
+    { flush_solvent_charge_lbs: 500, progression_action: "record_flush_solvent_charge" },
+    { progression_action: "start_flush" },
+    { progression_action: "stop_flush" },
+  ];
+  for (const payload of actions) {
+    await api.saveChargeRun(created.charge.id, payload);
+  }
+
+  const flowAdjusting = await api.saveChargeRun(created.charge.id, {
+    flow_resumed_decision: "no_adjusting",
+    progression_action: "confirm_flow_resumed",
+  });
+  assert.equal(flowAdjusting.run.progression.stage_key, "flow_adjustment_required");
+
+  const flowRecheck = await api.saveChargeRun(created.charge.id, {
+    progression_action: "resume_flow_check",
+  });
+  assert.equal(flowRecheck.run.progression.stage_key, "ready_to_confirm_flow_resumed");
+
+  const flowResumed = await api.saveChargeRun(created.charge.id, {
+    flow_resumed_decision: "yes",
+    progression_action: "confirm_flow_resumed",
+  });
+  assert.equal(flowResumed.run.progression.stage_key, "ready_to_start_final_purge");
+
+  await api.saveChargeRun(created.charge.id, { progression_action: "start_final_purge" });
+  await api.saveChargeRun(created.charge.id, { progression_action: "stop_final_purge" });
+
+  const clarityRetry = await api.saveChargeRun(created.charge.id, {
+    final_clarity_decision: "not_yet",
+    progression_action: "confirm_final_clarity",
+  });
+  assert.equal(clarityRetry.run.progression.stage_key, "clarity_adjustment_required");
+
+  const purgeResume = await api.saveChargeRun(created.charge.id, {
+    progression_action: "resume_final_purge",
+  });
+  assert.equal(purgeResume.run.progression.stage_key, "ready_to_start_final_purge");
+
+  await api.saveChargeRun(created.charge.id, { progression_action: "start_final_purge" });
+  await api.saveChargeRun(created.charge.id, { progression_action: "stop_final_purge" });
+
+  const clarityConfirmed = await api.saveChargeRun(created.charge.id, {
+    final_clarity_decision: "yes",
+    progression_action: "confirm_final_clarity",
+  });
+  assert.equal(clarityConfirmed.run.progression.stage_key, "ready_to_complete_shutdown");
+
+  const historyLabels = (clarityConfirmed.run.booth.history || []).map((row) => row.event_label);
+  assert.ok(historyLabels.includes("Final clarity confirmed"));
+  assert.ok(historyLabels.includes("Final purge resumed for additional clarity work"));
 });
 
 test("live api unwraps extraction mobile envelopes", async () => {

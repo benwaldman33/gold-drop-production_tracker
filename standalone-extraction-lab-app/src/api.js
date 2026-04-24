@@ -13,6 +13,12 @@ const MOCK_RUN_DEFAULTS = {
   stringer_basket_count: 0,
   crc_blend: "",
 };
+const MOCK_TIMING_TARGETS = {
+  primary_soak_minutes: 30,
+  mixer_minutes: 5,
+  flush_minutes: 10,
+  final_purge_minutes: null,
+};
 
 function loadState() {
   return readJson(STATE_KEY, cloneSeedState());
@@ -111,6 +117,38 @@ function nowLocalInputValue() {
   return new Date(dt.getTime() - offset * 60_000).toISOString().slice(0, 16);
 }
 
+function activeMinutesSince(startValue) {
+  if (!startValue) return null;
+  const start = new Date(startValue);
+  const delta = Date.now() - start.getTime();
+  if (!Number.isFinite(delta) || delta < 0) return null;
+  return Math.round(delta / 60000);
+}
+
+function timingControl(label, targetMinutes, startValue, endValue) {
+  const actualMinutes = minutesBetween(startValue, endValue);
+  const activeMinutes = startValue && !endValue ? activeMinutesSince(startValue) : null;
+  let status = "not_started";
+  if (startValue && !endValue) {
+    status = targetMinutes == null ? "active" : (activeMinutes || 0) >= targetMinutes ? "active_target_reached" : "active_on_track";
+  } else if (startValue && endValue) {
+    status = targetMinutes == null ? "recorded" : (actualMinutes || 0) >= targetMinutes ? "on_target" : "short";
+  }
+  let deltaMinutes = null;
+  if (targetMinutes != null) {
+    const baseline = endValue ? actualMinutes : activeMinutes;
+    if (baseline != null) deltaMinutes = baseline - targetMinutes;
+  }
+  return {
+    label,
+    target_minutes: targetMinutes,
+    actual_minutes: actualMinutes,
+    active_minutes: activeMinutes,
+    status,
+    delta_minutes: deltaMinutes,
+  };
+}
+
 function progressionForRun(run) {
   if (run.run_completed_at) {
     return {
@@ -197,6 +235,11 @@ function progressionForRun(run) {
       description: "Record whether flow resumed after flush recovery adjustments.",
       actions: [{ action_id: "confirm_flow_resumed", label: "Confirm Flow Resumed" }],
     },
+    flow_adjustment_required: {
+      stage_label: "Flow adjustment required",
+      description: "Flow has not resumed yet. Keep adjusting recovery, then return here to re-check the flow decision.",
+      actions: [{ action_id: "resume_flow_check", label: "Re-check Flow" }],
+    },
     ready_to_start_final_purge: {
       stage_label: "Start final purge",
       description: "Flow resumed is confirmed. Start the final purge / burp step.",
@@ -211,6 +254,11 @@ function progressionForRun(run) {
       stage_label: "Confirm final clarity",
       description: "Record whether the system is clear enough to proceed into shutdown.",
       actions: [{ action_id: "confirm_final_clarity", label: "Confirm Final Clarity" }],
+    },
+    clarity_adjustment_required: {
+      stage_label: "More purge / clarity work required",
+      description: "The system is not clear enough yet. Resume final purge or additional adjustment work, then confirm clarity again.",
+      actions: [{ action_id: "resume_final_purge", label: "Resume Final Purge" }],
     },
     ready_to_complete_shutdown: {
       stage_label: "Complete shutdown checklist",
@@ -401,26 +449,53 @@ function applyMockProgressionAction(run, action) {
     return;
   }
   if (action === "confirm_flow_resumed") {
-    if (run.flow_resumed_decision !== "yes") throw new Error("Flow must be confirmed as resumed before continuing to final purge.");
+    if (!["yes", "no_adjusting"].includes(run.flow_resumed_decision)) {
+      throw new Error("Choose whether flow resumed before continuing.");
+    }
     run.flow_resumed_confirmed_at = now;
-    run.booth_stage_key = "ready_to_start_final_purge";
+    run.booth_history = [
+      { event_label: run.flow_resumed_decision === "yes" ? "Flow resumed confirmed" : "Flow still adjusting", occurred_at: now },
+      ...(run.booth_history || []),
+    ];
+    run.booth_stage_key = run.flow_resumed_decision === "yes" ? "ready_to_start_final_purge" : "flow_adjustment_required";
+    return;
+  }
+  if (action === "resume_flow_check") {
+    if (run.flow_resumed_decision !== "no_adjusting") throw new Error("Use flow adjustment only when flow is still being adjusted.");
+    run.booth_history = [{ event_label: "Flow adjustment resumed", occurred_at: now }, ...(run.booth_history || [])];
+    run.booth_stage_key = "ready_to_confirm_flow_resumed";
     return;
   }
   if (action === "start_final_purge") {
     run.final_purge_started_at = now;
+    run.final_purge_completed_at = "";
+    run.booth_history = [{ event_label: "Final purge started", occurred_at: now }, ...(run.booth_history || [])];
     run.booth_stage_key = "purging";
     return;
   }
   if (action === "stop_final_purge") {
     if (!run.final_purge_started_at) throw new Error("Start final purge before stopping it.");
     run.final_purge_completed_at = now;
+    run.booth_history = [{ event_label: "Final purge completed", occurred_at: now }, ...(run.booth_history || [])];
     run.booth_stage_key = "ready_to_confirm_clarity";
     return;
   }
   if (action === "confirm_final_clarity") {
-    if (run.final_clarity_decision !== "yes") throw new Error("Final clarity must be confirmed before continuing to shutdown.");
+    if (!["yes", "not_yet"].includes(run.final_clarity_decision)) {
+      throw new Error("Choose whether the system is clear enough to proceed.");
+    }
     run.final_clarity_confirmed_at = now;
-    run.booth_stage_key = "ready_to_complete_shutdown";
+    run.booth_history = [
+      { event_label: run.final_clarity_decision === "yes" ? "Final clarity confirmed" : "Final clarity not yet acceptable", occurred_at: now },
+      ...(run.booth_history || []),
+    ];
+    run.booth_stage_key = run.final_clarity_decision === "yes" ? "ready_to_complete_shutdown" : "clarity_adjustment_required";
+    return;
+  }
+  if (action === "resume_final_purge") {
+    if (run.final_clarity_decision !== "not_yet") throw new Error("Resume final purge only when clarity is not yet acceptable.");
+    run.booth_history = [{ event_label: "Final purge resumed for additional clarity work", occurred_at: now }, ...(run.booth_history || [])];
+    run.booth_stage_key = "ready_to_start_final_purge";
     return;
   }
   if (action === "complete_shutdown") {
@@ -460,6 +535,12 @@ function applyMockPostExtractionAction(run, action) {
 
 function buildMockRunPayload(state, charge, run) {
   const lot = state.lots.find((row) => row.id === charge.purchase_lot_id) || state.lots.find((row) => row.tracking_id === charge.tracking_id) || state.lots[0];
+  const timingControls = {
+    primary_soak: timingControl("Primary soak", MOCK_TIMING_TARGETS.primary_soak_minutes, run.run_fill_started_at, run.run_fill_ended_at),
+    mixer: timingControl("Mixer", MOCK_TIMING_TARGETS.mixer_minutes, run.mixer_started_at, run.mixer_ended_at),
+    flush: timingControl("Flush soak", MOCK_TIMING_TARGETS.flush_minutes, run.flush_started_at, run.flush_ended_at),
+    final_purge: timingControl("Final purge", MOCK_TIMING_TARGETS.final_purge_minutes, run.final_purge_started_at, run.final_purge_completed_at),
+  };
   return {
     id: run.id,
     run_date: run.run_date,
@@ -509,6 +590,7 @@ function buildMockRunPayload(state, charge, run) {
       nitrogen_turned_off_at: run.nitrogen_turned_off_at || "",
       dewax_inlet_closed_at: run.dewax_inlet_closed_at || "",
       booth_process_completed_at: run.booth_process_completed_at || "",
+      timing_targets: { ...MOCK_TIMING_TARGETS },
       evidence_counts: {
         solvent_chiller_temp_photo: (run.booth_evidence || []).filter((row) => row.evidence_type === "solvent_chiller_temp_photo").length,
         plate_temp_photo: (run.booth_evidence || []).filter((row) => row.evidence_type === "plate_temp_photo").length,
@@ -516,6 +598,7 @@ function buildMockRunPayload(state, charge, run) {
       evidence: (run.booth_evidence || []).slice(),
       history: run.booth_history || [],
     },
+    timing_controls: timingControls,
     primary_solvent_charge_lbs: run.primary_solvent_charge_lbs ?? null,
     wet_hte_g: run.wet_hte_g ?? null,
     wet_thca_g: run.wet_thca_g ?? null,

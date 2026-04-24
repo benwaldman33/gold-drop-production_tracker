@@ -13,10 +13,14 @@
 - The shared extraction progression service now drives booth-session stage state from the backend so the main app, mobile API, and standalone extraction app remain aligned on the active checkpoint, validations, and event history.
 - Extraction run payloads now include booth-session history, evidence counts, and booth-specific timestamps alongside the existing run summary and downstream handoff fields.
 - Startup schema bootstrap now creates and backfills the booth-session and booth-evidence schema needed for the new extraction workflow in this environment.
+- Booth exception handling now supports non-happy-path loops: operators can mark flow as still adjusting, return to the flow check, mark final clarity as not yet acceptable, and resume another purge pass without breaking the run workflow.
+- `Settings -> Operational Parameters` now also includes extraction booth timing targets for primary soak, mixer, flush soak, and optional final purge duration.
+- Extraction run payloads and the standalone extraction UI now include timing-control status for the core booth timers so operators can see whether each timed step is not started, active, on target, or short against the configured SOP targets.
 
 ### Tests
 - Extended extraction mobile API regression coverage for the booth-SOP sequence through shutdown and run completion.
 - Extended standalone extraction app regression coverage for the booth-SOP sequence and aligned mock-mode progression with the backend stage model.
+- Added regression coverage for booth exception-handling loops and timing-control payloads.
 
 ## 2026-04-18
 

@@ -58,7 +58,10 @@ Related mobile workflows:
 - Inside the standalone run screen, use the guided progression buttons to move through the booth procedure with minimal typing: confirm vacuum, record solvent charge, start soak, run the mixer, confirm filter clear, start pressurization, begin recovery, move into flush, verify temperatures, record flush solvent charge, confirm flow resumed, run final purge, confirm final clarity, complete shutdown, then mark the run complete.
 - The same screen now stores booth-specific proof fields such as primary solvent charge, flush chiller temperature, plate temperature, flush solvent charge, final purge timing, flow-resumed / clarity decisions, and the shutdown checklist.
 - Use the `Booth evidence` section on the run screen to upload the required solvent chiller and plate temperature photos when your SOP calls for photo proof.
-- `Settings -> Operational Parameters -> Extraction run defaults` controls the initial values the standalone run screen opens with for blend, fill count, total fill weight, flush count, total flush weight, stringer baskets, and CRC blend.
+- The `Booth timing controls` section shows the live or recorded duration for primary soak, mixer, flush soak, and final purge, along with the configured target for each step.
+- If flow has not resumed yet, choose `Still adjusting` and use the returned `Re-check Flow` step when recovery is ready to be checked again.
+- If final clarity is not acceptable yet, choose `Not yet` and use `Resume Final Purge` to loop back through another purge pass before shutdown.
+- `Settings -> Operational Parameters -> Extraction run defaults` controls the initial values the standalone run screen opens with for blend, fill count, total fill weight, flush count, total flush weight, stringer baskets, CRC blend, and the booth timing targets.
 
 ---
 

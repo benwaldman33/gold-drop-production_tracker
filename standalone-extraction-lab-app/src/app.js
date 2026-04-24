@@ -969,6 +969,7 @@ function renderRunExecution() {
             <h3>Capture the extraction details the lab team currently sends in Slack.</h3>
           </div>
         </div>
+        ${renderBoothTimingControls(run)}
         ${renderGuidedDownstreamWorkflow(run)}
         <div class="grid-2">
           <div class="field">
@@ -1105,6 +1106,60 @@ function renderRunExecution() {
       </form>
       ${renderBoothEvidence(run)}
     </div>
+  `;
+}
+
+function renderTimingControlCard(timing) {
+  if (!timing) return "";
+  const statusLabels = {
+    not_started: "Not started",
+    active: "Active",
+    active_on_track: "Active / on track",
+    active_target_reached: "Active / target reached",
+    recorded: "Recorded",
+    on_target: "On target",
+    short: "Short",
+  };
+  const summary =
+    timing.actual_minutes != null
+      ? `${timing.actual_minutes} minute(s) recorded`
+      : timing.active_minutes != null
+        ? `${timing.active_minutes} minute(s) elapsed`
+        : "No duration yet";
+  const target = timing.target_minutes != null ? `${timing.target_minutes} minute(s) target` : "No default target";
+  const delta =
+    timing.delta_minutes == null
+      ? ""
+      : timing.delta_minutes >= 0
+        ? `${timing.delta_minutes} minute(s) over target`
+        : `${Math.abs(timing.delta_minutes)} minute(s) under target`;
+  return `
+    <div class="card" style="padding:12px 14px;">
+      <div class="eyebrow">${escapeHtml(timing.label || "Timing")}</div>
+      <div><strong>${escapeHtml(statusLabels[timing.status] || "Pending")}</strong></div>
+      <div class="subtle">${escapeHtml(summary)}</div>
+      <div class="subtle">${escapeHtml(target)}${delta ? ` • ${escapeHtml(delta)}` : ""}</div>
+    </div>
+  `;
+}
+
+function renderBoothTimingControls(run) {
+  const timings = run.timing_controls || {};
+  return `
+    <section class="card">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">Booth timing controls</div>
+          <h3>Track live booth timers against SOP targets.</h3>
+        </div>
+      </div>
+      <div class="grid-2">
+        ${renderTimingControlCard(timings.primary_soak)}
+        ${renderTimingControlCard(timings.mixer)}
+        ${renderTimingControlCard(timings.flush)}
+        ${renderTimingControlCard(timings.final_purge)}
+      </div>
+    </section>
   `;
 }
 
