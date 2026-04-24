@@ -16,6 +16,7 @@ const state = {
   lots: [],
   lot: null,
   run: null,
+  runEvidence: [],
   loading: false,
   toast: "",
   lastCharge: null,
@@ -87,6 +88,8 @@ async function loadRoute() {
     const payload = await api.getChargeRun(state.route.chargeId);
     state.run = payload.run;
     state.lot = payload.lot;
+    const evidencePayload = await api.getChargeRunEvidence(state.route.chargeId);
+    state.runEvidence = Array.isArray(evidencePayload?.evidence) ? evidencePayload.evidence : [];
     if (!state.board) state.board = await api.getBoard("all");
   }
   if (state.route.name === "scan") {
@@ -662,6 +665,11 @@ function renderRunProgression(run) {
         </div>
       </div>
       <p class="subtle">${escapeHtml(progression.description || "Use the next progression action to guide the extractor through the run.")}</p>
+      ${
+        run.booth?.history?.length
+          ? `<div class="text-sm" style="color:var(--text-muted);margin-top:8px;">Latest checkpoint: ${escapeHtml(run.booth.history[0].event_label || "")} at ${escapeHtml(run.booth.history[0].occurred_at || "")}</div>`
+          : ""
+      }
       ${progression.completed_at ? `<div class="text-sm" style="color:var(--text-muted);margin-top:8px;">Completed at ${escapeHtml(progression.completed_at)}</div>` : ""}
       ${
         actions.length
@@ -963,6 +971,38 @@ function renderRunExecution() {
         </div>
         ${renderGuidedDownstreamWorkflow(run)}
         <div class="grid-2">
+          <div class="field">
+            <label for="primary_solvent_charge_lbs">Primary Solvent Charge (lbs)</label>
+            <input id="primary_solvent_charge_lbs" name="primary_solvent_charge_lbs" type="number" value="${escapeHtml(String(run.primary_solvent_charge_lbs ?? ""))}" min="0" step="0.1" placeholder="Typically 500" />
+            <div class="subtle">Required for the booth SOP solvent-charge checkpoint.</div>
+          </div>
+          <div class="field timer-card">
+            <label for="primary_solvent_charged_at_display">Primary Solvent Charge Recorded</label>
+            <input id="primary_solvent_charged_at_display" type="datetime-local" value="${escapeHtml(run.booth?.primary_solvent_charged_at || "")}" disabled />
+            <div class="subtle">This timestamp is captured when the solvent-charge checkpoint is recorded.</div>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label for="flush_solvent_chiller_temp_f">Flush Solvent Chiller Temp (F)</label>
+            <input id="flush_solvent_chiller_temp_f" name="flush_solvent_chiller_temp_f" type="number" value="${escapeHtml(String(run.booth?.flush_solvent_chiller_temp_f ?? ""))}" step="0.1" placeholder="-40 or below" />
+          </div>
+          <div class="field">
+            <label for="flush_plate_temp_f">Plate Temp (F)</label>
+            <input id="flush_plate_temp_f" name="flush_plate_temp_f" type="number" value="${escapeHtml(String(run.booth?.flush_plate_temp_f ?? ""))}" step="0.1" placeholder="Plate temp" />
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label for="flush_solvent_charge_lbs">Flush Solvent Charge (lbs)</label>
+            <input id="flush_solvent_charge_lbs" name="flush_solvent_charge_lbs" type="number" value="${escapeHtml(String(run.booth?.flush_solvent_charge_lbs ?? ""))}" min="0" step="0.1" placeholder="Typically 500" />
+          </div>
+          <div class="field">
+            <label>Flush temp Slack post</label>
+            <label><input type="checkbox" name="flush_temp_slack_post_confirmed" value="1" ${run.booth?.flush_temp_slack_post_confirmed_at ? "checked" : ""}> Posted to Slack</label>
+          </div>
+        </div>
+        <div class="grid-2">
           ${renderTimerField("run_fill_started_at", "Run / Fill Start", run.run_fill_started_at, run.run_fill_duration_minutes != null ? `${run.run_fill_duration_minutes} minute(s) recorded` : "", "run_fill_ended_at", run.run_fill_ended_at)}
           ${renderTimerField("mixer_started_at", "Mixer Time", run.mixer_started_at, run.mixer_duration_minutes != null ? `${run.mixer_duration_minutes} minute(s) recorded` : "", "mixer_ended_at", run.mixer_ended_at)}
         </div>
@@ -1019,9 +1059,42 @@ function renderRunExecution() {
             <input id="crc_blend" name="crc_blend" type="text" value="${escapeHtml(run.crc_blend || "")}" placeholder="Optional CRC blend" />
           </div>
         </div>
+          <div class="field">
+            <label for="notes">Notes</label>
+            <textarea id="notes" name="notes" rows="4" placeholder="Operator notes">${escapeHtml(run.notes || "")}</textarea>
+          </div>
+        <div class="grid-2">
+          <div class="field">
+            <label>Flow Resumed</label>
+            ${renderChoiceButtons("flow_resumed_decision", run.booth?.flow_resumed_decision || "", [
+              { value: "", label: "Not set" },
+              { value: "yes", label: "Yes" },
+              { value: "no_adjusting", label: "Still adjusting" },
+            ])}
+          </div>
+          <div class="field">
+            <label>Final Clarity</label>
+            ${renderChoiceButtons("final_clarity_decision", run.booth?.final_clarity_decision || "", [
+              { value: "", label: "Not set" },
+              { value: "yes", label: "Clear enough" },
+              { value: "not_yet", label: "Not yet" },
+            ])}
+          </div>
+        </div>
+        <div class="grid-2">
+          ${renderTimerField("final_purge_started_at", "Final Purge Start", run.booth?.final_purge_started_at || "", run.booth?.final_purge_duration_minutes != null ? `${run.booth.final_purge_duration_minutes} minute(s) recorded` : "", "final_purge_completed_at", run.booth?.final_purge_completed_at || "")}
+          <div class="field timer-card">
+            <label for="final_purge_completed_at_display">Final Purge End</label>
+            <input id="final_purge_completed_at_display" type="datetime-local" value="${escapeHtml(run.booth?.final_purge_completed_at || "")}" disabled />
+            <div class="subtle">Stop is captured from the Final Purge timer.</div>
+          </div>
+        </div>
         <div class="field">
-          <label for="notes">Notes</label>
-          <textarea id="notes" name="notes" rows="4" placeholder="Operator notes">${escapeHtml(run.notes || "")}</textarea>
+          <label>Shutdown Checklist</label>
+          <label><input type="checkbox" name="shutdown_recovery_inlets_closed" value="1" ${run.booth?.final_recovery_inlets_closed_at ? "checked" : ""}> Recovery inlets closed</label>
+          <label><input type="checkbox" name="shutdown_filtration_pumpdown_started" value="1" ${run.booth?.filtration_pumpdown_started_at ? "checked" : ""}> Filtration pump-down started</label>
+          <label><input type="checkbox" name="shutdown_nitrogen_off" value="1" ${run.booth?.nitrogen_turned_off_at ? "checked" : ""}> Nitrogen off</label>
+          <label><input type="checkbox" name="shutdown_dewax_inlet_closed" value="1" ${run.booth?.dewax_inlet_closed_at ? "checked" : ""}> Dewax inlet closed</label>
         </div>
         <input type="hidden" name="run_completed_at" value="${escapeHtml(run.run_completed_at || "")}" />
         <div class="actions sticky-actions">
@@ -1030,7 +1103,52 @@ function renderRunExecution() {
           <button class="btn btn-primary" type="submit">${state.loading ? "Saving..." : "Save Run"}</button>
         </div>
       </form>
+      ${renderBoothEvidence(run)}
     </div>
+  `;
+}
+
+function renderBoothEvidence(run) {
+  const booth = run.booth || {};
+  const counts = booth.evidence_counts || {};
+  const evidenceRows = Array.isArray(state.runEvidence) ? state.runEvidence : [];
+  return `
+    <section class="card">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">Booth evidence</div>
+          <h3>Capture the temperature-photo proof required by the SOP.</h3>
+        </div>
+      </div>
+      <div class="grid-2">
+        <form class="field" data-form="run-evidence" data-evidence-type="solvent_chiller_temp_photo">
+          <label for="solvent_chiller_temp_photo">Solvent Chiller Temp Photo</label>
+          <input id="solvent_chiller_temp_photo" name="photos" type="file" accept="image/*" multiple />
+          <div class="subtle">${escapeHtml(String(counts.solvent_chiller_temp_photo || 0))} file(s) on record.</div>
+          <button class="btn btn-secondary" type="submit">Upload Chiller Photo</button>
+        </form>
+        <form class="field" data-form="run-evidence" data-evidence-type="plate_temp_photo">
+          <label for="plate_temp_photo">Plate Temp Photo</label>
+          <input id="plate_temp_photo" name="photos" type="file" accept="image/*" multiple />
+          <div class="subtle">${escapeHtml(String(counts.plate_temp_photo || 0))} file(s) on record.</div>
+          <button class="btn btn-secondary" type="submit">Upload Plate Photo</button>
+        </form>
+      </div>
+      ${
+        evidenceRows.length
+          ? `<div class="stack" style="margin-top:16px;">${evidenceRows
+              .map(
+                (row) => `
+                  <div class="card" style="padding:12px 14px;">
+                    <div><strong>${escapeHtml(String(row.evidence_type || "").replaceAll("_", " "))}</strong></div>
+                    <div class="subtle">${escapeHtml(row.captured_at || "")}</div>
+                    <div class="subtle">${escapeHtml(row.file_path || row.url || "")}</div>
+                  </div>`,
+              )
+              .join("")}</div>`
+          : `<div class="subtle" style="margin-top:16px;">No booth evidence uploaded yet.</div>`
+      }
+    </section>
   `;
 }
 
@@ -1041,6 +1159,7 @@ function bind() {
   app?.querySelector("form[data-form='scan-lookup']")?.addEventListener("submit", handleScanLookup);
   app?.querySelector("form[data-form='charge']")?.addEventListener("submit", handleChargeSubmit);
   app?.querySelector("form[data-form='run-execution']")?.addEventListener("submit", handleRunSubmit);
+  app?.querySelectorAll("form[data-form='run-evidence']").forEach((form) => form.addEventListener("submit", handleRunEvidenceSubmit));
   app?.querySelectorAll("[data-action='adjust-weight']").forEach((button) => button.addEventListener("click", handleWeightAdjust));
   app?.querySelectorAll("[data-action='adjust-count']").forEach((button) => button.addEventListener("click", handleCountAdjust));
   app?.querySelectorAll("[data-action='set-field']").forEach((button) => button.addEventListener("click", handleSetFieldValue));
@@ -1204,6 +1323,7 @@ function timerStopField(field) {
   if (field === "pot_pour_offgas_started_at") return "pot_pour_offgas_completed_at";
   if (field === "thca_oven_started_at") return "thca_oven_completed_at";
   if (field === "hte_offgas_started_at") return "hte_offgas_completed_at";
+  if (field === "final_purge_started_at") return "final_purge_completed_at";
   return field;
 }
 
@@ -1258,6 +1378,34 @@ async function handleRunSubmit(event) {
   }
 }
 
+async function handleRunEvidenceSubmit(event) {
+  event.preventDefault();
+  if (!state.route.chargeId) return;
+  const formEl = event.currentTarget;
+  const input = formEl.querySelector("input[type='file'][name='photos']");
+  const files = Array.from(input?.files || []);
+  if (!files.length) {
+    showToast("Choose at least one photo before uploading.");
+    return;
+  }
+  state.loading = true;
+  render();
+  try {
+    await api.uploadChargeRunEvidence(state.route.chargeId, formEl.dataset.evidenceType || "other", files);
+    const refreshedRun = await api.getChargeRun(state.route.chargeId);
+    const evidencePayload = await api.getChargeRunEvidence(state.route.chargeId);
+    state.run = refreshedRun.run;
+    state.lot = refreshedRun.lot;
+    state.runEvidence = Array.isArray(evidencePayload?.evidence) ? evidencePayload.evidence : [];
+    showToast("Booth evidence uploaded.");
+  } catch (error) {
+    showToast(error.payload?.error?.message || error.message || "Unable to upload booth evidence");
+  } finally {
+    state.loading = false;
+    render();
+  }
+}
+
 function buildRunPayload(form, progressionAction = "") {
   return {
     run_fill_started_at: String(form.get("run_fill_started_at") || "").trim(),
@@ -1275,6 +1423,11 @@ function buildRunPayload(form, progressionAction = "") {
     flush_started_at: String(form.get("flush_started_at") || "").trim(),
     flush_ended_at: String(form.get("flush_ended_at") || "").trim(),
     run_completed_at: String(form.get("run_completed_at") || "").trim(),
+    primary_solvent_charge_lbs: String(form.get("primary_solvent_charge_lbs") || "").trim(),
+    flush_solvent_chiller_temp_f: String(form.get("flush_solvent_chiller_temp_f") || "").trim(),
+    flush_plate_temp_f: String(form.get("flush_plate_temp_f") || "").trim(),
+    flush_temp_slack_post_confirmed: form.get("flush_temp_slack_post_confirmed") ? "1" : "",
+    flush_solvent_charge_lbs: String(form.get("flush_solvent_charge_lbs") || "").trim(),
     wet_hte_g: String(form.get("wet_hte_g") || "").trim(),
     wet_thca_g: String(form.get("wet_thca_g") || "").trim(),
     post_extraction_pathway: String(form.get("post_extraction_pathway") || "").trim(),
@@ -1295,6 +1448,14 @@ function buildRunPayload(form, progressionAction = "") {
     hte_prescott_processed_at: String(form.get("hte_prescott_processed_at") || "").trim(),
     hte_potency_disposition: String(form.get("hte_potency_disposition") || "").trim(),
     hte_queue_destination: String(form.get("hte_queue_destination") || "").trim(),
+    flow_resumed_decision: String(form.get("flow_resumed_decision") || "").trim(),
+    final_clarity_decision: String(form.get("final_clarity_decision") || "").trim(),
+    final_purge_started_at: String(form.get("final_purge_started_at") || "").trim(),
+    final_purge_completed_at: String(form.get("final_purge_completed_at") || "").trim(),
+    shutdown_recovery_inlets_closed: form.get("shutdown_recovery_inlets_closed") ? "1" : "",
+    shutdown_filtration_pumpdown_started: form.get("shutdown_filtration_pumpdown_started") ? "1" : "",
+    shutdown_nitrogen_off: form.get("shutdown_nitrogen_off") ? "1" : "",
+    shutdown_dewax_inlet_closed: form.get("shutdown_dewax_inlet_closed") ? "1" : "",
     progression_action: progressionAction,
     notes: String(form.get("notes") || "").trim(),
   };

@@ -63,7 +63,7 @@ This is a review checklist, not a rule to make no-op edits. Update only the docu
   - **`gold_drop/mobile_module.py`** - user-authenticated mobile write API routes under `/api/mobile/v1`
   - **`services/mobile_write_api.py`** - shared standalone/mobile write helpers for workflow enablement, same-origin enforcement, capabilities, and audit metadata
   - **`services/extraction_charge.py`** - canonical extraction-charge creation, lifecycle validation, board visibility rules, and run-prefill helpers shared by the main app, Slack path, and standalone extraction app
-  - **`services/extraction_run.py`** - standalone extraction run defaults, guided progression actions, mobile run payload shaping, the Phase 1 post-extraction handoff gates (`post_extraction_pathway`, downstream start, initial wet-output confirmation), and the Phase 2 downstream state fields for pot-pour, THCA-path, and HTE-path tracking that Phase 3 now renders as a guided tablet workflow
+  - **`services/extraction_run.py`** - standalone extraction run defaults, booth-SOP progression actions, booth-session payload shaping, booth evidence counts/history, the post-extraction handoff gates (`post_extraction_pathway`, downstream start, initial wet-output confirmation), and the downstream state fields for pot-pour, THCA-path, and HTE-path tracking that the tablet workflow renders
   - **`gold_drop/floor_module.py`** - operator floor activity page for recent scans, recent scale captures, floor-state rollups, extraction-readiness rollups, and reactor charge queues; the template now uses the same card treatment for top summaries and detail lists so the page scans consistently with the rest of the app
   - **`static/js/scan_camera.js`** - in-browser camera scanning client for `/scan`, with `BarcodeDetector` support plus manual/scanner fallback
   - **`services/api_auth.py`** - bearer-token generation, hashing, lookup, and scope enforcement
@@ -211,6 +211,16 @@ Office intake note:
 - `PATCH /api/mobile/v1/receiving/queue/<id>`
 - `POST /api/mobile/v1/receiving/queue/<id>/receive`
 - `POST /api/mobile/v1/receiving/queue/<id>/photos`
+- `GET /api/mobile/v1/extraction/board`
+- `GET /api/mobile/v1/extraction/lots`
+- `GET /api/mobile/v1/extraction/lots/<lot_id>`
+- `GET /api/mobile/v1/extraction/lookup/<tracking_id>`
+- `POST /api/mobile/v1/extraction/lots/<lot_id>/charge`
+- `POST /api/mobile/v1/extraction/charges/<id>/transition`
+- `GET /api/mobile/v1/extraction/charges/<id>/run`
+- `POST /api/mobile/v1/extraction/charges/<id>/run`
+- `GET /api/mobile/v1/extraction/charges/<id>/run/evidence`
+- `POST /api/mobile/v1/extraction/charges/<id>/run/evidence`
 
 The standalone app now uses the mobile surface for:
 - auth
@@ -232,6 +242,41 @@ Pilot-hardening additions:
   - delivery-photo upload limits
 - the standalone purchasing app consumes mobile `capabilities` so production users see a clear unavailable state when standalone buying is disabled or the user lacks access
 - the standalone receiving app also consumes mobile `capabilities` plus per-record `receiving_editable` / `locked_reason` fields so the UI can expose `Edit Receipt` only while no downstream lot usage exists
+- the standalone extraction app now consumes the same mobile surface for booth-SOP execution, including run progression state and booth evidence uploads
+
+### Extraction booth workflow internals
+
+- `Run` remains the business summary record and downstream handoff anchor.
+- Booth execution is additive and currently modeled with:
+  - `ExtractionBoothSession`
+  - `ExtractionBoothEvent`
+  - `ExtractionBoothEvidence`
+- `services/extraction_run.py` owns booth-session creation, progression transitions, booth event writes, validations, and payload shaping.
+- Current booth-stage keys are:
+  - `ready_to_confirm_vacuum`
+  - `ready_to_record_solvent_charge`
+  - `ready_to_start_primary_soak`
+  - `ready_to_start_mixer`
+  - `mixing`
+  - `ready_to_confirm_filter_clear`
+  - `ready_to_start_pressurization`
+  - `ready_to_begin_recovery`
+  - `ready_to_begin_flush_cycle`
+  - `ready_to_verify_flush_temps`
+  - `ready_to_record_flush_solvent_charge`
+  - `ready_to_flush`
+  - `flushing`
+  - `ready_to_confirm_flow_resumed`
+  - `ready_to_start_final_purge`
+  - `purging`
+  - `ready_to_confirm_clarity`
+  - `ready_to_complete_shutdown`
+  - `ready_to_complete`
+  - `completed`
+- Booth evidence uploads currently accept:
+  - `solvent_chiller_temp_photo`
+  - `plate_temp_photo`
+  - `other`
 
 ### Supplier duplicate warnings
 

@@ -110,11 +110,24 @@ Implemented and live:
 
 - the standalone run screen now shows the current stage and the next allowed actions
 - progression is now guided through:
-  - `Start Run`
+  - `Confirm Vacuum Down`
+  - `Record Solvent Charge`
+  - `Start Primary Soak`
   - `Start Mixer`
   - `Stop Mixer`
+  - `Confirm Filter Clear`
+  - `Start Pressurization`
+  - `Begin Recovery`
+  - `Begin Flush Cycle`
+  - `Verify Flush Temps`
+  - `Record Flush Solvent Charge`
   - `Start Flush`
   - `Stop Flush`
+  - `Confirm Flow Resumed`
+  - `Start Final Purge`
+  - `Stop Final Purge`
+  - `Confirm Final Clarity`
+  - `Complete Shutdown`
   - `Mark Run Complete`
 - the mobile extraction run endpoint now returns a derived `progression` payload
 - `POST /api/mobile/v1/extraction/charges/<charge_id>/run` now accepts `progression_action`
@@ -291,7 +304,51 @@ Do not resume Slack code changes unless new evidence suggests the Gold Drop side
 
 There is no urgent production bug open right now.
 
-The active work area is now the post-extraction / post-processing workflow, not the upstream extraction reactor flow.
+The active work area is now the extraction booth SOP alignment layer that sits between charge creation and downstream post-processing.
+
+## Project status summary
+
+### Done
+
+- upstream extraction workflow is live end-to-end:
+  - charge creation
+  - reactor lifecycle management
+  - standalone extraction iPad workflow
+  - guided run progression through completion
+- post-extraction foundation is live on the `Run` record:
+  - pathway selection
+  - wet output confirmation
+  - THCA / HTE downstream state fields
+- downstream operational queue surfaces are live:
+  - shared `Downstream Queues` board
+  - dedicated destination pages for:
+    - `GoldDrop Production Queue`
+    - `Liquid Loud Hold`
+    - `Terp Strip / CDT Cage`
+    - `HP Base Oil Hold`
+    - `Distillate Hold`
+- destination queue history is live through additive `DownstreamQueueEvent` records
+- extraction booth SOP foundation is now live:
+  - additive `ExtractionBoothSession`, `ExtractionBoothEvent`, and `ExtractionBoothEvidence`
+  - booth-stage progression from vacuum confirmation through shutdown completion
+  - booth-specific validation for solvent charge, flush temps, flow resumed, final clarity, and shutdown checklist
+  - booth evidence upload support for solvent chiller and plate temperature photos
+
+### In progress
+
+- the active product area is no longer only downstream execution
+- the current product area is full booth-SOP alignment:
+  - matching the written extraction booth procedure more closely
+  - strengthening supervisor review and audit visibility
+  - deciding how to handle SOP deviations and exception paths
+
+### Next
+
+- deepen the extraction booth workflow where the SOP still exceeds the current system:
+  - enforce or highlight required durations
+  - add clearer exception/deviation handling
+  - add supervisor review surfaces for booth history, evidence, and completion
+- after that, resume the downstream queue-deepening work from the stronger extraction foundation
 
 ## Current planning baseline
 
@@ -325,7 +382,7 @@ The next major build should be the next post-extraction phase after queues:
 
 - turn the downstream queue surfaces into richer role-based work queues with next-step actions and completion/rework handling by destination
 
-Likely next queue-oriented surfaces:
+Likely next queue-oriented surfaces to deepen first:
 
 1. `GoldDrop production queue`
 2. `Liquid Loud hold`

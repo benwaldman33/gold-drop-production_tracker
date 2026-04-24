@@ -514,6 +514,12 @@ class Run(db.Model):
 
     inputs = db.relationship("RunInput", backref="run", lazy="dynamic", cascade="all, delete-orphan")
     extraction_charges = db.relationship("ExtractionCharge", backref="run", lazy="dynamic")
+    booth_session = db.relationship(
+        "ExtractionBoothSession",
+        back_populates="run",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
 
     def calculate_yields(self):
         """Recalculate all yield fields."""
@@ -666,6 +672,99 @@ class LotScanEvent(db.Model):
 
     def set_context(self, context):
         self.context_json = json.dumps(context or {})
+
+
+class ExtractionBoothSession(db.Model):
+    __tablename__ = "extraction_booth_sessions"
+
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    run_id = db.Column(db.String(36), db.ForeignKey("runs.id"), nullable=False, unique=True, index=True)
+    charge_id = db.Column(db.String(36), db.ForeignKey("extraction_charges.id"), index=True)
+    operator_user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
+    started_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    completed_at = db.Column(db.DateTime)
+    current_stage_key = db.Column(db.String(64), nullable=False, default="ready_to_confirm_vacuum")
+    status = db.Column(db.String(20), nullable=False, default="in_progress")
+    sop_version = db.Column(db.String(32), nullable=False, default="extraction_booth_v1")
+    primary_solvent_charge_lbs = db.Column(db.Float)
+    primary_solvent_charged_at = db.Column(db.DateTime)
+    flush_solvent_chiller_temp_f = db.Column(db.Float)
+    flush_plate_temp_f = db.Column(db.Float)
+    flush_temp_verified_at = db.Column(db.DateTime)
+    flush_temp_threshold_passed = db.Column(db.Boolean)
+    flush_temp_slack_post_confirmed_at = db.Column(db.DateTime)
+    flush_solvent_charge_lbs = db.Column(db.Float)
+    flush_solvent_charged_at = db.Column(db.DateTime)
+    flow_resumed_decision = db.Column(db.String(20))
+    flow_resumed_confirmed_at = db.Column(db.DateTime)
+    final_purge_started_at = db.Column(db.DateTime)
+    final_purge_completed_at = db.Column(db.DateTime)
+    final_clarity_decision = db.Column(db.String(20))
+    final_clarity_confirmed_at = db.Column(db.DateTime)
+    final_recovery_inlets_closed_at = db.Column(db.DateTime)
+    filtration_pumpdown_started_at = db.Column(db.DateTime)
+    nitrogen_turned_off_at = db.Column(db.DateTime)
+    dewax_inlet_closed_at = db.Column(db.DateTime)
+    booth_process_completed_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+
+    run = db.relationship("Run", back_populates="booth_session")
+    operator_user = db.relationship("User", foreign_keys=[operator_user_id])
+    charge = db.relationship("ExtractionCharge", backref=db.backref("booth_sessions", lazy="dynamic"))
+    booth_events = db.relationship(
+        "ExtractionBoothEvent",
+        back_populates="session",
+        lazy="dynamic",
+        cascade="all, delete-orphan",
+    )
+    booth_evidence = db.relationship(
+        "ExtractionBoothEvidence",
+        back_populates="session",
+        lazy="dynamic",
+        cascade="all, delete-orphan",
+    )
+
+
+class ExtractionBoothEvent(db.Model):
+    __tablename__ = "extraction_booth_events"
+
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    session_id = db.Column(db.String(36), db.ForeignKey("extraction_booth_sessions.id"), nullable=False, index=True)
+    run_id = db.Column(db.String(36), db.ForeignKey("runs.id"), nullable=False, index=True)
+    event_key = db.Column(db.String(64), nullable=False, index=True)
+    event_label = db.Column(db.String(120), nullable=False)
+    stage_key = db.Column(db.String(64))
+    occurred_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    recorded_by_user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
+    decision_value = db.Column(db.String(40))
+    numeric_value = db.Column(db.Float)
+    text_value = db.Column(db.Text)
+    payload_json = db.Column(db.Text)
+    notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+
+    session = db.relationship("ExtractionBoothSession", back_populates="booth_events")
+    run = db.relationship("Run", backref=db.backref("booth_events", lazy="dynamic"))
+    recorded_by_user = db.relationship("User", foreign_keys=[recorded_by_user_id])
+
+
+class ExtractionBoothEvidence(db.Model):
+    __tablename__ = "extraction_booth_evidence"
+
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    session_id = db.Column(db.String(36), db.ForeignKey("extraction_booth_sessions.id"), nullable=False, index=True)
+    run_id = db.Column(db.String(36), db.ForeignKey("runs.id"), nullable=False, index=True)
+    evidence_type = db.Column(db.String(40), nullable=False)
+    file_path = db.Column(db.String(500), nullable=False)
+    captured_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    captured_by_user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
+    notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+
+    session = db.relationship("ExtractionBoothSession", back_populates="booth_evidence")
+    run = db.relationship("Run", backref=db.backref("booth_evidence", lazy="dynamic"))
+    captured_by_user = db.relationship("User", foreign_keys=[captured_by_user_id])
 
 
 class ExtractionCharge(db.Model):

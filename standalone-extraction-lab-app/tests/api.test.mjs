@@ -35,12 +35,24 @@ test("mock api login, board, charge, and transition flow", async () => {
 
   const runPayload = await api.getChargeRun(created.charge.id);
   assert.equal(runPayload.run.reactor_number, 2);
-  assert.equal(runPayload.run.progression.stage_key, "ready_to_start");
+  assert.equal(runPayload.run.progression.stage_key, "ready_to_confirm_vacuum");
+
+  const confirmedVacuum = await api.saveChargeRun(created.charge.id, {
+    progression_action: "confirm_vacuum_down",
+  });
+  assert.equal(confirmedVacuum.run.progression.stage_key, "ready_to_record_solvent_charge");
+
+  const solventRecorded = await api.saveChargeRun(created.charge.id, {
+    primary_solvent_charge_lbs: 500,
+    progression_action: "record_solvent_charge",
+  });
+  assert.equal(solventRecorded.run.primary_solvent_charge_lbs, 500);
+  assert.equal(solventRecorded.run.progression.stage_key, "ready_to_start_primary_soak");
 
   const startedRun = await api.saveChargeRun(created.charge.id, {
-    progression_action: "start_run",
+    progression_action: "start_primary_soak",
   });
-  assert.equal(startedRun.run.progression.stage_key, "ready_to_mix");
+  assert.equal(startedRun.run.progression.stage_key, "ready_to_start_mixer");
   assert.ok(startedRun.run.run_fill_started_at);
 
   const savedRun = await api.saveChargeRun(created.charge.id, {
@@ -48,14 +60,58 @@ test("mock api login, board, charge, and transition flow", async () => {
     run_fill_ended_at: "2026-04-19T09:40",
     mixer_started_at: "2026-04-19T09:10",
     mixer_ended_at: "2026-04-19T09:20",
-    flush_started_at: "2026-04-19T09:21",
-    flush_ended_at: "2026-04-19T09:33",
     fill_count: 1,
     fill_total_weight_lbs: 22.5,
     notes: "Execution notes",
   });
   assert.equal(savedRun.run.fill_count, 1);
   assert.equal(savedRun.run.notes, "Execution notes");
+
+  const filterClear = await api.saveChargeRun(created.charge.id, { progression_action: "confirm_filter_clear" });
+  assert.equal(filterClear.run.progression.stage_key, "ready_to_start_pressurization");
+  const pressurized = await api.saveChargeRun(created.charge.id, { progression_action: "start_pressurization" });
+  assert.equal(pressurized.run.progression.stage_key, "ready_to_begin_recovery");
+  const recovery = await api.saveChargeRun(created.charge.id, { progression_action: "begin_recovery" });
+  assert.equal(recovery.run.progression.stage_key, "ready_to_begin_flush_cycle");
+  const beginFlushCycle = await api.saveChargeRun(created.charge.id, { progression_action: "begin_flush_cycle" });
+  assert.equal(beginFlushCycle.run.progression.stage_key, "ready_to_verify_flush_temps");
+  const verifyTemps = await api.saveChargeRun(created.charge.id, {
+    flush_solvent_chiller_temp_f: -45,
+    flush_plate_temp_f: -41,
+    progression_action: "verify_flush_temps",
+  });
+  assert.equal(verifyTemps.run.progression.stage_key, "ready_to_record_flush_solvent_charge");
+  const recordFlushCharge = await api.saveChargeRun(created.charge.id, {
+    flush_solvent_charge_lbs: 500,
+    progression_action: "record_flush_solvent_charge",
+  });
+  assert.equal(recordFlushCharge.run.progression.stage_key, "ready_to_flush");
+  const startedFlush = await api.saveChargeRun(created.charge.id, { progression_action: "start_flush" });
+  assert.equal(startedFlush.run.progression.stage_key, "flushing");
+  const stoppedFlush = await api.saveChargeRun(created.charge.id, { progression_action: "stop_flush" });
+  assert.equal(stoppedFlush.run.progression.stage_key, "ready_to_confirm_flow_resumed");
+  const flowResumed = await api.saveChargeRun(created.charge.id, {
+    flow_resumed_decision: "yes",
+    progression_action: "confirm_flow_resumed",
+  });
+  assert.equal(flowResumed.run.progression.stage_key, "ready_to_start_final_purge");
+  const startedPurge = await api.saveChargeRun(created.charge.id, { progression_action: "start_final_purge" });
+  assert.equal(startedPurge.run.progression.stage_key, "purging");
+  const stoppedPurge = await api.saveChargeRun(created.charge.id, { progression_action: "stop_final_purge" });
+  assert.equal(stoppedPurge.run.progression.stage_key, "ready_to_confirm_clarity");
+  const finalClarity = await api.saveChargeRun(created.charge.id, {
+    final_clarity_decision: "yes",
+    progression_action: "confirm_final_clarity",
+  });
+  assert.equal(finalClarity.run.progression.stage_key, "ready_to_complete_shutdown");
+  const shutdown = await api.saveChargeRun(created.charge.id, {
+    shutdown_recovery_inlets_closed: "1",
+    shutdown_filtration_pumpdown_started: "1",
+    shutdown_nitrogen_off: "1",
+    shutdown_dewax_inlet_closed: "1",
+    progression_action: "complete_shutdown",
+  });
+  assert.equal(shutdown.run.progression.stage_key, "ready_to_complete");
 
   const completeRun = await api.saveChargeRun(created.charge.id, {
     progression_action: "mark_complete",

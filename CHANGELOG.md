@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-04-24
+
+### Added
+- Extraction booth SOP alignment is now documented in `EXTRACTION_BOOTH_SOP_ALIGNMENT_PLAN.md`, translating the booth procedure into system behavior, fields, validations, and audit expectations.
+- The extraction data model now includes additive booth-execution records: `ExtractionBoothSession`, `ExtractionBoothEvent`, and `ExtractionBoothEvidence`.
+- The extraction mobile API now exposes `GET/POST /api/mobile/v1/extraction/charges/<charge_id>/run/evidence` for booth evidence uploads.
+
+### Changed
+- The standalone extraction workflow now follows booth-SOP checkpoints instead of only the earlier coarse progression buttons. The current guided flow covers vacuum confirmation, solvent charge, primary soak, mixer, filter clear, pressurization, recovery, flush-cycle setup, flush temperature verification, flush solvent charge, flow-resumed confirmation, final purge, final clarity, shutdown checklist completion, and final run completion.
+- The standalone extraction run screen now captures booth-specific SOP data including primary solvent charge, flush temperatures, flush solvent charge, flow-resumed decision, final clarity decision, final purge timing, shutdown checklist confirmations, and booth evidence uploads.
+- The shared extraction progression service now drives booth-session stage state from the backend so the main app, mobile API, and standalone extraction app remain aligned on the active checkpoint, validations, and event history.
+- Extraction run payloads now include booth-session history, evidence counts, and booth-specific timestamps alongside the existing run summary and downstream handoff fields.
+- Startup schema bootstrap now creates and backfills the booth-session and booth-evidence schema needed for the new extraction workflow in this environment.
+
+### Tests
+- Extended extraction mobile API regression coverage for the booth-SOP sequence through shutdown and run completion.
+- Extended standalone extraction app regression coverage for the booth-SOP sequence and aligned mock-mode progression with the backend stage model.
+
 ## 2026-04-18
 
 ### Added

@@ -45,12 +45,16 @@ function ensureMockSession() {
 }
 
 function liveRequest(baseUrl, fetchImpl, path, options = {}) {
+  const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+  const headers = isFormData
+    ? { ...(options.headers || {}) }
+    : {
+        "Content-Type": "application/json",
+        ...(options.headers || {}),
+      };
   return fetchImpl(`${baseUrl}${path}`, {
     credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
+    headers,
     ...options,
   }).then(async (response) => {
     if (!response.ok) {
@@ -126,47 +130,113 @@ function progressionForRun(run) {
       completed_at: "",
     };
   }
-  if (run.flush_ended_at) {
-    return {
-      stage_key: "ready_to_complete",
-      stage_label: "Ready to complete",
-      description: "Core extraction steps are timed. Complete the run to close out the operator workflow.",
-      actions: [{ action_id: "mark_complete", label: "Mark Run Complete" }],
-      completed_at: "",
-    };
-  }
-  if (run.mixer_started_at && !run.mixer_ended_at) {
-    return {
-      stage_key: "mixing",
-      stage_label: "Mixer running",
-      description: "Mixer timing is active. Stop the mixer when that step is done.",
-      actions: [{ action_id: "stop_mixer", label: "Stop Mixer" }],
-      completed_at: "",
-    };
-  }
-  if (run.mixer_ended_at) {
-    return {
-      stage_key: "ready_to_flush",
-      stage_label: "Ready to flush",
-      description: "Mixer timing is complete. Start the flush when the reactor is ready.",
-      actions: [{ action_id: "start_flush", label: "Start Flush" }],
-      completed_at: "",
-    };
-  }
-  if (run.run_fill_started_at) {
-    return {
-      stage_key: "ready_to_mix",
-      stage_label: "Ready to mix",
-      description: "The run has started. Start the mixer when material is loaded.",
+  const stageKey = run.booth_stage_key || "ready_to_confirm_vacuum";
+  const config = {
+    ready_to_confirm_vacuum: {
+      stage_label: "Confirm vacuum down",
+      description: "Confirm the reactor was vacuumed down before solvent charging begins.",
+      actions: [{ action_id: "confirm_vacuum_down", label: "Confirm Vacuum Down" }],
+    },
+    ready_to_record_solvent_charge: {
+      stage_label: "Record solvent charge",
+      description: "Enter the primary solvent charge and record it before starting the soak.",
+      actions: [{ action_id: "record_solvent_charge", label: "Record Solvent Charge" }],
+    },
+    ready_to_start_primary_soak: {
+      stage_label: "Start primary soak",
+      description: "The primary solvent charge is recorded. Start the primary soak to begin booth execution timing.",
+      actions: [{ action_id: "start_primary_soak", label: "Start Primary Soak" }],
+    },
+    ready_to_start_mixer: {
+      stage_label: "Ready to start mixer",
+      description: "Primary soak is active. Start the mixer when agitation begins.",
       actions: [{ action_id: "start_mixer", label: "Start Mixer" }],
+    },
+    mixing: {
+      stage_label: "Mixer running",
+      description: "Mixer timing is active during primary extraction. Stop it when agitation is done.",
+      actions: [{ action_id: "stop_mixer", label: "Stop Mixer" }],
+    },
+    ready_to_confirm_filter_clear: {
+      stage_label: "Confirm filter clear",
+      description: "Mixer timing is complete. Confirm the basket filter is cleared before pressurization.",
+      actions: [{ action_id: "confirm_filter_clear", label: "Confirm Filter Clear" }],
+    },
+    ready_to_start_pressurization: {
+      stage_label: "Start pressurization",
+      description: "Begin nitrogen pressurization after the filter-clear checkpoint is complete.",
+      actions: [{ action_id: "start_pressurization", label: "Start Pressurization" }],
+    },
+    ready_to_begin_recovery: {
+      stage_label: "Begin recovery",
+      description: "Pressurization has started. Begin flow to filtration and recovery.",
+      actions: [{ action_id: "begin_recovery", label: "Begin Recovery" }],
+    },
+    ready_to_begin_flush_cycle: {
+      stage_label: "Begin flush cycle",
+      description: "Primary extraction checkpoints are complete. Move into the flush cycle.",
+      actions: [{ action_id: "begin_flush_cycle", label: "Begin Flush Cycle" }],
+    },
+    ready_to_verify_flush_temps: {
+      stage_label: "Verify flush temperatures",
+      description: "Record the solvent chiller and plate temperatures before flush solvent is charged.",
+      actions: [{ action_id: "verify_flush_temps", label: "Verify Flush Temps" }],
+    },
+    ready_to_record_flush_solvent_charge: {
+      stage_label: "Record flush solvent charge",
+      description: "Record the flush solvent charge after temperature verification is complete.",
+      actions: [{ action_id: "record_flush_solvent_charge", label: "Record Flush Solvent Charge" }],
+    },
+    ready_to_flush: {
+      stage_label: "Start flush soak",
+      description: "The flush solvent charge is recorded. Start the flush timer when the flush soak begins.",
+      actions: [{ action_id: "start_flush", label: "Start Flush" }],
+    },
+    ready_to_confirm_flow_resumed: {
+      stage_label: "Confirm flow resumed",
+      description: "Record whether flow resumed after flush recovery adjustments.",
+      actions: [{ action_id: "confirm_flow_resumed", label: "Confirm Flow Resumed" }],
+    },
+    ready_to_start_final_purge: {
+      stage_label: "Start final purge",
+      description: "Flow resumed is confirmed. Start the final purge / burp step.",
+      actions: [{ action_id: "start_final_purge", label: "Start Final Purge" }],
+    },
+    purging: {
+      stage_label: "Final purge running",
+      description: "Final purge timing is active. Stop it when the purge is complete.",
+      actions: [{ action_id: "stop_final_purge", label: "Stop Final Purge" }],
+    },
+    ready_to_confirm_clarity: {
+      stage_label: "Confirm final clarity",
+      description: "Record whether the system is clear enough to proceed into shutdown.",
+      actions: [{ action_id: "confirm_final_clarity", label: "Confirm Final Clarity" }],
+    },
+    ready_to_complete_shutdown: {
+      stage_label: "Complete shutdown checklist",
+      description: "Finish the shutdown checklist before closing the booth process.",
+      actions: [{ action_id: "complete_shutdown", label: "Complete Shutdown" }],
+    },
+    ready_to_complete: {
+      stage_label: "Ready to complete run",
+      description: "Shutdown is complete. Mark the extraction run complete to hand it off downstream.",
+      actions: [{ action_id: "mark_complete", label: "Mark Run Complete" }],
+    },
+  }[stageKey];
+  if (config) {
+    return {
+      stage_key: stageKey,
+      stage_label: config.stage_label,
+      description: config.description,
+      actions: config.actions,
       completed_at: "",
     };
   }
   return {
-    stage_key: "ready_to_start",
-    stage_label: "Ready to start",
-    description: "Record the start of the run before moving into mixer work.",
-    actions: [{ action_id: "start_run", label: "Start Run" }],
+    stage_key: "ready_to_confirm_vacuum",
+    stage_label: "Confirm vacuum down",
+    description: "Confirm the reactor was vacuumed down before solvent charging begins.",
+    actions: [{ action_id: "confirm_vacuum_down", label: "Confirm Vacuum Down" }],
     completed_at: "",
   };
 }
@@ -252,32 +322,122 @@ function downstreamForRun(run) {
 
 function applyMockProgressionAction(run, action) {
   const now = nowLocalInputValue();
-  if (action === "start_run") {
+  if (action === "confirm_vacuum_down") {
+    run.booth_stage_key = "ready_to_record_solvent_charge";
+    run.booth_history = [{ event_label: "Reactor vacuum confirmed", occurred_at: now }, ...(run.booth_history || [])];
+    return;
+  }
+  if (action === "record_solvent_charge") {
+    const solventLbs = Number(run.primary_solvent_charge_lbs || 0);
+    if (!Number.isFinite(solventLbs) || solventLbs <= 0) throw new Error("Enter the primary solvent charge before continuing.");
+    if (!run.primary_solvent_charged_at) run.primary_solvent_charged_at = now;
+    run.booth_stage_key = "ready_to_start_primary_soak";
+    run.booth_history = [{ event_label: "Primary solvent charge recorded", occurred_at: now }, ...(run.booth_history || [])];
+    return;
+  }
+  if (action === "start_primary_soak") {
+    if (!run.primary_solvent_charged_at) throw new Error("Record the primary solvent charge before starting the soak.");
     if (!run.run_fill_started_at) run.run_fill_started_at = now;
+    run.booth_stage_key = "ready_to_start_mixer";
+    run.booth_history = [{ event_label: "Primary soak started", occurred_at: now }, ...(run.booth_history || [])];
     return;
   }
   if (action === "start_mixer") {
-    if (!run.run_fill_started_at) throw new Error("Start the run before starting the mixer.");
+    if (!run.run_fill_started_at) throw new Error("Start the primary soak before starting the mixer.");
     if (!run.mixer_started_at) run.mixer_started_at = now;
+    run.booth_stage_key = "mixing";
     return;
   }
   if (action === "stop_mixer") {
     if (!run.mixer_started_at) throw new Error("Start the mixer before stopping it.");
     run.mixer_ended_at = now;
+    run.booth_stage_key = "ready_to_confirm_filter_clear";
+    return;
+  }
+  if (action === "confirm_filter_clear") {
+    if (!run.mixer_ended_at) throw new Error("Stop the mixer before confirming the filter-clear step.");
+    run.booth_stage_key = "ready_to_start_pressurization";
+    return;
+  }
+  if (action === "start_pressurization") {
+    run.booth_stage_key = "ready_to_begin_recovery";
+    return;
+  }
+  if (action === "begin_recovery") {
+    run.booth_stage_key = "ready_to_begin_flush_cycle";
+    return;
+  }
+  if (action === "begin_flush_cycle") {
+    run.booth_stage_key = "ready_to_verify_flush_temps";
+    return;
+  }
+  if (action === "verify_flush_temps") {
+    const chiller = Number(run.flush_solvent_chiller_temp_f ?? "");
+    const plate = Number(run.flush_plate_temp_f ?? "");
+    if (!Number.isFinite(chiller) || !Number.isFinite(plate)) throw new Error("Enter both flush temperatures before continuing.");
+    if (chiller > -40) throw new Error("Solvent chiller temperature must be at or below -40F before continuing.");
+    run.flush_temp_verified_at = now;
+    run.flush_temp_threshold_passed = true;
+    if (!run.flush_temp_slack_post_confirmed_at && run.flush_temp_slack_post_confirmed) run.flush_temp_slack_post_confirmed_at = now;
+    run.booth_stage_key = "ready_to_record_flush_solvent_charge";
+    return;
+  }
+  if (action === "record_flush_solvent_charge") {
+    const solventLbs = Number(run.flush_solvent_charge_lbs || 0);
+    if (!Number.isFinite(solventLbs) || solventLbs <= 0) throw new Error("Enter the flush solvent charge before continuing.");
+    run.flush_solvent_charged_at = now;
+    run.booth_stage_key = "ready_to_flush";
     return;
   }
   if (action === "start_flush") {
-    if (!run.mixer_ended_at) throw new Error("Stop the mixer before starting the flush.");
+    if (run.booth_stage_key !== "ready_to_flush") throw new Error("Begin the flush cycle before starting the flush timer.");
     if (!run.flush_started_at) run.flush_started_at = now;
     return;
   }
   if (action === "stop_flush") {
     if (!run.flush_started_at) throw new Error("Start the flush before stopping it.");
     run.flush_ended_at = now;
+    run.booth_stage_key = "ready_to_confirm_flow_resumed";
+    return;
+  }
+  if (action === "confirm_flow_resumed") {
+    if (run.flow_resumed_decision !== "yes") throw new Error("Flow must be confirmed as resumed before continuing to final purge.");
+    run.flow_resumed_confirmed_at = now;
+    run.booth_stage_key = "ready_to_start_final_purge";
+    return;
+  }
+  if (action === "start_final_purge") {
+    run.final_purge_started_at = now;
+    run.booth_stage_key = "purging";
+    return;
+  }
+  if (action === "stop_final_purge") {
+    if (!run.final_purge_started_at) throw new Error("Start final purge before stopping it.");
+    run.final_purge_completed_at = now;
+    run.booth_stage_key = "ready_to_confirm_clarity";
+    return;
+  }
+  if (action === "confirm_final_clarity") {
+    if (run.final_clarity_decision !== "yes") throw new Error("Final clarity must be confirmed before continuing to shutdown.");
+    run.final_clarity_confirmed_at = now;
+    run.booth_stage_key = "ready_to_complete_shutdown";
+    return;
+  }
+  if (action === "complete_shutdown") {
+    if (!run.shutdown_recovery_inlets_closed || !run.shutdown_filtration_pumpdown_started || !run.shutdown_nitrogen_off || !run.shutdown_dewax_inlet_closed) {
+      throw new Error("Complete the shutdown checklist before continuing.");
+    }
+    run.final_recovery_inlets_closed_at = now;
+    run.filtration_pumpdown_started_at = now;
+    run.nitrogen_turned_off_at = now;
+    run.dewax_inlet_closed_at = now;
+    run.booth_process_completed_at = now;
+    run.booth_stage_key = "ready_to_complete";
     return;
   }
   if (action === "mark_complete") {
     if (!run.flush_ended_at) throw new Error("Stop the flush before completing the run.");
+    if (!run.booth_process_completed_at) throw new Error("Complete the shutdown checklist before completing the run.");
     run.run_completed_at = now;
   }
 }
@@ -325,6 +485,38 @@ function buildMockRunPayload(state, charge, run) {
     flush_duration_minutes: minutesBetween(run.flush_started_at, run.flush_ended_at),
     run_completed_at: run.run_completed_at || "",
     progression: progressionForRun(run),
+    booth: {
+      status: run.run_completed_at ? "completed" : "in_progress",
+      current_stage_key: run.booth_stage_key || "ready_to_confirm_vacuum",
+      primary_solvent_charge_lbs: run.primary_solvent_charge_lbs ?? null,
+      primary_solvent_charged_at: run.primary_solvent_charged_at || "",
+      flush_solvent_chiller_temp_f: run.flush_solvent_chiller_temp_f ?? null,
+      flush_plate_temp_f: run.flush_plate_temp_f ?? null,
+      flush_temp_verified_at: run.flush_temp_verified_at || "",
+      flush_temp_threshold_passed: run.flush_temp_threshold_passed ?? null,
+      flush_temp_slack_post_confirmed_at: run.flush_temp_slack_post_confirmed_at || "",
+      flush_solvent_charge_lbs: run.flush_solvent_charge_lbs ?? null,
+      flush_solvent_charged_at: run.flush_solvent_charged_at || "",
+      flow_resumed_decision: run.flow_resumed_decision || "",
+      flow_resumed_confirmed_at: run.flow_resumed_confirmed_at || "",
+      final_purge_started_at: run.final_purge_started_at || "",
+      final_purge_completed_at: run.final_purge_completed_at || "",
+      final_purge_duration_minutes: minutesBetween(run.final_purge_started_at, run.final_purge_completed_at),
+      final_clarity_decision: run.final_clarity_decision || "",
+      final_clarity_confirmed_at: run.final_clarity_confirmed_at || "",
+      final_recovery_inlets_closed_at: run.final_recovery_inlets_closed_at || "",
+      filtration_pumpdown_started_at: run.filtration_pumpdown_started_at || "",
+      nitrogen_turned_off_at: run.nitrogen_turned_off_at || "",
+      dewax_inlet_closed_at: run.dewax_inlet_closed_at || "",
+      booth_process_completed_at: run.booth_process_completed_at || "",
+      evidence_counts: {
+        solvent_chiller_temp_photo: (run.booth_evidence || []).filter((row) => row.evidence_type === "solvent_chiller_temp_photo").length,
+        plate_temp_photo: (run.booth_evidence || []).filter((row) => row.evidence_type === "plate_temp_photo").length,
+      },
+      evidence: (run.booth_evidence || []).slice(),
+      history: run.booth_history || [],
+    },
+    primary_solvent_charge_lbs: run.primary_solvent_charge_lbs ?? null,
     wet_hte_g: run.wet_hte_g ?? null,
     wet_thca_g: run.wet_thca_g ?? null,
     post_extraction_pathway: run.post_extraction_pathway || "",
@@ -414,6 +606,29 @@ function buildMockDraftRun(charge) {
     flush_started_at: "",
     flush_ended_at: "",
     run_completed_at: "",
+    booth_stage_key: "ready_to_confirm_vacuum",
+    primary_solvent_charge_lbs: null,
+    primary_solvent_charged_at: "",
+    flush_solvent_chiller_temp_f: null,
+    flush_plate_temp_f: null,
+    flush_temp_verified_at: "",
+    flush_temp_threshold_passed: null,
+    flush_temp_slack_post_confirmed_at: "",
+    flush_solvent_charge_lbs: null,
+    flush_solvent_charged_at: "",
+    flow_resumed_decision: "",
+    flow_resumed_confirmed_at: "",
+    final_purge_started_at: "",
+    final_purge_completed_at: "",
+    final_clarity_decision: "",
+    final_clarity_confirmed_at: "",
+    final_recovery_inlets_closed_at: "",
+    filtration_pumpdown_started_at: "",
+    nitrogen_turned_off_at: "",
+    dewax_inlet_closed_at: "",
+    booth_process_completed_at: "",
+    booth_evidence: [],
+    booth_history: [],
     wet_hte_g: null,
     wet_thca_g: null,
     post_extraction_pathway: "",
@@ -466,6 +681,29 @@ function ensureMockRunForCharge(state, chargeId) {
     flush_started_at: "",
     flush_ended_at: "",
     run_completed_at: "",
+    booth_stage_key: "ready_to_confirm_vacuum",
+    primary_solvent_charge_lbs: null,
+    primary_solvent_charged_at: "",
+    flush_solvent_chiller_temp_f: null,
+    flush_plate_temp_f: null,
+    flush_temp_verified_at: "",
+    flush_temp_threshold_passed: null,
+    flush_temp_slack_post_confirmed_at: "",
+    flush_solvent_charge_lbs: null,
+    flush_solvent_charged_at: "",
+    flow_resumed_decision: "",
+    flow_resumed_confirmed_at: "",
+    final_purge_started_at: "",
+    final_purge_completed_at: "",
+    final_clarity_decision: "",
+    final_clarity_confirmed_at: "",
+    final_recovery_inlets_closed_at: "",
+    filtration_pumpdown_started_at: "",
+    nitrogen_turned_off_at: "",
+    dewax_inlet_closed_at: "",
+    booth_process_completed_at: "",
+    booth_evidence: [],
+    booth_history: [],
     wet_hte_g: null,
     wet_thca_g: null,
     post_extraction_pathway: "",
@@ -757,6 +995,55 @@ export function createApiClient({ mode = "mock", apiBaseUrl = "", fetchImpl = fe
         charge: mockChargePayload(state, charge),
         lot: state.lots.find((row) => row.id === charge.purchase_lot_id || row.tracking_id === charge.tracking_id) || null,
         run: buildMockRunPayload(state, charge, run),
+      };
+    },
+    async getChargeRunEvidence(chargeId) {
+      if (mode === "live") {
+        return unwrapData(await liveRequest(apiBaseUrl, fetchImpl, `/api/mobile/v1/extraction/charges/${encodeURIComponent(chargeId)}/run/evidence`));
+      }
+      ensureMockSession();
+      const state = loadState();
+      const { run } = ensureMockRunForCharge(state, chargeId);
+      return {
+        evidence: (run.booth_evidence || []).slice().sort((left, right) => String(right.captured_at || "").localeCompare(String(left.captured_at || ""))),
+      };
+    },
+    async uploadChargeRunEvidence(chargeId, evidenceType, files) {
+      if (mode === "live") {
+        const form = new FormData();
+        form.append("evidence_type", evidenceType);
+        for (const file of files || []) {
+          form.append("photos", file);
+        }
+        return unwrapData(await liveRequest(apiBaseUrl, fetchImpl, `/api/mobile/v1/extraction/charges/${encodeURIComponent(chargeId)}/run/evidence`, {
+          method: "POST",
+          body: form,
+        }));
+      }
+      ensureMockSession();
+      const state = loadState();
+      const { run } = ensureMockRunForCharge(state, chargeId);
+      if (!["solvent_chiller_temp_photo", "plate_temp_photo", "other"].includes(String(evidenceType || ""))) {
+        throw Object.assign(new Error("Evidence type must be solvent_chiller_temp_photo, plate_temp_photo, or other."), { status: 400 });
+      }
+      const uploadFiles = Array.from(files || []).filter((file) => file);
+      if (!uploadFiles.length) {
+        throw Object.assign(new Error("At least one photo file is required."), { status: 400 });
+      }
+      const timestamp = nowLocalInputValue();
+      const created = uploadFiles.map((file, index) => ({
+        id: `evidence-${Date.now()}-${index}`,
+        evidence_type: evidenceType,
+        file_path: `mock/${run.id}/${evidenceType}/${file.name || `upload-${index + 1}.jpg`}`,
+        url: "",
+        captured_at: timestamp,
+      }));
+      run.booth_evidence = [...created, ...(run.booth_evidence || [])];
+      saveState(state);
+      return {
+        count: created.length,
+        evidence_type: evidenceType,
+        files: created.map((row) => ({ file_path: row.file_path, url: row.url })),
       };
     },
   };

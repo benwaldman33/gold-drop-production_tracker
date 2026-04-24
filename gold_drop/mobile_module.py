@@ -40,6 +40,7 @@ from services.extraction_run import (
     apply_post_extraction_action,
     apply_progression_action,
     draft_run_payload,
+    ensure_booth_session,
     ensure_run_for_charge,
     mobile_run_payload,
 )
@@ -699,6 +700,9 @@ def register_routes(app, root):
     def mobile_extraction_run(charge_id):
         return mobile_extraction_run_view(root, charge_id)
 
+    def mobile_extraction_run_evidence(charge_id):
+        return mobile_extraction_run_evidence_view(root, charge_id)
+
     def mobile_opportunity_create():
         return mobile_opportunity_create_view(root)
 
@@ -732,6 +736,7 @@ def register_routes(app, root):
     app.add_url_rule("/api/mobile/v1/extraction/lots/<lot_id>/charge", endpoint="mobile_extraction_charge", view_func=mobile_extraction_charge, methods=["POST"])
     app.add_url_rule("/api/mobile/v1/extraction/charges/<charge_id>/transition", endpoint="mobile_extraction_transition", view_func=mobile_extraction_transition, methods=["POST"])
     app.add_url_rule("/api/mobile/v1/extraction/charges/<charge_id>/run", endpoint="mobile_extraction_run", view_func=mobile_extraction_run, methods=["GET", "POST"])
+    app.add_url_rule("/api/mobile/v1/extraction/charges/<charge_id>/run/evidence", endpoint="mobile_extraction_run_evidence", view_func=mobile_extraction_run_evidence, methods=["GET", "POST"])
 
 
 def _mobile_supplier_payload(supplier: Supplier) -> dict[str, Any]:
@@ -1470,7 +1475,7 @@ def mobile_extraction_run_view(root, charge_id: str):
         had_run_before = bool(charge.run_id)
         run = ensure_run_for_charge(root, charge)
         apply_execution_payload(run, payload)
-        apply_progression_action(run, payload.get("progression_action"))
+        apply_progression_action(root, run, payload.get("progression_action"), payload)
         apply_post_extraction_action(run, payload.get("post_extraction_action"))
         if (payload.get("progression_action") or "").strip() == "mark_complete" and (charge.status or "").strip() != "completed":
             update_charge_state(
@@ -1496,6 +1501,86 @@ def mobile_extraction_run_view(root, charge_id: str):
     except ValueError as exc:
         root.db.session.rollback()
         return _json_error(str(exc), status_code=400, code="bad_request")
+
+
+def mobile_extraction_run_evidence_view(root, charge_id: str):
+    write_error = _require_mobile_workflow(root, "extraction")
+    if write_error:
+        return write_error
+    charge = root.db.session.get(root.ExtractionCharge, charge_id)
+    if charge is None:
+        return _json_error("Extraction charge not found.", status_code=404, code="not_found")
+    run = ensure_run_for_charge(root, charge)
+    session = ensure_booth_session(root, run, charge)
+
+    if request.method == "GET":
+        rows = session.booth_evidence.order_by(root.ExtractionBoothEvidence.captured_at.desc()).all()
+        return jsonify({
+            "meta": build_meta(extra={"workflow": "extraction"}),
+            "data": {
+                "evidence": [
+                    {
+                        "id": row.id,
+                        "evidence_type": row.evidence_type,
+                        "file_path": row.file_path,
+                        "url": url_for("static", filename=row.file_path),
+                        "captured_at": row.captured_at.isoformat() if row.captured_at else None,
+                    }
+                    for row in rows
+                ],
+            },
+        })
+
+    payload = _mobile_payload()
+    evidence_type = (payload.get("evidence_type") or "").strip().lower()
+    if evidence_type not in {"solvent_chiller_temp_photo", "plate_temp_photo", "other"}:
+        return _json_error("Evidence type must be solvent_chiller_temp_photo, plate_temp_photo, or other.", status_code=400, code="bad_request")
+
+    files = request.files.getlist("photos") or request.files.getlist("photo")
+    if not files:
+        single = request.files.get("photo")
+        files = [single] if single and getattr(single, "filename", "") else []
+    if not files:
+        return _json_error("At least one photo file is required.", status_code=400, code="bad_request")
+
+    prefix = f"mobile-{run.id}-{evidence_type}"
+    saved_paths = save_uploads(
+        files,
+        prefix=prefix,
+        upload_dir=current_app.config["MOBILE_UPLOAD_DIR"],
+        max_bytes=int(current_app.config.get("MOBILE_UPLOAD_MAX_BYTES", 50 * 1024 * 1024)),
+        validator=allowed_image_filename,
+        error_message="Allowed image types: JPG, JPEG, PNG, WEBP, HEIC, HEIF.",
+    )
+    for path in saved_paths:
+        root.db.session.add(root.ExtractionBoothEvidence(
+            session_id=session.id,
+            run_id=run.id,
+            evidence_type=evidence_type,
+            file_path=path,
+            captured_by_user_id=current_user.id,
+        ))
+    audit_mobile_action(
+        root,
+        action="upload_photo",
+        entity_type="run",
+        entity_id=run.id,
+        workflow="extraction",
+        details={"charge_id": charge.id, "evidence_type": evidence_type, "count": len(saved_paths)},
+        user_id=current_user.id,
+    )
+    root.db.session.commit()
+    return jsonify({
+        "meta": build_meta(extra={"workflow": "extraction"}),
+        "data": {
+            "count": len(saved_paths),
+            "evidence_type": evidence_type,
+            "files": [
+                {"file_path": path, "url": url_for("static", filename=path)}
+                for path in saved_paths
+            ],
+        },
+    }), 201
 
 
 def mobile_opportunity_photos_view(root, opportunity_id: str):

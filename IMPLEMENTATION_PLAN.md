@@ -1,6 +1,42 @@
 # Gold Drop - Next Sprint Implementation Plan
 
-The reactor-side extraction workflow is now live through charge creation, standalone run execution, and guided run progression. The next major product area starts **after extraction has already happened** and the run outputs exist.
+The extraction program now has two shipped layers:
+
+1. upstream reactor execution and downstream routing
+2. extraction booth SOP alignment for the actual booth procedure
+
+The next major product area starts from the booth-SOP foundation that now exists in code.
+
+## Current State
+
+### Shipped
+
+- charge creation and reactor lifecycle workflow
+- standalone extraction app and charge-linked run execution
+- post-extraction pathway selection and downstream queue routing
+- dedicated downstream queue pages for current destinations
+- extraction booth session model, event history, evidence storage, and staged booth progression
+- booth checkpoints through shutdown and run completion:
+  - vacuum confirmation
+  - solvent charge
+  - soak / mixer
+  - filter clear
+  - pressurization and recovery
+  - flush temperature verification
+  - flush solvent charge
+  - flow resumed decision
+  - final purge
+  - final clarity
+  - shutdown checklist
+  - booth evidence uploads
+
+### Next focus
+
+- deepen booth-SOP fidelity where the written SOP still exceeds the current system:
+  - stronger timer expectations / duration visibility
+  - richer deviation handling when flow does not resume or clarity is not yet acceptable
+  - supervisor review surfaces for booth history and evidence
+  - decide whether Slack confirmation remains a required control or becomes optional evidence only
 
 This plan is now anchored to the `Extraction & Post-Processing Flowchart` provided on `2026-04-22`.
 
@@ -288,33 +324,9 @@ Current implementation for those additional destinations:
 - `Liquid Loud Hold` can release directly into `GoldDrop Production Queue`
 - `Terp Strip / CDT Cage` can mark Prescott handling and strip completion
 - `HP Base Oil Hold` can confirm or release the low-potency hold
+- `Distillate Hold` can confirm or release the hold with the same queue-history pattern as the other destination pages
 
-What remains for later phases is repeating this pattern for the remaining downstream destinations and then layering role-specific views on top.
-- top-to-bottom operator sequence
-- minimal keyboard entry
-- timers and decision buttons
-
-**Status:** shipped inside the standalone extraction run screen.
-
-Current implementation:
-- numbered downstream workflow steps
-- pathway-driven sequence on the tablet
-- branch-specific pot-pour vs minor-run step blocks
-- tap-first choice buttons for pathway and downstream decisions
-
-What remains for later phases is a fuller downstream queue / hold surface and role-specific views beyond the extraction tablet.
-
-### Phase 4 - Queue and hold destinations
-
-Turn final path decisions into operational queue states.
-
-Scope:
-
-- GoldDrop production queue
-- Liquid Loud hold
-- HP base oil hold
-- distillate hold
-- terp stripping / cage hold
+What remains for later phases is not the generic queue build itself. That work is now shipped. The remaining work is to deepen those queue surfaces into fuller role-based operational workflows with clearer completion and rework handling by destination.
 
 ### Phase 5 - Reporting / department alignment
 
@@ -349,30 +361,33 @@ Scope:
 
 ## UX Direction
 
-The likely operator surface should mirror the reactor-centered idea already discussed for extraction:
+The next operator surface should build on the queue pages already in production:
 
-- one guided workflow screen per post-extraction session or output path
+- keep the extraction tablet as the touch-first capture surface
+- deepen destination-specific queue pages into role-specific work surfaces
+- make next actions, completion, release, and rework states explicit on those queue pages
+- preserve the same principles already proven useful in extraction:
 - top-to-bottom flow
 - large tap targets
 - timers for hold steps
 - structured decision buttons for branch points
 
-This should be designed only after the team confirms the exact real-world workflow sequence.
-
 ## Immediate Next Session
 
-Do not build the downstream UI yet.
-
-First:
+The downstream UI foundation is already built. The next session should choose one destination and define the next layer of detail:
 
 1. confirm the real operator workflow with the team
 2. validate which steps are required vs optional
 3. validate which decisions must be structured
-4. confirm whether THCA and HTE should be managed as one shared screen or two linked workflow screens
+4. decide whether queue completion should simply clear the queue or stamp a dedicated downstream completion state
 
-After that, the first implementation slice should be:
+After that, the first implementation slice should be a queue-deepening pass for one destination, most likely:
 
-`Phase 1 - Post-extraction session foundation`
+- `GoldDrop Production Queue`
+- `Liquid Loud Hold`
+- `Terp Strip / CDT Cage`
+- `HP Base Oil Hold`
+- `Distillate Hold`
 
 ## Definition Of Done For Planning
 
