@@ -405,6 +405,27 @@ The likely implementation order is:
 2. destination-specific detail surfaces
 3. stronger downstream completion/rework tracking
 
+## Deployment note
+
+Current booth-SOP rollout commit:
+
+- branch: `Claude_Consolidation`
+- commit: `c1b2b94`
+
+Production deployment steps:
+
+1. update the production checkout:
+   - `git fetch origin`
+   - `git checkout Claude_Consolidation`
+   - `git pull --ff-only origin Claude_Consolidation`
+2. restart the backend so the booth-session / booth-evidence schema bootstrap runs and the new extraction routes load
+3. sync the standalone extraction app files to the tablet web root
+4. reload the tablet browser
+5. verify on a live extraction run:
+   - progression begins at `Confirm Vacuum Down`
+   - shutdown reaches `Mark Run Complete`
+   - `Booth evidence` uploads work for temperature photos
+
 ## Local note
 
 There is still a local screenshot file in the repo root that was intentionally not committed:
