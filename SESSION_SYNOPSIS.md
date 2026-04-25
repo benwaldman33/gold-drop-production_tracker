@@ -756,6 +756,8 @@ Core direction:
 - keep high-frequency operational work visually primary
 - move low-frequency / specialist / admin functions into second-level navigation
 - use standalone apps more aggressively for focused operational workflows
+- treat journey / genealogy as a daily manager workflow, not just a secondary reporting feature
+- treat journey data as the foundation for future cost-to-produce and revenue forecasting
 
 Recommended product split:
 
@@ -780,7 +782,7 @@ Recommended product split:
 Recommended first implementation step:
 
 - do a sidebar / information-architecture cleanup first
-- add grouped top-level navigation and a `More` bucket
+- add grouped top-level navigation, including a first-level `Journey` area plus a `More` bucket
 - avoid changing deep workflows in the same sprint
 
 ## Deployment note

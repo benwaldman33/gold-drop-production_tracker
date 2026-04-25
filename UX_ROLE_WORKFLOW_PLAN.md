@@ -159,6 +159,9 @@ Primary goals:
 - investigate issues
 - review genealogy and audit trail
 - understand yield / cost / exceptions
+- know where material is in production and where it has been
+- understand current and projected output mix
+- understand current and projected revenue from actual historical performance
 
 Primary product surfaces:
 
@@ -174,6 +177,18 @@ Secondary needs:
 - run details
 - purchase journey
 - cross-site ops
+
+Important note:
+
+Journey is not a secondary analytical feature for managers. It is a daily operating function.
+
+Managers need lineage and journey visibility not just for audit review, but for:
+
+- locating material in process
+- understanding what stage a batch is in right now
+- tracing how current finished or in-process material was produced
+- understanding what outputs were created from a given source lot or run
+- tying operational history to cost and revenue outcomes
 
 Low-value for this role as top-level items:
 
@@ -221,13 +236,14 @@ This is a real role, but it is not the dominant day-to-day usage model. Admin su
 - standalone receiving
 - standalone purchasing
 - supervisor alerts
+- genealogy report
+- material journey viewer
+- batch / lot / run journey lookup for managers
 
 ### Weekly / Moderate Frequency
 
 - `Biomass Purchasing`
 - `Runs`
-- genealogy report
-- material journey viewer
 - genealogy issue queue
 - field approvals
 - batch journeys
@@ -312,7 +328,9 @@ Should own:
 - office purchase review
 - inventory overview
 - genealogy investigation
+- journey and lineage lookup
 - reporting
+- cost / margin / revenue visibility
 - admin and maintenance
 
 ## Proposed Information Architecture
@@ -326,6 +344,7 @@ This should become the primary left-nav structure:
 - `Purchasing`
 - `Inventory`
 - `Alerts`
+- `Journey`
 - `More`
 
 ### What Each Top-Level Item Means
@@ -384,11 +403,26 @@ Cross-cutting operational attention surface:
 
 This should become a true operational inbox, not just a dashboard anchor.
 
+#### Journey
+
+Manager-facing daily investigation and visibility surface:
+
+- genealogy report
+- material journey viewer
+- lot / run / purchase journey entrypoints
+- issue queue links from lineage context
+
+This is not just reporting. It is the operational answer to:
+
+- where is this material now
+- where has it been
+- what did it become
+- what source material fed it
+
 #### More
 
 Second-level / specialist functions:
 
-- genealogy report
 - material journey viewer
 - departments
 - suppliers
@@ -455,10 +489,10 @@ That may ultimately replace the single `More` bucket once the first cleanup is s
 - purchasing
 - inventory
 - alerts
+- journey
 
 ### Items That Should Move Under `More`
 
-- genealogy report
 - departments
 - suppliers
 - strains
@@ -495,6 +529,7 @@ Best for:
 - office purchasing
 - analysts
 - admins
+- finance / forecasting review
 
 ### Standalone Extraction
 
@@ -523,10 +558,11 @@ The first UX cleanup sprint should be:
 
 1. replace the current flat sidebar with grouped top-level navigation
 2. add `More`
-3. move low-frequency items under `More`
-4. keep routes unchanged
-5. keep page content unchanged
-6. avoid workflow rewrites in the same sprint
+3. add `Journey` as a first-level item for managers and supervisors
+4. move low-frequency items under `More`
+5. keep routes unchanged
+6. keep page content unchanged
+7. avoid workflow rewrites in the same sprint
 
 That gives a major usability win without mixing:
 
@@ -561,8 +597,51 @@ This UX direction is successful when:
 - operators can identify their primary action in one or two seconds
 - supervisors do not need to scan a long sidebar to find queue work
 - buyers and receivers can live mostly in their dedicated workflows
-- managers can still reach reporting and genealogy without making those surfaces primary for everyone
+- managers can reach journey/genealogy immediately because it is one of their primary daily workflows
+- managers can use lineage history as the basis for cost-to-produce and revenue understanding
 - rare/admin tasks remain available but stop crowding the day-to-day product
+
+## Financial Visibility Layer
+
+One of the strategic reasons to invest in journey / genealogy is not just traceability.
+
+It is to create a financially useful operating model from actual history.
+
+The system should ultimately support:
+
+- actual cost-to-produce by output type:
+  - THCA
+  - HTE
+  - distillate
+  - HP base oil
+  - GoldDrop
+  - other derivative products
+- margin visibility by pathway and destination
+- yield-to-revenue understanding from source biomass through finished output
+- forecasted future revenue based on:
+  - current in-process material
+  - current queue state
+  - historical yields by source / strain / supplier / pathway
+  - historical conversion into final sellable outputs
+
+This means the journey layer is the backbone for:
+
+- audit
+- operational visibility
+- cost accounting
+- revenue forecasting
+
+## Future Reporting Recommendation
+
+After the navigation cleanup work, the product should add a dedicated commercial reporting layer built on genealogy and pathway history.
+
+That layer should answer:
+
+- what did this batch cost to produce
+- what did this run likely produce in sellable outputs
+- what revenue should we expect this week / month / quarter from the material already in process
+- which suppliers, strains, or pathways generate the best realized value
+- where are loss, rework, or low-value routing decisions reducing margin
 
 ## Recommended Next Build Sequence
 
