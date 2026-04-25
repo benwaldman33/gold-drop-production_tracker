@@ -5,6 +5,12 @@ from __future__ import annotations
 from flask import url_for
 
 from models import Purchase, PurchaseLot, Run, RunInput, db
+from services.material_genealogy import (
+    derivative_material_lots_for_purchase,
+    derivative_material_lots_for_purchase_lot,
+    derivative_material_lots_for_run,
+    serialize_material_lot,
+)
 
 
 def build_purchase_journey_payload(
@@ -19,6 +25,7 @@ def build_purchase_journey_payload(
     ),
 ) -> dict:
     """Build a derived stage timeline for one purchase batch."""
+    derivative_material_lots = derivative_material_lots_for_purchase(__import__("app"), purchase)
     lots_q = PurchaseLot.query.filter(PurchaseLot.purchase_id == purchase.id)
     if not include_archived:
         lots_q = lots_q.filter(PurchaseLot.deleted_at.is_(None))
@@ -133,6 +140,17 @@ def build_purchase_journey_payload(
             "links": [{"label": "Runs", "url": url_for("runs_list")}],
         },
         {
+            "stage_key": "derivative_lots",
+            "state": "done" if derivative_material_lots else "not_started",
+            "started_at": min((item.created_at for item in derivative_material_lots), default=None).isoformat() if derivative_material_lots else None,
+            "completed_at": max((item.created_at for item in derivative_material_lots), default=None).isoformat() if derivative_material_lots else None,
+            "metrics": {
+                "derivative_lot_count": len(derivative_material_lots),
+                "lot_types": sorted({item.lot_type for item in derivative_material_lots}),
+            },
+            "links": [],
+        },
+        {
             "stage_key": "sales",
             "state": "not_started",
             "started_at": None,
@@ -186,6 +204,10 @@ def build_purchase_journey_payload(
         }
         for run in sorted(runs, key=lambda item: (item.run_date or "", item.id))
     ]
+    derivative_nodes = [
+        serialize_material_lot(__import__("app"), material_lot)
+        for material_lot in derivative_material_lots
+    ]
 
     exceptions: list[dict] = []
     if not purchase.is_approved:
@@ -223,10 +245,12 @@ def build_purchase_journey_payload(
         "lots": lot_nodes,
         "allocations": allocation_edges,
         "runs": run_nodes,
+        "material_lots": derivative_nodes,
         "exceptions": exceptions,
         "summary": {
             "lot_count": len(lot_nodes),
             "run_count": len(run_nodes),
+            "derivative_lot_count": len(derivative_nodes),
             "total_lot_lbs": total_lot_lbs,
             "remaining_lbs": total_remaining_lbs,
             "allocated_lbs": consumed_lbs,
@@ -246,6 +270,7 @@ def build_lot_journey_payload(
     ),
 ) -> dict:
     """Build a derived journey payload for one inventory lot."""
+    derivative_material_lots = derivative_material_lots_for_purchase_lot(__import__("app"), lot)
     purchase = lot.purchase
 
     run_inputs_q = RunInput.query.filter(RunInput.lot_id == lot.id)
@@ -328,6 +353,17 @@ def build_lot_journey_payload(
             "metrics": {"hte_pipeline_stages": sorted(hte_stages)},
             "links": [{"label": "Runs", "url": url_for("runs_list")}],
         },
+        {
+            "stage_key": "derivative_lots",
+            "state": "done" if derivative_material_lots else "not_started",
+            "started_at": min((item.created_at for item in derivative_material_lots), default=None).isoformat() if derivative_material_lots else None,
+            "completed_at": max((item.created_at for item in derivative_material_lots), default=None).isoformat() if derivative_material_lots else None,
+            "metrics": {
+                "derivative_lot_count": len(derivative_material_lots),
+                "lot_types": sorted({item.lot_type for item in derivative_material_lots}),
+            },
+            "links": [],
+        },
     ]
 
     lot_node = {
@@ -371,6 +407,10 @@ def build_lot_journey_payload(
         }
         for run in sorted(runs, key=lambda item: (item.run_date or "", item.id))
     ]
+    derivative_nodes = [
+        serialize_material_lot(__import__("app"), material_lot)
+        for material_lot in derivative_material_lots
+    ]
 
     exceptions: list[dict] = []
     if purchase and not purchase.is_approved:
@@ -408,9 +448,11 @@ def build_lot_journey_payload(
         "lot": lot_node,
         "allocations": allocation_edges,
         "runs": run_nodes,
+        "material_lots": derivative_nodes,
         "exceptions": exceptions,
         "summary": {
             "run_count": len(run_nodes),
+            "derivative_lot_count": len(derivative_nodes),
             "weight_lbs": total_lot_lbs,
             "remaining_lbs": total_remaining_lbs,
             "allocated_lbs": allocated_lbs,
@@ -420,6 +462,7 @@ def build_lot_journey_payload(
 
 def build_run_journey_payload(run: Run, *, include_archived: bool = False) -> dict:
     """Build a derived journey payload for one extraction run."""
+    derivative_material_lots = derivative_material_lots_for_run(__import__("app"), run)
     run_inputs_q = RunInput.query.filter(RunInput.run_id == run.id)
     if not include_archived:
         run_inputs_q = run_inputs_q.join(PurchaseLot, PurchaseLot.id == RunInput.lot_id).filter(
@@ -494,6 +537,17 @@ def build_run_journey_payload(run: Run, *, include_archived: bool = False) -> di
             "metrics": {"hte_pipeline_stage": hte_stage or None},
             "links": [{"label": "Runs", "url": url_for("runs_list")}],
         },
+        {
+            "stage_key": "derivative_lots",
+            "state": "done" if derivative_material_lots else "not_started",
+            "started_at": min((item.created_at for item in derivative_material_lots), default=None).isoformat() if derivative_material_lots else None,
+            "completed_at": max((item.created_at for item in derivative_material_lots), default=None).isoformat() if derivative_material_lots else None,
+            "metrics": {
+                "derivative_lot_count": len(derivative_material_lots),
+                "lot_types": sorted({item.lot_type for item in derivative_material_lots}),
+            },
+            "links": [],
+        },
     ]
 
     purchase_nodes = [
@@ -549,6 +603,10 @@ def build_run_journey_payload(run: Run, *, include_archived: bool = False) -> di
         "hte_pipeline_stage": run.hte_pipeline_stage,
         "run_url": url_for("run_edit", run_id=run.id),
     }
+    derivative_nodes = [
+        serialize_material_lot(__import__("app"), material_lot)
+        for material_lot in derivative_material_lots
+    ]
 
     exceptions: list[dict] = []
     if not run_inputs:
@@ -586,10 +644,12 @@ def build_run_journey_payload(run: Run, *, include_archived: bool = False) -> di
         "lots": lot_nodes,
         "allocations": allocation_edges,
         "run": run_node,
+        "material_lots": derivative_nodes,
         "exceptions": exceptions,
         "summary": {
             "purchase_count": len(purchase_nodes),
             "lot_count": len(lot_nodes),
+            "derivative_lot_count": len(derivative_nodes),
             "input_lbs": total_input_lbs,
             "dry_thca_g": total_dry_thca,
             "dry_hte_g": total_dry_hte,

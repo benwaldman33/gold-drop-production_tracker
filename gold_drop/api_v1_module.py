@@ -22,7 +22,7 @@ from gold_drop.slack import (
     _slack_message_needs_resolution_ui,
     _slack_ts_to_date_value,
 )
-from models import LotScanEvent, Purchase, PurchaseLot, RemoteSite, Run, RunInput, ScaleDevice, SlackIngestedMessage, Supplier, WeightCapture, db
+from models import LotScanEvent, MaterialLot, Purchase, PurchaseLot, RemoteSite, Run, RunInput, ScaleDevice, SlackIngestedMessage, Supplier, WeightCapture, db
 from services.api_auth import json_api_error, require_api_scope
 from services.api_queries import (
     build_inventory_on_hand_query,
@@ -36,6 +36,8 @@ from services.api_serializers import (
     serialize_inventory_lot,
     serialize_exception_item,
     serialize_lot_summary,
+    serialize_material_reconciliation_issue,
+    serialize_material_lot_summary,
     serialize_purchase_detail,
     serialize_purchase_summary,
     serialize_run_detail,
@@ -51,6 +53,13 @@ from services.api_serializers import (
 )
 from services.api_site import get_site_identity
 from services.lot_allocation import choose_default_lot_allocation, rank_lot_candidates
+from services.material_genealogy import (
+    build_material_lot_ancestry_payload,
+    build_material_lot_descendants_payload,
+    build_material_lot_detail_payload,
+    build_material_lot_journey_payload,
+    first_open_reconciliation_issues,
+)
 from services.purchases_journey import build_lot_journey_payload, build_purchase_journey_payload, build_run_journey_payload
 from services.site_aggregation import build_aggregation_summary, serialize_remote_site_cache
 
@@ -86,6 +95,10 @@ def register_routes(app, root):
     app.add_url_rule("/api/v1/lots", endpoint="api_v1_lots", view_func=api_v1_lots)
     app.add_url_rule("/api/v1/lots/<lot_id>", endpoint="api_v1_lot_detail", view_func=api_v1_lot_detail)
     app.add_url_rule("/api/v1/lots/<lot_id>/journey", endpoint="api_v1_lot_journey", view_func=api_v1_lot_journey)
+    app.add_url_rule("/api/v1/material-lots/<lot_id>", endpoint="api_v1_material_lot_detail", view_func=api_v1_material_lot_detail)
+    app.add_url_rule("/api/v1/material-lots/<lot_id>/journey", endpoint="api_v1_material_lot_journey", view_func=api_v1_material_lot_journey)
+    app.add_url_rule("/api/v1/material-lots/<lot_id>/ancestry", endpoint="api_v1_material_lot_ancestry", view_func=api_v1_material_lot_ancestry)
+    app.add_url_rule("/api/v1/material-lots/<lot_id>/descendants", endpoint="api_v1_material_lot_descendants", view_func=api_v1_material_lot_descendants)
     app.add_url_rule("/api/v1/runs", endpoint="api_v1_runs", view_func=api_v1_runs)
     app.add_url_rule("/api/v1/runs/<run_id>", endpoint="api_v1_run_detail", view_func=api_v1_run_detail)
     app.add_url_rule("/api/v1/runs/<run_id>/journey", endpoint="api_v1_run_journey", view_func=api_v1_run_journey)
@@ -208,6 +221,10 @@ def api_v1_capabilities():
             {"path": "/api/v1/lots", "scope": "read:lots", "kind": "list"},
             {"path": "/api/v1/lots/<lot_id>", "scope": "read:lots", "kind": "detail"},
             {"path": "/api/v1/lots/<lot_id>/journey", "scope": "read:journey", "kind": "detail"},
+            {"path": "/api/v1/material-lots/<lot_id>", "scope": "read:journey", "kind": "detail"},
+            {"path": "/api/v1/material-lots/<lot_id>/journey", "scope": "read:journey", "kind": "detail"},
+            {"path": "/api/v1/material-lots/<lot_id>/ancestry", "scope": "read:journey", "kind": "detail"},
+            {"path": "/api/v1/material-lots/<lot_id>/descendants", "scope": "read:journey", "kind": "detail"},
             {"path": "/api/v1/inventory/on-hand", "scope": "read:inventory", "kind": "list"},
             {"path": "/api/v1/summary/inventory", "scope": "read:inventory", "kind": "summary"},
             {"path": "/api/v1/runs", "scope": "read:runs", "kind": "list"},
@@ -450,8 +467,8 @@ def api_v1_tool_open_lots():
 def api_v1_tool_journey_resolve():
     entity_type = (request.args.get("entity_type") or "").strip().lower()
     entity_id = (request.args.get("entity_id") or "").strip()
-    if entity_type not in {"purchase", "lot", "run"} or not entity_id:
-        return json_api_error("entity_type must be purchase, lot, or run and entity_id is required", status_code=400, code="bad_request")
+    if entity_type not in {"purchase", "lot", "run", "material_lot"} or not entity_id:
+        return json_api_error("entity_type must be purchase, lot, run, or material_lot and entity_id is required", status_code=400, code="bad_request")
 
     if entity_type == "purchase":
         purchase = db.session.get(Purchase, entity_id)
@@ -473,6 +490,18 @@ def api_v1_tool_journey_resolve():
             "entity_id": entity_id,
             "journey_endpoint": f"/api/v1/lots/{entity_id}/journey",
             "journey": build_lot_journey_payload(lot),
+        }
+        return jsonify(envelope(payload))
+
+    if entity_type == "material_lot":
+        material_lot = db.session.get(MaterialLot, entity_id)
+        if not material_lot:
+            return json_api_error("Material lot not found", status_code=404, code="not_found")
+        payload = {
+            "entity_type": "material_lot",
+            "entity_id": entity_id,
+            "journey_endpoint": f"/api/v1/material-lots/{entity_id}/journey",
+            "journey": build_material_lot_journey_payload(_require_root(), material_lot),
         }
         return jsonify(envelope(payload))
 
@@ -506,6 +535,13 @@ def api_v1_tool_reconciliation_overview():
             "needs_manual_match_items": manual_items,
         },
         "exceptions": exception_payload,
+        "material_genealogy": {
+            "open_issue_count": root.MaterialReconciliationIssue.query.filter_by(status="open").count(),
+            "open_issues": [
+                serialize_material_reconciliation_issue(issue)
+                for issue in first_open_reconciliation_issues(root, limit=10)
+            ],
+        },
     }
     return jsonify(envelope(payload))
 
@@ -1046,6 +1082,38 @@ def api_v1_lot_journey(lot_id):
             )
     payload = build_lot_journey_payload(lot, include_archived=include_archived)
     return jsonify(envelope(payload))
+
+
+@require_api_scope("read:journey")
+def api_v1_material_lot_detail(lot_id):
+    material_lot = db.session.get(MaterialLot, lot_id)
+    if not material_lot:
+        return json_api_error("Material lot not found", status_code=404, code="not_found")
+    return jsonify(envelope(build_material_lot_detail_payload(_require_root(), material_lot)))
+
+
+@require_api_scope("read:journey")
+def api_v1_material_lot_journey(lot_id):
+    material_lot = db.session.get(MaterialLot, lot_id)
+    if not material_lot:
+        return json_api_error("Material lot not found", status_code=404, code="not_found")
+    return jsonify(envelope(build_material_lot_journey_payload(_require_root(), material_lot)))
+
+
+@require_api_scope("read:journey")
+def api_v1_material_lot_ancestry(lot_id):
+    material_lot = db.session.get(MaterialLot, lot_id)
+    if not material_lot:
+        return json_api_error("Material lot not found", status_code=404, code="not_found")
+    return jsonify(envelope(build_material_lot_ancestry_payload(_require_root(), material_lot)))
+
+
+@require_api_scope("read:journey")
+def api_v1_material_lot_descendants(lot_id):
+    material_lot = db.session.get(MaterialLot, lot_id)
+    if not material_lot:
+        return json_api_error("Material lot not found", status_code=404, code="not_found")
+    return jsonify(envelope(build_material_lot_descendants_payload(_require_root(), material_lot)))
 
 
 @require_api_scope("read:runs")

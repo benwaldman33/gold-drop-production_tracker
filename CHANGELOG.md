@@ -7,6 +7,17 @@
 - `PurchaseLot` now has a genealogy bridge field (`material_lot_id`) so each biomass inventory lot can map to a first-class material lot without changing the current lot workflow.
 - A new genealogy helper service now backfills biomass `MaterialLot` rows from active `PurchaseLot` rows and resolves source biomass material lots for a run.
 - The first genealogy reconciliation checks are now available for runs, including missing source-allocation / missing-input-link and negative-balance detection.
+- Extraction runs with accountable dry outputs now auto-create additive genealogy records:
+  - one `MaterialTransformation(type=extraction)` per eligible run
+  - `dry_hte` and `dry_thca` derivative `MaterialLot` rows
+  - transformation input/output rows linking biomass source lots to derivative extraction outputs
+- The internal API now exposes first manager-facing derivative genealogy surfaces:
+  - `/api/v1/material-lots/<lot_id>`
+  - `/api/v1/material-lots/<lot_id>/journey`
+  - `/api/v1/material-lots/<lot_id>/ancestry`
+  - `/api/v1/material-lots/<lot_id>/descendants`
+- Existing purchase / lot / run journey payloads now include derivative `material_lots`, so managers can trace biomass source lots forward into accountable dry HTE / THCA output lots.
+- Reconciliation overview now includes open material genealogy issues alongside the existing Slack/import exception summary.
 - New planning documents now define the target model and phased rollout for true end-to-end material genealogy:
   - `DERIVATIVE_LOT_GENEALOGY_PLAN.md`
   - `DERIVATIVE_LOT_GENEALOGY_IMPLEMENTATION_PLAN.md`
@@ -16,6 +27,7 @@
 
 ### Tests
 - Added regression coverage for biomass material-lot backfill, run source-material resolution, and first-pass genealogy reconciliation issue creation.
+- Added genealogy regression coverage for extraction transformation/output-lot creation, material-lot ancestry/descendant payloads, material-lot API endpoints, and the new route registration.
 
 ## 2026-04-24
 

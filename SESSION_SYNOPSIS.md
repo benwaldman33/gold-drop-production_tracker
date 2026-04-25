@@ -463,6 +463,40 @@ This is still foundation work only:
 - current downstream queues still run off `Run`
 - derivative output lots and manager-facing genealogy read surfaces are the next implementation slices
 
+## Genealogy phase 4-6 update
+
+The next genealogy milestone is now in:
+
+- eligible extraction runs auto-create `MaterialTransformation(type=extraction)` rows
+- accountable dry outputs now generate derivative `MaterialLot` rows for:
+  - `dry_hte`
+  - `dry_thca`
+- extraction genealogy now records:
+  - biomass source inputs
+  - derivative output lots
+  - cost basis on derivative dry-output lots when run cost-per-gram fields exist
+- the internal API now exposes manager-facing derivative genealogy read surfaces:
+  - `/api/v1/material-lots/<lot_id>`
+  - `/api/v1/material-lots/<lot_id>/journey`
+  - `/api/v1/material-lots/<lot_id>/ancestry`
+  - `/api/v1/material-lots/<lot_id>/descendants`
+- existing purchase / lot / run journeys now include derivative `material_lots`
+- reconciliation overview now includes open material genealogy issues
+
+Practical meaning:
+
+- a manager can now start from a run and see the accountable dry HTE / THCA derivative lots created from it
+- a manager can start from a biomass purchase lot and trace forward into derivative extraction outputs
+- a manager can start from a derivative dry-output lot and trace back to its biomass ancestry
+
+What still remains after this slice:
+
+- correction workflows
+- deeper cost roll-forward beyond extraction outputs
+- queue linking to derivative lots
+- destination-native downstream transformations
+- reporting surfaces built directly on genealogy
+
 ## Deployment note
 
 Current rollout commit:

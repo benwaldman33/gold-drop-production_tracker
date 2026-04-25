@@ -6,7 +6,10 @@ from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
 from services.lot_allocation import ensure_lot_tracking_fields
-from services.material_genealogy import backfill_biomass_material_lots
+from services.material_genealogy import (
+    backfill_biomass_material_lots,
+    backfill_extraction_output_genealogy,
+)
 
 
 def ensure_sqlite_schema(root) -> None:
@@ -597,6 +600,13 @@ def ensure_sqlite_schema(root) -> None:
 
 def backfill_biomass_material_genealogy(root) -> int:
     count = backfill_biomass_material_lots(root)
+    if count:
+        root.db.session.commit()
+    return count
+
+
+def backfill_extraction_output_material_genealogy(root) -> int:
+    count = backfill_extraction_output_genealogy(root)
     if count:
         root.db.session.commit()
     return count

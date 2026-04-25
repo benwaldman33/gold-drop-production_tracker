@@ -65,7 +65,7 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 
 ## Features
 
-- **Derivative lot genealogy foundation** - the app now has additive genealogy tables for traceable material lots, transformations, transformation inputs/outputs, and reconciliation issues. Active biomass `PurchaseLot` rows are now bridged into first-class `MaterialLot` records so later end-to-end ancestry / descendant tracking can be layered on without replacing current run and queue workflows.
+- **Derivative lot genealogy foundation** - the app now has additive genealogy tables for traceable material lots, transformations, transformation inputs/outputs, and reconciliation issues. Active biomass `PurchaseLot` rows are bridged into first-class `MaterialLot` records, and eligible extraction runs now auto-create dry HTE / dry THCA derivative lots linked back to their biomass source lots.
 - **Downstream queue ownership** - active downstream queue items can now be assigned to a specific editor from either the shared board or the dedicated destination queue pages, so supervisors have explicit current ownership instead of only queue-event history.
 - **Downstream queue reporting** - the shared downstream board and dedicated destination queue pages now show queue age, stale/blocked status, recent completions, and recent rework volume so supervisors can manage bottlenecks directly from the queue surfaces.
 
@@ -419,6 +419,10 @@ Current endpoints:
 - `/api/v1/lots`
 - `/api/v1/lots/<lot_id>`
 - `/api/v1/lots/<lot_id>/journey`
+- `/api/v1/material-lots/<lot_id>`
+- `/api/v1/material-lots/<lot_id>/journey`
+- `/api/v1/material-lots/<lot_id>/ancestry`
+- `/api/v1/material-lots/<lot_id>/descendants`
 - `/api/v1/runs`
 - `/api/v1/runs/<run_id>`
 - `/api/v1/runs/<run_id>/journey`
@@ -626,6 +630,8 @@ Use **Inventory → Import spreadsheet** when you need to bulk update existing l
 - **Cost Entries** are allocated across total dry grams in their date ranges
 - **Lots** → **Run Inputs** → **Runs** (many-to-many through run_inputs; `RunInput` is the explicit lot allocation record)
 - Purchase lots now carry `tracking_id`, barcode payload, QR payload, and label metadata for future scan / label workflows
+- **Material Lots** and **Material Transformations** add an additive genealogy layer over the existing purchase-lot and run workflow
+- Eligible extraction runs now generate derivative `MaterialLot` outputs for accountable dry HTE / THCA quantities, linked back to their biomass source lots through transformation input / output rows
 - Lot `remaining_weight_lbs` is automatically decremented when used in a run, and run saves require selected lot allocations to match `bio_in_reactor_lbs`
 - Slack run preview can rank candidate lots and prefill one-lot or split-lot allocations before the run form opens
 - Yield calculations and cost-per-gram are auto-computed on save
