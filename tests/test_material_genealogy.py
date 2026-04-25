@@ -96,18 +96,23 @@ def test_source_material_lots_for_run_returns_bridged_biomass_lots():
         )
         db.session.add_all([lot, run])
         db.session.flush()
+        run_id = run.id
+        lot_id = lot.id
         allocation = RunInput(run_id=run.id, lot_id=lot.id, weight_lbs=40)
         db.session.add(allocation)
         db.session.commit()
 
         try:
-            backfill_biomass_material_lots(app_module)
+            ensure_biomass_material_lot(app_module, db.session.get(PurchaseLot, lot.id))
             db.session.commit()
             material_lots = source_material_lots_for_run(app_module, run)
             assert len(material_lots) == 1
             assert material_lots[0].lot_type == "biomass"
             assert material_lots[0].source_purchase_lot_id == lot.id
         finally:
+            db.session.rollback()
+            run = db.session.get(Run, run_id)
+            lot = db.session.get(PurchaseLot, lot_id)
             if lot.material_lot_id:
                 material_lot = db.session.get(MaterialLot, lot.material_lot_id)
                 if material_lot is not None:
@@ -164,11 +169,13 @@ def test_ensure_extraction_output_genealogy_creates_derivative_lots_and_transfor
         )
         db.session.add_all([lot, run])
         db.session.flush()
+        run_id = run.id
+        lot_id = lot.id
         db.session.add(RunInput(run_id=run.id, lot_id=lot.id, weight_lbs=40))
         db.session.commit()
 
         try:
-            backfill_biomass_material_lots(app_module)
+            ensure_biomass_material_lot(app_module, db.session.get(PurchaseLot, lot.id))
             transformation = ensure_extraction_output_genealogy(app_module, run)
             db.session.commit()
 
@@ -186,16 +193,21 @@ def test_ensure_extraction_output_genealogy_creates_derivative_lots_and_transfor
             assert by_type["dry_thca"].quantity == 28.0
             assert by_type["dry_thca"].cost_basis_per_unit == 4.5
         finally:
-            MaterialReconciliationIssue.query.filter_by(run_id=run.id).delete()
-            for output in run.material_lots.all():
+            db.session.rollback()
+            MaterialReconciliationIssue.query.filter_by(run_id=run_id).delete()
+            run = db.session.get(Run, run_id)
+            for output in run.material_lots.all() if run is not None else []:
                 db.session.delete(output)
-            MaterialTransformation.query.filter_by(run_id=run.id).delete()
-            if lot.material_lot_id:
+            MaterialTransformation.query.filter_by(run_id=run_id).delete()
+            lot = db.session.get(PurchaseLot, lot_id)
+            if lot is not None and lot.material_lot_id:
                 material_lot = db.session.get(MaterialLot, lot.material_lot_id)
                 if material_lot is not None:
                     db.session.delete(material_lot)
-            db.session.delete(run)
-            db.session.delete(lot)
+            if run is not None:
+                db.session.delete(run)
+            if lot is not None:
+                db.session.delete(lot)
             db.session.delete(purchase)
             db.session.delete(supplier)
             db.session.commit()
@@ -284,11 +296,13 @@ def test_apply_material_lot_correction_adjusts_quantity_with_replacement_and_aud
         )
         db.session.add_all([lot, run])
         db.session.flush()
+        run_id = run.id
+        lot_id = lot.id
         db.session.add(RunInput(run_id=run.id, lot_id=lot.id, weight_lbs=40))
         db.session.commit()
 
         try:
-            backfill_biomass_material_lots(app_module)
+            ensure_biomass_material_lot(app_module, db.session.get(PurchaseLot, lot.id))
             ensure_extraction_output_genealogy(app_module, run)
             db.session.commit()
 
@@ -318,16 +332,21 @@ def test_apply_material_lot_correction_adjusts_quantity_with_replacement_and_aud
             assert correction is not None
             assert correction.outputs.count() == 1
         finally:
-            MaterialReconciliationIssue.query.filter_by(run_id=run.id).delete()
-            MaterialTransformation.query.filter_by(run_id=run.id).delete()
-            for output in run.material_lots.all():
+            db.session.rollback()
+            MaterialReconciliationIssue.query.filter_by(run_id=run_id).delete()
+            MaterialTransformation.query.filter_by(run_id=run_id).delete()
+            run = db.session.get(Run, run_id)
+            for output in run.material_lots.all() if run is not None else []:
                 db.session.delete(output)
-            if lot.material_lot_id:
+            lot = db.session.get(PurchaseLot, lot_id)
+            if lot is not None and lot.material_lot_id:
                 material_lot = db.session.get(MaterialLot, lot.material_lot_id)
                 if material_lot is not None:
                     db.session.delete(material_lot)
-            db.session.delete(run)
-            db.session.delete(lot)
+            if run is not None:
+                db.session.delete(run)
+            if lot is not None:
+                db.session.delete(lot)
             db.session.delete(purchase)
             db.session.delete(supplier)
             db.session.commit()
@@ -361,6 +380,7 @@ def test_ensure_downstream_output_genealogy_creates_golddrop_and_wholesale_thca_
         )
         db.session.add_all([lot, run])
         db.session.flush()
+        run_id = run.id
         db.session.add(RunInput(run_id=run.id, lot_id=lot.id, weight_lbs=40))
         db.session.add(
             DownstreamQueueEvent(
@@ -372,7 +392,7 @@ def test_ensure_downstream_output_genealogy_creates_golddrop_and_wholesale_thca_
         db.session.commit()
 
         try:
-            backfill_biomass_material_lots(app_module)
+            ensure_biomass_material_lot(app_module, db.session.get(PurchaseLot, lot.id))
             ensure_extraction_output_genealogy(app_module, run)
             ensure_downstream_output_genealogy(app_module, run)
             db.session.commit()
@@ -386,10 +406,12 @@ def test_ensure_downstream_output_genealogy_creates_golddrop_and_wholesale_thca_
             assert descendants["descendants"][0]["transformation"]["transformation_type"] == "golddrop_production"
             assert descendants["descendants"][0]["outputs"][0]["material_lot"]["lot_type"] == "golddrop"
         finally:
-            MaterialReconciliationIssue.query.filter_by(run_id=run.id).delete()
-            DownstreamQueueEvent.query.filter_by(run_id=run.id).delete()
-            MaterialTransformation.query.filter_by(run_id=run.id).delete()
-            for output in run.material_lots.all():
+            db.session.rollback()
+            MaterialReconciliationIssue.query.filter_by(run_id=run_id).delete()
+            DownstreamQueueEvent.query.filter_by(run_id=run_id).delete()
+            MaterialTransformation.query.filter_by(run_id=run_id).delete()
+            run = db.session.get(Run, run_id)
+            for output in run.material_lots.all() if run is not None else []:
                 db.session.delete(output)
             if lot.material_lot_id:
                 material_lot = db.session.get(MaterialLot, lot.material_lot_id)
@@ -504,6 +526,10 @@ def test_ensure_downstream_output_genealogy_creates_hp_base_oil_and_distillate_l
         )
         db.session.add_all([hp_lot, dist_lot, hp_run, dist_run])
         db.session.flush()
+        hp_run_id = hp_run.id
+        dist_run_id = dist_run.id
+        hp_lot_id = hp_lot.id
+        dist_lot_id = dist_lot.id
         db.session.add_all(
             [
                 RunInput(run_id=hp_run.id, lot_id=hp_lot.id, weight_lbs=40),
@@ -515,7 +541,8 @@ def test_ensure_downstream_output_genealogy_creates_hp_base_oil_and_distillate_l
         db.session.commit()
 
         try:
-            backfill_biomass_material_lots(app_module)
+            ensure_biomass_material_lot(app_module, db.session.get(PurchaseLot, hp_lot.id))
+            ensure_biomass_material_lot(app_module, db.session.get(PurchaseLot, dist_lot.id))
             ensure_extraction_output_genealogy(app_module, hp_run)
             ensure_extraction_output_genealogy(app_module, dist_run)
             ensure_downstream_output_genealogy(app_module, hp_run)
@@ -529,19 +556,24 @@ def test_ensure_downstream_output_genealogy_creates_hp_base_oil_and_distillate_l
             assert dist_output is not None
             assert dist_output.quantity == 9.0
         finally:
-            for run in (hp_run, dist_run):
-                MaterialReconciliationIssue.query.filter_by(run_id=run.id).delete()
-                DownstreamQueueEvent.query.filter_by(run_id=run.id).delete()
-                MaterialTransformation.query.filter_by(run_id=run.id).delete()
-                for output in run.material_lots.all():
+            db.session.rollback()
+            for run_id in (hp_run_id, dist_run_id):
+                run = db.session.get(Run, run_id)
+                MaterialReconciliationIssue.query.filter_by(run_id=run_id).delete()
+                DownstreamQueueEvent.query.filter_by(run_id=run_id).delete()
+                MaterialTransformation.query.filter_by(run_id=run_id).delete()
+                for output in run.material_lots.all() if run is not None else []:
                     db.session.delete(output)
-                db.session.delete(run)
-            for lot in (hp_lot, dist_lot):
-                if lot.material_lot_id:
+                if run is not None:
+                    db.session.delete(run)
+            for lot_id in (hp_lot_id, dist_lot_id):
+                lot = db.session.get(PurchaseLot, lot_id)
+                if lot is not None and lot.material_lot_id:
                     material_lot = db.session.get(MaterialLot, lot.material_lot_id)
                     if material_lot is not None:
                         db.session.delete(material_lot)
-                db.session.delete(lot)
+                if lot is not None:
+                    db.session.delete(lot)
             db.session.delete(purchase)
             db.session.delete(supplier)
             db.session.commit()

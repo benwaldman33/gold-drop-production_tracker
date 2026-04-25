@@ -31,6 +31,10 @@
   - terp strip completion can create `terp_strip_output` lots
   - HP base oil release can create `hp_base_oil` lots
   - distillate release can create `distillate` lots
+- Material genealogy now has a first reporting layer:
+  - `/reports/material-genealogy` in the main app
+  - `/api/v1/summary/material-genealogy` in the internal API
+  - reporting now covers open/released derivative inventory by type, source-to-derivative yield, rework volume, open reconciliation issues, and recent derivative lots with lineage links
 - New planning documents now define the target model and phased rollout for true end-to-end material genealogy:
   - `DERIVATIVE_LOT_GENEALOGY_PLAN.md`
   - `DERIVATIVE_LOT_GENEALOGY_IMPLEMENTATION_PLAN.md`
@@ -45,6 +49,7 @@
 - Added regression coverage for the material-cost summary endpoint and its route registration.
 - Added downstream queue regression coverage ensuring GoldDrop queue cards render linked derivative lot genealogy without breaking the existing queue workflow surfaces.
 - Added genealogy regression coverage for downstream child-lot creation across GoldDrop, THCA routing, terp strip, HP base oil, and distillate conversions.
+- Added reporting regression coverage for the new material genealogy report page, the new summary endpoint, and route registration.
 
 ## 2026-04-24
 

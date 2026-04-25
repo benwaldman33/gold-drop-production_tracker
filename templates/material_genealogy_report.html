@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+{% block title %}Material Genealogy Report{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Material Genealogy Report</h2>
+  <div class="btn-group">
+    <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
+    <a href="{{ url_for('downstream_queues') }}" class="btn btn-secondary">Open Downstream Queues</a>
+  </div>
+</div>
+
+<div class="summary-row">
+  <div class="summary-stat">
+    <div class="label">Open Groups</div>
+    <div class="value">{{ report.summary.open_group_count }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Released Groups</div>
+    <div class="value">{{ report.summary.released_group_count }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Open Cost Basis</div>
+    <div class="value">${{ "{:,.0f}".format(report.summary.open_cost_basis_total or 0) }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Released Cost Basis</div>
+    <div class="value">${{ "{:,.0f}".format(report.summary.released_cost_basis_total or 0) }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Open Issues</div>
+    <div class="value">{{ report.summary.open_issue_count }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Rework Events</div>
+    <div class="value">{{ report.summary.rework_event_count }}</div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:18px;">
+  <div class="card-header">
+    <h3>Open Derivative Inventory By Type</h3>
+  </div>
+  {% if report.open_inventory_groups %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Lot Type</th>
+          <th>Lot Count</th>
+          <th>Quantity</th>
+          <th>Cost Basis</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in report.open_inventory_groups %}
+        <tr>
+          <td>{{ row.lot_type }}</td>
+          <td>{{ row.lot_count }}</td>
+          <td>{{ "{:,.2f}".format(row.quantity_total or 0) }} {{ row.unit }}</td>
+          <td>${{ "{:,.2f}".format(row.cost_basis_total or 0) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-sm cell-muted">No open derivative inventory is currently recorded.</p>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-bottom:18px;">
+  <div class="card-header">
+    <h3>Released Derivative Inventory By Type</h3>
+  </div>
+  {% if report.released_inventory_groups %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Lot Type</th>
+          <th>Lot Count</th>
+          <th>Quantity</th>
+          <th>Cost Basis</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in report.released_inventory_groups %}
+        <tr>
+          <td>{{ row.lot_type }}</td>
+          <td>{{ row.lot_count }}</td>
+          <td>{{ "{:,.2f}".format(row.quantity_total or 0) }} {{ row.unit }}</td>
+          <td>${{ "{:,.2f}".format(row.cost_basis_total or 0) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-sm cell-muted">No released derivative inventory is currently recorded.</p>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-bottom:18px;">
+  <div class="card-header">
+    <h3>Source-To-Derivative Yield</h3>
+  </div>
+  {% if report.source_yield_rows %}
+  <div style="display:grid;gap:12px;">
+    {% for row in report.source_yield_rows %}
+    <div style="border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:12px;">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">
+        <div>
+          <div style="font-weight:600;">{{ row.source_lot.tracking_id }} · {{ row.source_lot.strain_name_snapshot or "Unknown strain" }}</div>
+          <div class="text-sm cell-muted" style="margin-top:4px;">{{ row.source_lot.supplier_name_snapshot or "Unknown supplier" }}</div>
+          <div class="text-sm cell-muted" style="margin-top:6px;">{{ row.descendant_lot_count }} descendant lot{% if row.descendant_lot_count != 1 %}s{% endif %}</div>
+        </div>
+        <div class="text-sm cell-muted">
+          {% for lot_type, quantity in row.descendant_quantities_by_type.items() %}
+          <div>{{ lot_type }}: {{ "{:,.2f}".format(quantity or 0) }}</div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="text-sm" style="margin-top:8px;">
+        {% for descendant in row.descendants %}
+        <a href="{{ descendant.links.material_lot_journey }}" target="_blank" rel="noopener">{{ descendant.tracking_id }}</a>{% if not loop.last %} · {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="text-sm cell-muted">No biomass lots currently have descendant genealogy beyond the source layer.</p>
+  {% endif %}
+</div>
+
+<div class="summary-row" style="margin-bottom:18px;">
+  <div class="card" style="flex:1 1 340px;margin:0;">
+    <div class="card-header">
+      <h3>Rework Volume</h3>
+    </div>
+    {% if report.rework_summary %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Transformation</th>
+            <th>Count</th>
+            <th>Output Qty</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in report.rework_summary %}
+          <tr>
+            <td>{{ row.transformation_type }}</td>
+            <td>{{ row.count }}</td>
+            <td>{{ "{:,.2f}".format(row.quantity_total or 0) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-sm cell-muted">No correction-backed rework transformations are currently recorded.</p>
+    {% endif %}
+  </div>
+
+  <div class="card" style="flex:1 1 340px;margin:0;">
+    <div class="card-header">
+      <h3>Open Reconciliation Issues</h3>
+    </div>
+    <div class="text-sm cell-muted" style="padding:12px 16px 0 16px;">
+      {% for severity, count in report.issue_counts_by_severity.items() %}
+      {{ severity }}: {{ count }}{% if not loop.last %} · {% endif %}
+      {% endfor %}
+    </div>
+    {% if report.open_reconciliation_issues %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Severity</th>
+            <th>Issue</th>
+            <th>Run</th>
+            <th>Detected</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for issue in report.open_reconciliation_issues %}
+          <tr>
+            <td>{{ issue.severity }}</td>
+            <td>{{ issue.issue_type }}</td>
+            <td>{% if issue.run_url %}<a href="{{ issue.run_url }}">Open run</a>{% else %}—{% endif %}</td>
+            <td>{{ issue.detected_at or "—" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-sm cell-muted">No open material genealogy reconciliation issues.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h3>Recent Derivative Lots</h3>
+  </div>
+  {% if report.recent_derivative_lots %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Tracking ID</th>
+          <th>Lot Type</th>
+          <th>Status</th>
+          <th>Quantity</th>
+          <th>Lineage</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for lot in report.recent_derivative_lots %}
+        <tr>
+          <td>{{ lot.tracking_id }}</td>
+          <td>{{ lot.lot_type }}</td>
+          <td>{{ lot.inventory_status }}</td>
+          <td>{{ "{:,.2f}".format(lot.quantity or 0) }} {{ lot.unit }}</td>
+          <td>
+            <a href="{{ lot.links.material_lot_ancestry }}" target="_blank" rel="noopener">Ancestry</a>
+            ·
+            <a href="{{ lot.links.material_lot_descendants }}" target="_blank" rel="noopener">Descendants</a>
+            ·
+            <a href="{{ lot.links.material_lot_journey }}" target="_blank" rel="noopener">Journey</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-sm cell-muted">No derivative lots have been created yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

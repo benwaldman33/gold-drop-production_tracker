@@ -1261,6 +1261,12 @@ def test_api_v1_material_lot_endpoints_and_run_journey_include_derivatives():
             grouped = {item["lot_type"]: item for item in cost_payload["groups"]}
             assert grouped["dry_hte"]["cost_basis_total"] >= 38.4
             assert grouped["dry_thca"]["cost_basis_total"] >= 114.8
+
+            genealogy_summary = client.get("/api/v1/summary/material-genealogy", headers=headers)
+            assert genealogy_summary.status_code == 200
+            genealogy_payload = genealogy_summary.get_json()["data"]
+            assert "open_inventory_groups" in genealogy_payload
+            assert "recent_derivative_lots" in genealogy_payload
     finally:
         with app.app_context():
             api_client = db.session.get(ApiClient, client_id)

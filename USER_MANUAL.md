@@ -8,7 +8,7 @@ This guide explains how to use the Gold Drop web app day-to-day. It intentionall
 
 **Operator-facing additions in the current release:** Purchases and Inventory are more status-first, the Journey page is richer, Slack imports now includes inbox buckets, lot labels now print with scannable barcodes, `Floor Ops` gives operators a recent activity surface, the standalone receiving app can now correct a confirmed receipt before downstream lot consumption, the standalone extraction app now mirrors the reactor workflow with touch-first controls, and the data model supports live smart-scale capture.
 
-**Manager-facing note for the current release:** the app now includes the first usable derivative-lot genealogy layer. Current day-to-day workflows still use Purchases, Inventory, Runs, and Downstream Queues the same way, but the system can now bridge biomass lots into first-class material genealogy records, auto-create dry HTE / dry THCA derivative lots from eligible extraction runs, extend genealogy into accountable downstream child lots like GoldDrop / wholesale THCA / terp strip / HP base oil / distillate, expose manager-facing ancestry / descendant journey endpoints through the internal API, record correction-forward genealogy fixes instead of silently overwriting bad lineage, summarize open derivative cost basis through the internal API, and surface linked derivative lots directly on downstream queue cards.
+**Manager-facing note for the current release:** the app now includes the first usable derivative-lot genealogy layer. Current day-to-day workflows still use Purchases, Inventory, Runs, and Downstream Queues the same way, but the system can now bridge biomass lots into first-class material genealogy records, auto-create dry HTE / dry THCA derivative lots from eligible extraction runs, extend genealogy into accountable downstream child lots like GoldDrop / wholesale THCA / terp strip / HP base oil / distillate, expose manager-facing ancestry / descendant journey endpoints through the internal API, record correction-forward genealogy fixes instead of silently overwriting bad lineage, summarize open derivative cost basis through the internal API, surface linked derivative lots directly on downstream queue cards, and provide a dedicated `Genealogy Report` page for manager reporting.
 
 ---
 
@@ -27,6 +27,7 @@ Use the left sidebar:
 - **Departments**: hub of department-focused pages (same data as the rest of the app; quick links and rollups per team—finance, purchasing, intake, extraction, THCA/HTE/Liquid Diamonds, terpenes, testing, bulk sales)
 - **Runs**: extraction runs log + cost/yield outputs
 - **Downstream Queues**: supervisor-facing post-extraction routing board for completed runs that now need a downstream destination or hold
+- **Genealogy Report**: manager-facing lineage and derivative-inventory reporting for accountable material lots
 - **Inventory**: on-hand lots + in-transit purchases, including lot tracking IDs and remaining pounds
 - **Purchases**: batch-level purchase records + batch IDs (same underlying rows as **Biomass Pipeline**); **Approve purchase** when your role allows; **Import spreadsheet** for bulk purchase upload; row **batch edit** on the list
 - **Costs**: operational cost entries (solvent/personnel/overhead)
@@ -795,6 +796,24 @@ Use **Confirm Movement** to record a standard movement action:
 - move to quarantine
 - move back to inventory
 - or store a custom location detail
+
+### Genealogy Report
+
+Use **Genealogy Report** from the left sidebar when you need a manager-facing summary of material lineage instead of a single run or queue card.
+
+The page currently shows:
+- open derivative inventory by type
+- released derivative inventory by type
+- source-to-derivative yield rows by biomass lot
+- rework volume from correction-backed genealogy transformations
+- open genealogy reconciliation issues
+- recent derivative lots with direct `Ancestry`, `Descendants`, and `Journey` links
+
+Use this page for questions like:
+- what derivative inventory is still open by type
+- what product lots have already been released
+- which biomass lots fed a finished GoldDrop, distillate, or wholesale THCA lot
+- where genealogy still has unresolved reconciliation problems
 
 Use **Confirm Testing** to update testing state without opening the purchase form.
 

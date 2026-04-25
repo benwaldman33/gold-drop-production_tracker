@@ -576,6 +576,26 @@ Practical meaning:
 - downstream completion no longer only clears a queue item; it can now create the next accountable lot node for genealogy
 - the remaining genealogy milestone is the reporting layer built directly on these new downstream lot and transformation records
 
+## Genealogy phase 11 update
+
+The first genealogy reporting layer is now in place:
+
+- the main app now has a dedicated `Genealogy Report` page at `/reports/material-genealogy`
+- the internal API now exposes `/api/v1/summary/material-genealogy`
+- reporting now covers:
+  - open derivative inventory by type
+  - released derivative inventory by type
+  - source-to-derivative yield rows by biomass lot
+  - rework volume from correction-backed genealogy transformations
+  - open reconciliation issues
+  - recent derivative lots with direct ancestry / descendants / journey links
+
+Practical meaning:
+
+- genealogy is no longer just a set of point lookups; managers now have a working summary surface
+- the app can now answer both the lineage question and the “what is sitting open / released / problematic right now?” question from one reporting layer
+- the initial phased genealogy implementation is now functionally complete from schema through downstream reporting
+
 ## Deployment note
 
 Current rollout commit:

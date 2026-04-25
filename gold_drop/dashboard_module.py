@@ -55,6 +55,10 @@ def register_routes(app, root):
         return biomass_purchasing_dashboard_view(root)
 
     @root.login_required
+    def material_genealogy_report():
+        return material_genealogy_report_view(root)
+
+    @root.login_required
     def cross_site_ops():
         return cross_site_ops_view(root)
 
@@ -91,6 +95,7 @@ def register_routes(app, root):
     app.add_url_rule("/dept/", endpoint="dept_index_slash", view_func=dept_index)
     app.add_url_rule("/dept/<slug>", endpoint="dept_view", view_func=dept_view)
     app.add_url_rule("/biomass-purchasing", endpoint="biomass_purchasing_dashboard", view_func=biomass_purchasing_dashboard)
+    app.add_url_rule("/reports/material-genealogy", endpoint="material_genealogy_report", view_func=material_genealogy_report)
     app.add_url_rule("/cross-site", endpoint="cross_site_ops", view_func=cross_site_ops)
     app.add_url_rule("/cross-site/suppliers", endpoint="cross_site_suppliers", view_func=cross_site_suppliers)
     app.add_url_rule("/cross-site/strains", endpoint="cross_site_strains", view_func=cross_site_strains)
@@ -552,6 +557,11 @@ def biomass_purchasing_dashboard_view(root):
         reviewed_approved_total_lbs=sum(float(getattr(s, "total_weight_lbs", 0) or 0) for s in reviewed if s.status == "approved"),
         reviewed_rejected_total_lbs=sum(float(getattr(s, "total_weight_lbs", 0) or 0) for s in reviewed if s.status == "rejected"),
     )
+
+
+def material_genealogy_report_view(root):
+    payload = root._build_material_reporting_payload(root)
+    return root.render_template("material_genealogy_report.html", report=payload)
 
 
 def cross_site_ops_view(root):

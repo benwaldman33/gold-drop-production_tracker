@@ -648,6 +648,7 @@ def _ensure_downstream_transformation(
     output_lot_type: str,
     quantity: float,
     notes: str,
+    output_inventory_status: str = "open",
 ):
     if run is None or parent_lot is None:
         return None
@@ -711,7 +712,7 @@ def _ensure_downstream_transformation(
             supplier_name_snapshot=parent_lot.supplier_name_snapshot,
             source_purchase_lot_id=parent_lot.source_purchase_lot_id,
             parent_run_id=run.id,
-            inventory_status="open",
+            inventory_status=output_inventory_status,
             workflow_status="completed",
             origin_confidence="system_generated",
             notes=notes,
@@ -725,7 +726,7 @@ def _ensure_downstream_transformation(
         output_lot.quantity = quantity
         output_lot.unit = parent_lot.unit
         output_lot.parent_run_id = run.id
-        output_lot.inventory_status = "open"
+        output_lot.inventory_status = output_inventory_status
         output_lot.workflow_status = "completed"
         output_lot.notes = notes
         output_lot.strain_name_snapshot = output_lot.strain_name_snapshot or parent_lot.strain_name_snapshot
@@ -779,6 +780,7 @@ def ensure_downstream_output_genealogy(root, run) -> list:
             output_lot_type=thca_output_type,
             quantity=_material_lot_original_quantity(root, dry_thca_lot),
             notes=f"System-generated THCA destination genealogy for {thca_destination}.",
+            output_inventory_status="released" if thca_output_type == "wholesale_thca" else "open",
         )
         if transformation is not None:
             created_or_updated.append(transformation)
@@ -794,6 +796,7 @@ def ensure_downstream_output_genealogy(root, run) -> list:
             output_lot_type="golddrop",
             quantity=_material_lot_original_quantity(root, dry_hte_lot),
             notes="System-generated GoldDrop production genealogy from downstream queue release.",
+            output_inventory_status="released",
         )
         if transformation is not None:
             created_or_updated.append(transformation)
@@ -810,6 +813,7 @@ def ensure_downstream_output_genealogy(root, run) -> list:
             output_lot_type="terp_strip_output",
             quantity=terp_quantity,
             notes="System-generated terp strip genealogy from strip completion.",
+            output_inventory_status="open",
         )
         if transformation is not None:
             created_or_updated.append(transformation)
@@ -825,6 +829,7 @@ def ensure_downstream_output_genealogy(root, run) -> list:
             output_lot_type="hp_base_oil",
             quantity=_material_lot_original_quantity(root, dry_hte_lot),
             notes="System-generated HP base oil genealogy from hold release.",
+            output_inventory_status="released",
         )
         if transformation is not None:
             created_or_updated.append(transformation)
@@ -841,6 +846,7 @@ def ensure_downstream_output_genealogy(root, run) -> list:
             output_lot_type="distillate",
             quantity=distillate_quantity,
             notes="System-generated distillate genealogy from hold release.",
+            output_inventory_status="released",
         )
         if transformation is not None:
             created_or_updated.append(transformation)
@@ -1168,6 +1174,140 @@ def build_material_cost_summary_payload(root) -> dict:
         "open_derivative_cost_basis_total": float(sum(float(item.cost_basis_total or 0) for item in material_lots)),
         "groups": list(grouped.values()),
         "lots": [serialize_material_lot(root, item) for item in material_lots],
+    }
+
+
+def _material_inventory_groups(root, statuses: set[str]) -> list[dict]:
+    rows = (
+        root.MaterialLot.query.filter(root.MaterialLot.lot_type != "biomass")
+        .filter(root.MaterialLot.inventory_status.in_(tuple(statuses)))
+        .order_by(root.MaterialLot.lot_type.asc(), root.MaterialLot.created_at.asc())
+        .all()
+    )
+    grouped: dict[str, dict] = {}
+    for material_lot in rows:
+        bucket = grouped.setdefault(
+            material_lot.lot_type,
+            {
+                "lot_type": material_lot.lot_type,
+                "lot_count": 0,
+                "quantity_total": 0.0,
+                "cost_basis_total": 0.0,
+                "unit": material_lot.unit,
+            },
+        )
+        bucket["lot_count"] += 1
+        bucket["quantity_total"] += float(material_lot.quantity or 0)
+        bucket["cost_basis_total"] += float(material_lot.cost_basis_total or 0)
+    return list(grouped.values())
+
+
+def _descendant_material_lots(root, material_lot, *, seen=None):
+    if material_lot is None:
+        return []
+    seen = set(seen or set())
+    if material_lot.id in seen:
+        return []
+    seen.add(material_lot.id)
+    descendants = []
+    for input_row in material_lot.transformation_inputs.order_by(root.MaterialTransformationInput.id.asc()).all():
+        transformation = input_row.transformation
+        if transformation is None or (transformation.status or "").strip() != "completed":
+            continue
+        for output_row in transformation.outputs.order_by(root.MaterialTransformationOutput.id.asc()).all():
+            child_lot = output_row.material_lot
+            if child_lot is None:
+                continue
+            descendants.append(child_lot)
+            descendants.extend(_descendant_material_lots(root, child_lot, seen=seen))
+    deduped = {row.id: row for row in descendants}
+    return sorted(deduped.values(), key=_material_lot_sort_key)
+
+
+def build_material_reporting_payload(root) -> dict:
+    open_groups = _material_inventory_groups(root, {"open", "partially_consumed", "held"})
+    released_groups = _material_inventory_groups(root, {"released"})
+    recent_lots = (
+        root.MaterialLot.query.filter(root.MaterialLot.lot_type != "biomass")
+        .order_by(root.MaterialLot.created_at.desc())
+        .limit(20)
+        .all()
+    )
+
+    yield_rows = []
+    source_lots = (
+        root.MaterialLot.query.filter_by(lot_type="biomass")
+        .order_by(root.MaterialLot.created_at.desc())
+        .limit(60)
+        .all()
+    )
+    for source_lot in source_lots:
+        descendants = [row for row in _descendant_material_lots(root, source_lot) if row.lot_type != "biomass"]
+        if not descendants:
+            continue
+        quantities_by_type: dict[str, float] = {}
+        for descendant in descendants:
+            quantities_by_type[descendant.lot_type] = quantities_by_type.get(descendant.lot_type, 0.0) + float(descendant.quantity or 0)
+        yield_rows.append(
+            {
+                "source_lot": serialize_material_lot(root, source_lot),
+                "descendant_lot_count": len(descendants),
+                "descendant_quantities_by_type": quantities_by_type,
+                "descendants": [serialize_material_lot(root, row) for row in descendants[:8]],
+            }
+        )
+
+    rework_transformations = (
+        root.MaterialTransformation.query.filter(root.MaterialTransformation.transformation_type.like("correction_%"))
+        .order_by(root.MaterialTransformation.performed_at.desc(), root.MaterialTransformation.created_at.desc())
+        .limit(30)
+        .all()
+    )
+    rework_summary: dict[str, dict] = {}
+    for transformation in rework_transformations:
+        bucket = rework_summary.setdefault(
+            transformation.transformation_type,
+            {
+                "transformation_type": transformation.transformation_type,
+                "count": 0,
+                "quantity_total": 0.0,
+            },
+        )
+        bucket["count"] += 1
+        bucket["quantity_total"] += sum(float(row.quantity_produced or 0) for row in transformation.outputs.all())
+
+    open_issues = (
+        root.MaterialReconciliationIssue.query.filter_by(status="open")
+        .order_by(root.MaterialReconciliationIssue.detected_at.desc())
+        .limit(25)
+        .all()
+    )
+    issue_counts_by_severity: dict[str, int] = {}
+    issue_counts_by_type: dict[str, int] = {}
+    for issue in open_issues:
+        issue_counts_by_severity[issue.severity] = issue_counts_by_severity.get(issue.severity, 0) + 1
+        issue_counts_by_type[issue.issue_type] = issue_counts_by_type.get(issue.issue_type, 0) + 1
+
+    open_cost_basis_total = float(sum(float(group["cost_basis_total"] or 0) for group in open_groups))
+    released_cost_basis_total = float(sum(float(group["cost_basis_total"] or 0) for group in released_groups))
+
+    return {
+        "summary": {
+            "open_group_count": len(open_groups),
+            "released_group_count": len(released_groups),
+            "open_cost_basis_total": open_cost_basis_total,
+            "released_cost_basis_total": released_cost_basis_total,
+            "open_issue_count": len(open_issues),
+            "rework_event_count": sum(int(item["count"]) for item in rework_summary.values()),
+        },
+        "open_inventory_groups": open_groups,
+        "released_inventory_groups": released_groups,
+        "source_yield_rows": yield_rows,
+        "rework_summary": list(rework_summary.values()),
+        "open_reconciliation_issues": [serialize_reconciliation_issue(root, issue) for issue in open_issues],
+        "issue_counts_by_severity": issue_counts_by_severity,
+        "issue_counts_by_type": issue_counts_by_type,
+        "recent_derivative_lots": [serialize_material_lot(root, lot) for lot in recent_lots],
     }
 
 
