@@ -303,6 +303,126 @@ def test_material_genealogy_viewer_renders_lot_and_run_modes():
             db.session.commit()
 
 
+def test_material_genealogy_issue_queue_supports_assignment_and_status_updates():
+    app = app_module.app
+    run_id = None
+    purchase_id = None
+    supplier_id = None
+    lot_id = None
+    issue_id = None
+    assignee_id = None
+    try:
+        with app.app_context():
+            assignee = app_module.User.query.filter_by(username="ops").first()
+            assignee_id = assignee.id
+            supplier = Supplier(name="Issue Queue Supplier", is_active=True)
+            db.session.add(supplier)
+            db.session.flush()
+            supplier_id = supplier.id
+            purchase = Purchase(
+                supplier_id=supplier.id,
+                purchase_date=date(2026, 4, 25),
+                delivery_date=date(2026, 4, 25),
+                status="delivered",
+                stated_weight_lbs=100,
+                purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+                testing_status="completed",
+                clean_or_dirty="clean",
+                batch_id=f"GIQ-{app_module.gen_uuid()[:6]}",
+            )
+            db.session.add(purchase)
+            db.session.flush()
+            purchase_id = purchase.id
+            lot = PurchaseLot(
+                purchase_id=purchase.id,
+                strain_name="Queue Dream",
+                tracking_id="GIQ-LOT-1",
+                weight_lbs=100,
+                remaining_weight_lbs=70,
+                floor_state="inventory",
+                milled=True,
+            )
+            db.session.add(lot)
+            db.session.flush()
+            lot_id = lot.id
+            run = app_module.Run(
+                run_date=date(2026, 4, 25),
+                reactor_number=8,
+                bio_in_reactor_lbs=30,
+                dry_hte_g=10,
+            )
+            db.session.add(run)
+            db.session.flush()
+            run_id = run.id
+            issue = app_module.MaterialReconciliationIssue(
+                run_id=run.id,
+                issue_type="missing_input_link",
+                severity="warning",
+                status="open",
+                resolution_note="Run is missing a bridged source lot.",
+                detected_by="test",
+            )
+            db.session.add(issue)
+            db.session.commit()
+            issue_id = issue.id
+
+        with app.test_client() as client:
+            _login(client, "admin")
+            page = client.get("/reports/material-genealogy/issues")
+            assert page.status_code == 200
+            assert b"Genealogy Issue Queue" in page.data
+            assert b"Missing Input Link" in page.data
+            assert b"Update Issue" in page.data
+
+            update = client.post(
+                f"/reports/material-genealogy/issues/{issue_id}/update",
+                data={
+                    "status": "investigating",
+                    "assignee_user_id": assignee_id,
+                    "working_note": "Investigating source lot bridge.",
+                    "return_status": "active",
+                },
+                follow_redirects=False,
+            )
+            assert update.status_code in (302, 303)
+
+        with app.app_context():
+            issue = db.session.get(app_module.MaterialReconciliationIssue, issue_id)
+            assert issue is not None
+            assert issue.status == "investigating"
+            assert issue.assignee_user_id == assignee_id
+            assert issue.working_note == "Investigating source lot bridge."
+            audit = app_module.AuditLog.query.filter_by(entity_type="material_reconciliation_issue", entity_id=issue_id).first()
+            assert audit is not None
+    finally:
+        with app.app_context():
+            try:
+                app_module.AuditLog.query.filter_by(entity_type="material_reconciliation_issue", entity_id=issue_id).delete(synchronize_session=False)
+            except Exception:
+                pass
+            if issue_id:
+                issue = db.session.get(app_module.MaterialReconciliationIssue, issue_id)
+                if issue:
+                    db.session.delete(issue)
+            if run_id:
+                run = db.session.get(app_module.Run, run_id)
+                if run:
+                    db.session.delete(run)
+            if lot_id:
+                lot = db.session.get(PurchaseLot, lot_id)
+                if lot:
+                    db.session.delete(lot)
+            if purchase_id:
+                purchase = db.session.get(Purchase, purchase_id)
+                if purchase:
+                    db.session.delete(purchase)
+            if supplier_id:
+                supplier = db.session.get(Supplier, supplier_id)
+                if supplier:
+                    db.session.delete(supplier)
+            db.session.commit()
+
+
 def test_supplier_new_requires_confirmation_for_close_duplicate_names():
     app = app_module.create_app()
     existing_id = None

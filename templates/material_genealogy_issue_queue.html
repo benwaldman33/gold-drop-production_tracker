@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Genealogy Issue Queue{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Genealogy Issue Queue</h2>
+  <div class="btn-group">
+    <a href="{{ url_for('material_genealogy_report') }}" class="btn btn-secondary">Back to Genealogy Report</a>
+    <a href="{{ url_for('material_genealogy_viewer') }}" class="btn btn-secondary">Open Journey Viewer</a>
+  </div>
+</div>
+
+<div class="summary-row" style="margin-bottom:18px;">
+  <div class="summary-stat"><div class="label">Open</div><div class="value">{{ status_counts.open }}</div></div>
+  <div class="summary-stat"><div class="label">Investigating</div><div class="value">{{ status_counts.investigating }}</div></div>
+  <div class="summary-stat"><div class="label">Needs Follow-Up</div><div class="value">{{ status_counts.needs_follow_up }}</div></div>
+  <div class="summary-stat"><div class="label">Resolved</div><div class="value">{{ status_counts.resolved }}</div></div>
+</div>
+
+<div class="btn-group" style="margin-bottom:18px;">
+  <a href="{{ url_for('material_genealogy_issue_queue', status='active') }}" class="btn {% if status_filter == 'active' %}btn-primary{% else %}btn-secondary{% endif %}">Active</a>
+  <a href="{{ url_for('material_genealogy_issue_queue', status='resolved') }}" class="btn {% if status_filter == 'resolved' %}btn-primary{% else %}btn-secondary{% endif %}">Resolved</a>
+  <a href="{{ url_for('material_genealogy_issue_queue', status='all') }}" class="btn {% if status_filter == 'all' %}btn-primary{% else %}btn-secondary{% endif %}">All</a>
+</div>
+
+{% if issues %}
+<div style="display:grid;gap:16px;">
+  {% for row in issues %}
+  {% set issue = row.issue %}
+  <div class="card" id="issue-{{ issue.issue_id }}">
+    <div class="card-header">
+      <h3>{{ issue.issue_type.replace('_', ' ').title() }}</h3>
+      <span class="text-sm cell-muted">{{ issue.severity }} · {{ issue.status.replace('_', ' ') }}{% if row.age_days is not none %} · {{ row.age_days }} day{% if row.age_days != 1 %}s{% endif %} old{% endif %}</span>
+    </div>
+    <div class="summary-row" style="margin-bottom:12px;">
+      <div class="summary-stat">
+        <div class="label">Run</div>
+        <div class="value" style="font-size:1rem;">{% if row.run_view_url %}<a href="{{ row.run_view_url }}">Open Run View</a>{% else %}—{% endif %}</div>
+      </div>
+      <div class="summary-stat">
+        <div class="label">Lot</div>
+        <div class="value" style="font-size:1rem;">{% if row.lot_view_url %}<a href="{{ row.lot_view_url }}">Open Lot View</a>{% else %}—{% endif %}</div>
+      </div>
+      <div class="summary-stat">
+        <div class="label">Owner</div>
+        <div class="value" style="font-size:1rem;">{{ row.assignee_name or "Unassigned" }}</div>
+      </div>
+    </div>
+    {% if issue.resolution_note %}
+    <div class="text-sm" style="margin-bottom:10px;"><strong>Detail:</strong> {{ issue.resolution_note }}</div>
+    {% endif %}
+    <form method="POST" action="{{ url_for('material_genealogy_issue_update', issue_id=issue.issue_id) }}">
+      <input type="hidden" name="return_status" value="{{ status_filter }}">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;align-items:end;">
+        <div>
+          <label class="text-sm cell-muted" for="issue-status-{{ issue.issue_id }}">Status</label>
+          <select id="issue-status-{{ issue.issue_id }}" name="status">
+            {% for option in ['open', 'investigating', 'needs_follow_up', 'resolved'] %}
+            <option value="{{ option }}" {% if issue.status == option %}selected{% endif %}>{{ option.replace('_', ' ') }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="text-sm cell-muted" for="issue-owner-{{ issue.issue_id }}">Owner</label>
+          <select id="issue-owner-{{ issue.issue_id }}" name="assignee_user_id">
+            {% for option in assignment_options %}
+            <option value="{{ option.value }}" {% if issue.assignee_user_id == option.value %}selected{% endif %}>{{ option.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div style="grid-column:1 / -1;">
+          <label class="text-sm cell-muted" for="issue-note-{{ issue.issue_id }}">Working note</label>
+          <textarea id="issue-note-{{ issue.issue_id }}" name="working_note" rows="3" placeholder="Add investigation notes, next steps, or resolution context">{{ issue.working_note or '' }}</textarea>
+        </div>
+      </div>
+      <div class="form-actions" style="justify-content:flex-start;margin-top:12px;">
+        <button type="submit" class="btn btn-primary btn-sm">Update Issue</button>
+      </div>
+    </form>
+
+    {% if row.history %}
+    <div style="margin-top:16px;">
+      <div class="text-sm cell-muted" style="margin-bottom:8px;">Recent history</div>
+      <div style="display:grid;gap:8px;">
+        {% for item in row.history %}
+        <div style="border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px 12px;background:rgba(255,255,255,0.02);">
+          <div class="text-sm"><strong>{{ item.action }}</strong>{% if item.user_name %} · {{ item.user_name }}{% endif %}</div>
+          <div class="text-sm cell-muted" style="margin-top:4px;">{{ item.timestamp or "—" }}</div>
+          {% if item.details %}
+          <div class="text-sm" style="margin-top:6px;">
+            {% if item.details.current %}
+              status: {{ item.details.current.status or "—" }}
+              {% if item.details.current.assignee_user_id %} · assignee: {{ item.details.current.assignee_user_id }}{% endif %}
+            {% else %}
+              {{ item.details }}
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card">
+  <p class="text-sm cell-muted">No genealogy issues match this queue view right now.</p>
+</div>
+{% endif %}
+{% endblock %}

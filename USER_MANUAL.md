@@ -834,6 +834,26 @@ In `By Run`, the `Run Reconciliation` section highlights:
 - source-allocation exceptions already detected on that run journey
 - links into any affected derivative lots
 
+### Genealogy Issue Queue
+
+Use **Open Issue Queue** from the genealogy report or viewer when you want to manage unresolved lineage problems across runs and lots.
+
+The queue supports:
+- owner assignment
+- statuses:
+  - `open`
+  - `investigating`
+  - `needs follow-up`
+  - `resolved`
+- working notes on the issue
+- recent audit history for issue updates
+
+Use it when you need to:
+- assign a lineage problem to a specific person
+- mark an issue as actively being worked
+- keep investigation notes on the issue itself
+- review which issues are still unresolved
+
 Use this page for questions like:
 - what derivative inventory is still open by type
 - what product lots have already been released

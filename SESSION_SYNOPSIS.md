@@ -669,6 +669,30 @@ Practical meaning:
   - lot-level correction workflow
   - run-level reconciliation review
 
+## Genealogy phase 15 update
+
+The genealogy issue queue is now in place:
+
+- the main app now has a dedicated `Genealogy Issue Queue` at `/reports/material-genealogy/issues`
+- issues now support:
+  - owner assignment
+  - statuses:
+    - `open`
+    - `investigating`
+    - `needs_follow_up`
+    - `resolved`
+  - working notes
+  - recent audit-history display
+- both `Genealogy Report` and `Material Journey Viewer` now link into the queue
+
+Practical meaning:
+
+- unresolved genealogy problems can now be managed as a work queue instead of only being discovered ad hoc
+- the reconciliation workflow now has:
+  - run-level investigation
+  - lot-level correction
+  - issue ownership and status tracking
+
 ## Deployment note
 
 Current rollout commit:
