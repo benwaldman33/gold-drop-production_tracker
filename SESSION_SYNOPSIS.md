@@ -502,7 +502,7 @@ What still remains after this slice:
 Current rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `pending current sprint closeout`
+- commit: `0a60a9c`
 
 Production deployment steps:
 
@@ -510,13 +510,14 @@ Production deployment steps:
    - `git fetch origin`
    - `git checkout Claude_Consolidation`
    - `git pull --ff-only origin Claude_Consolidation`
-2. restart the backend so the queue-reporting surfaces and staged HP Base Oil / Distillate workflows are live
+2. restart the backend so the new genealogy tables, extraction-output backfill, and material-lot API routes are live
 3. no standalone extraction app sync is required for this sprint
-4. verify in the main app and on a live extraction run:
-   - the shared `Downstream Queues` board shows queue age, stale / blocked status, `Completed 7 Days`, and `Rework 30 Days`
-   - the dedicated destination pages show queue age plus stale / blocked status for each item
-   - `HP Base Oil Hold` and `Distillate Hold` now require `Mark Release Ready` before `Release Complete`
-   - owner assignment still works and still clears automatically when a queue item leaves active management
+4. verify in the main app / API:
+   - `GET /api/v1/runs/<run_id>/journey` now returns derivative `material_lots` for eligible dry-output runs
+   - `GET /api/v1/material-lots/<lot_id>/journey` returns ancestry / descendant context
+   - `GET /api/v1/material-lots/<lot_id>/ancestry` traces derivative dry-output lots back to biomass source lots
+   - `GET /api/v1/material-lots/<lot_id>/descendants` traces biomass source lots forward into dry HTE / dry THCA derivative lots
+   - `GET /api/v1/tools/reconciliation-overview` now includes `material_genealogy`
 
 ## Local note
 
