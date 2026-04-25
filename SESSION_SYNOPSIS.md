@@ -351,22 +351,27 @@ The active work area is now the extraction booth SOP alignment layer that sits b
     - reminder delay is configured separately for `critical` vs `warning` alerts
     - reminders route through the existing `reminders` Slack webhook class when outbound Slack delivery is enabled
     - resolving the source supervisor alert automatically resolves its reminder
+  - first downstream queue deepening slice is now live in `GoldDrop Production Queue`:
+    - GoldDrop is no longer a flat action list
+    - runs move through `Reviewed`, `Queued for production`, `In production`, `Packaging ready`, and `Released complete`
+    - available actions are now stage-specific
+    - final release is blocked until the run reaches packaging-ready state
 
 ### In progress
 
 - the active product area is no longer only downstream execution
-- the current product area is full booth-SOP alignment:
-  - matching the written extraction booth procedure more closely
-  - strengthening supervisor review, override, and audit visibility
-  - making booth deviations visible both in-app and through optional outbound Slack delivery
-  - deciding whether reminder automation should recur/escalate beyond a single reminder per unresolved alert
+- the current product area is downstream queue deepening on top of the booth-SOP foundation:
+  - making destination queues behave like real work surfaces instead of generic hold lists
+  - starting with GoldDrop production workflow maturity
+  - deciding how far to push queue-specific state, accountability, and reporting before adding more schema
 
 ### Next
 
-- deepen the extraction booth workflow where the SOP still exceeds the current system:
-  - decide whether unresolved override-required timing deviations should trigger repeated reminder escalation by severity / age instead of only one reminder
-  - decide whether any non-timing booth checkpoints should eventually gain the same policy framework
-- after that, resume the downstream queue-deepening work from the stronger extraction foundation
+- deepen the remaining downstream destination queues from the stronger GoldDrop pattern:
+  - decide whether `Liquid Loud Hold` needs equivalent staged release/reserve states
+  - decide whether `Terp Strip / CDT Cage` should gain clearer active-work vs completed-work stages
+  - decide whether queue state should eventually carry explicit assignee / owner fields instead of event-only history
+- keep repeated reminder escalation on the future list, but not on the current critical path
 
 ## Current planning baseline
 
@@ -428,7 +433,7 @@ The likely implementation order is:
 Current booth-SOP rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `d7443ad`
+- commit: `791994f`
 
 Production deployment steps:
 
@@ -436,14 +441,15 @@ Production deployment steps:
    - `git fetch origin`
    - `git checkout Claude_Consolidation`
    - `git pull --ff-only origin Claude_Consolidation`
-2. restart the backend so the new reminder-automation settings and notification processing are live
+2. restart the backend so the GoldDrop queue stage logic and action gating are live
 3. no standalone extraction app sync is required for this sprint
 4. verify in the main app and on a live extraction run:
-   - `Settings -> Slack Integration` shows reminder automation toggle plus critical/warning delay fields
-   - an unresolved warning/critical supervisor alert produces one reminder after the configured delay
-   - reminders show in the main dashboard inbox
-   - reminders route to the configured Slack reminders webhook when outbound Slack delivery is enabled
-   - resolving the source supervisor alert clears the reminder
+   - the `GoldDrop Production Queue` page shows stage-specific next-step guidance
+   - new GoldDrop items only show `Mark Reviewed` first
+   - `Queue For Production` appears only after review
+   - `Start Production` appears only after production queueing
+   - `Mark Packaging Ready` appears only after production starts
+   - `Release Complete` is not available until packaging-ready state is reached
 
 ## Local note
 

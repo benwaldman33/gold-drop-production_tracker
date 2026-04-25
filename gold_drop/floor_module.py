@@ -63,6 +63,8 @@ DOWNSTREAM_QUEUE_SECTIONS = (
 GOLDDROP_QUEUE_ACTIONS = (
     ("mark_reviewed", "Mark Reviewed"),
     ("queue_for_production", "Queue For Production"),
+    ("start_production", "Start Production"),
+    ("mark_packaging_ready", "Mark Packaging Ready"),
     ("release_complete", "Release Complete"),
     ("send_back", "Send Back For Re-routing"),
 )
@@ -71,6 +73,8 @@ GOLDDROP_QUEUE_STATE_LABELS = {
     "new_in_queue": "New in queue",
     "reviewed": "Reviewed",
     "queued_for_production": "Queued for production",
+    "in_production": "In production",
+    "packaging_ready": "Packaging ready",
     "released_complete": "Released complete",
     "sent_back": "Sent back",
 }
@@ -79,8 +83,30 @@ GOLDDROP_QUEUE_EVENT_LABELS = {
     "entered_queue": "Entered queue",
     "mark_reviewed": "Marked reviewed",
     "queue_for_production": "Queued for production",
+    "start_production": "Production started",
+    "mark_packaging_ready": "Packaging ready",
     "release_complete": "Released complete",
     "send_back": "Sent back",
+}
+
+GOLDDROP_QUEUE_STAGE_ACTIONS = {
+    "new_in_queue": (("mark_reviewed", "Mark Reviewed"), ("send_back", "Send Back For Re-routing")),
+    "reviewed": (("queue_for_production", "Queue For Production"), ("send_back", "Send Back For Re-routing")),
+    "queued_for_production": (("start_production", "Start Production"), ("send_back", "Send Back For Re-routing")),
+    "in_production": (("mark_packaging_ready", "Mark Packaging Ready"), ("send_back", "Send Back For Re-routing")),
+    "packaging_ready": (("release_complete", "Release Complete"), ("send_back", "Send Back For Re-routing")),
+    "released_complete": (),
+    "sent_back": (),
+}
+
+GOLDDROP_QUEUE_STAGE_NEXT_STEPS = {
+    "new_in_queue": "Supervisor review is the next action before GoldDrop production planning.",
+    "reviewed": "Queue this run for GoldDrop production once planning is confirmed.",
+    "queued_for_production": "Start production when the run is actively being worked.",
+    "in_production": "Mark packaging ready once the production work is complete and the run is ready for final release.",
+    "packaging_ready": "Release complete once packaging / final GoldDrop handoff is done.",
+    "released_complete": "GoldDrop production handling is complete for this run.",
+    "sent_back": "This run has been sent back for downstream re-routing.",
 }
 
 LIQUID_LOUD_QUEUE_ACTIONS = (
@@ -196,15 +222,21 @@ DESTINATION_QUEUE_CONFIGS = {
         "action_state_map": {
             "mark_reviewed": "reviewed",
             "queue_for_production": "queued_for_production",
+            "start_production": "in_production",
+            "mark_packaging_ready": "packaging_ready",
             "release_complete": "released_complete",
             "send_back": "sent_back",
         },
-        "help_text": "Use this surface to mark review, queue production, complete release, or send the run back for re-routing.",
+        "help_text": "Use this surface to move GoldDrop work through review, production queueing, active production, packaging-ready status, final release, or send the run back for re-routing.",
+        "stage_actions": GOLDDROP_QUEUE_STAGE_ACTIONS,
+        "stage_next_steps": GOLDDROP_QUEUE_STAGE_NEXT_STEPS,
         "entered_note": "Entered GoldDrop production queue.",
         "source_label": "golddrop_production_queue",
         "action_messages": {
             "mark_reviewed": "Run marked reviewed in GoldDrop production queue.",
             "queue_for_production": "Run marked queued for production.",
+            "start_production": "Run marked in active GoldDrop production.",
+            "mark_packaging_ready": "Run marked packaging ready in GoldDrop production.",
             "release_complete": "Run released from GoldDrop production queue.",
             "send_back": "Run sent back for downstream re-routing.",
         },
@@ -802,6 +834,13 @@ def _destination_queue_state(root, run, queue_key: str):
     return state_key, history
 
 
+def _destination_queue_available_actions(config: dict, state_key: str):
+    stage_actions = config.get("stage_actions")
+    if stage_actions:
+        return list(stage_actions.get(state_key, ()))
+    return list(config["actions"])
+
+
 def _destination_queue_query(root, queue_key: str):
     config = DESTINATION_QUEUE_CONFIGS[queue_key]
     column = getattr(root.Run, config["storage_field"])
@@ -824,6 +863,7 @@ def _build_destination_queue_detail(root, queue_key: str):
         state_key, history = _destination_queue_state(root, run, queue_key)
         base["queue_state_key"] = state_key
         base["queue_state_label"] = config["state_labels"][state_key]
+        base["queue_next_step"] = config.get("stage_next_steps", {}).get(state_key, config["help_text"])
         base["history"] = [
             {
                 "action_label": config["event_labels"].get(entry.action_key, entry.action_key.replace("_", " ").title()),
@@ -833,7 +873,7 @@ def _build_destination_queue_detail(root, queue_key: str):
             }
             for entry in history[:8]
         ]
-        base["available_actions"] = list(config["actions"])
+        base["available_actions"] = _destination_queue_available_actions(config, state_key)
         items.append(base)
     return {
         "queue_key": queue_key,
@@ -1056,7 +1096,8 @@ def destination_queue_action_view(root, run_id, queue_key: str):
 
     action = (root.request.form.get("queue_action") or "").strip()
     notes = (root.request.form.get("queue_notes") or "").strip() or None
-    allowed = {value for value, _label in config["actions"]}
+    current_state_key, _history = _destination_queue_state(root, run, queue_key)
+    allowed = {value for value, _label in _destination_queue_available_actions(config, current_state_key)}
     if action not in allowed:
         root.flash(f"Choose a valid {config['title']} action.", "error")
         return root.redirect(root.url_for(config["view_endpoint"]))
