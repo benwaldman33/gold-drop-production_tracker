@@ -556,6 +556,26 @@ Practical meaning:
 - the genealogy layer is now visible in the real downstream operating workflow, not only in API or journey endpoints
 - the next remaining genealogy milestones are destination-native downstream transformations and reporting built directly on those new genealogy nodes
 
+## Genealogy phase 10 update
+
+Destination-native downstream genealogy is now in place:
+
+- the genealogy layer no longer stops at `dry_hte` / `dry_thca`
+- downstream completion states can now create accountable child lots through explicit `MaterialTransformation` records:
+  - `golddrop_production` -> `golddrop`
+  - `thca_split` -> `wholesale_thca` or `liquid_diamonds`
+  - `terp_strip` -> `terp_strip_output`
+  - `hp_base_oil_conversion` -> `hp_base_oil`
+  - `distillate_conversion` -> `distillate`
+- parent extraction-output lots now update their consumed / remaining inventory state from downstream transformation usage instead of staying indefinitely open by default
+- descendant chains can now continue beyond extraction and answer source-to-finished-product questions inside the genealogy model itself
+
+Practical meaning:
+
+- a manager can now follow biomass -> extraction output -> downstream product lot in one lineage chain
+- downstream completion no longer only clears a queue item; it can now create the next accountable lot node for genealogy
+- the remaining genealogy milestone is the reporting layer built directly on these new downstream lot and transformation records
+
 ## Deployment note
 
 Current rollout commit:

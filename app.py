@@ -123,6 +123,7 @@ from services.slack_workflow import (
 )
 from services.bootstrap_helpers import (
     backfill_biomass_material_genealogy as _backfill_biomass_material_genealogy_service,
+    backfill_downstream_material_genealogy as _backfill_downstream_material_genealogy_service,
     backfill_extraction_output_material_genealogy as _backfill_extraction_output_material_genealogy_service,
     backfill_default_inventory_lots as _backfill_default_inventory_lots_service,
     backfill_purchase_approval as _backfill_purchase_approval_service,
@@ -143,6 +144,7 @@ from services.material_genealogy import (
     derivative_material_lots_for_purchase as _derivative_material_lots_for_purchase,
     derivative_material_lots_for_purchase_lot as _derivative_material_lots_for_purchase_lot,
     derivative_material_lots_for_run as _derivative_material_lots_for_run,
+    ensure_downstream_output_genealogy as _ensure_downstream_output_genealogy,
     ensure_extraction_output_genealogy as _ensure_extraction_output_genealogy,
     first_open_reconciliation_issues as _first_open_reconciliation_issues,
     material_lot_for_purchase_lot as _material_lot_for_purchase_lot,

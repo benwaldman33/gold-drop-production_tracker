@@ -573,6 +573,294 @@ def backfill_extraction_output_genealogy(root, *, include_archived: bool = False
     return touched
 
 
+def _first_material_lot_for_run(run, lot_type: str):
+    lots = run.material_lots.filter_by(lot_type=lot_type).all()
+    if not lots:
+        return None
+    return sorted(lots, key=_material_lot_sort_key)[0]
+
+
+def _material_lot_original_quantity(root, material_lot) -> float:
+    if material_lot is None:
+        return 0.0
+    source_output = (
+        material_lot.transformation_outputs.order_by(root.MaterialTransformationOutput.id.asc()).first()
+    )
+    if source_output is not None:
+        return float(source_output.quantity_produced or 0)
+    return float(material_lot.quantity or 0)
+
+
+def _material_lot_consumed_quantity(root, material_lot) -> float:
+    if material_lot is None:
+        return 0.0
+    consumed = 0.0
+    for input_row in material_lot.transformation_inputs.order_by(root.MaterialTransformationInput.id.asc()).all():
+        transformation = input_row.transformation
+        if transformation is None or (transformation.status or "").strip() != "completed":
+            continue
+        consumed += float(input_row.quantity_consumed or 0)
+    return consumed
+
+
+def _sync_material_lot_inventory_from_transformations(root, material_lot) -> None:
+    if material_lot is None:
+        return
+    original_quantity = _material_lot_original_quantity(root, material_lot)
+    consumed_quantity = _material_lot_consumed_quantity(root, material_lot)
+    remaining_quantity = max(original_quantity - consumed_quantity, 0.0)
+    material_lot.quantity = remaining_quantity
+    if material_lot.cost_basis_per_unit is not None:
+        material_lot.cost_basis_total = float(material_lot.cost_basis_per_unit) * remaining_quantity
+    if remaining_quantity <= 0:
+        material_lot.inventory_status = "fully_consumed"
+        material_lot.workflow_status = "completed"
+        material_lot.closed_at = material_lot.closed_at or root.datetime.now(root.timezone.utc)
+        material_lot.closed_reason = material_lot.closed_reason or "Consumed by downstream genealogy transformation."
+        material_lot.active_queue_key = None
+    elif remaining_quantity < original_quantity:
+        material_lot.inventory_status = "partially_consumed"
+        material_lot.workflow_status = "in_process"
+        material_lot.closed_at = None
+        material_lot.closed_reason = None
+    else:
+        material_lot.inventory_status = "open"
+        material_lot.closed_at = None
+        material_lot.closed_reason = None
+
+
+def _downstream_event_exists(root, run_id: str, queue_key: str, action_key: str) -> bool:
+    if not run_id:
+        return False
+    return (
+        root.DownstreamQueueEvent.query.filter_by(run_id=run_id, queue_key=queue_key, action_key=action_key).count() > 0
+    )
+
+
+def _ensure_downstream_transformation(
+    root,
+    run,
+    *,
+    transformation_type: str,
+    source_record_type: str,
+    source_record_id: str,
+    parent_lot,
+    output_lot_type: str,
+    quantity: float,
+    notes: str,
+):
+    if run is None or parent_lot is None:
+        return None
+    quantity = float(quantity or 0)
+    if quantity <= 0:
+        return None
+
+    transformation = (
+        run.material_transformations.filter_by(
+            transformation_type=transformation_type,
+            source_record_type=source_record_type,
+            source_record_id=source_record_id,
+        )
+        .order_by(root.MaterialTransformation.created_at.asc())
+        .first()
+    )
+    if transformation is None:
+        transformation = root.MaterialTransformation(
+            transformation_type=transformation_type,
+            run_id=run.id,
+            source_record_type=source_record_type,
+            source_record_id=source_record_id,
+            performed_at=root.datetime.now(root.timezone.utc),
+            performed_by_user_id=getattr(root.current_user, "id", None) if getattr(root, "current_user", None) is not None else None,
+            status="completed",
+            notes=notes,
+        )
+        root.db.session.add(transformation)
+        root.db.session.flush()
+    else:
+        transformation.notes = notes
+
+    input_row = transformation.inputs.filter_by(material_lot_id=parent_lot.id).first()
+    if input_row is None:
+        input_row = root.MaterialTransformationInput(
+            transformation_id=transformation.id,
+            material_lot_id=parent_lot.id,
+            quantity_consumed=quantity,
+            unit=parent_lot.unit,
+            notes=f"Consumed by {transformation_type}.",
+        )
+        root.db.session.add(input_row)
+    else:
+        input_row.quantity_consumed = quantity
+        input_row.unit = parent_lot.unit
+        input_row.notes = f"Consumed by {transformation_type}."
+
+    output_row = None
+    for candidate in transformation.outputs.order_by(root.MaterialTransformationOutput.id.asc()).all():
+        if candidate.material_lot is not None and candidate.material_lot.lot_type == output_lot_type:
+            output_row = candidate
+            break
+    output_lot = output_row.material_lot if output_row is not None else None
+    if output_lot is None:
+        output_lot = root.MaterialLot(
+            tracking_id=_material_tracking_id(root, output_lot_type, parent_lot.tracking_id, transformation.id),
+            lot_type=output_lot_type,
+            quantity=quantity,
+            unit=parent_lot.unit,
+            strain_name_snapshot=parent_lot.strain_name_snapshot,
+            supplier_name_snapshot=parent_lot.supplier_name_snapshot,
+            source_purchase_lot_id=parent_lot.source_purchase_lot_id,
+            parent_run_id=run.id,
+            inventory_status="open",
+            workflow_status="completed",
+            origin_confidence="system_generated",
+            notes=notes,
+        )
+        if parent_lot.cost_basis_per_unit is not None:
+            output_lot.cost_basis_per_unit = float(parent_lot.cost_basis_per_unit)
+            output_lot.cost_basis_total = float(parent_lot.cost_basis_per_unit) * quantity
+        root.db.session.add(output_lot)
+        root.db.session.flush()
+    else:
+        output_lot.quantity = quantity
+        output_lot.unit = parent_lot.unit
+        output_lot.parent_run_id = run.id
+        output_lot.inventory_status = "open"
+        output_lot.workflow_status = "completed"
+        output_lot.notes = notes
+        output_lot.strain_name_snapshot = output_lot.strain_name_snapshot or parent_lot.strain_name_snapshot
+        output_lot.supplier_name_snapshot = output_lot.supplier_name_snapshot or parent_lot.supplier_name_snapshot
+        if parent_lot.cost_basis_per_unit is not None:
+            output_lot.cost_basis_per_unit = float(parent_lot.cost_basis_per_unit)
+            output_lot.cost_basis_total = float(parent_lot.cost_basis_per_unit) * quantity
+
+    if output_row is None:
+        output_row = root.MaterialTransformationOutput(
+            transformation_id=transformation.id,
+            material_lot_id=output_lot.id,
+            quantity_produced=quantity,
+            unit=output_lot.unit,
+            notes=f"Produced by {transformation_type}.",
+        )
+        root.db.session.add(output_row)
+    else:
+        output_row.quantity_produced = quantity
+        output_row.unit = output_lot.unit
+        output_row.notes = f"Produced by {transformation_type}."
+
+    _sync_material_lot_inventory_from_transformations(root, parent_lot)
+    root.db.session.flush()
+    return transformation
+
+
+def ensure_downstream_output_genealogy(root, run) -> list:
+    if run is None:
+        return []
+    ensure_extraction_output_genealogy(root, run)
+    created_or_updated = []
+
+    dry_hte_lot = _first_material_lot_for_run(run, "dry_hte")
+    dry_thca_lot = _first_material_lot_for_run(run, "dry_thca")
+
+    thca_destination = (getattr(run, "thca_destination", None) or "").strip()
+    thca_output_type = {
+        "sell_thca": "wholesale_thca",
+        "make_ld": "liquid_diamonds",
+        "formulate_badders_sugars": "liquid_diamonds",
+    }.get(thca_destination)
+    if dry_thca_lot is not None and thca_output_type:
+        transformation = _ensure_downstream_transformation(
+            root,
+            run,
+            transformation_type="thca_split",
+            source_record_type="thca_destination",
+            source_record_id=thca_destination,
+            parent_lot=dry_thca_lot,
+            output_lot_type=thca_output_type,
+            quantity=_material_lot_original_quantity(root, dry_thca_lot),
+            notes=f"System-generated THCA destination genealogy for {thca_destination}.",
+        )
+        if transformation is not None:
+            created_or_updated.append(transformation)
+
+    if dry_hte_lot is not None and _downstream_event_exists(root, run.id, "golddrop_queue", "release_complete"):
+        transformation = _ensure_downstream_transformation(
+            root,
+            run,
+            transformation_type="golddrop_production",
+            source_record_type="downstream_queue",
+            source_record_id="golddrop_queue",
+            parent_lot=dry_hte_lot,
+            output_lot_type="golddrop",
+            quantity=_material_lot_original_quantity(root, dry_hte_lot),
+            notes="System-generated GoldDrop production genealogy from downstream queue release.",
+        )
+        if transformation is not None:
+            created_or_updated.append(transformation)
+
+    if dry_hte_lot is not None and _downstream_event_exists(root, run.id, "terp_strip_cage", "strip_complete"):
+        terp_quantity = float(getattr(run, "hte_terpenes_recovered_g", None) or 0) or _material_lot_original_quantity(root, dry_hte_lot)
+        transformation = _ensure_downstream_transformation(
+            root,
+            run,
+            transformation_type="terp_strip",
+            source_record_type="downstream_queue",
+            source_record_id="terp_strip_cage",
+            parent_lot=dry_hte_lot,
+            output_lot_type="terp_strip_output",
+            quantity=terp_quantity,
+            notes="System-generated terp strip genealogy from strip completion.",
+        )
+        if transformation is not None:
+            created_or_updated.append(transformation)
+
+    if dry_hte_lot is not None and _downstream_event_exists(root, run.id, "hold_hp_base_oil", "release_complete"):
+        transformation = _ensure_downstream_transformation(
+            root,
+            run,
+            transformation_type="hp_base_oil_conversion",
+            source_record_type="downstream_queue",
+            source_record_id="hold_hp_base_oil",
+            parent_lot=dry_hte_lot,
+            output_lot_type="hp_base_oil",
+            quantity=_material_lot_original_quantity(root, dry_hte_lot),
+            notes="System-generated HP base oil genealogy from hold release.",
+        )
+        if transformation is not None:
+            created_or_updated.append(transformation)
+
+    if dry_hte_lot is not None and _downstream_event_exists(root, run.id, "hold_distillate", "release_complete"):
+        distillate_quantity = float(getattr(run, "hte_distillate_retail_g", None) or 0) or _material_lot_original_quantity(root, dry_hte_lot)
+        transformation = _ensure_downstream_transformation(
+            root,
+            run,
+            transformation_type="distillate_conversion",
+            source_record_type="downstream_queue",
+            source_record_id="hold_distillate",
+            parent_lot=dry_hte_lot,
+            output_lot_type="distillate",
+            quantity=distillate_quantity,
+            notes="System-generated distillate genealogy from hold release.",
+        )
+        if transformation is not None:
+            created_or_updated.append(transformation)
+
+    return created_or_updated
+
+
+def backfill_downstream_output_genealogy(root, *, include_archived: bool = False) -> int:
+    query = root.Run.query
+    if not include_archived:
+        query = query.filter(root.Run.deleted_at.is_(None))
+    runs = query.all()
+    touched = 0
+    for run in runs:
+        touched += len(ensure_downstream_output_genealogy(root, run))
+    if touched:
+        root.db.session.flush()
+    return touched
+
+
 def reconcile_run_material_genealogy(root, run) -> list:
     issues = []
     if run is None:
@@ -887,6 +1175,7 @@ def derivative_material_lots_for_run(root, run) -> list:
     if run is None:
         return []
     ensure_extraction_output_genealogy(root, run)
+    ensure_downstream_output_genealogy(root, run)
     material_lots = run.material_lots.order_by(root.MaterialLot.created_at.asc()).all()
     return sorted(material_lots, key=_material_lot_sort_key)
 

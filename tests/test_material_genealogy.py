@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 
 import app as app_module
-from models import MaterialLot, MaterialReconciliationIssue, MaterialTransformation, Purchase, PurchaseLot, Run, RunInput, Supplier, db
+from models import DownstreamQueueEvent, MaterialLot, MaterialReconciliationIssue, MaterialTransformation, Purchase, PurchaseLot, Run, RunInput, Supplier, db
 from services.material_genealogy import (
     apply_material_lot_correction,
     backfill_biomass_material_lots,
@@ -12,6 +12,7 @@ from services.material_genealogy import (
     build_material_lot_detail_payload,
     build_material_lot_journey_payload,
     derivative_material_lots_for_run,
+    ensure_downstream_output_genealogy,
     ensure_biomass_material_lot,
     ensure_extraction_output_genealogy,
     reconcile_run_material_genealogy,
@@ -327,6 +328,220 @@ def test_apply_material_lot_correction_adjusts_quantity_with_replacement_and_aud
                     db.session.delete(material_lot)
             db.session.delete(run)
             db.session.delete(lot)
+            db.session.delete(purchase)
+            db.session.delete(supplier)
+            db.session.commit()
+
+
+def test_ensure_downstream_output_genealogy_creates_golddrop_and_wholesale_thca_lots():
+    app = app_module.app
+    with app.app_context():
+        supplier = Supplier(name=f"Downstream Genealogy Supplier {app_module.gen_uuid()[:6]}", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = _approved_purchase(supplier.id)
+        db.session.add(purchase)
+        db.session.flush()
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Mimosa",
+            weight_lbs=120,
+            remaining_weight_lbs=80,
+            tracking_id=f"LOT-{app_module.gen_uuid()[:8].upper()}",
+        )
+        run = Run(
+            run_date=date.today(),
+            reactor_number=6,
+            bio_in_reactor_lbs=40,
+            dry_hte_g=18,
+            dry_thca_g=25,
+            cost_per_gram_hte=3.0,
+            cost_per_gram_thca=4.0,
+            thca_destination="sell_thca",
+        )
+        db.session.add_all([lot, run])
+        db.session.flush()
+        db.session.add(RunInput(run_id=run.id, lot_id=lot.id, weight_lbs=40))
+        db.session.add(
+            DownstreamQueueEvent(
+                run_id=run.id,
+                queue_key="golddrop_queue",
+                action_key="release_complete",
+            )
+        )
+        db.session.commit()
+
+        try:
+            backfill_biomass_material_lots(app_module)
+            ensure_extraction_output_genealogy(app_module, run)
+            ensure_downstream_output_genealogy(app_module, run)
+            db.session.commit()
+
+            lot_types = {item.lot_type for item in derivative_material_lots_for_run(app_module, run)}
+            assert {"dry_hte", "dry_thca", "golddrop", "wholesale_thca"} <= lot_types
+
+            dry_hte = run.material_lots.filter_by(lot_type="dry_hte").first()
+            with app.test_request_context("/"):
+                descendants = build_material_lot_descendants_payload(app_module, dry_hte)
+            assert descendants["descendants"][0]["transformation"]["transformation_type"] == "golddrop_production"
+            assert descendants["descendants"][0]["outputs"][0]["material_lot"]["lot_type"] == "golddrop"
+        finally:
+            MaterialReconciliationIssue.query.filter_by(run_id=run.id).delete()
+            DownstreamQueueEvent.query.filter_by(run_id=run.id).delete()
+            MaterialTransformation.query.filter_by(run_id=run.id).delete()
+            for output in run.material_lots.all():
+                db.session.delete(output)
+            if lot.material_lot_id:
+                material_lot = db.session.get(MaterialLot, lot.material_lot_id)
+                if material_lot is not None:
+                    db.session.delete(material_lot)
+            db.session.delete(run)
+            db.session.delete(lot)
+            db.session.delete(purchase)
+            db.session.delete(supplier)
+            db.session.commit()
+
+
+def test_ensure_downstream_output_genealogy_creates_terp_strip_output_lot():
+    app = app_module.app
+    with app.app_context():
+        supplier = Supplier(name=f"Terp Genealogy Supplier {app_module.gen_uuid()[:6]}", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = _approved_purchase(supplier.id)
+        db.session.add(purchase)
+        db.session.flush()
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Papaya Kush",
+            weight_lbs=110,
+            remaining_weight_lbs=70,
+            tracking_id=f"LOT-{app_module.gen_uuid()[:8].upper()}",
+        )
+        run = Run(
+            run_date=date.today(),
+            reactor_number=7,
+            bio_in_reactor_lbs=40,
+            dry_hte_g=20,
+            hte_terpenes_recovered_g=6,
+        )
+        db.session.add_all([lot, run])
+        db.session.flush()
+        db.session.add(RunInput(run_id=run.id, lot_id=lot.id, weight_lbs=40))
+        db.session.add(
+            DownstreamQueueEvent(
+                run_id=run.id,
+                queue_key="terp_strip_cage",
+                action_key="strip_complete",
+            )
+        )
+        db.session.commit()
+
+        try:
+            ensure_biomass_material_lot(app_module, db.session.get(PurchaseLot, lot.id))
+            ensure_extraction_output_genealogy(app_module, run)
+            ensure_downstream_output_genealogy(app_module, run)
+            db.session.commit()
+
+            output_lot = run.material_lots.filter_by(lot_type="terp_strip_output").first()
+            assert output_lot is not None
+            assert output_lot.quantity == 6.0
+            dry_hte = run.material_lots.filter_by(lot_type="dry_hte").first()
+            assert dry_hte is not None
+            assert dry_hte.inventory_status == "partially_consumed"
+        finally:
+            MaterialReconciliationIssue.query.filter_by(run_id=run.id).delete()
+            DownstreamQueueEvent.query.filter_by(run_id=run.id).delete()
+            MaterialTransformation.query.filter_by(run_id=run.id).delete()
+            for output in run.material_lots.all():
+                db.session.delete(output)
+            if lot.material_lot_id:
+                material_lot = db.session.get(MaterialLot, lot.material_lot_id)
+                if material_lot is not None:
+                    db.session.delete(material_lot)
+            db.session.delete(run)
+            db.session.delete(lot)
+            db.session.delete(purchase)
+            db.session.delete(supplier)
+            db.session.commit()
+
+
+def test_ensure_downstream_output_genealogy_creates_hp_base_oil_and_distillate_lots():
+    app = app_module.app
+    with app.app_context():
+        supplier = Supplier(name=f"Conversion Supplier {app_module.gen_uuid()[:6]}", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = _approved_purchase(supplier.id)
+        db.session.add(purchase)
+        db.session.flush()
+        hp_lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Conversion Dream",
+            weight_lbs=100,
+            remaining_weight_lbs=60,
+            tracking_id=f"LOT-{app_module.gen_uuid()[:8].upper()}",
+        )
+        dist_lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Conversion Dream",
+            weight_lbs=100,
+            remaining_weight_lbs=60,
+            tracking_id=f"LOT-{app_module.gen_uuid()[:8].upper()}",
+        )
+        hp_run = Run(
+            run_date=date.today(),
+            reactor_number=8,
+            bio_in_reactor_lbs=40,
+            dry_hte_g=14,
+        )
+        dist_run = Run(
+            run_date=date.today(),
+            reactor_number=9,
+            bio_in_reactor_lbs=40,
+            dry_hte_g=16,
+            hte_distillate_retail_g=9,
+        )
+        db.session.add_all([hp_lot, dist_lot, hp_run, dist_run])
+        db.session.flush()
+        db.session.add_all(
+            [
+                RunInput(run_id=hp_run.id, lot_id=hp_lot.id, weight_lbs=40),
+                RunInput(run_id=dist_run.id, lot_id=dist_lot.id, weight_lbs=40),
+                DownstreamQueueEvent(run_id=hp_run.id, queue_key="hold_hp_base_oil", action_key="release_complete"),
+                DownstreamQueueEvent(run_id=dist_run.id, queue_key="hold_distillate", action_key="release_complete"),
+            ]
+        )
+        db.session.commit()
+
+        try:
+            backfill_biomass_material_lots(app_module)
+            ensure_extraction_output_genealogy(app_module, hp_run)
+            ensure_extraction_output_genealogy(app_module, dist_run)
+            ensure_downstream_output_genealogy(app_module, hp_run)
+            ensure_downstream_output_genealogy(app_module, dist_run)
+            db.session.commit()
+
+            hp_output = hp_run.material_lots.filter_by(lot_type="hp_base_oil").first()
+            dist_output = dist_run.material_lots.filter_by(lot_type="distillate").first()
+            assert hp_output is not None
+            assert hp_output.quantity == 14.0
+            assert dist_output is not None
+            assert dist_output.quantity == 9.0
+        finally:
+            for run in (hp_run, dist_run):
+                MaterialReconciliationIssue.query.filter_by(run_id=run.id).delete()
+                DownstreamQueueEvent.query.filter_by(run_id=run.id).delete()
+                MaterialTransformation.query.filter_by(run_id=run.id).delete()
+                for output in run.material_lots.all():
+                    db.session.delete(output)
+                db.session.delete(run)
+            for lot in (hp_lot, dist_lot):
+                if lot.material_lot_id:
+                    material_lot = db.session.get(MaterialLot, lot.material_lot_id)
+                    if material_lot is not None:
+                        db.session.delete(material_lot)
+                db.session.delete(lot)
             db.session.delete(purchase)
             db.session.delete(supplier)
             db.session.commit()

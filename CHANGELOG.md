@@ -25,6 +25,12 @@
 - A minimal manager correction route is now available at `/material-lots/<lot_id>/correct` for logged-in editors.
 - Material genealogy cost visibility now includes `/api/v1/summary/material-costs`, which summarizes open derivative lots by lot type, quantity, and rolled-forward cost basis.
 - Downstream queue genealogy is now visible directly on the shared `Downstream Queues` board and the dedicated destination queue pages. Queue cards now show linked derivative lot type/tracking badges plus direct journey drill links for any derivative lots already created from that run.
+- Downstream genealogy now extends beyond extraction outputs into destination-native material transformations:
+  - GoldDrop queue release can create `golddrop` lots through `golddrop_production`
+  - THCA destination routing can create `wholesale_thca` or `liquid_diamonds` lots through `thca_split`
+  - terp strip completion can create `terp_strip_output` lots
+  - HP base oil release can create `hp_base_oil` lots
+  - distillate release can create `distillate` lots
 - New planning documents now define the target model and phased rollout for true end-to-end material genealogy:
   - `DERIVATIVE_LOT_GENEALOGY_PLAN.md`
   - `DERIVATIVE_LOT_GENEALOGY_IMPLEMENTATION_PLAN.md`
@@ -38,6 +44,7 @@
 - Added correction-workflow regression coverage for replacement-lot quantity corrections and the new correction route registration.
 - Added regression coverage for the material-cost summary endpoint and its route registration.
 - Added downstream queue regression coverage ensuring GoldDrop queue cards render linked derivative lot genealogy without breaking the existing queue workflow surfaces.
+- Added genealogy regression coverage for downstream child-lot creation across GoldDrop, THCA routing, terp strip, HP base oil, and distillate conversions.
 
 ## 2026-04-24
 

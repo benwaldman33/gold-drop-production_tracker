@@ -8,6 +8,7 @@ from services.extraction_run import EXTRACTION_RUN_DEFAULTS, TIMING_POLICY_DEFAU
 from services.supervisor_notifications import REMINDER_DEFAULTS
 from services.bootstrap_helpers import (
     backfill_biomass_material_genealogy,
+    backfill_downstream_material_genealogy,
     backfill_extraction_output_material_genealogy,
     backfill_default_inventory_lots,
     backfill_purchase_approval,
@@ -41,6 +42,7 @@ def init_db(root):
     migrate_biomass_to_purchase(root)
     backfill_biomass_material_genealogy(root)
     backfill_extraction_output_material_genealogy(root)
+    backfill_downstream_material_genealogy(root)
 
     if not root.User.query.first():
         admin = root.User(username="admin", display_name="Admin", role="super_admin")

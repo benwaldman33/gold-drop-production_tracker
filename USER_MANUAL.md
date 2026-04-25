@@ -8,7 +8,7 @@ This guide explains how to use the Gold Drop web app day-to-day. It intentionall
 
 **Operator-facing additions in the current release:** Purchases and Inventory are more status-first, the Journey page is richer, Slack imports now includes inbox buckets, lot labels now print with scannable barcodes, `Floor Ops` gives operators a recent activity surface, the standalone receiving app can now correct a confirmed receipt before downstream lot consumption, the standalone extraction app now mirrors the reactor workflow with touch-first controls, and the data model supports live smart-scale capture.
 
-**Manager-facing note for the current release:** the app now includes the first usable derivative-lot genealogy layer. Current day-to-day workflows still use Purchases, Inventory, Runs, and Downstream Queues the same way, but the system can now bridge biomass lots into first-class material genealogy records, auto-create dry HTE / dry THCA derivative lots from eligible extraction runs, expose manager-facing ancestry / descendant journey endpoints through the internal API, record correction-forward genealogy fixes instead of silently overwriting bad lineage, summarize open derivative cost basis through the internal API, and surface linked derivative lots directly on downstream queue cards.
+**Manager-facing note for the current release:** the app now includes the first usable derivative-lot genealogy layer. Current day-to-day workflows still use Purchases, Inventory, Runs, and Downstream Queues the same way, but the system can now bridge biomass lots into first-class material genealogy records, auto-create dry HTE / dry THCA derivative lots from eligible extraction runs, extend genealogy into accountable downstream child lots like GoldDrop / wholesale THCA / terp strip / HP base oil / distillate, expose manager-facing ancestry / descendant journey endpoints through the internal API, record correction-forward genealogy fixes instead of silently overwriting bad lineage, summarize open derivative cost basis through the internal API, and surface linked derivative lots directly on downstream queue cards.
 
 ---
 
@@ -708,6 +708,8 @@ Use the queue-owner dropdown on the card when you need explicit accountability f
 
 `Release Complete` removes the run from the GoldDrop queue.
 
+When a GoldDrop item reaches `Release Complete`, the genealogy layer can now create a first-class `golddrop` derivative lot linked back to the original dry HTE lot and all upstream biomass ancestry.
+
 `Send Back For Re-routing` removes it from the queue so it can be routed again from **Downstream Queues**.
 
 ### Liquid Loud Hold, Terp Strip / CDT Cage, and HP Base Oil Hold
@@ -745,6 +747,8 @@ Typical staged flow:
 
 `Queue Prescott` marks the HTE filter outcome as needing Prescott handling. `Start Strip Work` marks the run as actively in terp strip / CDT handling. `Strip Complete` does not appear until strip work has started, and then removes the run from the cage while marking the HTE pipeline stage as stripped.
 
+When `Strip Complete` is recorded, genealogy can now create a `terp_strip_output` child lot from the accountable dry HTE lot.
+
 #### HP Base Oil Hold
 - `Mark Reviewed`
 - `Confirm Hold`
@@ -759,6 +763,8 @@ Typical staged flow:
 - `Release Complete`
 
 This page is for low-potency output held for HP base oil decisions. `Release Complete` does not appear until the hold is marked release-ready.
+
+When `Release Complete` is recorded here, genealogy can now create an `hp_base_oil` child lot from the accountable dry HTE lot.
 
 ### Distillate Hold
 
@@ -780,6 +786,8 @@ Typical staged flow:
 - `Release Complete`
 
 This mirrors the HP base oil hold pattern, but for the distillate path instead of the low-potency hold path. `Release Complete` does not appear until the hold is marked release-ready.
+
+When `Release Complete` is recorded here, genealogy can now create a `distillate` child lot from the accountable dry HTE lot. If retail distillate grams are already recorded on the run, that quantity is used as the accountable distillate output.
 
 Use **Confirm Movement** to record a standard movement action:
 - move to vault
