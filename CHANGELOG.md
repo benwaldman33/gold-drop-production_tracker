@@ -9,6 +9,7 @@
 
 ### Changed
 - The `GoldDrop Production Queue` is now a staged downstream workflow instead of a flat action list. GoldDrop runs now move through `Reviewed`, `Queued for production`, `In production`, `Packaging ready`, and `Released complete`, with only the appropriate next actions available at each stage.
+- The `Liquid Loud Hold` is now a staged downstream workflow instead of a flat hold/release list. Liquid Loud runs now move through `Reviewed`, `Reserved for Liquid Loud`, `Release ready`, and then into either `Release To GoldDrop Queue` or `Release Complete`, with release actions gated until the hold is marked release-ready.
 - The shared downstream destination queue template now shows stage-specific next-step guidance and hides queue actions once a run reaches a terminal queue state.
 - The standalone extraction workflow now follows booth-SOP checkpoints instead of only the earlier coarse progression buttons. The current guided flow covers vacuum confirmation, solvent charge, primary soak, mixer, filter clear, pressurization, recovery, flush-cycle setup, flush temperature verification, flush solvent charge, flow-resumed confirmation, final purge, final clarity, shutdown checklist completion, and final run completion.
 - The standalone extraction run screen now captures booth-specific SOP data including primary solvent charge, flush temperatures, flush solvent charge, flow-resumed decision, final clarity decision, final purge timing, shutdown checklist confirmations, and booth evidence uploads.
@@ -40,6 +41,7 @@
 - Added regression coverage for timing-policy enforcement, including permissive default continuation and supervisor-override blocking until approval.
 - Added regression coverage for reminder creation, deduplication across repeated dashboard loads, and automatic reminder resolution once the source alert is closed.
 - Added GoldDrop queue regression coverage for the deeper staged workflow, including stage-specific action visibility and blocking final release until packaging-ready state is reached.
+- Added Liquid Loud queue regression coverage for staged hold/release flow, including gating release actions until the run reaches release-ready state.
 
 ## 2026-04-18
 

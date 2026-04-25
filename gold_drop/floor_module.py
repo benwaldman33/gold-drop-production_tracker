@@ -112,6 +112,7 @@ GOLDDROP_QUEUE_STAGE_NEXT_STEPS = {
 LIQUID_LOUD_QUEUE_ACTIONS = (
     ("mark_reviewed", "Mark Reviewed"),
     ("reserve_for_liquid_loud", "Reserve For Liquid Loud"),
+    ("mark_release_ready", "Mark Release Ready"),
     ("release_to_golddrop", "Release To GoldDrop Queue"),
     ("release_complete", "Release Complete"),
     ("send_back", "Send Back For Re-routing"),
@@ -121,6 +122,7 @@ LIQUID_LOUD_QUEUE_STATE_LABELS = {
     "new_in_queue": "New in hold",
     "reviewed": "Reviewed",
     "reserved_for_liquid_loud": "Reserved for Liquid Loud",
+    "release_ready": "Release ready",
     "released_to_golddrop": "Released to GoldDrop queue",
     "released_complete": "Released complete",
     "sent_back": "Sent back",
@@ -130,9 +132,34 @@ LIQUID_LOUD_QUEUE_EVENT_LABELS = {
     "entered_queue": "Entered hold",
     "mark_reviewed": "Marked reviewed",
     "reserve_for_liquid_loud": "Reserved for Liquid Loud",
+    "mark_release_ready": "Release ready",
     "release_to_golddrop": "Released to GoldDrop queue",
     "release_complete": "Released complete",
     "send_back": "Sent back",
+}
+
+LIQUID_LOUD_QUEUE_STAGE_ACTIONS = {
+    "new_in_queue": (("mark_reviewed", "Mark Reviewed"), ("send_back", "Send Back For Re-routing")),
+    "reviewed": (("reserve_for_liquid_loud", "Reserve For Liquid Loud"), ("send_back", "Send Back For Re-routing")),
+    "reserved_for_liquid_loud": (("mark_release_ready", "Mark Release Ready"), ("send_back", "Send Back For Re-routing")),
+    "release_ready": (
+        ("release_to_golddrop", "Release To GoldDrop Queue"),
+        ("release_complete", "Release Complete"),
+        ("send_back", "Send Back For Re-routing"),
+    ),
+    "released_to_golddrop": (),
+    "released_complete": (),
+    "sent_back": (),
+}
+
+LIQUID_LOUD_QUEUE_STAGE_NEXT_STEPS = {
+    "new_in_queue": "Supervisor review is the next action before a Liquid Loud reservation decision is made.",
+    "reviewed": "Reserve this run for Liquid Loud once the hold decision is confirmed.",
+    "reserved_for_liquid_loud": "Mark the run release ready once Liquid Loud hold work is complete and a release decision can be made.",
+    "release_ready": "Choose whether to release this run into GoldDrop production or complete the Liquid Loud hold directly.",
+    "released_to_golddrop": "This run has been released from Liquid Loud into GoldDrop production.",
+    "released_complete": "Liquid Loud hold handling is complete for this run.",
+    "sent_back": "This run has been sent back for downstream re-routing.",
 }
 
 TERP_STRIP_QUEUE_ACTIONS = (
@@ -258,16 +285,20 @@ DESTINATION_QUEUE_CONFIGS = {
         "action_state_map": {
             "mark_reviewed": "reviewed",
             "reserve_for_liquid_loud": "reserved_for_liquid_loud",
+            "mark_release_ready": "release_ready",
             "release_to_golddrop": "released_to_golddrop",
             "release_complete": "released_complete",
             "send_back": "sent_back",
         },
-        "help_text": "Use this surface to reserve material for Liquid Loud, release it into GoldDrop production, complete the hold, or send it back for re-routing.",
+        "help_text": "Use this surface to review the hold, reserve for Liquid Loud, mark release readiness, release it into GoldDrop production, complete the hold, or send it back for re-routing.",
+        "stage_actions": LIQUID_LOUD_QUEUE_STAGE_ACTIONS,
+        "stage_next_steps": LIQUID_LOUD_QUEUE_STAGE_NEXT_STEPS,
         "entered_note": "Entered Liquid Loud hold.",
         "source_label": "liquid_loud_queue",
         "action_messages": {
             "mark_reviewed": "Run marked reviewed in Liquid Loud hold.",
             "reserve_for_liquid_loud": "Run reserved for Liquid Loud.",
+            "mark_release_ready": "Run marked release ready in Liquid Loud hold.",
             "release_to_golddrop": "Run released from Liquid Loud hold into GoldDrop production queue.",
             "release_complete": "Run released from Liquid Loud hold.",
             "send_back": "Run sent back for downstream re-routing.",
