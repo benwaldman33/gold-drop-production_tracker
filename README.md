@@ -65,6 +65,11 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 
 ## Features
 
+- **Role-based navigation cleanup** - the main app sidebar is now grouped by daily workflow areas instead of presenting every function as a flat first-level peer. The primary sections are `Extraction`, `Downstream`, `Purchasing`, `Inventory`, `Alerts`, `Journey`, and `More`.
+- **Alerts Home** - a new `/alerts` hub summarizes supervisor notifications and active genealogy issues as an action queue.
+- **Journey Home** - a new `/journey` hub consolidates genealogy reporting, tracing, issue management, open/released derivative cost basis, and recent run yield/cost context for managers.
+- **Role-aware landing defaults** - users now land in a workflow area that better matches their role, and the app remembers the last active top-level section during the session.
+- **Standalone app handoffs** - the standalone purchasing and receiving apps now make their focused scope explicit and provide direct links back into main-app purchase review when broader approval or investigation is needed.
 - **Derivative lot genealogy foundation** - the app now has additive genealogy tables for traceable material lots, transformations, transformation inputs/outputs, and reconciliation issues. Active biomass `PurchaseLot` rows are bridged into first-class `MaterialLot` records, and eligible extraction runs now auto-create dry HTE / dry THCA derivative lots linked back to their biomass source lots.
 - **Correction-forward genealogy** - derivative lot mistakes no longer require silent data rewrites. Managers can record quantity corrections, parent-link replacements, or void actions as explicit correction transformations, preserving the original lot while producing a visible replacement or void trail.
 - **Derivative lot cost visibility** - open derivative lots now roll their cost basis into a summary surface at `/api/v1/summary/material-costs`, grouped by lot type so managers can see open quantity and open cost basis together.

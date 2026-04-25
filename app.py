@@ -302,6 +302,203 @@ def inject_supervisor_notification_summary():
     }
 
 
+def _section_home_endpoint(section: str | None) -> str:
+    section = (section or "").strip().lower()
+    mapping = {
+        "extraction": "floor_ops",
+        "downstream": "downstream_queues",
+        "purchasing": "biomass_purchasing_dashboard",
+        "inventory": "inventory",
+        "alerts": "alerts_home",
+        "journey": "journey_home",
+        "more": "dept_index",
+    }
+    return mapping.get(section, "dashboard")
+
+
+def _role_home_endpoint():
+    if not current_user.is_authenticated:
+        return "login"
+    remembered_section = session.get("last_nav_section")
+    if remembered_section:
+        return _section_home_endpoint(remembered_section)
+    if current_user.is_super_buyer:
+        return "biomass_purchasing_dashboard"
+    if current_user.is_super_admin:
+        return "dashboard"
+    if manager_can_review(current_user):
+        return "journey_home"
+    if current_user.can_edit_purchases and not current_user.can_edit:
+        return "purchases_list"
+    if current_user.can_edit:
+        return "floor_ops"
+    return "inventory"
+
+
+def _nav_section_key_for_endpoint(endpoint: str | None) -> str:
+    endpoint = endpoint or ""
+    if endpoint in {"dashboard", "runs_list", "run_new", "run_edit", "floor_ops", "scan_center", "scan_lot"}:
+        return "extraction"
+    if endpoint in {
+        "downstream_queues",
+        "golddrop_production_queue",
+        "liquid_loud_queue",
+        "terp_strip_queue",
+        "hp_base_oil_queue",
+        "distillate_queue",
+    }:
+        return "downstream"
+    if endpoint in {
+        "biomass_purchasing_dashboard",
+        "purchases_list",
+        "purchase_new",
+        "purchase_edit",
+        "purchase_import",
+        "purchase_import_preview",
+        "biomass_list",
+        "biomass_new",
+        "biomass_edit",
+        "field_approvals",
+    }:
+        return "purchasing"
+    if endpoint in {"inventory", "lot_edit", "lot_label", "purchase_labels"}:
+        return "inventory"
+    if endpoint in {"alerts_home", "material_genealogy_issue_queue"} or endpoint.startswith("supervisor_notification_"):
+        return "alerts"
+    if endpoint in {
+        "journey_home",
+        "material_genealogy_report",
+        "material_genealogy_viewer",
+        "material_genealogy_raw",
+    } or endpoint.startswith("purchases_bp.purchase_journey"):
+        return "journey"
+    return "more"
+
+
+@app.before_request
+def remember_last_nav_section():
+    if not current_user.is_authenticated:
+        return None
+    if request.method != "GET":
+        return None
+    section = _nav_section_key_for_endpoint(request.endpoint)
+    if section != "more":
+        session["last_nav_section"] = section
+    return None
+
+
+@app.context_processor
+def inject_role_navigation():
+    active_section = _nav_section_key_for_endpoint(request.endpoint)
+    role_home_endpoint = _role_home_endpoint()
+    role_home_url = url_for(role_home_endpoint) if role_home_endpoint != "login" else url_for("login")
+    supervisor_summary = summarize_notifications(sys.modules[__name__], limit=6) if current_user.is_authenticated and manager_can_review(current_user) else {"open_count": 0}
+    supervisor_alert_count = int(supervisor_summary.get("open_count", 0) or 0)
+    supervisor_alert_suffix = f" ({supervisor_alert_count})" if supervisor_alert_count else ""
+    nav_sections = [
+        {
+            "key": "extraction",
+            "label": "Extraction",
+            "active": active_section == "extraction",
+            "links": [
+                {"label": "Floor Ops", "endpoint": "floor_ops", "active": request.endpoint in ("floor_ops", "scan_center", "scan_lot")},
+                {"label": "Runs", "endpoint": "runs_list", "active": request.endpoint in ("runs_list", "run_new", "run_edit")},
+                {"label": "Extraction Dashboard", "endpoint": "dashboard", "active": request.endpoint == "dashboard"},
+            ],
+        },
+        {
+            "key": "downstream",
+            "label": "Downstream",
+            "active": active_section == "downstream",
+            "links": [
+                {"label": "Queue Overview", "endpoint": "downstream_queues", "active": request.endpoint == "downstream_queues"},
+                {"label": "GoldDrop", "endpoint": "golddrop_production_queue", "active": request.endpoint == "golddrop_production_queue"},
+                {"label": "Liquid Loud", "endpoint": "liquid_loud_queue", "active": request.endpoint == "liquid_loud_queue"},
+                {"label": "Terp Strip", "endpoint": "terp_strip_queue", "active": request.endpoint == "terp_strip_queue"},
+                {"label": "HP Base Oil", "endpoint": "hp_base_oil_queue", "active": request.endpoint == "hp_base_oil_queue"},
+                {"label": "Distillate", "endpoint": "distillate_queue", "active": request.endpoint == "distillate_queue"},
+            ],
+        },
+        {
+            "key": "purchasing",
+            "label": "Purchasing",
+            "active": active_section == "purchasing",
+            "links": [
+                {"label": "Biomass Purchasing", "endpoint": "biomass_purchasing_dashboard", "active": request.endpoint == "biomass_purchasing_dashboard"},
+                {"label": "Purchases", "endpoint": "purchases_list", "active": request.endpoint in ("purchases_list", "purchase_new", "purchase_edit", "purchase_import", "purchase_import_preview")},
+                {"label": "Biomass Pipeline", "endpoint": "biomass_list", "active": request.endpoint in ("biomass_list", "biomass_new", "biomass_edit")},
+                {"label": "Field Approvals", "endpoint": "field_approvals", "active": request.endpoint == "field_approvals", "visible": current_user.is_authenticated and current_user.is_super_buyer},
+            ],
+        },
+        {
+            "key": "inventory",
+            "label": "Inventory",
+            "active": active_section == "inventory",
+            "links": [
+                {"label": "Inventory", "endpoint": "inventory", "active": request.endpoint == "inventory"},
+            ],
+        },
+        {
+            "key": "alerts",
+            "label": "Alerts",
+            "active": active_section == "alerts",
+            "links": [
+                {"label": "Alerts Home", "endpoint": "alerts_home", "active": request.endpoint == "alerts_home"},
+                {
+                    "label": f"Supervisor Alerts{supervisor_alert_suffix}",
+                    "href": url_for("dashboard") + "#supervisor-notifications",
+                    "active": request.endpoint == "dashboard",
+                    "visible": current_user.is_authenticated and manager_can_review(current_user),
+                },
+                {"label": "Genealogy Issues", "endpoint": "material_genealogy_issue_queue", "active": request.endpoint == "material_genealogy_issue_queue"},
+            ],
+        },
+        {
+            "key": "journey",
+            "label": "Journey",
+            "active": active_section == "journey",
+            "links": [
+                {"label": "Journey Home", "endpoint": "journey_home", "active": request.endpoint == "journey_home"},
+                {"label": "Genealogy Report", "endpoint": "material_genealogy_report", "active": request.endpoint == "material_genealogy_report"},
+                {"label": "Journey Viewer", "endpoint": "material_genealogy_viewer", "active": request.endpoint == "material_genealogy_viewer"},
+                {"label": "Purchase Journey", "endpoint": "purchases_bp.purchase_journey", "active": (request.endpoint or "").startswith("purchases_bp.purchase_journey"), "href": url_for("purchases_list")},
+            ],
+        },
+    ]
+    more_links = [
+        {"label": "Departments", "endpoint": "dept_index", "active": request.endpoint in ("dept_index", "dept_view")},
+        {"label": "Suppliers", "endpoint": "suppliers_list", "active": request.endpoint in ("suppliers_list", "supplier_new", "supplier_edit")},
+        {"label": "Strains", "endpoint": "strains_list", "active": request.endpoint == "strains_list"},
+        {"label": "Costs", "endpoint": "costs_list", "active": request.endpoint in ("costs_list", "cost_new", "cost_edit")},
+        {"label": "Photo Library", "endpoint": "photos_library", "active": request.endpoint == "photos_library"},
+        {"label": "Import", "endpoint": "import_csv", "active": request.endpoint in ("import_csv", "import_confirm")},
+        {
+            "label": "Slack Imports",
+            "endpoint": "settings_slack_imports",
+            "active": request.endpoint in ("settings_slack_imports", "settings_slack_import_preview", "settings_slack_import_apply_run"),
+            "visible": current_user.is_authenticated and current_user.can_slack_import,
+        },
+        {
+            "label": "Cross-Site Ops",
+            "endpoint": "cross_site_ops",
+            "active": request.endpoint == "cross_site_ops",
+            "visible": current_user.is_authenticated and (SystemSetting.get("cross_site_ops_enabled", "0") or "0").strip().lower() in ("1", "true", "yes", "on"),
+        },
+        {
+            "label": "Settings",
+            "endpoint": "settings",
+            "active": request.endpoint == "settings",
+            "visible": current_user.is_authenticated and current_user.is_super_admin,
+        },
+    ]
+    return {
+        "role_home_url": role_home_url,
+        "active_nav_section": active_section,
+        "nav_sections": nav_sections,
+        "more_nav_links": more_links,
+    }
+
+
 def slack_importer_required(f):
     """Super Admin always allowed; others need Settings → Slack Importer flag."""
     @wraps(f)
@@ -340,7 +537,7 @@ def purchase_editor_required(f):
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for("dashboard"))
+        return redirect(url_for(_role_home_endpoint()))
 
     if request.method == "POST":
         username = (request.form.get("username") or "").strip()
@@ -352,7 +549,7 @@ def login():
             next_url = request.args.get("next") or request.form.get("next") or ""
             if next_url and next_url.startswith("/"):
                 return redirect(next_url)
-            return redirect(url_for("dashboard"))
+            return redirect(url_for(_role_home_endpoint()))
         flash("Invalid username or password.", "error")
 
     return render_template("login.html")

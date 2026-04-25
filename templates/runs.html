@@ -24,6 +24,13 @@
 </div>
 
 <div class="card" style="margin-bottom:12px;">
+  <div class="text-sm cell-muted">
+    <strong style="color:var(--text-primary);">Record management:</strong> use Runs for filters, exports, and administrative review.
+    Use <a href="{{ url_for('floor_ops') }}">Floor Ops</a> when the task is active floor execution.
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:12px;">
   <form method="GET" style="display:grid;grid-template-columns:160px 160px minmax(160px,1fr) minmax(200px,1.2fr) 120px 120px auto;gap:8px;align-items:end;">
     <div class="form-group" style="margin:0;">
       <input type="hidden" name="page" value="1">

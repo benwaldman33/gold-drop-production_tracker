@@ -743,12 +743,72 @@ Practical meaning:
 - managers can focus on the oldest, highest-risk, or unowned genealogy problems quickly
 - correction work now closes the loop more cleanly with issue management instead of leaving follow-up implicit
 
+## UX / product-structure planning update
+
+A first-pass UX restructuring plan is now documented in:
+
+- `UX_ROLE_WORKFLOW_PLAN.md`
+- `UX_ROLE_WORKFLOW_IMPLEMENTATION_PLAN.md`
+
+Core direction:
+
+- stop treating all functions as first-level peers in the main app
+- reorganize the product by role, frequency, and device context
+- keep high-frequency operational work visually primary
+- move low-frequency / specialist / admin functions into second-level navigation
+- use standalone apps more aggressively for focused operational workflows
+- treat journey / genealogy as a daily manager workflow, not just a secondary reporting feature
+- treat journey data as the foundation for future cost-to-produce and revenue forecasting
+
+Recommended product split:
+
+- standalone extraction app:
+  - charge workflow
+  - reactor board
+  - booth SOP execution
+  - immediate post-extraction handoff capture
+- standalone receiving app:
+  - receiving queue
+  - receipt confirmation / correction
+  - delivery photo capture
+- standalone purchasing app:
+  - buyer/mobile purchase opportunity workflow
+- main app:
+  - supervisor control surfaces
+  - downstream routing and queue management
+  - inventory and purchase review
+  - genealogy and reporting
+  - admin / maintenance
+
+Recommended first implementation step:
+
+- do a sidebar / information-architecture cleanup first
+- add grouped top-level navigation, including a first-level `Journey` area plus a `More` bucket
+- avoid changing deep workflows in the same sprint
+
+Implementation sequencing is now documented separately in `UX_ROLE_WORKFLOW_IMPLEMENTATION_PLAN.md`, with the recommended order:
+
+1. sidebar / navigation cleanup
+2. role-based landing defaults
+3. workflow rationalization across extraction / downstream / alerts / journey
+4. standalone-app scope tightening
+5. journey + financial visibility consolidation
+
+The implementation phases are now shipped:
+
+- the main app sidebar is grouped into `Extraction`, `Downstream`, `Purchasing`, `Inventory`, `Alerts`, `Journey`, and `More`
+- users now land on a role-relevant workflow area, with last-section memory during the session
+- `Alerts Home` and `Journey Home` now exist as dedicated manager surfaces
+- extraction/downstream/journey copy now better distinguishes overview vs execution vs investigation
+- the standalone purchasing and receiving apps now have clearer focused-purpose copy and direct handoffs back to main-app purchase review
+- Journey now acts as a daily manager visibility surface for lineage plus cost-basis review, not just a secondary reporting area
+
 ## Deployment note
 
 Current rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `63be53b`
+- commit: `7c0c752`
 
 Production deployment steps:
 
@@ -756,15 +816,16 @@ Production deployment steps:
    - `git fetch origin`
    - `git checkout Claude_Consolidation`
    - `git pull --ff-only origin Claude_Consolidation`
-2. restart the backend so the new genealogy tables, extraction-output backfill, material-lot API routes, and correction route are live
-3. no standalone extraction app sync is required for this sprint
-4. verify in the main app / API:
-   - `GET /api/v1/runs/<run_id>/journey` now returns derivative `material_lots` for eligible dry-output runs
-   - `GET /api/v1/material-lots/<lot_id>/journey` returns ancestry / descendant context
-   - `GET /api/v1/material-lots/<lot_id>/ancestry` traces derivative dry-output lots back to biomass source lots
-   - `GET /api/v1/material-lots/<lot_id>/descendants` traces biomass source lots forward into dry HTE / dry THCA derivative lots
-   - `GET /api/v1/tools/reconciliation-overview` now includes `material_genealogy`
-   - logged-in editors can open `/material-lots/<lot_id>/correct` and record a correction-backed replacement or void action
+2. restart the backend so the new grouped navigation, role-home routing, alerts/journey hubs, and mobile purchase-review handoff URLs are live
+3. sync the standalone purchasing app static files
+4. sync the standalone receiving app static files
+5. verify in production:
+   - the left sidebar is grouped into `Extraction`, `Downstream`, `Purchasing`, `Inventory`, `Alerts`, `Journey`, and `More`
+   - `Alerts Home` renders at `/alerts`
+   - `Journey Home` renders at `/journey`
+   - `Role Home` sends users into a relevant workflow area
+   - the standalone purchasing app shows `Open Purchase Review` on an opportunity detail
+   - the standalone receiving app shows `Open Purchase Review` on a receiving detail
 
 ## Local note
 

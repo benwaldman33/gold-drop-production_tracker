@@ -10,6 +10,13 @@
 </div>
 
 <div class="card" style="margin-bottom:18px;">
+  <div class="text-sm cell-muted">
+    <strong style="color:var(--text-primary);">Overview and triage:</strong> use this board to see queue health, ownership, and blocked work.
+    Open a destination page when you are doing focused work inside a single downstream pathway.
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:18px;">
   <div class="card-header">
     <h3>Queue Snapshot</h3>
     <span class="text-sm cell-muted">{{ downstream_queues.active_count }} run{% if downstream_queues.active_count != 1 %}s{% endif %} currently assigned to a downstream queue or waiting on routing</span>

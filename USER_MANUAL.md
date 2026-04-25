@@ -22,6 +22,15 @@ This guide explains how to use the Gold Drop web app day-to-day. It intentionall
 
 ### Navigation overview
 Use the left sidebar:
+- The sidebar is now grouped by workflow area instead of exposing every function as a flat first-level item.
+- Treat the top-level sections this way:
+  - `Extraction` = overview, floor execution, and run administration
+  - `Downstream` = queue triage plus destination-specific work surfaces
+  - `Purchasing` = buyer workflow and purchase review
+  - `Inventory` = on-hand lot visibility
+  - `Alerts` = action queue for supervisor and genealogy exceptions
+  - `Journey` = daily manager tracing, lineage, and cost-basis visibility
+  - `More` = lower-frequency admin and specialist tools
 - **Extraction** (labeled on the home dashboard card): KPIs + quick actions
 - **Biomass purchasing**: buyer weekly snapshot, field submission queues, and reviewed history
 - **Departments**: hub of department-focused pages (same data as the rest of the app; quick links and rollups per team—finance, purchasing, intake, extraction, THCA/HTE/Liquid Diamonds, terpenes, testing, bulk sales)
@@ -47,6 +56,7 @@ Related mobile workflows:
 - the standalone receiving app is intended for dock / receiving users on phone or tablet
 - the standalone extraction app is intended for extractors and assistant extractors on phone or tablet
 - all three workflows can be enabled or disabled independently by a Super Admin in **Settings -> Operational Parameters**
+- the standalone purchasing and receiving apps are intentionally focused tools; use their `Open Purchase Review` / `Open in Main App` handoff links when you need the full main-app review surface
 
 ### Standalone Extraction Lab App
 

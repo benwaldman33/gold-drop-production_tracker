@@ -228,6 +228,8 @@ def _mobile_purchase_summary(purchase: Purchase) -> dict[str, Any]:
         "photo_count": len(active_photos),
         "opportunity_photo_count": opportunity_photo_count,
         "delivery_photo_count": delivery_photo_count,
+        "open_main_app_url": url_for("purchase_edit", purchase_id=purchase.id),
+        "open_main_app_label": "Open Purchase Review",
     }
 
 
