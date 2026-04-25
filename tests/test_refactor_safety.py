@@ -805,6 +805,8 @@ def test_authenticated_dashboard_and_department_views_render():
     dashboard = _call_view_as_user("/", "dashboard", "admin")
     assert dashboard.status_code == 200
     assert b"Extraction dashboard" in dashboard.data
+    assert b"data-nav-toggle=\"extraction\"" in dashboard.data
+    assert b"Scorecards (beta)" in dashboard.data
 
     dept_index = _call_view_as_user("/dept", "dept_index", "admin")
     assert dept_index.status_code == 200

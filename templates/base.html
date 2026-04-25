@@ -30,12 +30,13 @@
           {% set visible_links = section.links | selectattr('visible', 'undefined') | list %}
           {% set visible_links = visible_links + (section.links | selectattr('visible') | list) %}
           {% if visible_links %}
-          <div class="sidebar-nav-section {% if section.active %}active{% endif %}">
-            <div class="sidebar-nav-section-label">
+          <div class="sidebar-nav-section {% if section.active %}active{% endif %}" data-nav-section="{{ section.key }}">
+            <button type="button" class="sidebar-nav-section-label" data-nav-toggle="{{ section.key }}" aria-expanded="{% if section.active %}true{% else %}false{% endif %}">
               <span class="icon">{{ section_icons.get(section.key, section.key[:2] | upper) }}</span>
               <span>{{ section.label }}</span>
-            </div>
-            <div class="sidebar-nav-links">
+              <span class="sidebar-nav-caret">+</span>
+            </button>
+            <div class="sidebar-nav-links" {% if not section.active %}hidden{% endif %}>
               {% for link in visible_links %}
               <a
                 href="{{ link.href if link.href is defined else url_for(link.endpoint) }}"
@@ -52,12 +53,13 @@
         {% set visible_more_links = more_nav_links | selectattr('visible', 'undefined') | list %}
         {% set visible_more_links = visible_more_links + (more_nav_links | selectattr('visible') | list) %}
         {% if visible_more_links %}
-        <div class="sidebar-nav-section sidebar-nav-section--more {% if active_nav_section == 'more' %}active{% endif %}">
-          <div class="sidebar-nav-section-label">
+        <div class="sidebar-nav-section sidebar-nav-section--more {% if active_nav_section == 'more' %}active{% endif %}" data-nav-section="more">
+          <button type="button" class="sidebar-nav-section-label" data-nav-toggle="more" aria-expanded="{% if active_nav_section == 'more' %}true{% else %}false{% endif %}">
             <span class="icon">MR</span>
             <span>More</span>
-          </div>
-          <div class="sidebar-nav-links">
+            <span class="sidebar-nav-caret">+</span>
+          </button>
+          <div class="sidebar-nav-links" {% if active_nav_section != 'more' %}hidden{% endif %}>
             {% for link in visible_more_links %}
             <a href="{{ url_for(link.endpoint) }}" class="{% if link.active %}active{% endif %}">
               <span>{{ link.label }}</span>
@@ -172,6 +174,40 @@
           saveScroll();
         }
       }, true);
+
+      const navStateKey = "gd-sidebar-nav-state";
+      const navState = JSON.parse(sessionStorage.getItem(navStateKey) || "{}");
+      document.querySelectorAll("[data-nav-section]").forEach(function (sectionEl) {
+        const key = sectionEl.getAttribute("data-nav-section");
+        const toggle = sectionEl.querySelector("[data-nav-toggle]");
+        const links = sectionEl.querySelector(".sidebar-nav-links");
+        if (!toggle || !links) return;
+
+        const setExpanded = function (expanded) {
+          toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+          if (expanded) {
+            links.removeAttribute("hidden");
+            sectionEl.classList.add("active");
+          } else {
+            links.setAttribute("hidden", "");
+            sectionEl.classList.remove("active");
+          }
+        };
+
+        if (Object.prototype.hasOwnProperty.call(navState, key)) {
+          setExpanded(Boolean(navState[key]));
+        } else {
+          setExpanded(toggle.getAttribute("aria-expanded") === "true");
+        }
+
+        toggle.addEventListener("click", function () {
+          const expanded = toggle.getAttribute("aria-expanded") === "true";
+          const next = !expanded;
+          setExpanded(next);
+          navState[key] = next;
+          sessionStorage.setItem(navStateKey, JSON.stringify(navState));
+        });
+      });
     })();
   </script>
   <script src="{{ url_for('static', filename='js/batch_select.js') }}"></script>

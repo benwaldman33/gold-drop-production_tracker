@@ -3,6 +3,8 @@
 ## 2026-04-25
 
 ### Added
+- The grouped left sidebar is now collapsible by section, so users can expand only the workflow area they are using and keep other submenu items out of the way.
+- `Departments` has been demoted inside `More` and relabeled `Scorecards (beta)` to reflect that it is not currently a primary operating workflow.
 - The UX role/workflow restructuring phases are now implemented in the main app:
   - grouped top-level sidebar navigation for `Extraction`, `Downstream`, `Purchasing`, `Inventory`, `Alerts`, `Journey`, and `More`
   - role-aware home routing with session memory for the last active top-level workflow area
