@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import app as app_module
 from models import DownstreamQueueEvent, MaterialLot, MaterialReconciliationIssue, MaterialTransformation, Purchase, PurchaseLot, Run, RunInput, Supplier, db
 from services.material_genealogy import (
+    apply_material_issue_action,
     apply_material_lot_correction,
     backfill_biomass_material_lots,
     build_material_lot_ancestry_payload,
@@ -15,6 +16,7 @@ from services.material_genealogy import (
     ensure_downstream_output_genealogy,
     ensure_biomass_material_lot,
     ensure_extraction_output_genealogy,
+    process_material_issue_reminders,
     reconcile_run_material_genealogy,
     source_material_lots_for_run,
 )
@@ -349,6 +351,141 @@ def test_apply_material_lot_correction_adjusts_quantity_with_replacement_and_aud
                 db.session.delete(lot)
             db.session.delete(purchase)
             db.session.delete(supplier)
+            db.session.commit()
+
+
+def test_apply_material_lot_correction_can_keep_linked_issues_in_follow_up():
+    app = app_module.app
+    with app.app_context():
+        supplier = Supplier(name=f"Correction Followup Supplier {app_module.gen_uuid()[:6]}", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = _approved_purchase(supplier.id)
+        db.session.add(purchase)
+        db.session.flush()
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Gelonade",
+            weight_lbs=100,
+            remaining_weight_lbs=60,
+            tracking_id=f"LOT-{app_module.gen_uuid()[:8].upper()}",
+        )
+        run = Run(
+            run_date=date.today(),
+            reactor_number=15,
+            bio_in_reactor_lbs=40,
+            dry_hte_g=10,
+        )
+        db.session.add_all([lot, run])
+        db.session.flush()
+        run_id = run.id
+        db.session.add(RunInput(run_id=run.id, lot_id=lot.id, weight_lbs=40))
+        db.session.commit()
+
+        try:
+            ensure_biomass_material_lot(app_module, db.session.get(PurchaseLot, lot.id))
+            ensure_extraction_output_genealogy(app_module, run)
+            derivative_lot = run.material_lots.filter_by(lot_type="dry_hte").first()
+            issue = MaterialReconciliationIssue(
+                material_lot_id=derivative_lot.id,
+                run_id=run.id,
+                issue_type="quantity_mismatch",
+                severity="warning",
+                status="investigating",
+                detected_by="test",
+            )
+            db.session.add(issue)
+            db.session.commit()
+
+            apply_material_lot_correction(
+                app_module,
+                derivative_lot,
+                correction_kind="adjust_quantity",
+                reason="Correcting quantity while leaving follow-up open.",
+                new_quantity=9.0,
+                issue_follow_up_action="needs_follow_up",
+                issue_follow_up_note="Verify downstream yield after corrected lot replacement.",
+            )
+            db.session.commit()
+
+            db.session.refresh(issue)
+            assert issue.status == "needs_follow_up"
+            assert issue.working_note == "Verify downstream yield after corrected lot replacement."
+            assert issue.resolved_at is None
+        finally:
+            MaterialReconciliationIssue.query.filter_by(run_id=run_id).delete()
+            MaterialTransformation.query.filter_by(run_id=run_id).delete()
+            run = db.session.get(Run, run_id)
+            for output in run.material_lots.all() if run is not None else []:
+                db.session.delete(output)
+            if lot.material_lot_id:
+                material_lot = db.session.get(MaterialLot, lot.material_lot_id)
+                if material_lot is not None:
+                    db.session.delete(material_lot)
+            db.session.delete(run)
+            db.session.delete(lot)
+            db.session.delete(purchase)
+            db.session.delete(supplier)
+            db.session.commit()
+
+
+def test_process_material_issue_reminders_escalates_stale_open_issues():
+    app = app_module.app
+    with app.app_context():
+        issue = MaterialReconciliationIssue(
+            issue_type="missing_input_link",
+            severity="critical",
+            status="open",
+            detected_by="test",
+            detected_at=datetime.now(timezone.utc) - timedelta(hours=10),
+        )
+        db.session.add(issue)
+        db.session.commit()
+        try:
+            result = process_material_issue_reminders(app_module)
+            db.session.refresh(issue)
+            assert result["processed"] >= 1
+            assert result["escalated"] >= 1
+            assert issue.status == "needs_follow_up"
+            assert int(issue.reminder_count or 0) >= 1
+            assert issue.last_reminded_at is not None
+        finally:
+            app_module.AuditLog.query.filter_by(entity_type="material_reconciliation_issue", entity_id=issue.id).delete(synchronize_session=False)
+            db.session.delete(issue)
+            db.session.commit()
+
+
+def test_apply_material_issue_action_requires_resolution_note_and_supports_reopen():
+    app = app_module.app
+    with app.app_context():
+        issue = MaterialReconciliationIssue(
+            issue_type="run_gap",
+            severity="warning",
+            status="investigating",
+            detected_by="test",
+        )
+        db.session.add(issue)
+        db.session.commit()
+        try:
+            try:
+                apply_material_issue_action(app_module, issue, action="resolved", note="")
+                assert False, "Expected missing note validation"
+            except ValueError:
+                pass
+
+            apply_material_issue_action(app_module, issue, action="resolved", note="Resolved after confirming the lineage bridge.")
+            db.session.commit()
+            assert issue.status == "resolved"
+            assert issue.resolution_note == "Resolved after confirming the lineage bridge."
+
+            apply_material_issue_action(app_module, issue, action="reopen", note="Need to verify the replacement lot mapping.")
+            db.session.commit()
+            assert issue.status == "open"
+            assert issue.reopened_at is not None
+            assert issue.resolved_at is None
+        finally:
+            app_module.AuditLog.query.filter_by(entity_type="material_reconciliation_issue", entity_id=issue.id).delete(synchronize_session=False)
+            db.session.delete(issue)
             db.session.commit()
 
 

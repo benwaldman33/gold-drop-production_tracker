@@ -469,6 +469,11 @@ def ensure_sqlite_schema(root) -> None:
             "resolution_note TEXT, "
             "resolved_at DATETIME, "
             "resolved_by_user_id VARCHAR(36), "
+            "reopened_at DATETIME, "
+            "reopened_by_user_id VARCHAR(36), "
+            "reminder_count INTEGER NOT NULL DEFAULT 0, "
+            "last_reminded_at DATETIME, "
+            "next_reminder_due_at DATETIME, "
             "updated_at DATETIME"
             ")"
         ))
@@ -482,6 +487,22 @@ def ensure_sqlite_schema(root) -> None:
             root.db.session.execute(text("ALTER TABLE material_reconciliation_issues ADD COLUMN assigned_by_user_id VARCHAR(36)"))
         if "working_note" not in cols:
             root.db.session.execute(text("ALTER TABLE material_reconciliation_issues ADD COLUMN working_note TEXT"))
+        if "resolution_note" not in cols:
+            root.db.session.execute(text("ALTER TABLE material_reconciliation_issues ADD COLUMN resolution_note TEXT"))
+        if "resolved_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE material_reconciliation_issues ADD COLUMN resolved_at DATETIME"))
+        if "resolved_by_user_id" not in cols:
+            root.db.session.execute(text("ALTER TABLE material_reconciliation_issues ADD COLUMN resolved_by_user_id VARCHAR(36)"))
+        if "reopened_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE material_reconciliation_issues ADD COLUMN reopened_at DATETIME"))
+        if "reopened_by_user_id" not in cols:
+            root.db.session.execute(text("ALTER TABLE material_reconciliation_issues ADD COLUMN reopened_by_user_id VARCHAR(36)"))
+        if "reminder_count" not in cols:
+            root.db.session.execute(text("ALTER TABLE material_reconciliation_issues ADD COLUMN reminder_count INTEGER NOT NULL DEFAULT 0"))
+        if "last_reminded_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE material_reconciliation_issues ADD COLUMN last_reminded_at DATETIME"))
+        if "next_reminder_due_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE material_reconciliation_issues ADD COLUMN next_reminder_due_at DATETIME"))
         if "updated_at" not in cols:
             root.db.session.execute(text("ALTER TABLE material_reconciliation_issues ADD COLUMN updated_at DATETIME"))
 

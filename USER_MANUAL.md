@@ -849,12 +849,29 @@ The queue supports:
   - `resolved`
 - working notes on the issue
 - recent audit history for issue updates
+- explicit lifecycle actions:
+  - `Start Investigating`
+  - `Mark Follow-Up`
+  - `Resolve With Note`
+  - `Reopen`
+- queue filters for:
+  - status
+  - severity
+  - owner
+  - age / overdue state
+- reminder tracking for stale unresolved issues
 
 Use it when you need to:
 - assign a lineage problem to a specific person
 - mark an issue as actively being worked
 - keep investigation notes on the issue itself
 - review which issues are still unresolved
+- focus only on overdue or critical genealogy problems
+
+When you record a lot correction from the genealogy viewer, the correction form now also asks what to do with linked genealogy issues:
+- resolve them immediately
+- keep them in follow-up
+- or leave them open with an updated note
 
 Use the report’s cost/yield sections when you need to answer:
 - which source lots produced which derivative outputs and cost basis

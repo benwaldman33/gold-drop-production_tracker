@@ -257,6 +257,7 @@ def test_material_genealogy_viewer_renders_lot_and_run_modes():
             assert b"Open Parent Run" in lot_resp.data
             assert b"Correct This Lot" in lot_resp.data
             assert b"Reconciliation And Corrections" in lot_resp.data
+            assert b"Open Issue Queue" in lot_resp.data
             assert b"View JSON" in lot_resp.data
 
             run_resp = client.get(f"/journeys/material-genealogy?mode=run&run_id={run_id}")
@@ -279,6 +280,7 @@ def test_material_genealogy_viewer_renders_lot_and_run_modes():
             assert correction_form.status_code == 200
             assert b"Back to Viewer" in correction_form.data
             assert b'name="return_to"' in correction_form.data
+            assert b"Linked issue follow-up" in correction_form.data
     finally:
         with app.app_context():
             _release_test_db_session()
@@ -374,19 +376,27 @@ def test_material_genealogy_issue_queue_supports_assignment_and_status_updates()
             assert page.status_code == 200
             assert b"Genealogy Issue Queue" in page.data
             assert b"Missing Input Link" in page.data
-            assert b"Update Issue" in page.data
+            assert b"Resolve With Note" in page.data
+            assert b"Apply Filters" in page.data
 
             update = client.post(
                 f"/reports/material-genealogy/issues/{issue_id}/update",
                 data={
-                    "status": "investigating",
+                    "action": "investigating",
                     "assignee_user_id": assignee_id,
                     "working_note": "Investigating source lot bridge.",
                     "return_status": "active",
+                    "return_severity": "all",
+                    "return_owner": "all",
+                    "return_age": "all",
                 },
                 follow_redirects=False,
             )
             assert update.status_code in (302, 303)
+
+            filtered = client.get(f"/reports/material-genealogy/issues?status=active&severity=warning&owner={assignee_id}&age=all")
+            assert filtered.status_code == 200
+            assert b"Missing Input Link" in filtered.data
 
         with app.app_context():
             issue = db.session.get(app_module.MaterialReconciliationIssue, issue_id)

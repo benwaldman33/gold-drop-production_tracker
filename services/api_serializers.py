@@ -158,9 +158,18 @@ def serialize_material_reconciliation_issue(issue):
         "transformation_id": issue.transformation_id,
         "run_id": issue.run_id,
         "detected_at": iso_dt(issue.detected_at),
+        "assignee_user_id": issue.assignee_user_id,
+        "assigned_at": iso_dt(issue.assigned_at),
+        "assigned_by_user_id": issue.assigned_by_user_id,
+        "working_note": issue.working_note,
         "resolution_note": issue.resolution_note,
         "resolved_at": iso_dt(issue.resolved_at),
         "resolved_by_user_id": issue.resolved_by_user_id,
+        "reopened_at": iso_dt(issue.reopened_at),
+        "reopened_by_user_id": issue.reopened_by_user_id,
+        "reminder_count": int(issue.reminder_count or 0),
+        "last_reminded_at": iso_dt(issue.last_reminded_at),
+        "next_reminder_due_at": iso_dt(issue.next_reminder_due_at),
     }
 
 

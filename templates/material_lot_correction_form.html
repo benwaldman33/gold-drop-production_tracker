@@ -5,7 +5,7 @@
     <div>
       <h2 class="mb-1">Correct Material Lot</h2>
       <div class="text-muted small">
-        {{ material_lot.tracking_id }} · {{ material_lot.lot_type }} · {{ "%.2f"|format(material_lot.quantity or 0) }} {{ material_lot.unit }}
+        {{ material_lot.tracking_id }} - {{ material_lot.lot_type }} - {{ "%.2f"|format(material_lot.quantity or 0) }} {{ material_lot.unit }}
       </div>
     </div>
     {% if return_to %}
@@ -44,7 +44,7 @@
             <div class="form-text">
               Candidate source material lots for this run:
               {% for parent in candidate_parents %}
-                <span class="badge bg-light text-dark border me-1">{{ parent.id }} · {{ parent.tracking_id }} · {{ parent.lot_type }}</span>
+                <span class="badge bg-light text-dark border me-1">{{ parent.id }} - {{ parent.tracking_id }} - {{ parent.lot_type }}</span>
               {% endfor %}
             </div>
           {% endif %}
@@ -54,6 +54,23 @@
           <label class="form-label">Reason</label>
           <textarea name="reason" class="form-control" rows="4" required placeholder="Explain why this correction is needed."></textarea>
         </div>
+
+        {% if linked_issue_count %}
+        <div class="mb-3">
+          <label class="form-label">Linked issue follow-up</label>
+          <select name="issue_follow_up_action" class="form-select">
+            <option value="resolve">Resolve linked active issues</option>
+            <option value="needs_follow_up">Keep linked issues in follow-up</option>
+            <option value="leave_open">Leave linked issues open</option>
+          </select>
+          <div class="form-text">{{ linked_issue_count }} active genealogy issue{% if linked_issue_count != 1 %}s are{% else %} is{% endif %} linked to this lot.</div>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Issue follow-up note</label>
+          <textarea name="issue_follow_up_note" class="form-control" rows="3" placeholder="Optional note that will be applied to linked genealogy issues."></textarea>
+        </div>
+        {% endif %}
 
         <div class="d-flex gap-2">
           <button type="submit" class="btn btn-primary">Record Correction</button>
