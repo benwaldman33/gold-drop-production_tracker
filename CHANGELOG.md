@@ -22,6 +22,9 @@
 - Slack settings now support outbound notification routing by class (`completions`, `warnings`, `reminders`) through optional class-specific webhook URLs, while keeping Slack read/sync concerns separate.
 - Booth deviations that proceed off-target now require an operator reason, and that reason is stored on both the booth event trail and the linked supervisor notification.
 - Supervisor notification cards now support explicit `Approve Deviation` and `Require Rework` decisions with a required supervisor reason, so deviation handling is recorded as a real control action instead of only an acknowledgement.
+- `Settings -> Operational Parameters` now includes per-step extraction timing policies for primary soak, mixer, flush soak, and final purge. Defaults stay permissive (`warning` for soak/mixer/flush and `informational` for final purge), but each step can now be tightened to `Require supervisor override` or `Hard stop` for training or intervention cases.
+- Booth progression now enforces those timing policies: `warning` and `informational` continue the workflow, `Require supervisor override` records a critical deviation and blocks later progression until approval exists, and `Hard stop` prevents the off-target stop action immediately.
+- The main run form now shows timing policy labels and any active booth policy block directly in `Booth Review` so supervisors can see why a run cannot advance.
 
 ### Tests
 - Extended extraction mobile API regression coverage for the booth-SOP sequence through shutdown and run completion.
@@ -30,6 +33,7 @@
 - Added run-form regression coverage for the new supervisor booth-review surface.
 - Added regression coverage for the supervisor dashboard notification surface and acknowledgement flow.
 - Added regression coverage for operator-reason validation on booth deviations and supervisor deviation approval recording.
+- Added regression coverage for timing-policy enforcement, including permissive default continuation and supervisor-override blocking until approval.
 
 ## 2026-04-18
 

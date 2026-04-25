@@ -197,6 +197,19 @@ def test_mobile_supplier_create_accepts_standalone_form_shape():
 def test_mobile_extraction_run_exception_handling_loops():
     app = app_module.create_app()
     _set_mobile_workflows(app)
+    with app.app_context():
+        for key, value in (
+            ("extraction_policy_primary_soak", "warning"),
+            ("extraction_policy_mixer", "warning"),
+            ("extraction_policy_flush", "warning"),
+            ("extraction_policy_final_purge", "informational"),
+        ):
+            row = db.session.get(SystemSetting, key)
+            if row is None:
+                row = SystemSetting(key=key, value=value)
+                db.session.add(row)
+            row.value = value
+        db.session.commit()
     with app.test_client() as client:
         _login_mobile(client)
         with app.app_context():
@@ -335,8 +348,97 @@ def test_mobile_extraction_run_exception_handling_loops():
             ]
             assert "Flow adjustment required" in notification_titles
             assert "Final clarity still out of scope" in notification_titles
+            assert "Final purge finished short of target" not in notification_titles
             notification_reasons = [row.operator_reason for row in app_module.SupervisorNotification.query.filter_by(run_id=run.id).all()]
             assert any(reason and "restricted" in reason for reason in notification_reasons)
+
+
+def test_mobile_extraction_timing_policy_can_require_supervisor_override():
+    app = app_module.create_app()
+    _set_mobile_workflows(app)
+    with app.app_context():
+        for key, value in (
+            ("extraction_policy_flush", "supervisor_override"),
+            ("extraction_policy_primary_soak", "informational"),
+            ("extraction_target_flush_minutes", "10"),
+        ):
+            row = db.session.get(SystemSetting, key)
+            if row is None:
+                row = SystemSetting(key=key, value=value)
+                db.session.add(row)
+            row.value = value
+        db.session.commit()
+    with app.test_client() as client:
+        _login_mobile(client)
+        with app.app_context():
+            supplier = Supplier(name=f"Override Policy Supplier {gen_uuid()[:6]}", is_active=True)
+            db.session.add(supplier)
+            db.session.flush()
+            purchase = Purchase(
+                supplier_id=supplier.id,
+                purchase_date=app_module.date.today(),
+                status="delivered",
+                stated_weight_lbs=100,
+                actual_weight_lbs=100,
+                purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            )
+            db.session.add(purchase)
+            db.session.flush()
+            db.session.add(app_module.PurchaseLot(purchase_id=purchase.id, strain_name="Policy Flower", weight_lbs=100, remaining_weight_lbs=100))
+            db.session.commit()
+            lot = purchase.lots[0]
+            charge = ExtractionCharge(
+                purchase_lot_id=lot.id,
+                reactor_number=1,
+                charged_weight_lbs=22.5,
+                source_mode="standalone_extraction",
+            )
+            db.session.add(charge)
+            db.session.commit()
+            charge_id = charge.id
+
+        sequence = [
+            {"progression_action": "confirm_vacuum_down"},
+            {"primary_solvent_charge_lbs": 500, "progression_action": "record_solvent_charge"},
+            {"progression_action": "start_primary_soak", "primary_soak_short_reason": "Training override prep."},
+            {"progression_action": "start_mixer"},
+            {"progression_action": "stop_mixer", "mixer_short_reason": "Training override prep."},
+            {"progression_action": "confirm_filter_clear"},
+            {"progression_action": "start_pressurization"},
+            {"progression_action": "begin_recovery"},
+            {"progression_action": "begin_flush_cycle"},
+            {"flush_solvent_chiller_temp_f": -45, "flush_plate_temp_f": -41, "progression_action": "verify_flush_temps"},
+            {"flush_solvent_charge_lbs": 500, "progression_action": "record_flush_solvent_charge"},
+            {"progression_action": "start_flush"},
+            {"progression_action": "stop_flush", "flush_short_reason": "Stopped early under override policy test."},
+        ]
+        for payload in sequence:
+            response = client.post(f"/api/mobile/v1/extraction/charges/{charge_id}/run", json=payload)
+            assert response.status_code == 200
+
+        blocked = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={"flow_resumed_decision": "yes", "progression_action": "confirm_flow_resumed"},
+        )
+        assert blocked.status_code == 400
+        assert "requires supervisor override" in blocked.get_json()["error"]["message"].lower()
+
+        with app.app_context():
+            run = db.session.get(ExtractionCharge, charge_id).run
+            row = app_module.SupervisorNotification.query.filter_by(run_id=run.id, dedupe_key="timing_short_flush").order_by(app_module.SupervisorNotification.created_at.desc()).first()
+            assert row is not None
+            row.override_decision = "approved_deviation"
+            row.override_reason = "Supervisor approved the short flush for training."
+            row.override_at = app_module.datetime.now(app_module.timezone.utc)
+            row.status = "resolved"
+            db.session.commit()
+
+        resumed = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={"flow_resumed_decision": "yes", "progression_action": "confirm_flow_resumed"},
+        )
+        assert resumed.status_code == 200
+        assert resumed.get_json()["data"]["run"]["progression"]["stage_key"] == "ready_to_start_final_purge"
 
 
 def test_mobile_opportunity_edit_delivery_and_photo_flow():
@@ -1010,6 +1112,10 @@ def test_mobile_extraction_run_execution_flow():
                 ("extraction_default_flush_total_weight_lbs", "11.5"),
                 ("extraction_default_stringer_basket_count", "10"),
                 ("extraction_default_crc_blend", "House CRC Default"),
+                ("extraction_policy_primary_soak", "warning"),
+                ("extraction_policy_mixer", "warning"),
+                ("extraction_policy_flush", "warning"),
+                ("extraction_policy_final_purge", "informational"),
             ):
                 setting = db.session.get(SystemSetting, key)
                 if setting is None:

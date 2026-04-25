@@ -61,7 +61,8 @@ Related mobile workflows:
 - The `Booth timing controls` section shows the live or recorded duration for primary soak, mixer, flush soak, and final purge, along with the configured target for each step.
 - If flow has not resumed yet, choose `Still adjusting` and use the returned `Re-check Flow` step when recovery is ready to be checked again.
 - If final clarity is not acceptable yet, choose `Not yet` and use `Resume Final Purge` to loop back through another purge pass before shutdown.
-- `Settings -> Operational Parameters -> Extraction run defaults` controls the initial values the standalone run screen opens with for blend, fill count, total fill weight, flush count, total flush weight, stringer baskets, CRC blend, and the booth timing targets.
+- `Settings -> Operational Parameters -> Extraction run defaults` controls the initial values the standalone run screen opens with for blend, fill count, total fill weight, flush count, total flush weight, stringer baskets, CRC blend, booth timing targets, and the per-step timing policy for primary soak, mixer, flush soak, and final purge.
+- Timing policy defaults are intentionally permissive: primary soak, mixer, and flush soak default to `Warning only`, and final purge defaults to `Informational`. Super Admin can tighten any step to `Require supervisor override` or `Hard stop` when training or closer intervention is needed.
 
 ---
 
@@ -423,9 +424,12 @@ On the main app `Run` edit screen, supervisors now have a `Booth Review` block a
 Use it to review:
 - current booth stage
 - timing status for primary soak, mixer, flush soak, and final purge
+- configured timing policy for each booth timer
 - deviation flags such as flow still adjusting or clarity not yet acceptable
 - recent booth event history
 - linked booth evidence uploads
+
+If a timing step is configured as `Require supervisor override` and the operator finished short, the same `Booth Review` block now shows the active policy block message so supervisors can see why progression is paused.
 
 This section is intended as a read/review surface first. Supervisors still make corrections through the normal run fields below it.
 

@@ -285,12 +285,18 @@
           <span style="display:block;margin-top:4px;">Booth process completed: {{ booth_review.booth_process_completed_at }}</span>
           {% endif %}
         </div>
+        {% if booth_review.policy_block %}
+        <div class="text-sm" style="color:#f4c26b;margin-bottom:10px;">
+          Policy block: {{ booth_review.policy_block.message }}
+        </div>
+        {% endif %}
         <div class="form-row-3">
           {% for key in ["primary_soak", "mixer", "flush", "final_purge"] %}
           {% set timing = booth_review.timing_controls[key] %}
           <div class="form-group" style="background:rgba(0,0,0,0.12);border-radius:8px;padding:10px;">
             <div style="font-weight:600;">{{ timing.label }}</div>
             <div class="text-sm" style="color:var(--text-muted);margin-top:4px;">Status: {{ timing.status.replace('_', ' ').title() }}</div>
+            <div class="text-sm" style="color:var(--text-muted);">Policy: {{ timing.policy.replace('_', ' ').title() }}</div>
             <div class="text-sm" style="color:var(--text-muted);">
               Target:
               {% if timing.target_minutes is not none %}
