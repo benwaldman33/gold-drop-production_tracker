@@ -715,6 +715,21 @@
     </div>
     <div class="form-row-3">
       <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px; text-transform:none; letter-spacing:0; font-size:0.85rem; color:var(--text-secondary);">
+          <input type="checkbox" name="supervisor_notifications_enabled" {% if system_settings.get('supervisor_notifications_enabled', '1') in ('1','true','yes','on') %}checked{% endif %}>
+          Enable in-app supervisor notifications
+        </label>
+      </div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px; text-transform:none; letter-spacing:0; font-size:0.85rem; color:var(--text-secondary);">
+          <input type="checkbox" name="slack_outbound_notifications_enabled" {% if system_settings.get('slack_outbound_notifications_enabled', '0') in ('1','true','yes','on') %}checked{% endif %}>
+          Enable outbound Slack delivery for notifications
+        </label>
+      </div>
+      <div class="form-group"></div>
+    </div>
+    <div class="form-row-3">
+      <div class="form-group">
         <label>Webhook URL (outbound notifications)</label>
         <input type="text" name="slack_webhook_url" value="{{ system_settings.get('slack_webhook_url', '') }}">
       </div>
@@ -735,12 +750,29 @@
       <div class="form-group"></div>
       <div class="form-group"></div>
     </div>
+    <div class="form-row-3">
+      <div class="form-group">
+        <label>Completions Webhook</label>
+        <input type="text" name="slack_webhook_completions_url" value="{{ system_settings.get('slack_webhook_completions_url', '') }}" placeholder="Optional override for completions">
+      </div>
+      <div class="form-group">
+        <label>Warnings Webhook</label>
+        <input type="text" name="slack_webhook_warnings_url" value="{{ system_settings.get('slack_webhook_warnings_url', '') }}" placeholder="Optional override for warnings">
+      </div>
+      <div class="form-group">
+        <label>Reminders Webhook</label>
+        <input type="text" name="slack_webhook_reminders_url" value="{{ system_settings.get('slack_webhook_reminders_url', '') }}" placeholder="Optional override for reminders">
+      </div>
+    </div>
     <div class="text-sm" style="color:var(--text-muted); margin-bottom:10px;">
       In your Slack app, set <strong>Event Subscriptions</strong> Request URL to
       <code>https://&lt;your-site&gt;/api/slack/events</code> (HTTPS).
       Set <strong>Slash Command</strong> and <strong>Interactivity</strong> to
       <code>/api/slack/command</code> and <code>/api/slack/interactivity</code>.
       Use the same <strong>Signing Secret</strong> here as in Slack → Basic Information.
+    </div>
+    <div class="text-sm" style="color:var(--text-muted); margin-bottom:10px;">
+      Class-specific webhooks are optional. When blank, the general outbound webhook above is used for completions, warnings, and reminders.
     </div>
     <button type="submit" class="btn btn-primary">Save Slack integration</button>
   </form>

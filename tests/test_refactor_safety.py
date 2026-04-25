@@ -1508,6 +1508,16 @@ def test_run_edit_shows_booth_review_surface():
                 captured_at=app_module.datetime.now(app_module.timezone.utc) - timedelta(minutes=6),
                 captured_by_user_id=admin_id,
             ))
+            db.session.add(app_module.SupervisorNotification(
+                run_id=run.id,
+                booth_session_id=session.id,
+                event_key="flow_adjustment_required",
+                dedupe_key="flow_adjustment_required",
+                notification_class="warnings",
+                severity="critical",
+                title="Flow adjustment required",
+                message="Recovery flow did not resume after flush adjustments.",
+            ))
             db.session.commit()
 
         with app.test_client() as client:
@@ -1520,6 +1530,8 @@ def test_run_edit_shows_booth_review_surface():
             assert b"Final clarity is not yet acceptable." in resp.data
             assert b"Recent Booth History" in resp.data
             assert b"Booth Evidence" in resp.data
+            assert b"Supervisor Notifications" in resp.data
+            assert b"Flow adjustment required" in resp.data
             assert b"Final purge resumed for additional clarity work" in resp.data
             assert b"Open evidence" in resp.data
     finally:
@@ -1528,6 +1540,66 @@ def test_run_edit_shows_booth_review_surface():
             if run:
                 db.session.delete(run)
                 db.session.commit()
+
+
+def test_dashboard_shows_and_acknowledges_supervisor_notifications():
+    app = app_module.app
+    run_id = None
+    notification_id = None
+    try:
+        with app.app_context():
+            admin_id = app_module.User.query.filter_by(username="admin").first().id
+            run = app_module.Run(
+                run_date=date(2026, 4, 24),
+                reactor_number=1,
+                run_type="standard",
+                bio_in_reactor_lbs=22,
+                created_by=admin_id,
+            )
+            db.session.add(run)
+            db.session.flush()
+            run_id = run.id
+            notification = app_module.SupervisorNotification(
+                run_id=run.id,
+                event_key="timing_short_flush",
+                dedupe_key="timing_short_flush",
+                notification_class="warnings",
+                severity="warning",
+                title="Flush soak finished short of target",
+                message="Flush soak recorded 4 minute(s) against a 10-minute target.",
+            )
+            db.session.add(notification)
+            db.session.commit()
+            notification_id = notification.id
+
+        with app.test_client() as client:
+            _login(client, "admin")
+            dashboard = client.get("/")
+            assert dashboard.status_code == 200
+            assert b"Supervisor Notifications" in dashboard.data
+            assert b"Flush soak finished short of target" in dashboard.data
+
+            ack = client.post(
+                f"/supervisor-notifications/{notification_id}/ack",
+                data={"return_to": "/#supervisor-notifications"},
+                follow_redirects=False,
+            )
+            assert ack.status_code in (302, 303)
+
+        with app.app_context():
+            row = db.session.get(app_module.SupervisorNotification, notification_id)
+            assert row is not None
+            assert row.status == "acknowledged"
+            assert row.acknowledged_by_user_id == admin_id
+    finally:
+        with app.app_context():
+            row = db.session.get(app_module.SupervisorNotification, notification_id) if notification_id else None
+            if row:
+                db.session.delete(row)
+            run = db.session.get(app_module.Run, run_id) if run_id else None
+            if run:
+                db.session.delete(run)
+            db.session.commit()
 
 
 def test_floor_ops_board_view_filter_shows_only_running_reactors():

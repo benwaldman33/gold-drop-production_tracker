@@ -42,7 +42,7 @@ from flask_login import (login_user, logout_user, login_required,
 from sqlalchemy import func, desc, and_, or_, text, select, exists
 from werkzeug.utils import secure_filename
 
-from models import (db, User, Supplier, Purchase, PurchaseLot, Run, RunInput, ExtractionCharge, ExtractionBoothSession, ExtractionBoothEvent, ExtractionBoothEvidence, DownstreamQueueEvent,
+from models import (db, User, Supplier, Purchase, PurchaseLot, Run, RunInput, ExtractionCharge, ExtractionBoothSession, ExtractionBoothEvent, ExtractionBoothEvidence, SupervisorNotification, NotificationDelivery, DownstreamQueueEvent,
                     KpiTarget, SystemSetting, AuditLog, BiomassAvailability, CostEntry,
                     FieldAccessToken, FieldPurchaseSubmission, LabTest, SupplierAttachment, PhotoAsset,
                     SlackIngestedMessage, SlackChannelSyncConfig, LotScanEvent, ScaleDevice, WeightCapture, gen_uuid)
@@ -141,11 +141,17 @@ from services.extraction_run import (
     THCA_DESTINATION_OPTIONS,
     booth_session_payload,
     display_local_datetime,
+    display_local_timestamp,
     downstream_state_payload,
     duration_minutes,
     post_extraction_progression_payload,
     run_progression_payload,
     run_timing_controls_payload,
+)
+from services.supervisor_notifications import (
+    manager_can_review,
+    notification_rows_for_run,
+    summarize_notifications,
 )
 from gold_drop.slack import (
     SLACK_IMPORT_KIND_FILTER_CHOICES,
@@ -261,6 +267,18 @@ def inject_biomass_budget():
 def inject_cross_site_visibility():
     enabled = (SystemSetting.get("cross_site_ops_enabled", "0") or "0").strip().lower() in ("1", "true", "yes", "on")
     return {"cross_site_ops_enabled": enabled}
+
+
+@app.context_processor
+def inject_supervisor_notification_summary():
+    if not current_user.is_authenticated:
+        return {"supervisor_notification_summary": {"open_count": 0, "critical_count": 0, "warning_count": 0, "info_count": 0, "rows": []}, "can_review_supervisor_notifications": False}
+    if not manager_can_review(current_user):
+        return {"supervisor_notification_summary": {"open_count": 0, "critical_count": 0, "warning_count": 0, "info_count": 0, "rows": []}, "can_review_supervisor_notifications": False}
+    return {
+        "supervisor_notification_summary": summarize_notifications(sys.modules[__name__], limit=6),
+        "can_review_supervisor_notifications": True,
+    }
 
 
 def slack_importer_required(f):
@@ -744,6 +762,7 @@ def _run_form_extras(run=None):
         "deviations": [],
         "history": list(booth.get("history", [])),
         "evidence": [],
+        "notifications": notification_rows_for_run(root_ctx, run, limit=8) if run is not None else [],
     }
     if booth_review["flow_resumed_decision"] == "no_adjusting":
         booth_review["deviations"].append("Flow is still being adjusted.")

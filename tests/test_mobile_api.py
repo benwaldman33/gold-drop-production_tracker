@@ -315,6 +315,12 @@ def test_mobile_extraction_run_exception_handling_loops():
             assert "Flow adjustment resumed" in history_labels
             assert "Final clarity not yet acceptable" in history_labels
             assert "Final purge resumed for additional clarity work" in history_labels
+            notification_titles = [
+                row.title
+                for row in app_module.SupervisorNotification.query.filter_by(run_id=run.id).order_by(app_module.SupervisorNotification.created_at.asc()).all()
+            ]
+            assert "Flow adjustment required" in notification_titles
+            assert "Final clarity still out of scope" in notification_titles
 
 
 def test_mobile_opportunity_edit_delivery_and_photo_flow():

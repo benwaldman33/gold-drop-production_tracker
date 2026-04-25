@@ -324,6 +324,22 @@
           {% endfor %}
         </div>
         {% endif %}
+        <div style="margin-top:10px;">
+          <div style="font-weight:600;">Supervisor Notifications</div>
+          {% if booth_review.notifications %}
+          <div style="max-height:180px;overflow:auto;background:rgba(0,0,0,0.12);border-radius:8px;padding:10px;margin-top:6px;">
+            {% for item in booth_review.notifications %}
+            <div class="text-sm" style="color:var(--text-muted);margin-bottom:8px;">
+              <strong style="color:var(--text);">{{ item.title }}</strong><br>
+              {{ item.notification_class_label }} · {{ item.severity_label }} · {{ item.created_at }}<br>
+              {{ item.message }}
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="text-sm" style="color:var(--text-muted);margin-top:4px;">No supervisor notifications tied to this run yet.</div>
+          {% endif %}
+        </div>
         <div class="form-row-3" style="margin-top:10px;">
           <div class="form-group">
             <label>Flow Resumed Decision</label>

@@ -263,10 +263,19 @@ def handle_settings_form(root) -> None:
         "slack_signing_secret": "Slack signing secret",
         "slack_bot_token": "Slack bot token",
         "slack_default_channel": "Default Slack channel",
+        "supervisor_notifications_enabled": "Enable in-app supervisor notifications",
+        "slack_outbound_notifications_enabled": "Enable outbound Slack delivery for supervisor notifications",
+        "slack_webhook_completions_url": "Slack webhook URL for completion notifications",
+        "slack_webhook_warnings_url": "Slack webhook URL for warning notifications",
+        "slack_webhook_reminders_url": "Slack webhook URL for reminder notifications",
     }
     for key, desc in slack_map.items():
-        if key == "slack_enabled":
+        if key in {"slack_enabled", "supervisor_notifications_enabled", "slack_outbound_notifications_enabled"}:
             value = "1" if root.request.form.get("slack_enabled") else "0"
+            if key == "supervisor_notifications_enabled":
+                value = "1" if root.request.form.get("supervisor_notifications_enabled") else "0"
+            if key == "slack_outbound_notifications_enabled":
+                value = "1" if root.request.form.get("slack_outbound_notifications_enabled") else "0"
         else:
             value = (root.request.form.get(key) or "").strip()
         existing = root.db.session.get(root.SystemSetting, key)
@@ -288,7 +297,7 @@ def handle_settings_form(root) -> None:
                 row.resolved_channel_id = None
                 row.last_watermark_ts = None
     root.db.session.commit()
-    root.flash("Slack integration saved (webhook, tokens, default channel, and up to six history-sync channels).", "success")
+    root.flash("Slack integration saved (webhooks, notification routing, tokens, default channel, and history-sync channels).", "success")
 
 
 def register_routes(app, root):

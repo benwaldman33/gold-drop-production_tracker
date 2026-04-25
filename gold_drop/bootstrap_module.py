@@ -77,6 +77,11 @@ def init_db(root):
         "biomass_purchase_weekly_target_lbs": ("0", "Weekly biomass purchasing volume target (lbs)"),
         "biomass_purchase_weekly_target_potency_pct": ("0", "Weekly target weighted avg potency % (purchasing)"),
         "biomass_budget_target_potency_pct": ("0", "Target weighted avg potency % (purchasing)"),
+        "supervisor_notifications_enabled": ("1", "Enable in-app supervisor notifications for extraction and workflow deviations"),
+        "slack_outbound_notifications_enabled": ("0", "Enable outbound Slack delivery for supervisor notifications"),
+        "slack_webhook_completions_url": ("", "Slack webhook URL for completion notifications"),
+        "slack_webhook_warnings_url": ("", "Slack webhook URL for warning notifications"),
+        "slack_webhook_reminders_url": ("", "Slack webhook URL for reminder notifications"),
     }
     defaults.update(EXTRACTION_RUN_DEFAULTS)
     for key, (value, description) in defaults.items():

@@ -17,12 +17,16 @@
 - `Settings -> Operational Parameters` now also includes extraction booth timing targets for primary soak, mixer, flush soak, and optional final purge duration.
 - Extraction run payloads and the standalone extraction UI now include timing-control status for the core booth timers so operators can see whether each timed step is not started, active, on target, or short against the configured SOP targets.
 - The main run form now includes a supervisor-facing `Booth Review` surface showing current booth stage, timing status, deviation flags, recent booth history, and linked booth evidence without leaving the admin edit screen.
+- The main dashboard now includes a `Supervisor Notifications` inbox for open booth/run alerts, with acknowledge and resolve actions plus direct run links for review.
+- Booth workflow deviations and run completion now create durable `SupervisorNotification` records with linked `NotificationDelivery` rows so supervisor alerting is stored in-app before any Slack delivery is attempted.
+- Slack settings now support outbound notification routing by class (`completions`, `warnings`, `reminders`) through optional class-specific webhook URLs, while keeping Slack read/sync concerns separate.
 
 ### Tests
 - Extended extraction mobile API regression coverage for the booth-SOP sequence through shutdown and run completion.
 - Extended standalone extraction app regression coverage for the booth-SOP sequence and aligned mock-mode progression with the backend stage model.
 - Added regression coverage for booth exception-handling loops and timing-control payloads.
 - Added run-form regression coverage for the new supervisor booth-review surface.
+- Added regression coverage for the supervisor dashboard notification surface and acknowledgement flow.
 
 ## 2026-04-18
 

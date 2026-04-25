@@ -296,6 +296,44 @@ def ensure_sqlite_schema(root) -> None:
             ")"
         ))
 
+    if not has_table("supervisor_notifications"):
+        root.db.session.execute(text(
+            "CREATE TABLE supervisor_notifications ("
+            "id VARCHAR(36) PRIMARY KEY, "
+            "run_id VARCHAR(36), "
+            "booth_session_id VARCHAR(36), "
+            "event_key VARCHAR(64) NOT NULL, "
+            "dedupe_key VARCHAR(120), "
+            "notification_class VARCHAR(20) NOT NULL DEFAULT 'warnings', "
+            "severity VARCHAR(20) NOT NULL DEFAULT 'warning', "
+            "title VARCHAR(200) NOT NULL, "
+            "message TEXT NOT NULL, "
+            "status VARCHAR(20) NOT NULL DEFAULT 'open', "
+            "created_at DATETIME NOT NULL, "
+            "updated_at DATETIME NOT NULL, "
+            "acknowledged_at DATETIME, "
+            "acknowledged_by_user_id VARCHAR(36), "
+            "resolved_at DATETIME, "
+            "resolved_by_user_id VARCHAR(36), "
+            "resolution_note TEXT"
+            ")"
+        ))
+
+    if not has_table("notification_deliveries"):
+        root.db.session.execute(text(
+            "CREATE TABLE notification_deliveries ("
+            "id VARCHAR(36) PRIMARY KEY, "
+            "notification_id VARCHAR(36) NOT NULL, "
+            "delivery_type VARCHAR(20) NOT NULL DEFAULT 'slack', "
+            "target_label VARCHAR(120), "
+            "status VARCHAR(20) NOT NULL DEFAULT 'pending', "
+            "attempted_at DATETIME NOT NULL, "
+            "delivered_at DATETIME, "
+            "response_code INTEGER, "
+            "error_message TEXT"
+            ")"
+        ))
+
     if has_table("purchase_lots"):
         cols = column_names("purchase_lots")
         if "tracking_id" not in cols:
