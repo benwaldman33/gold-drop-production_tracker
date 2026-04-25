@@ -262,6 +262,7 @@ def test_material_genealogy_viewer_renders_lot_and_run_modes():
             assert b"Run Timeline" in run_resp.data
             assert b"Source Material" in run_resp.data
             assert b"Derivative Lots" in run_resp.data
+            assert b"Run Reconciliation" in run_resp.data
             assert b"/journeys/material-genealogy?mode=lot" in run_resp.data
             assert b"View JSON" in run_resp.data
 

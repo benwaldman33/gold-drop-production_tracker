@@ -829,6 +829,11 @@ Use the viewer when you need a path-tracing answer instead of just a summary, fo
 - move from a downstream queue card into the full lineage for a linked derivative lot
 - find a genealogy problem and move directly into correction from the same lot view
 
+In `By Run`, the `Run Reconciliation` section highlights:
+- open genealogy issues attached to the run
+- source-allocation exceptions already detected on that run journey
+- links into any affected derivative lots
+
 Use this page for questions like:
 - what derivative inventory is still open by type
 - what product lots have already been released

@@ -9,6 +9,7 @@ from services.material_genealogy import (
     build_material_lot_descendants_payload,
     build_material_lot_detail_payload,
     build_material_lot_journey_payload,
+    serialize_reconciliation_issue,
 )
 from services.purchases_journey import build_run_journey_payload
 from services.site_aggregation import build_aggregation_summary
@@ -691,12 +692,17 @@ def material_genealogy_viewer_view(root):
         }
     if selected_run is not None:
         run_journey = build_run_journey_payload(selected_run)
+        run_issues = [
+            issue
+            for issue in selected_run.material_reconciliation_issues.order_by(root.MaterialReconciliationIssue.detected_at.desc()).all()
+        ]
         run_view = {
             "journey": run_journey,
             "material_lot_urls": {
                 lot["material_lot_id"]: root.url_for("material_genealogy_viewer", mode="lot", material_lot_id=lot["material_lot_id"])
                 for lot in run_journey.get("material_lots", [])
             },
+            "issues": [serialize_reconciliation_issue(root, issue) for issue in run_issues],
         }
 
     return root.render_template(

@@ -652,6 +652,23 @@ Practical meaning:
   - record the fix
   - return to the same genealogy surface without dropping out to unrelated admin screens
 
+## Genealogy phase 14 update
+
+Run reconciliation is now in the viewer:
+
+- `By Run` now includes a `Run Reconciliation` section
+- that section shows:
+  - open genealogy issues tied to the run
+  - source-allocation exceptions already present on the run journey
+  - direct links into affected derivative lots when an issue is lot-specific
+
+Practical meaning:
+
+- a manager can now investigate lineage problems from the run outward instead of starting only from a lot
+- the genealogy viewer now supports both:
+  - lot-level correction workflow
+  - run-level reconciliation review
+
 ## Deployment note
 
 Current rollout commit:
