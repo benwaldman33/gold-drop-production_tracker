@@ -657,7 +657,7 @@ Practical meaning:
 Current rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `173dd25`
+- commit: `36b679d`
 
 Production deployment steps:
 
