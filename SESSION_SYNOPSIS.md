@@ -437,7 +437,7 @@ The likely implementation order is:
 Current booth-SOP rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `pending current sprint closeout`
+- commit: `00582e2`
 
 Production deployment steps:
 
