@@ -23,6 +23,7 @@ This guide explains how to use the Gold Drop web app day-to-day. It intentionall
 ### Navigation overview
 Use the left sidebar:
 - The sidebar is now grouped by workflow area instead of exposing every function as a flat first-level item.
+- Each top-level sidebar section is collapsible, so you can keep submenus hidden until you need that workflow area.
 - Treat the top-level sections this way:
   - `Extraction` = overview, floor execution, and run administration
   - `Downstream` = queue triage plus destination-specific work surfaces
@@ -30,10 +31,10 @@ Use the left sidebar:
   - `Inventory` = on-hand lot visibility
   - `Alerts` = action queue for supervisor and genealogy exceptions
   - `Journey` = daily manager tracing, lineage, and cost-basis visibility
-  - `More` = lower-frequency admin and specialist tools
+  - `More` = lower-frequency admin and specialist tools, including `Scorecards (beta)`
 - **Extraction** (labeled on the home dashboard card): KPIs + quick actions
 - **Biomass purchasing**: buyer weekly snapshot, field submission queues, and reviewed history
-- **Departments**: hub of department-focused pages (same data as the rest of the app; quick links and rollups per team—finance, purchasing, intake, extraction, THCA/HTE/Liquid Diamonds, terpenes, testing, bulk sales)
+- **Scorecards (beta)**: the former Departments surface; a secondary management lens with quick links and thin rollups, not a primary daily operating workflow
 - **Runs**: extraction runs log + cost/yield outputs
 - **Downstream Queues**: supervisor-facing post-extraction routing board for completed runs that now need a downstream destination or hold
 - **Genealogy Report**: manager-facing lineage and derivative-inventory reporting for accountable material lots

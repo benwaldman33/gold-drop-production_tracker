@@ -100,12 +100,18 @@ a:hover { color: var(--gold-light); }
   display: flex;
   align-items: center;
   gap: 10px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
   padding: 10px 14px;
   color: var(--text-primary);
   font-size: 0.76rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  font-family: inherit;
+  text-align: left;
 }
 .sidebar-nav-section-label .icon {
   width: 22px;
@@ -113,11 +119,24 @@ a:hover { color: var(--gold-light); }
   font-family: var(--font-mono);
   text-align: center;
 }
+.sidebar-nav-caret {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+}
+.sidebar-nav-section-label[aria-expanded="true"] .sidebar-nav-caret {
+  color: var(--gold);
+  transform: rotate(45deg);
+}
 .sidebar-nav-links {
   display: flex;
   flex-direction: column;
   gap: 4px;
   padding: 0 8px 8px;
+}
+.sidebar-nav-links[hidden] {
+  display: none;
 }
 .sidebar-nav-links a {
   padding-left: 14px;
@@ -691,7 +710,7 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 /* Responsive */
 @media (max-width: 1024px) {
   .sidebar { width: 72px; }
-  .sidebar-logo h1, .sidebar-logo small, .sidebar-nav-section-label span:last-child, .sidebar-nav-links span, .sidebar-user { display: none; }
+  .sidebar-logo h1, .sidebar-logo small, .sidebar-nav-section-label span:last-child, .sidebar-nav-links span, .sidebar-user, .sidebar-nav-caret { display: none; }
   .sidebar-nav-section-label, .sidebar-nav-links a { justify-content: center; padding: 12px 10px; }
   .sidebar-nav-section-label .icon { width: auto; font-size: 1rem; }
   .sidebar-nav-links { padding: 0 6px 6px; }

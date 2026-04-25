@@ -466,7 +466,6 @@ def inject_role_navigation():
         },
     ]
     more_links = [
-        {"label": "Departments", "endpoint": "dept_index", "active": request.endpoint in ("dept_index", "dept_view")},
         {"label": "Suppliers", "endpoint": "suppliers_list", "active": request.endpoint in ("suppliers_list", "supplier_new", "supplier_edit")},
         {"label": "Strains", "endpoint": "strains_list", "active": request.endpoint == "strains_list"},
         {"label": "Costs", "endpoint": "costs_list", "active": request.endpoint in ("costs_list", "cost_new", "cost_edit")},
@@ -490,6 +489,7 @@ def inject_role_navigation():
             "active": request.endpoint == "settings",
             "visible": current_user.is_authenticated and current_user.is_super_admin,
         },
+        {"label": "Scorecards (beta)", "endpoint": "dept_index", "active": request.endpoint in ("dept_index", "dept_view")},
     ]
     return {
         "role_home_url": role_home_url,

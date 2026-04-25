@@ -802,6 +802,7 @@ The implementation phases are now shipped:
 - extraction/downstream/journey copy now better distinguishes overview vs execution vs investigation
 - the standalone purchasing and receiving apps now have clearer focused-purpose copy and direct handoffs back to main-app purchase review
 - Journey now acts as a daily manager visibility surface for lineage plus cost-basis review, not just a secondary reporting area
+- the grouped left sidebar is now collapsible by section, and `Departments` has been demoted to `Scorecards (beta)` inside `More`
 
 ## Deployment note
 
