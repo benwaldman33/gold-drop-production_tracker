@@ -525,7 +525,7 @@ Practical meaning:
 Current rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `0a60a9c`
+- commit: `28514ba`
 
 Production deployment steps:
 
@@ -533,7 +533,7 @@ Production deployment steps:
    - `git fetch origin`
    - `git checkout Claude_Consolidation`
    - `git pull --ff-only origin Claude_Consolidation`
-2. restart the backend so the new genealogy tables, extraction-output backfill, and material-lot API routes are live
+2. restart the backend so the new genealogy tables, extraction-output backfill, material-lot API routes, and correction route are live
 3. no standalone extraction app sync is required for this sprint
 4. verify in the main app / API:
    - `GET /api/v1/runs/<run_id>/journey` now returns derivative `material_lots` for eligible dry-output runs
@@ -541,6 +541,7 @@ Production deployment steps:
    - `GET /api/v1/material-lots/<lot_id>/ancestry` traces derivative dry-output lots back to biomass source lots
    - `GET /api/v1/material-lots/<lot_id>/descendants` traces biomass source lots forward into dry HTE / dry THCA derivative lots
    - `GET /api/v1/tools/reconciliation-overview` now includes `material_genealogy`
+   - logged-in editors can open `/material-lots/<lot_id>/correct` and record a correction-backed replacement or void action
 
 ## Local note
 
