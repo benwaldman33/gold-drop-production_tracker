@@ -3,8 +3,9 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 
 import app as app_module
-from models import ApiClient, ApiClientRequestLog, LotScanEvent, Purchase, PurchaseLot, RemoteSite, Run, RunInput, SlackIngestedMessage, Supplier, SystemSetting, db, gen_uuid
+from models import ApiClient, ApiClientRequestLog, LotScanEvent, MaterialLot, MaterialReconciliationIssue, MaterialTransformation, Purchase, PurchaseLot, RemoteSite, Run, RunInput, SlackIngestedMessage, Supplier, SystemSetting, db, gen_uuid
 from services.api_auth import hash_api_token
+from services.material_genealogy import ensure_biomass_material_lot, ensure_extraction_output_genealogy
 
 
 def _make_api_headers(*scopes: str):
@@ -1144,6 +1145,143 @@ def test_api_v1_run_journey_is_wrapped_in_envelope():
             run_input_obj = db.session.get(RunInput, run_input_id)
             if run_input_obj:
                 db.session.delete(run_input_obj)
+            run_obj = db.session.get(Run, run_id)
+            if run_obj:
+                db.session.delete(run_obj)
+            lot_obj = db.session.get(PurchaseLot, lot_id)
+            if lot_obj:
+                db.session.delete(lot_obj)
+            purchase_obj = db.session.get(Purchase, purchase_id)
+            if purchase_obj:
+                db.session.delete(purchase_obj)
+            supplier_obj = db.session.get(Supplier, supplier_id)
+            if supplier_obj:
+                db.session.delete(supplier_obj)
+            db.session.commit()
+
+
+def test_api_v1_material_lot_endpoints_and_run_journey_include_derivatives():
+    app = app_module.app
+    supplier = Supplier(name=f"API Material Supplier {gen_uuid()[:8]}", is_active=True)
+    purchase = Purchase(
+        supplier_id="",
+        purchase_date=date(2026, 4, 6),
+        delivery_date=date(2026, 4, 7),
+        status="delivered",
+        stated_weight_lbs=120,
+        purchase_approved_at=datetime.now(timezone.utc),
+        batch_id=f"MAT-{gen_uuid()[:6]}",
+    )
+    lot = PurchaseLot(
+        strain_name="Material Dream",
+        weight_lbs=120,
+        remaining_weight_lbs=70,
+        tracking_id=f"LOT-{gen_uuid()[:8].upper()}",
+    )
+    run = Run(
+        run_date=date(2026, 4, 10),
+        reactor_number=7,
+        bio_in_reactor_lbs=50,
+        dry_hte_g=12,
+        dry_thca_g=28,
+        cost_per_gram_hte=3.2,
+        cost_per_gram_thca=4.1,
+    )
+    with app.app_context():
+        db.session.add(supplier)
+        db.session.flush()
+        purchase.supplier_id = supplier.id
+        db.session.add(purchase)
+        db.session.flush()
+        lot.purchase_id = purchase.id
+        db.session.add(lot)
+        db.session.flush()
+        db.session.add(run)
+        db.session.flush()
+        db.session.add(RunInput(run_id=run.id, lot_id=lot.id, weight_lbs=50, allocation_source="manual"))
+        db.session.commit()
+        supplier_id = supplier.id
+        purchase_id = purchase.id
+        lot_id = lot.id
+        run_id = run.id
+
+        ensure_biomass_material_lot(app_module, db.session.get(PurchaseLot, lot_id))
+        ensure_extraction_output_genealogy(app_module, db.session.get(Run, run_id))
+        db.session.commit()
+        derivative_lot = db.session.get(Run, run_id).material_lots.filter_by(lot_type="dry_hte").first()
+        derivative_lot_id = derivative_lot.id
+        source_material_lot_id = db.session.get(PurchaseLot, lot_id).material_lot_id
+
+    headers, client_id = _make_api_headers("read:journey", "read:tools", "read:inventory")
+    try:
+        with app.test_client() as client:
+            run_journey = client.get(f"/api/v1/runs/{run_id}/journey", headers=headers)
+            assert run_journey.status_code == 200
+            run_payload = run_journey.get_json()["data"]
+            assert run_payload["summary"]["derivative_lot_count"] == 2
+            assert {item["lot_type"] for item in run_payload["material_lots"]} == {"dry_hte", "dry_thca"}
+
+            detail_res = client.get(f"/api/v1/material-lots/{derivative_lot_id}", headers=headers)
+            assert detail_res.status_code == 200
+            detail_payload = detail_res.get_json()["data"]
+            assert detail_payload["material_lot"]["material_lot_id"] == derivative_lot_id
+            assert detail_payload["material_lot"]["lot_type"] == "dry_hte"
+
+            ancestry_res = client.get(f"/api/v1/material-lots/{derivative_lot_id}/ancestry", headers=headers)
+            assert ancestry_res.status_code == 200
+            ancestry_payload = ancestry_res.get_json()["data"]
+            assert ancestry_payload["ancestry"][0]["inputs"][0]["material_lot"]["lot_type"] == "biomass"
+
+            descendants_res = client.get(f"/api/v1/material-lots/{source_material_lot_id}/descendants", headers=headers)
+            assert descendants_res.status_code == 200
+            descendants_payload = descendants_res.get_json()["data"]
+            descendant_output_types = {
+                output["material_lot"]["lot_type"]
+                for node in descendants_payload["descendants"]
+                for output in node["outputs"]
+            }
+            assert {"dry_hte", "dry_thca"}.issubset(descendant_output_types)
+
+            resolve_res = client.get(
+                f"/api/v1/tools/journey-resolve?entity_type=material_lot&entity_id={derivative_lot_id}",
+                headers=headers,
+            )
+            assert resolve_res.status_code == 200
+            resolve_payload = resolve_res.get_json()["data"]
+            assert resolve_payload["journey_endpoint"] == f"/api/v1/material-lots/{derivative_lot_id}/journey"
+
+            overview = client.get("/api/v1/tools/reconciliation-overview", headers=headers)
+            assert overview.status_code == 200
+            overview_payload = overview.get_json()["data"]
+            assert "material_genealogy" in overview_payload
+
+            cost_summary = client.get("/api/v1/summary/material-costs", headers=headers)
+            assert cost_summary.status_code == 200
+            cost_payload = cost_summary.get_json()["data"]
+            grouped = {item["lot_type"]: item for item in cost_payload["groups"]}
+            assert grouped["dry_hte"]["cost_basis_total"] >= 38.4
+            assert grouped["dry_thca"]["cost_basis_total"] >= 114.8
+
+            genealogy_summary = client.get("/api/v1/summary/material-genealogy", headers=headers)
+            assert genealogy_summary.status_code == 200
+            genealogy_payload = genealogy_summary.get_json()["data"]
+            assert "open_inventory_groups" in genealogy_payload
+            assert "recent_derivative_lots" in genealogy_payload
+    finally:
+        with app.app_context():
+            api_client = db.session.get(ApiClient, client_id)
+            if api_client:
+                db.session.delete(api_client)
+            MaterialReconciliationIssue.query.filter_by(run_id=run_id).delete()
+            MaterialTransformation.query.filter_by(run_id=run_id).delete()
+            for material_lot in MaterialLot.query.filter(MaterialLot.parent_run_id == run_id).all():
+                db.session.delete(material_lot)
+            source_material = MaterialLot.query.filter_by(source_purchase_lot_id=lot_id).first()
+            if source_material:
+                db.session.delete(source_material)
+            run_inputs = RunInput.query.filter_by(run_id=run_id).all()
+            for run_input in run_inputs:
+                db.session.delete(run_input)
             run_obj = db.session.get(Run, run_id)
             if run_obj:
                 db.session.delete(run_obj)

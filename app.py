@@ -42,7 +42,7 @@ from flask_login import (login_user, logout_user, login_required,
 from sqlalchemy import func, desc, and_, or_, text, select, exists
 from werkzeug.utils import secure_filename
 
-from models import (db, User, Supplier, Purchase, PurchaseLot, Run, RunInput, ExtractionCharge, ExtractionBoothSession, ExtractionBoothEvent, ExtractionBoothEvidence, SupervisorNotification, NotificationDelivery, DownstreamQueueEvent,
+from models import (db, User, Supplier, Purchase, PurchaseLot, Run, RunInput, ExtractionCharge, ExtractionBoothSession, ExtractionBoothEvent, ExtractionBoothEvidence, SupervisorNotification, NotificationDelivery, DownstreamQueueEvent, MaterialLot, MaterialTransformation, MaterialTransformationInput, MaterialTransformationOutput, MaterialReconciliationIssue,
                     KpiTarget, SystemSetting, AuditLog, BiomassAvailability, CostEntry,
                     FieldAccessToken, FieldPurchaseSubmission, LabTest, SupplierAttachment, PhotoAsset,
                     SlackIngestedMessage, SlackChannelSyncConfig, LotScanEvent, ScaleDevice, WeightCapture, gen_uuid)
@@ -122,6 +122,8 @@ from services.slack_workflow import (
     slack_run_prefill_put,
 )
 from services.bootstrap_helpers import (
+    backfill_biomass_material_genealogy as _backfill_biomass_material_genealogy_service,
+    backfill_extraction_output_material_genealogy as _backfill_extraction_output_material_genealogy_service,
     backfill_default_inventory_lots as _backfill_default_inventory_lots_service,
     backfill_purchase_approval as _backfill_purchase_approval_service,
     ensure_postgres_run_execution_columns as _ensure_postgres_run_execution_columns_service,
@@ -131,6 +133,25 @@ from services.bootstrap_helpers import (
     maintain_purchase_inventory_lots as _maintain_purchase_inventory_lots_service,
     migrate_biomass_to_purchase as _migrate_biomass_to_purchase_service,
     reconcile_closed_purchase_inventory_lots as _reconcile_closed_purchase_inventory_lots_service,
+)
+from services.material_genealogy import (
+    apply_material_lot_correction as _apply_material_lot_correction,
+    build_material_reporting_payload as _build_material_reporting_payload,
+    build_material_lot_ancestry_payload as _build_material_lot_ancestry_payload,
+    build_material_lot_descendants_payload as _build_material_lot_descendants_payload,
+    build_material_lot_detail_payload as _build_material_lot_detail_payload,
+    build_material_lot_journey_payload as _build_material_lot_journey_payload,
+    derivative_material_lots_for_purchase as _derivative_material_lots_for_purchase,
+    derivative_material_lots_for_purchase_lot as _derivative_material_lots_for_purchase_lot,
+    derivative_material_lots_for_run as _derivative_material_lots_for_run,
+    ensure_downstream_output_genealogy as _ensure_downstream_output_genealogy,
+    ensure_extraction_output_genealogy as _ensure_extraction_output_genealogy,
+    first_open_reconciliation_issues as _first_open_reconciliation_issues,
+    material_lot_for_purchase_lot as _material_lot_for_purchase_lot,
+    reconcile_run_material_genealogy as _reconcile_run_material_genealogy,
+    serialize_material_lot as _serialize_material_lot,
+    serialize_reconciliation_issue as _serialize_reconciliation_issue,
+    source_material_lots_for_run as _source_material_lots_for_run,
 )
 from services.extraction_run import (
     HTE_CLEAN_DECISION_OPTIONS,
@@ -1421,6 +1442,61 @@ def _register_extracted_routes(flask_app):
         strains_module.register_routes(flask_app, root)
     if "mobile_auth_login" not in existing:
         mobile_module.register_routes(flask_app, root)
+
+
+@app.route("/material-lots/<lot_id>/correct", methods=["GET", "POST"])
+@login_required
+@editor_required
+def material_lot_correct(lot_id):
+    material_lot = db.session.get(MaterialLot, lot_id)
+    if material_lot is None:
+        abort(404)
+
+    run = material_lot.parent_run
+    candidate_parents = _source_material_lots_for_run(sys.modules[__name__], run) if run is not None else []
+
+    if request.method == "POST":
+        correction_kind = (request.form.get("correction_kind") or "").strip().lower()
+        reason = (request.form.get("reason") or "").strip()
+        new_quantity_raw = (request.form.get("new_quantity") or "").strip()
+        new_quantity = None
+        if new_quantity_raw:
+            try:
+                new_quantity = float(new_quantity_raw)
+            except ValueError:
+                flash("New quantity must be numeric.", "error")
+                return redirect(url_for("material_lot_correct", lot_id=lot_id))
+        replacement_parent_ids = [
+            value.strip()
+            for value in (request.form.get("replacement_parent_ids") or "").split(",")
+            if value.strip()
+        ]
+        try:
+            result = _apply_material_lot_correction(
+                sys.modules[__name__],
+                material_lot,
+                correction_kind=correction_kind,
+                reason=reason,
+                new_quantity=new_quantity,
+                replacement_parent_ids=replacement_parent_ids,
+            )
+            db.session.commit()
+        except ValueError as exc:
+            db.session.rollback()
+            flash(str(exc), "error")
+            return redirect(url_for("material_lot_correct", lot_id=lot_id))
+        flash("Material genealogy correction recorded.", "success")
+        replacement_lot = result.get("replacement_lot")
+        target_run_id = replacement_lot.parent_run_id if replacement_lot is not None else material_lot.parent_run_id
+        if target_run_id:
+            return redirect(url_for("run_edit", run_id=target_run_id))
+        return redirect(url_for("dashboard"))
+
+    return render_template(
+        "material_lot_correction_form.html",
+        material_lot=material_lot,
+        candidate_parents=candidate_parents,
+    )
 
 
 _base_create_app = create_app

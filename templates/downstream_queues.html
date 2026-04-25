@@ -14,12 +14,34 @@
     <h3>Queue Snapshot</h3>
     <span class="text-sm cell-muted">{{ downstream_queues.active_count }} run{% if downstream_queues.active_count != 1 %}s{% endif %} currently assigned to a downstream queue or waiting on routing</span>
   </div>
+  <div class="summary-row" style="margin-bottom:16px;">
+    <div class="summary-stat">
+      <div class="label">Active Queue Items</div>
+      <div class="value">{{ downstream_queues.reporting.active_count }}</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Blocked</div>
+      <div class="value">{{ downstream_queues.reporting.blocked_count }}</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Stale 3+ Days</div>
+      <div class="value">{{ downstream_queues.reporting.stale_count }}</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Completed 7 Days</div>
+      <div class="value">{{ downstream_queues.reporting.completed_last_7d }}</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Rework 30 Days</div>
+      <div class="value">{{ downstream_queues.reporting.rework_last_30d }}</div>
+    </div>
+  </div>
   <div class="summary-row" style="margin-bottom:0;">
     {% for card in downstream_queues.summary_cards %}
     <div class="summary-card">
       <div class="summary-label">{{ card.label }}</div>
       <div class="summary-value">{{ card.count }}</div>
-      <div class="summary-footnote">Active run{% if card.count != 1 %}s{% endif %}</div>
+      <div class="summary-footnote">{{ card.unassigned_count }} unassigned &middot; {{ card.stale_count }} stale{% if card.blocked_count %} &middot; {{ card.blocked_count }} blocked{% endif %}</div>
     </div>
     {% endfor %}
   </div>
@@ -41,6 +63,24 @@
     {% elif section.key == 'hold_distillate' %}
     <a href="{{ url_for('distillate_queue') }}" class="btn btn-secondary btn-sm">Open Distillate Hold</a>
     {% endif %}
+  </div>
+  <div class="summary-row" style="margin-bottom:12px;">
+    <div class="summary-stat">
+      <div class="label">Queue Items</div>
+      <div class="value">{{ section.reporting.active_count }}</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Unassigned</div>
+      <div class="value">{{ section.reporting.unassigned_count }}</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Stale 3+ Days</div>
+      <div class="value">{{ section.reporting.stale_count }}</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Blocked</div>
+      <div class="value">{{ section.reporting.blocked_count }}</div>
+    </div>
   </div>
   {% if section["items"] %}
   <div class="summary-row">
@@ -68,6 +108,19 @@
             Dry THCA {{ "{:,.0f}".format(item.dry_thca_g or 0) }} g &middot;
             Dry HTE {{ "{:,.0f}".format(item.dry_hte_g or 0) }} g
           </div>
+          {% if item.material_lots %}
+          <div class="text-sm cell-muted" style="margin-top:8px;">
+            Derivative lots:
+            {% for material_lot in item.material_lots %}
+            <span class="badge bg-light text-dark border" style="margin-right:4px;">{{ material_lot.lot_type }} · {{ material_lot.tracking_id }}</span>
+            {% endfor %}
+          </div>
+          <div class="text-sm cell-muted" style="margin-top:4px;">
+            {% for material_lot in item.material_lots %}
+            <a href="{{ material_lot.journey_url }}" target="_blank" rel="noopener">Open {{ material_lot.tracking_id }} journey</a>{% if not loop.last %} &middot; {% endif %}
+            {% endfor %}
+          </div>
+          {% endif %}
           {% if item.outputs_confirmed_at_label %}
           <div class="text-sm cell-muted" style="margin-top:4px;">Outputs confirmed {{ item.outputs_confirmed_at_label }}</div>
           {% endif %}
@@ -95,6 +148,10 @@
             {% else %}
             Unassigned
             {% endif %}
+          </div>
+          <div class="text-sm cell-muted" style="margin-top:4px;">
+            Queue age: {{ item.queue_age_label }}
+            {% if item.queue_is_blocked %}&middot; <span style="color:#f4c26b;">Blocked</span>{% elif item.queue_is_stale %}&middot; <span style="color:#f4c26b;">Stale</span>{% endif %}
           </div>
           <div class="summary-footnote" style="margin-top:10px;">{{ item.next_step }}</div>
           <div class="form-actions" style="justify-content:flex-start;margin-top:10px;gap:8px;flex-wrap:wrap;">

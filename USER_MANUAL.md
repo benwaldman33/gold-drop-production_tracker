@@ -8,6 +8,8 @@ This guide explains how to use the Gold Drop web app day-to-day. It intentionall
 
 **Operator-facing additions in the current release:** Purchases and Inventory are more status-first, the Journey page is richer, Slack imports now includes inbox buckets, lot labels now print with scannable barcodes, `Floor Ops` gives operators a recent activity surface, the standalone receiving app can now correct a confirmed receipt before downstream lot consumption, the standalone extraction app now mirrors the reactor workflow with touch-first controls, and the data model supports live smart-scale capture.
 
+**Manager-facing note for the current release:** the app now includes the first usable derivative-lot genealogy layer. Current day-to-day workflows still use Purchases, Inventory, Runs, and Downstream Queues the same way, but the system can now bridge biomass lots into first-class material genealogy records, auto-create dry HTE / dry THCA derivative lots from eligible extraction runs, extend genealogy into accountable downstream child lots like GoldDrop / wholesale THCA / terp strip / HP base oil / distillate, expose manager-facing ancestry / descendant journey endpoints through the internal API, record correction-forward genealogy fixes instead of silently overwriting bad lineage, summarize open derivative cost basis through the internal API, surface linked derivative lots directly on downstream queue cards, and provide a dedicated `Genealogy Report` page for manager reporting.
+
 ---
 
 ## Getting started
@@ -25,6 +27,7 @@ Use the left sidebar:
 - **Departments**: hub of department-focused pages (same data as the rest of the app; quick links and rollups per team—finance, purchasing, intake, extraction, THCA/HTE/Liquid Diamonds, terpenes, testing, bulk sales)
 - **Runs**: extraction runs log + cost/yield outputs
 - **Downstream Queues**: supervisor-facing post-extraction routing board for completed runs that now need a downstream destination or hold
+- **Genealogy Report**: manager-facing lineage and derivative-inventory reporting for accountable material lots
 - **Inventory**: on-hand lots + in-transit purchases, including lot tracking IDs and remaining pounds
 - **Purchases**: batch-level purchase records + batch IDs (same underlying rows as **Biomass Pipeline**); **Approve purchase** when your role allows; **Import spreadsheet** for bulk purchase upload; row **batch edit** on the list
 - **Costs**: operational cost entries (solvent/personnel/overhead)
@@ -647,8 +650,11 @@ For each queue card, the page shows:
 - run date and reactor
 - source strain / supplier / tracking IDs
 - wet and dry THCA / HTE totals
+- linked derivative lots when genealogy output lots already exist for that run
 - current THCA destination and HTE decision context when available
 - a direct **Open Run** action
+
+When derivative lots are shown on a queue card, use the journey links there to open manager-facing lineage context without leaving the downstream queue workflow first.
 
 Use the destination dropdown on a queue card to:
 - move a run to another downstream queue
@@ -663,6 +669,14 @@ Use the owner dropdown on a queue card to:
 - or set it back to `Unassigned`
 
 This ownership control only applies once a run is in an active downstream destination or hold. It is not used for `Needs Queue Decision`.
+
+The shared downstream board now also includes queue reporting:
+- `Blocked`
+- `Stale 3+ Days`
+- `Completed 7 Days`
+- `Rework 30 Days`
+
+Each queue card also shows `Queue age`, plus `Blocked` or `Stale` status when applicable.
 
 When you open a run from this page, the main run form now shows **Back to Downstream Queues** so you can return to the same supervisor queue surface.
 
@@ -679,6 +693,7 @@ Each queue card shows:
 - current queue state
 - source strain / supplier / lot context
 - wet and dry THCA / HTE totals
+- linked derivative lots with direct journey links when genealogy output lots already exist
 - current queue owner when assigned
 - queue history with timestamps and operator names
 
@@ -693,6 +708,8 @@ Use **Queue note (optional)** to capture a short planning or handoff note alongs
 Use the queue-owner dropdown on the card when you need explicit accountability for who currently owns that GoldDrop item.
 
 `Release Complete` removes the run from the GoldDrop queue.
+
+When a GoldDrop item reaches `Release Complete`, the genealogy layer can now create a first-class `golddrop` derivative lot linked back to the original dry HTE lot and all upstream biomass ancestry.
 
 `Send Back For Re-routing` removes it from the queue so it can be routed again from **Downstream Queues**.
 
@@ -731,13 +748,24 @@ Typical staged flow:
 
 `Queue Prescott` marks the HTE filter outcome as needing Prescott handling. `Start Strip Work` marks the run as actively in terp strip / CDT handling. `Strip Complete` does not appear until strip work has started, and then removes the run from the cage while marking the HTE pipeline stage as stripped.
 
+When `Strip Complete` is recorded, genealogy can now create a `terp_strip_output` child lot from the accountable dry HTE lot.
+
 #### HP Base Oil Hold
 - `Mark Reviewed`
 - `Confirm Hold`
+- `Mark Release Ready`
 - `Release Complete`
 - `Send Back For Re-routing`
 
-This page is for low-potency output held for HP base oil decisions. `Release Complete` clears the hold when that downstream decision is finished.
+Typical staged flow:
+- `Mark Reviewed`
+- `Confirm Hold`
+- `Mark Release Ready`
+- `Release Complete`
+
+This page is for low-potency output held for HP base oil decisions. `Release Complete` does not appear until the hold is marked release-ready.
+
+When `Release Complete` is recorded here, genealogy can now create an `hp_base_oil` child lot from the accountable dry HTE lot.
 
 ### Distillate Hold
 
@@ -748,10 +776,19 @@ Use it when high-potency output is being held to be made into distillate.
 Actions:
 - `Mark Reviewed`
 - `Confirm Hold`
+- `Mark Release Ready`
 - `Release Complete`
 - `Send Back For Re-routing`
 
-This mirrors the HP base oil hold pattern, but for the distillate path instead of the low-potency hold path.
+Typical staged flow:
+- `Mark Reviewed`
+- `Confirm Hold`
+- `Mark Release Ready`
+- `Release Complete`
+
+This mirrors the HP base oil hold pattern, but for the distillate path instead of the low-potency hold path. `Release Complete` does not appear until the hold is marked release-ready.
+
+When `Release Complete` is recorded here, genealogy can now create a `distillate` child lot from the accountable dry HTE lot. If retail distillate grams are already recorded on the run, that quantity is used as the accountable distillate output.
 
 Use **Confirm Movement** to record a standard movement action:
 - move to vault
@@ -759,6 +796,24 @@ Use **Confirm Movement** to record a standard movement action:
 - move to quarantine
 - move back to inventory
 - or store a custom location detail
+
+### Genealogy Report
+
+Use **Genealogy Report** from the left sidebar when you need a manager-facing summary of material lineage instead of a single run or queue card.
+
+The page currently shows:
+- open derivative inventory by type
+- released derivative inventory by type
+- source-to-derivative yield rows by biomass lot
+- rework volume from correction-backed genealogy transformations
+- open genealogy reconciliation issues
+- recent derivative lots with direct `Ancestry`, `Descendants`, and `Journey` links
+
+Use this page for questions like:
+- what derivative inventory is still open by type
+- what product lots have already been released
+- which biomass lots fed a finished GoldDrop, distillate, or wholesale THCA lot
+- where genealogy still has unresolved reconciliation problems
 
 Use **Confirm Testing** to update testing state without opening the purchase form.
 

@@ -209,6 +209,7 @@ TERP_STRIP_QUEUE_STAGE_NEXT_STEPS = {
 HP_BASE_OIL_QUEUE_ACTIONS = (
     ("mark_reviewed", "Mark Reviewed"),
     ("confirm_hold", "Confirm Hold"),
+    ("mark_release_ready", "Mark Release Ready"),
     ("release_complete", "Release Complete"),
     ("send_back", "Send Back For Re-routing"),
 )
@@ -217,6 +218,7 @@ HP_BASE_OIL_QUEUE_STATE_LABELS = {
     "new_in_queue": "New on hold",
     "reviewed": "Reviewed",
     "confirmed_hold": "Hold confirmed",
+    "release_ready": "Release ready",
     "released_complete": "Released complete",
     "sent_back": "Sent back",
 }
@@ -225,13 +227,33 @@ HP_BASE_OIL_QUEUE_EVENT_LABELS = {
     "entered_queue": "Entered hold",
     "mark_reviewed": "Marked reviewed",
     "confirm_hold": "Hold confirmed",
+    "mark_release_ready": "Release ready",
     "release_complete": "Released complete",
     "send_back": "Sent back",
+}
+
+HP_BASE_OIL_QUEUE_STAGE_ACTIONS = {
+    "new_in_queue": (("mark_reviewed", "Mark Reviewed"), ("send_back", "Send Back For Re-routing")),
+    "reviewed": (("confirm_hold", "Confirm Hold"), ("send_back", "Send Back For Re-routing")),
+    "confirmed_hold": (("mark_release_ready", "Mark Release Ready"), ("send_back", "Send Back For Re-routing")),
+    "release_ready": (("release_complete", "Release Complete"), ("send_back", "Send Back For Re-routing")),
+    "released_complete": (),
+    "sent_back": (),
+}
+
+HP_BASE_OIL_QUEUE_STAGE_NEXT_STEPS = {
+    "new_in_queue": "Supervisor review is the next action before the HP base oil hold is confirmed.",
+    "reviewed": "Confirm the hold once the low-potency HP base oil path is verified.",
+    "confirmed_hold": "Mark release ready once the hold work is done and the item can be closed out.",
+    "release_ready": "Release complete once the HP base oil hold is fully resolved.",
+    "released_complete": "HP base oil hold handling is complete for this run.",
+    "sent_back": "This run has been sent back for downstream re-routing.",
 }
 
 DISTILLATE_QUEUE_ACTIONS = (
     ("mark_reviewed", "Mark Reviewed"),
     ("confirm_hold", "Confirm Hold"),
+    ("mark_release_ready", "Mark Release Ready"),
     ("release_complete", "Release Complete"),
     ("send_back", "Send Back For Re-routing"),
 )
@@ -240,6 +262,7 @@ DISTILLATE_QUEUE_STATE_LABELS = {
     "new_in_queue": "New on hold",
     "reviewed": "Reviewed",
     "confirmed_hold": "Hold confirmed",
+    "release_ready": "Release ready",
     "released_complete": "Released complete",
     "sent_back": "Sent back",
 }
@@ -248,8 +271,27 @@ DISTILLATE_QUEUE_EVENT_LABELS = {
     "entered_queue": "Entered hold",
     "mark_reviewed": "Marked reviewed",
     "confirm_hold": "Hold confirmed",
+    "mark_release_ready": "Release ready",
     "release_complete": "Released complete",
     "send_back": "Sent back",
+}
+
+DISTILLATE_QUEUE_STAGE_ACTIONS = {
+    "new_in_queue": (("mark_reviewed", "Mark Reviewed"), ("send_back", "Send Back For Re-routing")),
+    "reviewed": (("confirm_hold", "Confirm Hold"), ("send_back", "Send Back For Re-routing")),
+    "confirmed_hold": (("mark_release_ready", "Mark Release Ready"), ("send_back", "Send Back For Re-routing")),
+    "release_ready": (("release_complete", "Release Complete"), ("send_back", "Send Back For Re-routing")),
+    "released_complete": (),
+    "sent_back": (),
+}
+
+DISTILLATE_QUEUE_STAGE_NEXT_STEPS = {
+    "new_in_queue": "Supervisor review is the next action before the distillate hold is confirmed.",
+    "reviewed": "Confirm the hold once the distillate path is verified.",
+    "confirmed_hold": "Mark release ready once the distillate hold work is done and the item can be closed out.",
+    "release_ready": "Release complete once the distillate hold is fully resolved.",
+    "released_complete": "Distillate hold handling is complete for this run.",
+    "sent_back": "This run has been sent back for downstream re-routing.",
 }
 
 DESTINATION_QUEUE_CONFIGS = {
@@ -376,15 +418,19 @@ DESTINATION_QUEUE_CONFIGS = {
         "action_state_map": {
             "mark_reviewed": "reviewed",
             "confirm_hold": "confirmed_hold",
+            "mark_release_ready": "release_ready",
             "release_complete": "released_complete",
             "send_back": "sent_back",
         },
-        "help_text": "Use this surface to confirm the HP base oil hold, complete the release, or send the run back for re-routing.",
+        "help_text": "Use this surface to review the HP base oil hold, confirm it, mark it release ready, complete the release, or send the run back for re-routing.",
+        "stage_actions": HP_BASE_OIL_QUEUE_STAGE_ACTIONS,
+        "stage_next_steps": HP_BASE_OIL_QUEUE_STAGE_NEXT_STEPS,
         "entered_note": "Entered HP base oil hold.",
         "source_label": "hp_base_oil_queue",
         "action_messages": {
             "mark_reviewed": "Run marked reviewed in HP base oil hold.",
             "confirm_hold": "Run hold confirmed for HP base oil.",
+            "mark_release_ready": "Run marked release ready in HP base oil hold.",
             "release_complete": "Run released from HP base oil hold.",
             "send_back": "Run sent back for downstream re-routing.",
         },
@@ -406,15 +452,19 @@ DESTINATION_QUEUE_CONFIGS = {
         "action_state_map": {
             "mark_reviewed": "reviewed",
             "confirm_hold": "confirmed_hold",
+            "mark_release_ready": "release_ready",
             "release_complete": "released_complete",
             "send_back": "sent_back",
         },
-        "help_text": "Use this surface to confirm the distillate hold, complete the release, or send the run back for re-routing.",
+        "help_text": "Use this surface to review the distillate hold, confirm it, mark it release ready, complete the release, or send the run back for re-routing.",
+        "stage_actions": DISTILLATE_QUEUE_STAGE_ACTIONS,
+        "stage_next_steps": DISTILLATE_QUEUE_STAGE_NEXT_STEPS,
         "entered_note": "Entered distillate hold.",
         "source_label": "distillate_queue",
         "action_messages": {
             "mark_reviewed": "Run marked reviewed in Distillate hold.",
             "confirm_hold": "Run hold confirmed for distillate.",
+            "mark_release_ready": "Run marked release ready in Distillate hold.",
             "release_complete": "Run released from Distillate hold.",
             "send_back": "Run sent back for downstream re-routing.",
         },
@@ -854,6 +904,22 @@ def _build_downstream_queue_item(root, run):
     supplier_names = sorted({(lot.supplier_name or "").strip() for lot in lots if (lot.supplier_name or "").strip()})
     tracking_ids = [lot.tracking_id for lot in lots if lot.tracking_id]
     queue_key = _downstream_active_queue(run)
+    derivative_material_lots = []
+    if hasattr(root, "_derivative_material_lots_for_run"):
+        for material_lot in root._derivative_material_lots_for_run(root, run):
+            derivative_material_lots.append(
+                {
+                    "material_lot_id": material_lot.id,
+                    "tracking_id": material_lot.tracking_id,
+                    "lot_type": material_lot.lot_type,
+                    "quantity": float(material_lot.quantity or 0),
+                    "unit": material_lot.unit,
+                    "detail_url": f"/api/v1/material-lots/{material_lot.id}",
+                    "journey_url": f"/api/v1/material-lots/{material_lot.id}/journey",
+                    "ancestry_url": f"/api/v1/material-lots/{material_lot.id}/ancestry",
+                    "descendants_url": f"/api/v1/material-lots/{material_lot.id}/descendants",
+                }
+            )
     return {
         "run_id": run.id,
         "run_date_label": run.run_date.strftime("%Y-%m-%d") if run.run_date else "Unknown date",
@@ -867,6 +933,7 @@ def _build_downstream_queue_item(root, run):
         "wet_thca_g": float(run.wet_thca_g or 0),
         "dry_hte_g": float(run.dry_hte_g or 0),
         "dry_thca_g": float(run.dry_thca_g or 0),
+        "material_lots": derivative_material_lots,
         "post_extraction_started_at_label": display_local_timestamp(getattr(run, "post_extraction_started_at", None)),
         "outputs_confirmed_at_label": display_local_timestamp(getattr(run, "post_extraction_initial_outputs_recorded_at", None)),
         "thca_destination_label": THCA_DESTINATION_LABELS.get((run.thca_destination or "").strip(), ""),
@@ -908,6 +975,46 @@ def _destination_queue_assignment_snapshot(root, run):
         "assignee_username": assignee.username if assignee and assignee.username else None,
         "assigned_at_label": display_local_timestamp(getattr(run, "downstream_queue_assigned_at", None)),
         "assigned_by_name": assigned_by.display_name if assigned_by and assigned_by.display_name else None,
+    }
+
+
+def _queue_age_anchor(run, history):
+    if history:
+        return history[0].created_at
+    return getattr(run, "post_extraction_initial_outputs_recorded_at", None) or getattr(run, "post_extraction_started_at", None) or getattr(run, "run_completed_at", None)
+
+
+def _queue_age_metrics(root, run, queue_key: str, history):
+    anchor = _queue_age_anchor(run, history)
+    if anchor is None:
+        return {
+            "age_days": None,
+            "age_label": "Age unavailable",
+            "is_stale": False,
+            "is_blocked": False,
+        }
+    if getattr(anchor, "tzinfo", None) is None:
+        anchor = anchor.replace(tzinfo=root.timezone.utc)
+    else:
+        anchor = anchor.astimezone(root.timezone.utc)
+    now = root.datetime.now(root.timezone.utc)
+    age_delta = now - anchor
+    age_days = max(int(age_delta.total_seconds() // 86400), 0)
+    is_active_destination = queue_key in DESTINATION_QUEUE_CONFIGS
+    is_unassigned = not getattr(run, "downstream_queue_assignee_user_id", None)
+    is_stale = age_days >= 3
+    is_blocked = bool(is_active_destination and is_unassigned and age_days >= 2)
+    if age_days <= 0:
+        age_label = "Entered today"
+    elif age_days == 1:
+        age_label = "1 day in queue"
+    else:
+        age_label = f"{age_days} days in queue"
+    return {
+        "age_days": age_days,
+        "age_label": age_label,
+        "is_stale": is_stale,
+        "is_blocked": is_blocked,
     }
 
 
@@ -955,10 +1062,15 @@ def _build_destination_queue_detail(root, queue_key: str):
     for run in runs:
         base = _build_downstream_queue_item(root, run)
         state_key, history = _destination_queue_state(root, run, queue_key)
+        age_metrics = _queue_age_metrics(root, run, queue_key, history)
         base["queue_state_key"] = state_key
         base["queue_state_label"] = config["state_labels"][state_key]
         base["queue_next_step"] = config.get("stage_next_steps", {}).get(state_key, config["help_text"])
         base["assignment"] = _destination_queue_assignment_snapshot(root, run)
+        base["queue_age_days"] = age_metrics["age_days"]
+        base["queue_age_label"] = age_metrics["age_label"]
+        base["queue_is_stale"] = age_metrics["is_stale"]
+        base["queue_is_blocked"] = age_metrics["is_blocked"]
         base["history"] = [
             {
                 "action_label": config["event_labels"].get(
@@ -987,7 +1099,48 @@ def _build_destination_queue_detail(root, queue_key: str):
         "assignment_endpoint": "downstream_queue_assign",
         "assignment_options": assignment_options,
         "count": len(items),
+        "reporting": _downstream_reporting_summary(root, [{"queue_key": queue_key, **item} for item in items], active_only=False),
         "items": items,
+    }
+
+
+def _downstream_reporting_summary(root, items, active_only: bool = True):
+    relevant = []
+    for item in items:
+        if active_only and item.get("queue_key") not in DESTINATION_QUEUE_CONFIGS:
+            continue
+        relevant.append(item)
+    active_count = len(relevant)
+    unassigned_count = sum(1 for item in relevant if not (item.get("assignment") or {}).get("assignee_id"))
+    stale_count = sum(1 for item in relevant if item.get("queue_is_stale"))
+    blocked_count = sum(1 for item in relevant if item.get("queue_is_blocked"))
+    oldest_age_days = max((item.get("queue_age_days") or 0) for item in relevant) if relevant else 0
+
+    now = root.datetime.now(root.timezone.utc)
+    completed_cutoff = now - root.timedelta(days=7)
+    rework_cutoff = now - root.timedelta(days=30)
+    completed_last_7d = (
+        root.DownstreamQueueEvent.query.filter(
+            root.DownstreamQueueEvent.queue_key.in_(list(DESTINATION_QUEUE_CONFIGS.keys())),
+            root.DownstreamQueueEvent.action_key.in_(("release_complete", "strip_complete")),
+            root.DownstreamQueueEvent.created_at >= completed_cutoff,
+        ).count()
+    )
+    rework_last_30d = (
+        root.DownstreamQueueEvent.query.filter(
+            root.DownstreamQueueEvent.queue_key.in_(list(DESTINATION_QUEUE_CONFIGS.keys())),
+            root.DownstreamQueueEvent.action_key == "send_back",
+            root.DownstreamQueueEvent.created_at >= rework_cutoff,
+        ).count()
+    )
+    return {
+        "active_count": active_count,
+        "unassigned_count": unassigned_count,
+        "stale_count": stale_count,
+        "blocked_count": blocked_count,
+        "completed_last_7d": completed_last_7d,
+        "rework_last_30d": rework_last_30d,
+        "oldest_age_days": oldest_age_days,
     }
 
 
@@ -1020,13 +1173,24 @@ def _build_downstream_queues(root):
         item["next_step"] = _downstream_next_step(item)
         item["assignment"] = _destination_queue_assignment_snapshot(root, run)
         item["can_assign_queue_owner"] = queue_key in DESTINATION_QUEUE_CONFIGS
+        state_history = _destination_queue_history(root, run.id, queue_key) if queue_key in DESTINATION_QUEUE_CONFIGS else []
+        age_metrics = _queue_age_metrics(root, run, queue_key, state_history)
+        item["queue_age_days"] = age_metrics["age_days"]
+        item["queue_age_label"] = age_metrics["age_label"]
+        item["queue_is_stale"] = age_metrics["is_stale"]
+        item["queue_is_blocked"] = age_metrics["is_blocked"]
         section_map[queue_key]["items"].append(item)
     sections = [section_map[key] for key, _label, _description in DOWNSTREAM_QUEUE_SECTIONS]
+    for section in sections:
+        section["reporting"] = _downstream_reporting_summary(root, section["items"], active_only=False)
     summary_cards = [
         {
             "key": section["key"],
             "label": section["label"],
             "count": len(section["items"]),
+            "stale_count": section["reporting"]["stale_count"],
+            "blocked_count": section["reporting"]["blocked_count"],
+            "unassigned_count": section["reporting"]["unassigned_count"],
         }
         for section in sections
     ]
@@ -1036,6 +1200,7 @@ def _build_downstream_queues(root):
         "move_options": _downstream_move_options(),
         "assignment_options": _destination_queue_assignment_options(root),
         "active_count": sum(card["count"] for card in summary_cards),
+        "reporting": _downstream_reporting_summary(root, [item for section in sections for item in section["items"]]),
     }
 
 

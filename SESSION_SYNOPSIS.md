@@ -370,20 +370,28 @@ The active work area is now the extraction booth SOP alignment layer that sits b
     - queue items can now be assigned to a specific editor from the shared `Downstream Queues` board or the dedicated destination queue pages
     - current owner, assignment time, and assigning user are visible on both surfaces
     - owner state clears automatically when a queue item leaves active downstream management
+  - downstream queue reporting is now visible directly on the queue surfaces:
+    - the shared board shows queue aging, blocked count, stale count, completions in the last 7 days, and rework in the last 30 days
+    - individual queue cards now show queue age plus stale / blocked status
+    - dedicated destination pages show the same age / stale / blocked view for their own queue
+  - `HP Base Oil Hold` and `Distillate Hold` are now staged workflows instead of flat hold/release surfaces:
+    - both now move through `Reviewed`, `Hold confirmed`, `Release ready`, and `Released complete`
+    - final release is blocked until release-ready state is reached
 
 ### In progress
 
 - the active product area is no longer only downstream execution
 - the current product area is downstream queue deepening on top of the booth-SOP foundation:
   - making destination queues behave like real work surfaces instead of generic hold lists
-  - deciding how far to push the remaining hold workflows before adding queue-reporting depth
-  - deciding what reporting matters first now that staged state and ownership are both present
+  - deciding how far to push downstream completion / rework semantics now that all current destination surfaces are staged or owned
+  - deciding where queue reporting should live beyond the queue surfaces themselves
 
 ### Next
 
-- deepen the remaining downstream destination queues from the stronger GoldDrop pattern:
-  - decide whether queue state should eventually carry explicit assignee / owner fields instead of event-only history
-  - decide whether `HP Base Oil Hold` and `Distillate Hold` actually need staged workflows or can remain simpler hold/release surfaces
+- deepen the downstream operating model after queue staging:
+  - decide whether downstream completion should stamp stronger final outcome states instead of simply removing the item from queue management
+  - decide whether rework / send-back paths now need richer destination-specific reasons or resolution tracking
+  - decide whether queue reporting should also surface on the main dashboard or a dedicated reporting page
 - keep repeated reminder escalation on the future list, but not on the current critical path
 
 ## Current planning baseline
@@ -414,33 +422,186 @@ with downstream:
 
 ## Recommended next development step
 
-The next major build should stay in downstream execution, but move past the first three staged queues:
+The next major build should stay in downstream execution, but move past queue staging itself:
 
-- decide whether `HP Base Oil Hold` and `Distillate Hold` need deeper staged workflows or can remain simpler hold/release surfaces
-- add queue aging / blocked-item / throughput visibility once the destination workflow shape is settled
+- turn downstream completion and rework into stronger tracked outcomes instead of mostly queue removal
+- decide whether queue reporting now belongs on the main dashboard or a dedicated reporting surface
 
 ## Recommended concrete next session
 
-When work resumes, decide the next downstream operating slice after the first three staged queues and confirm:
+When work resumes, decide the next downstream operating slice after queue reporting and staged holds and confirm:
 
-1. whether `HP Base Oil Hold` and `Distillate Hold` should become staged workflows or stay lighter-weight
-2. what reporting matters first once queue stages and ownership are both present: aging, blocked items, throughput, or rework volume
-3. whether any destination now needs a dedicated role-specific completion or rework state beyond queue removal
+1. whether downstream completion should simply clear a queue item or stamp a stronger destination-specific completion state
+2. what rework needs next: send-back reasons, rework categories, or tracked resolution states
+3. whether queue reporting should stay embedded in queue surfaces or expand into dashboard / reporting pages
 4. whether ownership should later expand from single-owner assignment into explicit handoff / team-state tracking
 
 The likely implementation order is:
 
-1. remaining hold-workflow decisions
-2. stronger downstream completion/rework tracking
-3. queue reporting and management visibility
-4. later ownership refinements if needed
+1. stronger downstream completion/rework tracking
+2. broader reporting and management visibility
+3. later ownership refinements if needed
+
+## Genealogy foundation update
+
+The app now has the first additive derivative-lot genealogy foundation in place:
+
+- new first-class genealogy tables:
+  - `MaterialLot`
+  - `MaterialTransformation`
+  - `MaterialTransformationInput`
+  - `MaterialTransformationOutput`
+  - `MaterialReconciliationIssue`
+- `PurchaseLot` now bridges into genealogy through `material_lot_id`
+- startup bootstrap now backfills active biomass lots into `MaterialLot(type=biomass)`
+- helper logic now resolves source biomass material lots for a `Run`
+- first-pass reconciliation now detects basic genealogy problems such as missing run source links and negative source balances
+
+This is still foundation work only:
+
+- no operator workflow changed yet
+- current downstream queues still run off `Run`
+- derivative output lots and manager-facing genealogy read surfaces are the next implementation slices
+
+## Genealogy phase 4-6 update
+
+The next genealogy milestone is now in:
+
+- eligible extraction runs auto-create `MaterialTransformation(type=extraction)` rows
+- accountable dry outputs now generate derivative `MaterialLot` rows for:
+  - `dry_hte`
+  - `dry_thca`
+- extraction genealogy now records:
+  - biomass source inputs
+  - derivative output lots
+  - cost basis on derivative dry-output lots when run cost-per-gram fields exist
+- the internal API now exposes manager-facing derivative genealogy read surfaces:
+  - `/api/v1/material-lots/<lot_id>`
+  - `/api/v1/material-lots/<lot_id>/journey`
+  - `/api/v1/material-lots/<lot_id>/ancestry`
+  - `/api/v1/material-lots/<lot_id>/descendants`
+- existing purchase / lot / run journeys now include derivative `material_lots`
+- reconciliation overview now includes open material genealogy issues
+
+Practical meaning:
+
+- a manager can now start from a run and see the accountable dry HTE / THCA derivative lots created from it
+- a manager can start from a biomass purchase lot and trace forward into derivative extraction outputs
+- a manager can start from a derivative dry-output lot and trace back to its biomass ancestry
+
+What still remains after this slice:
+
+- correction workflows
+- deeper cost roll-forward beyond extraction outputs
+- queue linking to derivative lots
+- destination-native downstream transformations
+- reporting surfaces built directly on genealogy
+
+## Genealogy phase 7 update
+
+Correction-forward genealogy is now in place:
+
+- managers/editors can open `/material-lots/<lot_id>/correct`
+- correction actions now create explicit `MaterialTransformation` rows instead of silently rewriting existing genealogy
+- supported correction actions:
+  - `adjust_quantity`
+  - `replace_parent`
+  - `void_lot`
+- quantity adjustments and parent replacements now:
+  - close the original lot
+  - preserve the original lineage record
+  - create a replacement `MaterialLot`
+- void actions now close the mistaken lot through a correction transformation with no replacement output
+- open reconciliation issues on the corrected lot are automatically resolved with the correction note
+
+Practical meaning:
+
+- managers can now fix a bad derivative-lot quantity without deleting history
+- managers can now replace an incorrect parent link without hiding the original mistake
+- the genealogy layer now has the first real correction trail instead of being read-only
+
+## Genealogy phase 8 update
+
+Cost roll-forward visibility is now exposed directly:
+
+- extraction-created derivative lots already carried cost basis from run cost-per-gram fields
+- correction-created replacement lots now preserve cost-per-unit context from the corrected lot
+- the internal API now exposes `/api/v1/summary/material-costs`
+- that summary groups open derivative lots by `lot_type` and shows:
+  - lot count
+  - open quantity
+  - open cost basis total
+  - average cost basis per unit
+
+Practical meaning:
+
+- managers can now answer not just "what derivative lots exist?" but also "what open cost basis is sitting in derivative inventory by type?"
+- the genealogy layer now supports the first real cost-aware inventory summary without waiting for the broader reporting phase
+
+## Genealogy phase 9 update
+
+Derivative genealogy is now visible directly on downstream queue surfaces:
+
+- the shared `Downstream Queues` board now shows any linked derivative lots already created from a run
+- dedicated destination queue pages now show the same derivative lot context on each queue card
+- queue cards now render:
+  - derivative lot type
+  - derivative lot tracking ID
+  - direct journey links for each linked derivative lot
+- queue workflow ownership remains on `Run`; this slice only attaches genealogy visibility to the existing downstream operations UI
+
+Practical meaning:
+
+- supervisors can now move from queue management directly into derivative lot lineage review without leaving the queue surfaces blind
+- the genealogy layer is now visible in the real downstream operating workflow, not only in API or journey endpoints
+- the next remaining genealogy milestones are destination-native downstream transformations and reporting built directly on those new genealogy nodes
+
+## Genealogy phase 10 update
+
+Destination-native downstream genealogy is now in place:
+
+- the genealogy layer no longer stops at `dry_hte` / `dry_thca`
+- downstream completion states can now create accountable child lots through explicit `MaterialTransformation` records:
+  - `golddrop_production` -> `golddrop`
+  - `thca_split` -> `wholesale_thca` or `liquid_diamonds`
+  - `terp_strip` -> `terp_strip_output`
+  - `hp_base_oil_conversion` -> `hp_base_oil`
+  - `distillate_conversion` -> `distillate`
+- parent extraction-output lots now update their consumed / remaining inventory state from downstream transformation usage instead of staying indefinitely open by default
+- descendant chains can now continue beyond extraction and answer source-to-finished-product questions inside the genealogy model itself
+
+Practical meaning:
+
+- a manager can now follow biomass -> extraction output -> downstream product lot in one lineage chain
+- downstream completion no longer only clears a queue item; it can now create the next accountable lot node for genealogy
+- the remaining genealogy milestone is the reporting layer built directly on these new downstream lot and transformation records
+
+## Genealogy phase 11 update
+
+The first genealogy reporting layer is now in place:
+
+- the main app now has a dedicated `Genealogy Report` page at `/reports/material-genealogy`
+- the internal API now exposes `/api/v1/summary/material-genealogy`
+- reporting now covers:
+  - open derivative inventory by type
+  - released derivative inventory by type
+  - source-to-derivative yield rows by biomass lot
+  - rework volume from correction-backed genealogy transformations
+  - open reconciliation issues
+  - recent derivative lots with direct ancestry / descendants / journey links
+
+Practical meaning:
+
+- genealogy is no longer just a set of point lookups; managers now have a working summary surface
+- the app can now answer both the lineage question and the “what is sitting open / released / problematic right now?” question from one reporting layer
+- the initial phased genealogy implementation is now functionally complete from schema through downstream reporting
 
 ## Deployment note
 
-Current booth-SOP rollout commit:
+Current rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `78532b1`
+- commit: `159dc65`
 
 Production deployment steps:
 
@@ -448,13 +609,15 @@ Production deployment steps:
    - `git fetch origin`
    - `git checkout Claude_Consolidation`
    - `git pull --ff-only origin Claude_Consolidation`
-2. restart the backend so the downstream queue ownership fields and assignment controls are live
+2. restart the backend so the new genealogy tables, extraction-output backfill, material-lot API routes, and correction route are live
 3. no standalone extraction app sync is required for this sprint
-4. verify in the main app and on a live extraction run:
-   - the shared `Downstream Queues` board shows `Queue owner` on active destination items
-   - the dedicated `GoldDrop`, `Liquid Loud`, `Terp Strip`, `HP Base Oil`, and `Distillate` pages show the same owner state
-   - assigning an owner from either surface persists and shows assignment timing/context
-   - releasing or completing a queue item clears the owner automatically
+4. verify in the main app / API:
+   - `GET /api/v1/runs/<run_id>/journey` now returns derivative `material_lots` for eligible dry-output runs
+   - `GET /api/v1/material-lots/<lot_id>/journey` returns ancestry / descendant context
+   - `GET /api/v1/material-lots/<lot_id>/ancestry` traces derivative dry-output lots back to biomass source lots
+   - `GET /api/v1/material-lots/<lot_id>/descendants` traces biomass source lots forward into dry HTE / dry THCA derivative lots
+   - `GET /api/v1/tools/reconciliation-overview` now includes `material_genealogy`
+   - logged-in editors can open `/material-lots/<lot_id>/correct` and record a correction-backed replacement or void action
 
 ## Local note
 

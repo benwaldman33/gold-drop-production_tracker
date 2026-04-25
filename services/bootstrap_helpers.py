@@ -6,6 +6,11 @@ from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
 from services.lot_allocation import ensure_lot_tracking_fields
+from services.material_genealogy import (
+    backfill_biomass_material_lots,
+    backfill_downstream_output_genealogy,
+    backfill_extraction_output_genealogy,
+)
 
 
 def ensure_sqlite_schema(root) -> None:
@@ -375,6 +380,93 @@ def ensure_sqlite_schema(root) -> None:
             root.db.session.execute(text("ALTER TABLE purchase_lots ADD COLUMN deleted_at DATETIME"))
         if "deleted_by" not in cols:
             root.db.session.execute(text("ALTER TABLE purchase_lots ADD COLUMN deleted_by VARCHAR(36)"))
+        if "material_lot_id" not in cols:
+            root.db.session.execute(text("ALTER TABLE purchase_lots ADD COLUMN material_lot_id VARCHAR(36)"))
+
+    if not has_table("material_lots"):
+        root.db.session.execute(text(
+            "CREATE TABLE material_lots ("
+            "id VARCHAR(36) PRIMARY KEY, "
+            "tracking_id VARCHAR(48) NOT NULL, "
+            "lot_type VARCHAR(40) NOT NULL, "
+            "quantity FLOAT NOT NULL DEFAULT 0, "
+            "unit VARCHAR(16) NOT NULL DEFAULT 'lb', "
+            "strain_name_snapshot VARCHAR(200), "
+            "supplier_name_snapshot VARCHAR(200), "
+            "source_purchase_lot_id VARCHAR(36), "
+            "parent_run_id VARCHAR(36), "
+            "active_queue_key VARCHAR(40), "
+            "inventory_status VARCHAR(24) NOT NULL DEFAULT 'open', "
+            "workflow_status VARCHAR(24) NOT NULL DEFAULT 'new', "
+            "cost_basis_total FLOAT, "
+            "cost_basis_per_unit FLOAT, "
+            "origin_confidence VARCHAR(24) NOT NULL DEFAULT 'system_generated', "
+            "correction_state VARCHAR(24) NOT NULL DEFAULT 'none', "
+            "notes TEXT, "
+            "created_at DATETIME NOT NULL, "
+            "updated_at DATETIME NOT NULL, "
+            "closed_at DATETIME, "
+            "closed_reason VARCHAR(120)"
+            ")"
+        ))
+
+    if not has_table("material_transformations"):
+        root.db.session.execute(text(
+            "CREATE TABLE material_transformations ("
+            "id VARCHAR(36) PRIMARY KEY, "
+            "transformation_type VARCHAR(40) NOT NULL, "
+            "run_id VARCHAR(36), "
+            "source_record_type VARCHAR(40), "
+            "source_record_id VARCHAR(36), "
+            "performed_at DATETIME NOT NULL, "
+            "performed_by_user_id VARCHAR(36), "
+            "status VARCHAR(24) NOT NULL DEFAULT 'completed', "
+            "notes TEXT, "
+            "created_at DATETIME NOT NULL"
+            ")"
+        ))
+
+    if not has_table("material_transformation_inputs"):
+        root.db.session.execute(text(
+            "CREATE TABLE material_transformation_inputs ("
+            "id VARCHAR(36) PRIMARY KEY, "
+            "transformation_id VARCHAR(36) NOT NULL, "
+            "material_lot_id VARCHAR(36) NOT NULL, "
+            "quantity_consumed FLOAT NOT NULL DEFAULT 0, "
+            "unit VARCHAR(16) NOT NULL DEFAULT 'lb', "
+            "notes TEXT"
+            ")"
+        ))
+
+    if not has_table("material_transformation_outputs"):
+        root.db.session.execute(text(
+            "CREATE TABLE material_transformation_outputs ("
+            "id VARCHAR(36) PRIMARY KEY, "
+            "transformation_id VARCHAR(36) NOT NULL, "
+            "material_lot_id VARCHAR(36) NOT NULL, "
+            "quantity_produced FLOAT NOT NULL DEFAULT 0, "
+            "unit VARCHAR(16) NOT NULL DEFAULT 'lb', "
+            "notes TEXT"
+            ")"
+        ))
+
+    if not has_table("material_reconciliation_issues"):
+        root.db.session.execute(text(
+            "CREATE TABLE material_reconciliation_issues ("
+            "id VARCHAR(36) PRIMARY KEY, "
+            "issue_type VARCHAR(40) NOT NULL, "
+            "severity VARCHAR(20) NOT NULL DEFAULT 'warning', "
+            "material_lot_id VARCHAR(36), "
+            "transformation_id VARCHAR(36), "
+            "run_id VARCHAR(36), "
+            "status VARCHAR(24) NOT NULL DEFAULT 'open', "
+            "detected_at DATETIME NOT NULL, "
+            "detected_by VARCHAR(36), "
+            "resolution_note TEXT, "
+            "resolved_at DATETIME, "
+            "resolved_by_user_id VARCHAR(36)"
+            ")"
+        ))
 
     if not has_table("lot_scan_events"):
         root.db.session.execute(text(
@@ -505,6 +597,27 @@ def ensure_sqlite_schema(root) -> None:
         ))
 
     root.db.session.commit()
+
+
+def backfill_biomass_material_genealogy(root) -> int:
+    count = backfill_biomass_material_lots(root)
+    if count:
+        root.db.session.commit()
+    return count
+
+
+def backfill_extraction_output_material_genealogy(root) -> int:
+    count = backfill_extraction_output_genealogy(root)
+    if count:
+        root.db.session.commit()
+    return count
+
+
+def backfill_downstream_material_genealogy(root) -> int:
+    count = backfill_downstream_output_genealogy(root)
+    if count:
+        root.db.session.commit()
+    return count
 
 
 def ensure_postgres_run_hte_columns(root) -> None:

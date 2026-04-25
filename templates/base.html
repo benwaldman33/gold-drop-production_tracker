@@ -38,6 +38,9 @@
         <a href="{{ url_for('downstream_queues') }}" class="{% if request.endpoint == 'downstream_queues' %}active{% endif %}">
           <span class="icon">🧭</span><span>Downstream Queues</span>
         </a>
+        <a href="{{ url_for('material_genealogy_report') }}" class="{% if request.endpoint == 'material_genealogy_report' %}active{% endif %}">
+          <span class="icon">ðŸ§¬</span><span>Genealogy Report</span>
+        </a>
         {% if current_user.is_authenticated and cross_site_ops_enabled %}
         <a href="{{ url_for('cross_site_ops') }}" class="{% if request.endpoint == 'cross_site_ops' %}active{% endif %}">
           <span class="icon">🌐</span><span>Cross-Site Ops</span>

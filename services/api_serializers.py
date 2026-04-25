@@ -127,6 +127,43 @@ def serialize_lot_summary(lot):
     }
 
 
+def serialize_material_lot_summary(material_lot):
+    source_purchase_lot = getattr(material_lot, "source_purchase_lot", None)
+    parent_run = getattr(material_lot, "parent_run", None)
+    return {
+        "id": material_lot.id,
+        "tracking_id": material_lot.tracking_id,
+        "lot_type": material_lot.lot_type,
+        "quantity": float(material_lot.quantity or 0),
+        "unit": material_lot.unit,
+        "inventory_status": material_lot.inventory_status,
+        "workflow_status": material_lot.workflow_status,
+        "origin_confidence": material_lot.origin_confidence,
+        "source_purchase_lot_id": material_lot.source_purchase_lot_id,
+        "parent_run_id": material_lot.parent_run_id,
+        "source_purchase_id": source_purchase_lot.purchase_id if source_purchase_lot else None,
+        "batch_id": source_purchase_lot.purchase.batch_id if source_purchase_lot and source_purchase_lot.purchase else None,
+        "reactor_number": parent_run.reactor_number if parent_run else None,
+        "run_date": iso_date(parent_run.run_date) if parent_run else None,
+    }
+
+
+def serialize_material_reconciliation_issue(issue):
+    return {
+        "id": issue.id,
+        "issue_type": issue.issue_type,
+        "severity": issue.severity,
+        "status": issue.status,
+        "material_lot_id": issue.material_lot_id,
+        "transformation_id": issue.transformation_id,
+        "run_id": issue.run_id,
+        "detected_at": iso_dt(issue.detected_at),
+        "resolution_note": issue.resolution_note,
+        "resolved_at": iso_dt(issue.resolved_at),
+        "resolved_by_user_id": issue.resolved_by_user_id,
+    }
+
+
 def serialize_inventory_lot(lot):
     payload = serialize_lot_summary(lot)
     payload["label"] = lot.display_label

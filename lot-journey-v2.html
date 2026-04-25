@@ -1,0 +1,1439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gold Drop — Lot Journey Tracker</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
+:root {
+  --bg:#0e0d0a; --s1:#171510; --s2:#1e1c15; --s3:#25221a; --s4:#2d2a20;
+  --border:#302d22; --gold:#d4a843; --gold-l:#e8c870; --gold-d:#8a6820;
+  --text1:#f0e8d0; --text2:#9a8f6e; --text3:#52493a; --text4:#332e22;
+  --green:#4a8058; --green-l:#6aaa78; --red:#b83030; --blue:#4a7fb5;
+  --teal:#3b8a8a; --purple:#7b4e9b;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:100%;overflow:hidden;}
+body{background:var(--bg);color:var(--text1);font-family:'Barlow',system-ui,sans-serif;display:flex;flex-direction:column;}
+
+.hdr{height:50px;flex-shrink:0;background:var(--s1);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 18px;}
+.logo{display:flex;align-items:center;gap:9px;}
+.logo-mark{width:27px;height:27px;background:var(--gold);border-radius:4px;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;color:#000;}
+.logo-text{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;letter-spacing:.02em;}
+.logo-sub{color:var(--text3);font-weight:400;margin-left:2px;}
+.hdr-right{display:flex;align-items:center;gap:12px;}
+.mock-badge{font-size:10px;font-weight:600;letter-spacing:.08em;padding:3px 10px;border-radius:10px;background:#2a1a05;border:1px solid #6a4010;color:#c07030;text-transform:uppercase;}
+.hdr-clock{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text3);}
+
+.app{display:flex;flex:1;overflow:hidden;}
+
+/* SIDEBAR */
+.sb{width:248px;flex-shrink:0;background:var(--s1);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
+.sb-head{padding:10px 10px 8px;border-bottom:1px solid var(--border);}
+.mode-toggle{display:flex;gap:3px;background:var(--s2);padding:3px;border-radius:6px;margin-bottom:8px;}
+.mode-btn{flex:1;padding:5px 0;border:none;background:transparent;color:var(--text3);font-family:'Barlow',sans-serif;font-size:12px;font-weight:600;cursor:pointer;border-radius:4px;transition:all .12s;}
+.mode-btn.active{background:var(--gold);color:#000;}
+.mode-btn:hover:not(.active){background:var(--border);color:var(--text1);}
+.sb-search{background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:5px 9px;display:flex;align-items:center;gap:6px;}
+.sb-search svg{color:var(--text3);flex-shrink:0;}
+.sb-search input{background:none;border:none;outline:none;color:var(--text1);font-size:11px;font-family:'Barlow',sans-serif;width:100%;}
+.sb-search input::placeholder{color:var(--text3);}
+.sb-list{flex:1;overflow-y:auto;padding:6px;}
+.sb-list::-webkit-scrollbar{width:3px;}
+.sb-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+
+/* LOT CARD */
+.lot-card{padding:9px 10px;border-radius:5px;cursor:pointer;margin-bottom:2px;border:1px solid transparent;transition:all .12s;}
+.lot-card:hover{background:var(--s2);}
+.lot-card.active{background:var(--s2);border-color:var(--gold);}
+.lc-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:2px;}
+.lc-id{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);}
+.lc-strain{font-weight:600;font-size:12px;margin-bottom:3px;}
+.lc-meta{display:flex;justify-content:space-between;align-items:center;}
+.lc-wt{font-size:10px;color:var(--text2);}
+.lc-elapsed{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);}
+.chip{font-size:8px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:8px;}
+
+/* RUN CARD */
+.run-card{padding:9px 10px;border-radius:5px;cursor:pointer;margin-bottom:2px;border:1px solid transparent;transition:all .12s;}
+.run-card:hover{background:var(--s2);}
+.run-card.active{background:var(--s2);border-color:var(--purple);}
+.rc-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;}
+.rc-id{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:var(--text2);}
+.rc-source{font-size:11px;font-weight:600;color:var(--text1);margin-bottom:2px;}
+.rc-meta{display:flex;justify-content:space-between;}
+.rc-lbs{font-size:10px;color:var(--text2);}
+.rc-loc{font-size:10px;color:var(--text3);}
+
+/* MAIN */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+
+/* LOT HEADER */
+.lot-hdr{background:var(--s1);border-bottom:1px solid var(--border);padding:13px 20px;flex-shrink:0;}
+.lh-top{display:flex;align-items:baseline;gap:10px;margin-bottom:7px;}
+.lh-strain{font-family:'Barlow Condensed',sans-serif;font-size:26px;font-weight:800;line-height:1;}
+.lh-id{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--gold);}
+.lh-sup{font-size:11px;color:var(--text2);margin-left:auto;}
+.lh-stats{display:flex;gap:18px;}
+.stat-label{font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:2px;}
+.stat-val{font-size:13px;font-weight:600;}
+.stat-val.gold{color:var(--gold);}
+
+/* RUN HEADER */
+.run-hdr{background:var(--s1);border-bottom:1px solid var(--border);padding:13px 20px;flex-shrink:0;}
+.back-btn{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);cursor:pointer;margin-bottom:10px;border:none;background:none;padding:0;transition:color .12s;}
+.back-btn:hover{color:var(--gold);}
+.rh-top{display:flex;align-items:baseline;gap:10px;margin-bottom:7px;}
+.rh-id{font-family:'Barlow Condensed',sans-serif;font-size:26px;font-weight:800;line-height:1;}
+.rh-lbs{font-size:13px;color:var(--text2);font-weight:400;}
+.rh-sources{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
+.source-chip{display:inline-flex;align-items:center;gap:4px;background:var(--s3);border:1px solid var(--border);border-radius:4px;padding:3px 9px;font-size:11px;cursor:pointer;transition:all .12s;}
+.source-chip:hover{border-color:var(--gold);color:var(--gold);}
+.source-chip .src-lbs{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);}
+.rh-stats{display:flex;gap:18px;}
+
+/* CONTENT AREA */
+.content-area{flex:1;overflow-y:auto;padding:0;}
+.content-area::-webkit-scrollbar{width:4px;}
+.content-area::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+
+/* TRUNK SECTION */
+.section{padding:16px 20px;border-bottom:1px solid var(--border);}
+.section-label{font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);margin-bottom:12px;}
+.trunk-bar{display:flex;align-items:center;gap:0;}
+.trunk-node{display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;flex:1;}
+.trunk-pill{width:100%;padding:7px 8px;border:1.5px solid;border-radius:5px;text-align:center;transition:all .15s;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;}
+.trunk-pill.complete{background:var(--s3);border-color:var(--teal);color:var(--teal);}
+.trunk-pill.viewing{outline:2px solid var(--blue);outline-offset:2px;}
+.trunk-pct{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);}
+.trunk-arr{padding:0 5px;margin-bottom:14px;color:var(--text4);}
+
+/* RUNS TABLE */
+.runs-section{padding:16px 20px;}
+.runs-summary{display:flex;gap:14px;margin-bottom:12px;font-size:12px;color:var(--text2);}
+.runs-summary .hi{color:var(--text1);font-weight:600;}
+.runs-summary .active-hi{color:var(--green-l);font-weight:600;}
+.run-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:5px;margin-bottom:2px;border:1px solid transparent;cursor:pointer;transition:all .12s;}
+.run-row:hover{background:var(--s2);}
+.run-row.is-active{background:var(--s2);border-color:var(--green);}
+.run-row.is-aggregate{border-style:dashed;border-color:var(--border);}
+.run-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.run-id-cell{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:var(--text2);min-width:90px;}
+.run-lbs-cell{font-size:11px;color:var(--text2);min-width:50px;}
+.run-status-cell{flex:1;font-size:11px;color:var(--text2);}
+.run-date-cell{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);min-width:70px;text-align:right;}
+.run-view-btn{font-size:10px;color:var(--text3);padding:2px 7px;border:1px solid var(--border);border-radius:3px;background:none;cursor:pointer;transition:all .12s;white-space:nowrap;}
+.run-view-btn:hover{border-color:var(--purple);color:var(--purple);}
+.multi-source{font-size:10px;color:var(--blue);margin-top:1px;}
+.remainder-note{margin-top:10px;padding:8px 10px;background:var(--s2);border:1px solid var(--border);border-radius:5px;font-size:11px;color:var(--text2);}
+.remainder-note strong{color:var(--text1);}
+.gene-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:12px;}
+.gene-card{border:1px solid var(--border);border-radius:8px;padding:11px 12px;background:rgba(255,255,255,0.02);}
+.gene-top{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;margin-bottom:6px;}
+.gene-id{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--gold);}
+.gene-type{font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:2px 6px;border-radius:8px;background:var(--s3);border:1px solid var(--border);color:var(--text2);}
+.gene-name{font-size:12px;font-weight:700;margin-bottom:4px;}
+.gene-meta{font-size:11px;color:var(--text2);line-height:1.45;}
+.gene-meta strong{color:var(--text1);font-weight:600;}
+.gene-links{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+.gene-link{font-size:10px;color:var(--text3);padding:2px 7px;border:1px solid var(--border);border-radius:3px;background:none;cursor:pointer;transition:all .12s;}
+.gene-link:hover{border-color:var(--gold);color:var(--gold);}
+.gene-empty{font-size:12px;color:var(--text3);padding:10px 0;}
+.legend-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;font-size:11px;color:var(--text2);}
+.legend-row strong{color:var(--text1);}
+.mini-chain{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:10px;font-size:11px;color:var(--text2);}
+.mini-chain .node{padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--s2);}
+.mini-chain .arrow{color:var(--text3);}
+
+/* PHASE BAR (run view) */
+.phase-bar-wrap{padding:14px 20px 12px;border-bottom:1px solid var(--border);flex-shrink:0;background:var(--bg);}
+.phase-bar-label{font-size:9px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);margin-bottom:12px;}
+.phase-bar{display:flex;align-items:center;}
+.ph-node{display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;flex:1;transition:all .15s;}
+.ph-node:hover .ph-pill{filter:brightness(1.1);}
+.ph-pill{width:100%;padding:8px 6px;border:1.5px solid;border-radius:6px;text-align:center;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;transition:all .15s;}
+.ph-pill.complete{background:var(--s2);border-color:var(--gold-d);color:var(--gold);}
+.ph-pill.active{background:var(--gold);border-color:var(--gold-l);color:#000;animation:masterGlow 2.5s ease infinite;}
+.ph-pill.pending{background:var(--s2);border-color:var(--border);color:var(--text3);}
+.ph-pill.viewing{outline:2px solid var(--blue);outline-offset:2px;}
+@keyframes masterGlow{0%,100%{box-shadow:0 0 10px #d4a84330;}50%{box-shadow:0 0 22px #d4a84360;}}
+.ph-pct{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);}
+.ph-pct.done{color:var(--gold-d);}
+.ph-arr{padding:0 5px;margin-bottom:14px;color:var(--text4);}
+.ph-arr.done{color:var(--gold-d);}
+
+/* STEP FLOW */
+.steps-section{padding:16px 20px;}
+.steps-row{display:flex;align-items:flex-start;flex-wrap:wrap;gap:0;margin-bottom:16px;}
+.step-node{display:flex;flex-direction:column;align-items:center;cursor:pointer;}
+.step-node:hover .sp{filter:brightness(1.12);}
+.sp{width:120px;padding:8px 10px;border-radius:5px;border:1.5px solid;transition:all .12s;}
+.sp.complete{background:var(--s2);border-color:#3a5a40;}
+.sp.active{background:#1d1a08;border-color:var(--gold);animation:stepGlow 2s ease infinite;}
+.sp.pending{background:var(--s2);border-color:var(--border);}
+.sp.selected{outline:2px solid var(--blue);outline-offset:2px;}
+@keyframes stepGlow{0%,100%{box-shadow:0 0 8px #d4a84325;}50%{box-shadow:0 0 18px #d4a84355;}}
+.s-row{display:flex;align-items:center;gap:4px;margin-bottom:3px;}
+.s-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+.s-dot.complete{background:var(--green);}
+.s-dot.active{background:var(--gold);animation:dotPulse 1.5s ease infinite;}
+.s-dot.pending{background:var(--text4);}
+@keyframes dotPulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+.s-st{font-size:8px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;}
+.s-st.complete{color:var(--green);}
+.s-st.active{color:var(--gold);}
+.s-st.pending{color:var(--text3);}
+.s-label{font-size:11px;font-weight:600;line-height:1.3;margin-bottom:2px;}
+.s-label.pending{color:var(--text3);}
+.s-time{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text2);}
+.s-elapsed{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--gold);margin-top:1px;}
+.s-arr{display:flex;align-items:center;padding:0 4px;margin-top:11px;}
+.s-arr.done path{stroke:var(--gold-d);}
+.s-arr.pending path{stroke:var(--border);}
+
+/* STEP DETAIL */
+.step-detail{background:var(--s1);border:1px solid var(--border);border-radius:7px;padding:14px 16px;}
+.sdp-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;}
+.sdp-status{display:inline-flex;align-items:center;gap:5px;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px;}
+.sdp-name{font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;line-height:1.1;}
+.sdp-close{background:none;border:1px solid var(--border);color:var(--text2);width:24px;height:24px;border-radius:4px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.sdp-close:hover{border-color:var(--gold);color:var(--gold);}
+.sdp-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px;}
+.sdp-lbl{font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:3px;}
+.sdp-val{font-size:12px;color:var(--text2);line-height:1.4;}
+.sdp-val.hi{color:var(--text1);font-weight:600;}
+.sdp-val.gold{color:var(--gold);}
+.sdp-tag{display:inline-block;background:var(--s3);border:1px solid var(--border);border-radius:3px;padding:1px 6px;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--text2);margin:2px 2px 0 0;}
+.sdp-note{border-top:1px solid var(--border);padding-top:10px;font-size:12px;color:var(--text2);line-height:1.5;}
+.sdp-note strong{color:var(--text1);}
+
+.divider{height:1px;background:var(--border);margin:0 20px;}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:10px;color:var(--text3);}
+.hint-sm{font-size:12px;color:var(--text3);padding:12px 0 0;}
+</style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="logo">
+    <div class="logo-mark">GD</div>
+    <div class="logo-text">Gold Drop <span class="logo-sub">/ Lot Journey Tracker</span></div>
+  </div>
+  <div class="hdr-right">
+    <span class="mock-badge">Mock Data</span>
+    <span class="hdr-clock" id="clock">—</span>
+  </div>
+</header>
+
+<div class="app">
+  <aside class="sb">
+    <div class="sb-head">
+      <div class="mode-toggle">
+        <button class="mode-btn active" id="mode-lot" onclick="switchMode('lot')">By Lot</button>
+        <button class="mode-btn" id="mode-run" onclick="switchMode('run')">By Run</button>
+      </div>
+      <div class="sb-search">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="sb-search" placeholder="Search…" oninput="filterList(this.value)">
+      </div>
+    </div>
+    <div class="sb-list" id="sb-list"></div>
+  </aside>
+  <main class="main" id="main"></main>
+</div>
+
+<script>
+const NOW = new Date('2025-04-25T14:30:00');
+
+// ─── STEP DEFINITIONS ───────────────────────────────────────────────────────
+const TRUNK_STEPS = {
+  purchase: [
+    {id:'source',     label:'Sourced',         app:['standalone-purchasing-agent-app','Field Intake']},
+    {id:'declared',   label:'Declared',          app:['Biomass Pipeline','Purchases']},
+    {id:'in_testing', label:'In Testing',        app:['Biomass Pipeline','Purchases']},
+    {id:'committed',  label:'Committed',          app:['Biomass Pipeline','Purchases']},
+    {id:'approved',   label:'Approved',           app:['Purchases list']},
+  ],
+  receiving: [
+    {id:'scheduled',    label:'Delivery Scheduled', app:['Purchases → Edit']},
+    {id:'delivered',    label:'Delivered',           app:['standalone-receiving-intake-app']},
+    {id:'lots_created', label:'Lots Created',        app:['Inventory','Purchases → Edit']},
+    {id:'on_hand',      label:'On Hand',             app:['Inventory','Floor Ops']},
+  ],
+};
+
+const RUN_STEPS = {
+  extraction: [
+    {id:'charged',    label:'Lot Charged',     app:['Inventory → Charge','/scan/lot/<id>']},
+    {id:'queued',     label:'Reactor Queue',   app:['Floor Ops','standalone-extraction-lab-app']},
+    {id:'in_reactor', label:'In Reactor',      app:['Floor Ops','standalone-extraction-lab-app']},
+    {id:'running',    label:'Running',          app:['Floor Ops','standalone-extraction-lab-app']},
+    {id:'booth',      label:'Booth SOP',        app:['standalone-extraction-lab-app']},
+    {id:'results',    label:'Results Recorded', app:['Runs','standalone-extraction-lab-app']},
+  ],
+  production: [
+    {id:'in_queue', label:'Queue Assigned',  app:['Downstream Queues']},
+    {id:'in_prod',  label:'In Production',   app:['GoldDrop Production Queue']},
+    {id:'released', label:'Released / Sold', app:['main app']},
+  ],
+};
+
+const PP_STEPS = {
+  thca: [
+    {id:'pp_type',    label:'Run Type Set',    app:['Runs']},
+    {id:'pp_oven',    label:'THCa Oven (16h)',  app:['main app']},
+    {id:'pp_mill',    label:'Milled',           app:['main app']},
+    {id:'pp_decision',label:'Product Decision', app:['main app']},
+    {id:'pp_routed',  label:'Queue Routed',     app:['Downstream Queues']},
+  ],
+  hte: [
+    {id:'pp_type',   label:'Run Type Set',       app:['Runs']},
+    {id:'pp_land',   label:'Landing Zone',        app:['Downstream Queues']},
+    {id:'pp_offgas', label:'Off-Gas (48h)',        app:['Downstream Queues']},
+    {id:'pp_test',   label:'Testing Submitted',   app:['Runs']},
+    {id:'pp_clean',  label:'Clean Check',          app:['Runs']},
+    {id:'pp_refine', label:'Terp Refinement',     app:['main app']},
+    {id:'pp_oil',    label:'Oil Evaluation',      app:['main app']},
+    {id:'pp_routed', label:'Queue Routed',         app:['Downstream Queues']},
+  ],
+  pot_pour: [
+    {id:'pp_type',   label:'Run Type Set',      app:['Runs']},
+    {id:'pp_offgas', label:'Off-Gas (10 days)', app:['Downstream Queues']},
+    {id:'pp_cent',   label:'Centrifuge',         app:['main app']},
+    {id:'pp_wts',    label:'Weights Recorded',   app:['Runs']},
+  ],
+};
+
+// ─── LOTS ────────────────────────────────────────────────────────────────────
+const LOTS = [
+  {
+    id:'LOT-2504-001', strain:'Granddaddy Purp', supplier:'Mountain Peak Farms',
+    buyer:'M. Rodriguez', purchaseWeight:800, deliveredWeight:null, thcPct:null, pricePerLb:385,
+    location:'—', activePhase:'purchase', runIds:[],
+    remainder:null,
+    trunkSteps:{
+      source:    {status:'complete',ts:'2025-04-18T09:00',by:'M. Rodriguez',note:'Field intake app.'},
+      declared:  {status:'complete',ts:'2025-04-18T09:20',by:'M. Rodriguez',note:'$385/lb · 800 lbs est.'},
+      in_testing:{status:'active',  ts:'2025-04-20T14:00',by:'Encore Labs', note:'Sample submitted Apr 20. Results expected Apr 26.'},
+      committed: {status:'pending', ts:null,by:null,note:''},
+      approved:  {status:'pending', ts:null,by:null,note:''},
+      scheduled: {status:'pending', ts:null,by:null,note:''},
+      delivered: {status:'pending', ts:null,by:null,note:''},
+      lots_created:{status:'pending',ts:null,by:null,note:''},
+      on_hand:   {status:'pending', ts:null,by:null,note:''},
+    }
+  },
+  {
+    id:'LOT-2504-002', strain:'Wedding Cake', supplier:'Valley Verde Farms',
+    buyer:'K. Williams', purchaseWeight:1200, deliveredWeight:1218, thcPct:26.4, pricePerLb:395,
+    location:'Bay 3, Section A', activePhase:'receiving', runIds:['RUN-AGG'],
+    remainder:null,
+    trunkSteps:{
+      source:    {status:'complete',ts:'2025-04-05T10:00',by:'K. Williams',note:'Spreadsheet import.'},
+      declared:  {status:'complete',ts:'2025-04-05T10:30',by:'K. Williams',note:'$395/lb · 1,200 lbs est.'},
+      in_testing:{status:'complete',ts:'2025-04-07T09:00',by:'Encore Labs', note:'26.4% THC. Excellent profile.'},
+      committed: {status:'complete',ts:'2025-04-09T11:00',by:'J. Martinez',note:'Committed via pipeline.'},
+      approved:  {status:'complete',ts:'2025-04-09T11:00',by:'J. Martinez',note:'Auto-approved.'},
+      scheduled: {status:'complete',ts:'2025-04-10T14:00',by:'J. Martinez',note:'ETA Apr 18.'},
+      delivered: {status:'complete',ts:'2025-04-18T08:30',by:'T. Nguyen',  note:'1,218 lbs actual. 5 photos.'},
+      lots_created:{status:'complete',ts:'2025-04-18T09:15',by:'T. Nguyen',note:'2 lots: A 600 lb · B 618 lb.'},
+      on_hand:   {status:'active',  ts:'2025-04-18T09:30',by:'T. Nguyen',  note:'Bay 3, Section A. 88 lbs allocated to RUN-AGG, 1,130 lbs remaining on hand.'},
+    }
+  },
+  {
+    id:'LOT-2504-003', strain:'Gelato #41', supplier:'High Desert Farms',
+    buyer:'M. Rodriguez', purchaseWeight:950, deliveredWeight:963, thcPct:24.2, pricePerLb:420,
+    location:'Reactor 2', activePhase:'extraction', runIds:['RUN-G01'],
+    remainder:{lbs:513, status:'on_hand', note:'Lots B and C (513 lbs) awaiting charge. Bay 4, Section B.'},
+    trunkSteps:{
+      source:    {status:'complete',ts:'2025-03-10T09:00',by:'M. Rodriguez',note:'Field intake app.'},
+      declared:  {status:'complete',ts:'2025-03-10T09:20',by:'M. Rodriguez',note:'$420/lb · 950 lbs est.'},
+      in_testing:{status:'complete',ts:'2025-03-12T14:00',by:'Encore Labs', note:'24.2% THC.'},
+      committed: {status:'complete',ts:'2025-03-14T10:30',by:'J. Martinez',note:'Committed via pipeline.'},
+      approved:  {status:'complete',ts:'2025-03-14T10:30',by:'J. Martinez',note:'Auto-approved.'},
+      scheduled: {status:'complete',ts:'2025-03-20T11:00',by:'J. Martinez',note:'ETA Mar 28.'},
+      delivered: {status:'complete',ts:'2025-03-28T08:30',by:'T. Nguyen',  note:'963 lbs actual.'},
+      lots_created:{status:'complete',ts:'2025-03-28T09:00',by:'T. Nguyen',note:'3 lots: A 450 lb · B 350 lb · C 163 lb.'},
+      on_hand:   {status:'complete',ts:'2025-03-28T09:15',by:'T. Nguyen',  note:'Bay 4, Section B.'},
+    }
+  },
+  {
+    id:'LOT-2504-004', strain:'OG Kush', supplier:'Summit Genetics',
+    buyer:'K. Williams', purchaseWeight:700, deliveredWeight:712, thcPct:22.8, pricePerLb:400,
+    location:'Multi-reactor', activePhase:'extraction',
+    runIds:['RUN-R01','RUN-R02','RUN-R03','RUN-R04','RUN-R05','RUN-R06','RUN-R07','RUN-AGG'],
+    remainder:{lbs:12, status:'aggregated', note:'Aggregated into RUN-AGG with Wedding Cake (88 lbs)'},
+    trunkSteps:{
+      source:    {status:'complete',ts:'2025-04-01T09:00',by:'K. Williams',note:'Direct entry.'},
+      declared:  {status:'complete',ts:'2025-04-01T09:20',by:'K. Williams',note:'$400/lb · 700 lbs est.'},
+      in_testing:{status:'complete',ts:'2025-04-03T09:00',by:'Encore Labs', note:'22.8% THC.'},
+      committed: {status:'complete',ts:'2025-04-05T10:00',by:'J. Martinez',note:'Committed via pipeline.'},
+      approved:  {status:'complete',ts:'2025-04-05T10:00',by:'J. Martinez',note:'Auto-approved.'},
+      scheduled: {status:'complete',ts:'2025-04-08T11:00',by:'J. Martinez',note:'ETA Apr 14.'},
+      delivered: {status:'complete',ts:'2025-04-14T08:30',by:'T. Nguyen',  note:'712 lbs actual.'},
+      lots_created:{status:'complete',ts:'2025-04-14T09:00',by:'T. Nguyen',note:'2 lots: A 400 lb · B 312 lb.'},
+      on_hand:   {status:'complete',ts:'2025-04-14T09:15',by:'T. Nguyen',  note:'Bay 2, Section A.'},
+    }
+  },
+  {
+    id:'LOT-2504-005', strain:'Zkittlez', supplier:'Coastal Collective',
+    buyer:'M. Rodriguez', purchaseWeight:880, deliveredWeight:895, thcPct:21.5, pricePerLb:375,
+    location:'Post-Processing Lab', activePhase:'postprocess', runIds:['RUN-Z01'],
+    remainder:null,
+    trunkSteps:{
+      source:    {status:'complete',ts:'2025-03-01T09:00',by:'M. Rodriguez',note:'Slack import.'},
+      declared:  {status:'complete',ts:'2025-03-01T10:00',by:'M. Rodriguez',note:'$375/lb.'},
+      in_testing:{status:'complete',ts:'2025-03-03T09:00',by:'Encore Labs', note:'21.5% THC.'},
+      committed: {status:'complete',ts:'2025-03-05T11:00',by:'J. Martinez',note:'Committed.'},
+      approved:  {status:'complete',ts:'2025-03-05T11:00',by:'J. Martinez',note:'Approved.'},
+      scheduled: {status:'complete',ts:'2025-03-08T11:00',by:'J. Martinez',note:'ETA Mar 15.'},
+      delivered: {status:'complete',ts:'2025-03-15T08:00',by:'T. Nguyen',  note:'895 lbs actual.'},
+      lots_created:{status:'complete',ts:'2025-03-15T09:00',by:'T. Nguyen',note:'2 lots: A 500 lb · B 395 lb.'},
+      on_hand:   {status:'complete',ts:'2025-03-15T09:20',by:'T. Nguyen',  note:'Bay 1, Section C.'},
+    }
+  },
+  {
+    id:'LOT-2504-006', strain:'Blue Dream', supplier:'Northern Lights Collective',
+    buyer:'K. Williams', purchaseWeight:1100, deliveredWeight:1090, thcPct:23.1, pricePerLb:360,
+    location:'Post-Processing Lab', activePhase:'postprocess', runIds:['RUN-BD01'],
+    remainder:null,
+    trunkSteps:{
+      source:    {status:'complete',ts:'2025-02-15T09:00',by:'K. Williams',note:'Direct entry.'},
+      declared:  {status:'complete',ts:'2025-02-15T09:30',by:'K. Williams',note:'$360/lb.'},
+      in_testing:{status:'complete',ts:'2025-02-17T10:00',by:'Encore Labs', note:'23.1% THC.'},
+      committed: {status:'complete',ts:'2025-02-19T10:00',by:'J. Martinez',note:'Committed.'},
+      approved:  {status:'complete',ts:'2025-02-19T10:00',by:'J. Martinez',note:'Approved.'},
+      scheduled: {status:'complete',ts:'2025-02-21T10:00',by:'J. Martinez',note:'ETA Mar 1.'},
+      delivered: {status:'complete',ts:'2025-03-01T08:00',by:'T. Nguyen',  note:'1,090 lbs actual.'},
+      lots_created:{status:'complete',ts:'2025-03-01T09:00',by:'T. Nguyen',note:'2 lots: A 550 lb · B 540 lb.'},
+      on_hand:   {status:'complete',ts:'2025-03-01T09:20',by:'T. Nguyen',  note:'Bay 5, Section A.'},
+    }
+  },
+  {
+    id:'LOT-2504-007', strain:'Runtz', supplier:'Desert Star Farms',
+    buyer:'M. Rodriguez', purchaseWeight:600, deliveredWeight:608, thcPct:20.9, pricePerLb:350,
+    location:'GoldDrop Production Queue', activePhase:'production', runIds:['RUN-RT01'],
+    remainder:null,
+    trunkSteps:{
+      source:    {status:'complete',ts:'2025-01-20T09:00',by:'M. Rodriguez',note:'Slack import.'},
+      declared:  {status:'complete',ts:'2025-01-20T10:00',by:'M. Rodriguez',note:'$350/lb.'},
+      in_testing:{status:'complete',ts:'2025-01-22T09:00',by:'Field test',  note:'~21% field test.'},
+      committed: {status:'complete',ts:'2025-01-24T10:00',by:'J. Martinez',note:'Committed.'},
+      approved:  {status:'complete',ts:'2025-01-24T10:00',by:'J. Martinez',note:'Approved.'},
+      scheduled: {status:'complete',ts:'2025-01-25T10:00',by:'J. Martinez',note:'ETA Feb 5.'},
+      delivered: {status:'complete',ts:'2025-02-05T08:00',by:'T. Nguyen',  note:'608 lbs actual.'},
+      lots_created:{status:'complete',ts:'2025-02-05T09:00',by:'T. Nguyen',note:'2 lots: A 350 lb · B 258 lb.'},
+      on_hand:   {status:'complete',ts:'2025-02-05T09:20',by:'T. Nguyen',  note:'Bay 6, Section B.'},
+    }
+  },
+  {
+    id:'LOT-2504-008', strain:'MAC 1', supplier:'High Desert Farms',
+    buyer:'K. Williams', purchaseWeight:750, deliveredWeight:761, thcPct:27.3, pricePerLb:440,
+    location:'Released', activePhase:'production', runIds:['RUN-M01'],
+    remainder:null,
+    trunkSteps:{
+      source:    {status:'complete',ts:'2025-01-05T09:00',by:'K. Williams',note:'Field intake app.'},
+      declared:  {status:'complete',ts:'2025-01-05T09:30',by:'K. Williams',note:'$440/lb · premium MAC 1.'},
+      in_testing:{status:'complete',ts:'2025-01-07T10:00',by:'Encore Labs', note:'27.3% THC. Full terp profile.'},
+      committed: {status:'complete',ts:'2025-01-09T11:00',by:'J. Martinez',note:'Committed.'},
+      approved:  {status:'complete',ts:'2025-01-09T11:00',by:'J. Martinez',note:'Approved.'},
+      scheduled: {status:'complete',ts:'2025-01-10T11:00',by:'J. Martinez',note:'ETA Jan 18.'},
+      delivered: {status:'complete',ts:'2025-01-18T08:30',by:'T. Nguyen',  note:'761 lbs actual.'},
+      lots_created:{status:'complete',ts:'2025-01-18T09:00',by:'T. Nguyen',note:'2 lots: A 400 lb · B 361 lb.'},
+      on_hand:   {status:'complete',ts:'2025-01-18T09:15',by:'T. Nguyen',  note:'Bay 1, Section A.'},
+    }
+  },
+];
+
+// ─── RUNS ────────────────────────────────────────────────────────────────────
+function mkExt(charged,queued,inR,running,booth,results){return{charged,queued,in_reactor:inR,running,booth,results};}
+function sd(status,ts,by,note){return{status,ts,by,note};}
+const C='complete',A='active',P='pending';
+
+const RUNS = [
+  // OG Kush - 4 complete runs
+  {
+    id:'RUN-R01', sourceLots:[{lotId:'LOT-2504-004',strain:'OG Kush',lbs:100}], totalLbs:100,
+    reactor:'Reactor 1', operator:'R. Santos', status:'complete', ppPath:'thca', ppQueue:'Liquid Diamonds',
+    startTs:'2025-04-10T08:30', completeTs:'2025-04-16T14:00',
+    results:{wetThca:14.2,wetHte:1.8},
+    phases:{
+      extraction:{status:'complete',steps:mkExt(
+        sd(C,'2025-04-10T07:30','R. Santos','100 lbs, Reactor 1.'),
+        sd(C,'2025-04-10T07:45','R. Santos','First in queue.'),
+        sd(C,'2025-04-10T08:00','R. Santos','Loaded and sealed.'),
+        sd(C,'2025-04-10T08:30','R. Santos','Run started.'),
+        sd(C,'2025-04-10T09:00','R. Santos','17 steps complete. No deviations.'),
+        sd(C,'2025-04-10T16:30','R. Santos','Wet THCa: 14.2 lbs. Wet HTE: 1.8 lbs.'))},
+      postprocess:{status:'complete',path:'thca',steps:{
+        pp_type:    sd(C,'2025-04-11T08:00','Ops Team','200 lb Minor Run — THCa path.'),
+        pp_oven:    sd(C,'2025-04-11T09:00','Post-Proc','16h oven complete Apr 12.'),
+        pp_mill:    sd(C,'2025-04-12T11:00','Post-Proc','Milling complete.'),
+        pp_decision:sd(C,'2025-04-13T09:00','Ops Team', 'Liquid Diamonds path selected. Decarb sample photo uploaded.'),
+        pp_routed:  sd(C,'2025-04-13T10:00','Ops Team', 'Routed to LD batch LD-2504-015.'),
+      }},
+      production:{status:'complete',steps:{
+        in_queue:sd(C,'2025-04-13T10:30','Ops Team',  'Assigned to LD batch LD-2504-015.'),
+        in_prod: sd(C,'2025-04-15T09:00','Post-Proc', 'LD production complete.'),
+        released:sd(C,'2025-04-16T14:00','J. Martinez','LD-2504-015 released.'),
+      }},
+    }
+  },
+  {
+    id:'RUN-R02', sourceLots:[{lotId:'LOT-2504-004',strain:'OG Kush',lbs:100}], totalLbs:100,
+    reactor:'Reactor 2', operator:'K. Williams', status:'complete', ppPath:'hte', ppQueue:'Terp Strip',
+    startTs:'2025-04-12T08:30', completeTs:'2025-04-18T11:00',
+    results:{wetThca:10.0,wetHte:9.5},
+    phases:{
+      extraction:{status:'complete',steps:mkExt(
+        sd(C,'2025-04-12T07:30','K. Williams','100 lbs.'),
+        sd(C,'2025-04-12T07:45','K. Williams','Queued.'),
+        sd(C,'2025-04-12T08:00','K. Williams','Loaded.'),
+        sd(C,'2025-04-12T08:30','K. Williams','Run complete.'),
+        sd(C,'2025-04-12T09:00','K. Williams','17 steps. No deviations.'),
+        sd(C,'2025-04-12T16:00','K. Williams','Wet THCa: 10.0. Wet HTE: 9.5.'))},
+      postprocess:{status:'complete',path:'hte',steps:{
+        pp_type:  sd(C,'2025-04-13T08:00','Ops Team','HTE path.'),
+        pp_land:  sd(C,'2025-04-13T09:00','Post-Proc','Landing zone.'),
+        pp_offgas:sd(C,'2025-04-13T09:00','Post-Proc','48h off-gas complete Apr 15.'),
+        pp_test:  sd(C,'2025-04-15T10:00','Lab Team', 'Testing submitted.'),
+        pp_clean: sd(C,'2025-04-18T10:00','Lab Team', 'NOT CLEAN — fails pesticide panel. Routed to Terp Strip.'),
+        pp_refine:sd(P,null,null,''),
+        pp_oil:   sd(P,null,null,''),
+        pp_routed:sd(C,'2025-04-18T11:00','Ops Team','Routed → Terp Strip / CDT Cage.'),
+      }},
+      production:{status:'active',steps:{
+        in_queue:sd(C,'2025-04-18T11:30','Ops Team','Terp Strip Cage queue.'),
+        in_prod: sd(A,'2025-04-18T12:00','Post-Proc','Awaiting terp strip processing.'),
+        released:sd(P,null,null,''),
+      }},
+    }
+  },
+  {
+    id:'RUN-R03', sourceLots:[{lotId:'LOT-2504-004',strain:'OG Kush',lbs:100}], totalLbs:100,
+    reactor:'Reactor 3', operator:'R. Santos', status:'complete', ppPath:'hte', ppQueue:'GoldDrop Production',
+    startTs:'2025-04-14T08:30', completeTs:'2025-04-22T14:00',
+    results:{wetThca:9.8,wetHte:10.2},
+    phases:{
+      extraction:{status:'complete',steps:mkExt(
+        sd(C,'2025-04-14T07:30','R. Santos','100 lbs.'),sd(C,'2025-04-14T07:45','R. Santos','Queued.'),
+        sd(C,'2025-04-14T08:00','R. Santos','Loaded.'),sd(C,'2025-04-14T08:30','R. Santos','Complete.'),
+        sd(C,'2025-04-14T09:00','R. Santos','17 steps.'),sd(C,'2025-04-14T16:00','R. Santos','HTE: 10.2. THCa: 9.8.'))},
+      postprocess:{status:'complete',path:'hte',steps:{
+        pp_type:  sd(C,'2025-04-15T08:00','Ops Team','HTE path.'),
+        pp_land:  sd(C,'2025-04-15T09:00','Post-Proc','Landing zone.'),
+        pp_offgas:sd(C,'2025-04-15T09:00','Post-Proc','48h complete Apr 17.'),
+        pp_test:  sd(C,'2025-04-17T10:00','Lab Team', 'Submitted.'),
+        pp_clean: sd(C,'2025-04-20T10:00','Lab Team', 'CLEAN.'),
+        pp_refine:sd(C,'2025-04-21T09:00','Post-Proc','Refinement complete.'),
+        pp_oil:   sd(C,'2025-04-21T11:00','Post-Proc','Clear oil. No Prescott needed.'),
+        pp_routed:sd(C,'2025-04-22T09:00','Ops Team', 'Does not meet LL standard → GoldDrop.'),
+      }},
+      production:{status:'active',steps:{
+        in_queue:sd(C,'2025-04-22T09:30','Ops Team','GoldDrop Production Queue.'),
+        in_prod: sd(A,'2025-04-22T14:00','Ops Team','Batch formulation scheduled.'),
+        released:sd(P,null,null,''),
+      }},
+    }
+  },
+  {
+    id:'RUN-R04', sourceLots:[{lotId:'LOT-2504-004',strain:'OG Kush',lbs:100}], totalLbs:100,
+    reactor:'Reactor 1', operator:'K. Williams', status:'complete', ppPath:'thca', ppQueue:'Wholesale THCa',
+    startTs:'2025-04-16T08:30', completeTs:'2025-04-20T10:00',
+    results:{wetThca:13.5,wetHte:2.0},
+    phases:{
+      extraction:{status:'complete',steps:mkExt(
+        sd(C,'2025-04-16T07:30','K. Williams','100 lbs.'),sd(C,'2025-04-16T07:45','K. Williams','Queued.'),
+        sd(C,'2025-04-16T08:00','K. Williams','Loaded.'),sd(C,'2025-04-16T08:30','K. Williams','Complete.'),
+        sd(C,'2025-04-16T09:00','K. Williams','17 steps.'),sd(C,'2025-04-16T16:00','K. Williams','THCa: 13.5. HTE: 2.0.'))},
+      postprocess:{status:'complete',path:'thca',steps:{
+        pp_type:    sd(C,'2025-04-17T08:00','Ops Team','THCa path.'),
+        pp_oven:    sd(C,'2025-04-17T09:00','Post-Proc','16h oven complete Apr 18.'),
+        pp_mill:    sd(C,'2025-04-18T11:00','Post-Proc','Milled.'),
+        pp_decision:sd(C,'2025-04-19T09:00','Ops Team', 'Sell THCa wholesale.'),
+        pp_routed:  sd(C,'2025-04-19T10:00','Ops Team', 'Wholesale THCa order placed.'),
+      }},
+      production:{status:'complete',steps:{
+        in_queue:sd(C,'2025-04-19T10:30','Ops Team',   'Wholesale order.'),
+        in_prod: sd(C,'2025-04-19T14:00','Sales',       'Order processed.'),
+        released:sd(C,'2025-04-20T10:00','J. Martinez', 'THCa batch shipped.'),
+      }},
+    }
+  },
+  // OG Kush - active run (booth SOP)
+  {
+    id:'RUN-R05', sourceLots:[{lotId:'LOT-2504-004',strain:'OG Kush',lbs:100}], totalLbs:100,
+    reactor:'Reactor 1', operator:'R. Santos', status:'booth_active', ppPath:null, ppQueue:null,
+    startTs:'2025-04-25T08:30', completeTs:null, results:null,
+    phases:{
+      extraction:{status:'active',steps:mkExt(
+        sd(C,'2025-04-25T07:30','R. Santos','100 lbs, Reactor 1.'),
+        sd(C,'2025-04-25T07:45','R. Santos','First in queue.'),
+        sd(C,'2025-04-25T08:00','R. Santos','Loaded and sealed.'),
+        sd(C,'2025-04-25T08:30','R. Santos','Run started.'),
+        sd(A,'2025-04-25T09:00','R. Santos','Step 14 of 17: Flush Cycle — Resuming flow to recovery. Supervisor deviation flag pending at Step 10 (solvent temp -39°F vs -40°F required).'),
+        sd(P,null,null,''))},
+      postprocess:{status:'pending',path:null,steps:{}},
+      production:{status:'pending',steps:{in_queue:sd(P,null,null,''),in_prod:sd(P,null,null,''),released:sd(P,null,null,'')}},
+    }
+  },
+  // OG Kush - queued
+  {
+    id:'RUN-R06', sourceLots:[{lotId:'LOT-2504-004',strain:'OG Kush',lbs:100}], totalLbs:100,
+    reactor:'Reactor 2', operator:null, status:'queued', ppPath:null, ppQueue:null,
+    startTs:null, completeTs:null, results:null,
+    phases:{
+      extraction:{status:'active',steps:mkExt(
+        sd(C,'2025-04-25T07:00','K. Williams','100 lbs, Reactor 2.'),
+        sd(A,'2025-04-25T07:15','K. Williams','Waiting for Reactor 2 availability.'),
+        sd(P,null,null,''),sd(P,null,null,''),sd(P,null,null,''),sd(P,null,null,''))},
+      postprocess:{status:'pending',path:null,steps:{}},
+      production:{status:'pending',steps:{in_queue:sd(P,null,null,''),in_prod:sd(P,null,null,''),released:sd(P,null,null,'')}},
+    }
+  },
+  // OG Kush - pending
+  {
+    id:'RUN-R07', sourceLots:[{lotId:'LOT-2504-004',strain:'OG Kush',lbs:100}], totalLbs:100,
+    reactor:null, operator:null, status:'pending', ppPath:null, ppQueue:null,
+    startTs:null, completeTs:null, results:null,
+    phases:{
+      extraction:{status:'pending',steps:mkExt(sd(P,null,null,''),sd(P,null,null,''),sd(P,null,null,''),sd(P,null,null,''),sd(P,null,null,''),sd(P,null,null,''))},
+      postprocess:{status:'pending',path:null,steps:{}},
+      production:{status:'pending',steps:{in_queue:sd(P,null,null,''),in_prod:sd(P,null,null,''),released:sd(P,null,null,'')}},
+    }
+  },
+  // Aggregate run
+  {
+    id:'RUN-AGG',
+    sourceLots:[{lotId:'LOT-2504-004',strain:'OG Kush',lbs:12},{lotId:'LOT-2504-002',strain:'Wedding Cake',lbs:88}],
+    totalLbs:100, reactor:null, operator:null, status:'pending', ppPath:null, ppQueue:null,
+    startTs:null, completeTs:null, results:null,
+    phases:{
+      extraction:{status:'pending',steps:mkExt(
+        sd(P,null,null,'Pending aggregation. OG Kush remainder 12 lbs + Wedding Cake 88 lbs.'),
+        sd(P,null,null,''),sd(P,null,null,''),sd(P,null,null,''),sd(P,null,null,''),sd(P,null,null,''))},
+      postprocess:{status:'pending',path:null,steps:{}},
+      production:{status:'pending',steps:{in_queue:sd(P,null,null,''),in_prod:sd(P,null,null,''),released:sd(P,null,null,'')}},
+    }
+  },
+  // Gelato #41 - running
+  {
+    id:'RUN-G01', sourceLots:[{lotId:'LOT-2504-003',strain:'Gelato #41',lbs:450}], totalLbs:450,
+    reactor:'Reactor 2', operator:'K. Williams', status:'running', ppPath:null, ppQueue:null,
+    startTs:'2025-04-25T11:30', completeTs:null, results:null,
+    phases:{
+      extraction:{status:'active',steps:mkExt(
+        sd(C,'2025-04-25T08:00','K. Williams','450 lbs, Lot A, Reactor 2.'),
+        sd(C,'2025-04-25T08:15','K. Williams','Queued.'),
+        sd(C,'2025-04-25T10:00','K. Williams','Loaded and sealed.'),
+        sd(A,'2025-04-25T11:30','K. Williams','Solvent charged (500 lbs). Heat exchangers on. Initial soak in progress.'),
+        sd(P,null,null,''),sd(P,null,null,''))},
+      postprocess:{status:'pending',path:null,steps:{}},
+      production:{status:'pending',steps:{in_queue:sd(P,null,null,''),in_prod:sd(P,null,null,''),released:sd(P,null,null,'')}},
+    }
+  },
+  // Zkittlez - complete, HTE refinement
+  {
+    id:'RUN-Z01', sourceLots:[{lotId:'LOT-2504-005',strain:'Zkittlez',lbs:500}], totalLbs:500,
+    reactor:'Reactor 3', operator:'K. Williams', status:'complete', ppPath:'hte', ppQueue:null,
+    startTs:'2025-04-08T09:30', completeTs:null, results:{wetThca:12.1,wetHte:38.5},
+    phases:{
+      extraction:{status:'complete',steps:mkExt(
+        sd(C,'2025-04-08T07:30','K. Williams','500 lbs, Reactor 3.'),
+        sd(C,'2025-04-08T07:45','K. Williams','Queued.'),
+        sd(C,'2025-04-08T09:00','K. Williams','Loaded.'),
+        sd(C,'2025-04-08T09:30','K. Williams','Run complete.'),
+        sd(C,'2025-04-08T15:00','K. Williams','17 steps. No deviations.'),
+        sd(C,'2025-04-08T16:00','K. Williams','Wet HTE: 38.5 lbs. Wet THCa: 12.1 lbs.'))},
+      postprocess:{status:'active',path:'hte',steps:{
+        pp_type:  sd(C,'2025-04-09T08:00','Ops Team','HTE path.'),
+        pp_land:  sd(C,'2025-04-09T09:00','Post-Proc','Landing zone.'),
+        pp_offgas:sd(C,'2025-04-09T09:00','Post-Proc','48h off-gas complete Apr 11.'),
+        pp_test:  sd(C,'2025-04-11T10:00','Lab Team', 'Submitted.'),
+        pp_clean: sd(C,'2025-04-14T11:00','Lab Team', 'CLEAN — passes all panels.'),
+        pp_refine:sd(A,'2025-04-22T09:00','Post-Proc', 'In terp tube refinement. Oil looks light and clear.'),
+        pp_oil:   sd(P,null,null,''),
+        pp_routed:sd(P,null,null,''),
+      }},
+      production:{status:'pending',steps:{in_queue:sd(P,null,null,''),in_prod:sd(P,null,null,''),released:sd(P,null,null,'')}},
+    }
+  },
+  // Blue Dream - THCa decision
+  {
+    id:'RUN-BD01', sourceLots:[{lotId:'LOT-2504-006',strain:'Blue Dream',lbs:550}], totalLbs:550,
+    reactor:'Reactor 2', operator:'R. Santos', status:'complete', ppPath:'thca', ppQueue:null,
+    startTs:'2025-03-22T09:30', completeTs:null, results:{wetThca:62.0,wetHte:8.5},
+    phases:{
+      extraction:{status:'complete',steps:mkExt(
+        sd(C,'2025-03-22T07:30','R. Santos','550 lbs, Reactor 2.'),
+        sd(C,'2025-03-22T07:45','R. Santos','Queued.'),
+        sd(C,'2025-03-22T09:00','R. Santos','Loaded.'),
+        sd(C,'2025-03-22T09:30','R. Santos','Run complete.'),
+        sd(C,'2025-03-22T15:30','R. Santos','17 steps. No deviations.'),
+        sd(C,'2025-03-22T16:00','R. Santos','Wet THCa: 62.0. Wet HTE: 8.5.'))},
+      postprocess:{status:'active',path:'thca',steps:{
+        pp_type:    sd(C,'2025-03-23T08:00','Ops Team','THCa path.'),
+        pp_oven:    sd(C,'2025-03-23T09:00','Post-Proc','16h oven complete Mar 24.'),
+        pp_mill:    sd(C,'2025-03-24T11:00','Post-Proc','Milled. Excellent crystal structure.'),
+        pp_decision:sd(A,'2025-04-24T09:00','Ops Team', 'Evaluating: Sell THCa wholesale vs. Make Liquid Diamonds. Decarb sample photo uploaded for LD review.'),
+        pp_routed:  sd(P,null,null,''),
+      }},
+      production:{status:'pending',steps:{in_queue:sd(P,null,null,''),in_prod:sd(P,null,null,''),released:sd(P,null,null,'')}},
+    }
+  },
+  // Runtz - GoldDrop queue
+  {
+    id:'RUN-RT01', sourceLots:[{lotId:'LOT-2504-007',strain:'Runtz',lbs:350}], totalLbs:350,
+    reactor:'Reactor 3', operator:'K. Williams', status:'complete', ppPath:'hte', ppQueue:'GoldDrop Production',
+    startTs:'2025-02-20T09:30', completeTs:null, results:{wetThca:8.0,wetHte:32.0},
+    phases:{
+      extraction:{status:'complete',steps:mkExt(
+        sd(C,'2025-02-20T07:30','K. Williams','350 lbs, Reactor 3.'),
+        sd(C,'2025-02-20T07:45','K. Williams','Queued.'),
+        sd(C,'2025-02-20T09:00','K. Williams','Loaded.'),
+        sd(C,'2025-02-20T09:30','K. Williams','Complete.'),
+        sd(C,'2025-02-20T15:00','K. Williams','17 steps.'),
+        sd(C,'2025-02-20T15:30','K. Williams','Wet HTE: 32.0. Wet THCa: 8.0.'))},
+      postprocess:{status:'complete',path:'hte',steps:{
+        pp_type:  sd(C,'2025-02-21T08:00','Ops Team','HTE path.'),
+        pp_land:  sd(C,'2025-02-21T09:00','Post-Proc','Landing zone.'),
+        pp_offgas:sd(C,'2025-02-21T09:00','Post-Proc','48h off-gas complete.'),
+        pp_test:  sd(C,'2025-02-23T09:00','Lab Team', 'Submitted.'),
+        pp_clean: sd(C,'2025-02-26T11:00','Lab Team', 'CLEAN.'),
+        pp_refine:sd(C,'2025-02-27T09:00','Post-Proc','Refinement complete.'),
+        pp_oil:   sd(C,'2025-02-27T11:00','Post-Proc','Clear oil. No Prescott needed.'),
+        pp_routed:sd(C,'2025-02-28T09:00','Ops Team', 'Does not meet LL → GoldDrop queue.'),
+      }},
+      production:{status:'active',steps:{
+        in_queue:sd(C,'2025-02-28T09:30','Ops Team','GoldDrop Production Queue.'),
+        in_prod: sd(A,'2025-04-20T09:00','Ops Team','Batch formulation in progress.'),
+        released:sd(P,null,null,''),
+      }},
+    }
+  },
+  // MAC 1 - released
+  {
+    id:'RUN-M01', sourceLots:[{lotId:'LOT-2504-008',strain:'MAC 1',lbs:400}], totalLbs:400,
+    reactor:'Reactor 1', operator:'R. Santos', status:'complete', ppPath:'thca', ppQueue:'Liquid Diamonds',
+    startTs:'2025-02-01T09:30', completeTs:'2025-02-20T14:00', results:{wetThca:56.0,wetHte:9.5},
+    phases:{
+      extraction:{status:'complete',steps:mkExt(
+        sd(C,'2025-02-01T07:30','R. Santos','400 lbs, Reactor 1.'),
+        sd(C,'2025-02-01T07:45','R. Santos','Priority: high.'),
+        sd(C,'2025-02-01T09:00','R. Santos','Loaded.'),
+        sd(C,'2025-02-01T09:30','R. Santos','Run complete.'),
+        sd(C,'2025-02-01T15:00','R. Santos','17 steps. Step 10 deviation approved (-39.5°F vs -40°F). Supervisor: J. Martinez.'),
+        sd(C,'2025-02-01T16:00','R. Santos','Wet THCa: 56.0. Wet HTE: 9.5. Best yield of 2025.'))},
+      postprocess:{status:'complete',path:'thca',steps:{
+        pp_type:    sd(C,'2025-02-02T08:00','Ops Team','THCa path.'),
+        pp_oven:    sd(C,'2025-02-02T09:00','Post-Proc','16h oven complete Feb 3.'),
+        pp_mill:    sd(C,'2025-02-03T11:00','Post-Proc','Milling complete.'),
+        pp_decision:sd(C,'2025-02-10T09:00','Ops Team', 'Split: 2.4 lbs → Liquid Diamonds · 52.6 lbs → Wholesale THCa.'),
+        pp_routed:  sd(C,'2025-02-10T09:30','Ops Team', 'LD batch LD-2504-012 confirmed.'),
+      }},
+      production:{status:'complete',steps:{
+        in_queue:sd(C,'2025-02-10T10:00','Ops Team',   'LD batch LD-2504-012.'),
+        in_prod: sd(C,'2025-02-14T09:00','Post-Proc',  'LD production complete.'),
+        released:sd(C,'2025-02-20T14:00','J. Martinez', 'Batch released. Wholesale THCa invoiced.'),
+      }},
+    }
+  },
+];
+
+// Derivative material lots shown as a true genealogy layer on top of source lots and runs.
+const MATERIAL_LOTS = [
+  {
+    id:'ML-HTE-R02', tracking:'HTE-2504-021', lotType:'dry_hte', displayName:'Dry HTE Output',
+    parentRunId:'RUN-R02', sourceLotIds:['LOT-2504-004'], parentMaterialLotIds:[],
+    quantity:9.5, unit:'lbs', status:'queued_for_terp_strip', currentLocation:'Terp Strip / CDT Cage',
+    notes:'Dirty HTE from RUN-R02 routed to terp strip after failed panel.'
+  },
+  {
+    id:'ML-TS-R02', tracking:'CDT-2504-004', lotType:'terp_strip_output', displayName:'Terp Strip Output',
+    parentRunId:'RUN-R02', sourceLotIds:['LOT-2504-004'], parentMaterialLotIds:['ML-HTE-R02'],
+    quantity:8.7, unit:'lbs', status:'in_progress', currentLocation:'Terp Strip / CDT Work',
+    notes:'Derived CDT / stripped output lot in active processing.'
+  },
+  {
+    id:'ML-HTE-R03', tracking:'HTE-2504-033', lotType:'dry_hte', displayName:'Dry HTE Output',
+    parentRunId:'RUN-R03', sourceLotIds:['LOT-2504-004'], parentMaterialLotIds:[],
+    quantity:10.2, unit:'lbs', status:'queued_for_gold_drop', currentLocation:'GoldDrop Production Queue',
+    notes:'Clean refined HTE queued for GoldDrop conversion.'
+  },
+  {
+    id:'ML-GD-R03', tracking:'GD-2504-021', lotType:'golddrop', displayName:'GoldDrop Batch',
+    parentRunId:'RUN-R03', sourceLotIds:['LOT-2504-004'], parentMaterialLotIds:['ML-HTE-R03'],
+    quantity:10.0, unit:'lbs', status:'in_production', currentLocation:'GoldDrop Production Queue',
+    notes:'GoldDrop batch formulation scheduled from HTE-2504-033.'
+  },
+  {
+    id:'ML-THCA-R04', tracking:'THCA-2504-044', lotType:'dry_thca', displayName:'Dry THCa Output',
+    parentRunId:'RUN-R04', sourceLotIds:['LOT-2504-004'], parentMaterialLotIds:[],
+    quantity:13.5, unit:'lbs', status:'released', currentLocation:'Wholesale THCa',
+    notes:'THCa lot released directly to wholesale.'
+  },
+  {
+    id:'ML-WT-R04', tracking:'WTHCA-2504-008', lotType:'wholesale_thca', displayName:'Wholesale THCa Lot',
+    parentRunId:'RUN-R04', sourceLotIds:['LOT-2504-004'], parentMaterialLotIds:['ML-THCA-R04'],
+    quantity:13.5, unit:'lbs', status:'released', currentLocation:'Released / Sold',
+    notes:'Final released wholesale THCa derivative lot.'
+  },
+  {
+    id:'ML-HTE-Z01', tracking:'HTE-2504-051', lotType:'dry_hte', displayName:'Dry HTE Output',
+    parentRunId:'RUN-Z01', sourceLotIds:['LOT-2504-005'], parentMaterialLotIds:[],
+    quantity:38.5, unit:'lbs', status:'in_refinement', currentLocation:'Post-Processing Lab',
+    notes:'Clean HTE in terp tube refinement.'
+  },
+  {
+    id:'ML-THCA-BD01', tracking:'THCA-2503-061', lotType:'dry_thca', displayName:'Dry THCa Output',
+    parentRunId:'RUN-BD01', sourceLotIds:['LOT-2504-006'], parentMaterialLotIds:[],
+    quantity:62.0, unit:'lbs', status:'decision_pending', currentLocation:'Post-Processing Lab',
+    notes:'Decision pending between wholesale THCa and liquid diamonds split.'
+  },
+  {
+    id:'ML-HTE-RT01', tracking:'HTE-2502-071', lotType:'dry_hte', displayName:'Dry HTE Output',
+    parentRunId:'RUN-RT01', sourceLotIds:['LOT-2504-007'], parentMaterialLotIds:[],
+    quantity:32.0, unit:'lbs', status:'queued_for_gold_drop', currentLocation:'GoldDrop Production Queue',
+    notes:'Clean HTE routed into GoldDrop queue.'
+  },
+  {
+    id:'ML-GD-RT01', tracking:'GD-2502-014', lotType:'golddrop', displayName:'GoldDrop Batch',
+    parentRunId:'RUN-RT01', sourceLotIds:['LOT-2504-007'], parentMaterialLotIds:['ML-HTE-RT01'],
+    quantity:31.2, unit:'lbs', status:'in_production', currentLocation:'GoldDrop Production Queue',
+    notes:'Batch formulation in progress.'
+  },
+  {
+    id:'ML-THCA-M01', tracking:'THCA-2502-081', lotType:'dry_thca', displayName:'Dry THCa Output',
+    parentRunId:'RUN-M01', sourceLotIds:['LOT-2504-008'], parentMaterialLotIds:[],
+    quantity:56.0, unit:'lbs', status:'split_complete', currentLocation:'Post-Processing Complete',
+    notes:'THCa output split between wholesale and liquid diamonds.'
+  },
+  {
+    id:'ML-LD-M01', tracking:'LD-2504-012', lotType:'liquid_diamonds', displayName:'Liquid Diamonds Batch',
+    parentRunId:'RUN-M01', sourceLotIds:['LOT-2504-008'], parentMaterialLotIds:['ML-THCA-M01'],
+    quantity:2.4, unit:'lbs', status:'released', currentLocation:'Released / Sold',
+    notes:'Released liquid diamonds batch derived from THCa output.'
+  },
+  {
+    id:'ML-WT-M01', tracking:'WTHCA-2502-019', lotType:'wholesale_thca', displayName:'Wholesale THCa Lot',
+    parentRunId:'RUN-M01', sourceLotIds:['LOT-2504-008'], parentMaterialLotIds:['ML-THCA-M01'],
+    quantity:52.6, unit:'lbs', status:'released', currentLocation:'Released / Sold',
+    notes:'Wholesale THCa derivative lot invoiced and released.'
+  }
+];
+
+// ─── STATE ────────────────────────────────────────────────────────────────────
+let mode = 'lot';
+let selectedLot = null;
+let selectedRun = null;
+let prevLotId = null;
+let trunkPhase = null;
+let runPhase = null;
+let selectedStep = null;
+let filterQ = '';
+let filteredLots = [...LOTS];
+let filteredRuns = [...RUNS];
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+function fmt(ts){
+  if(!ts) return '—';
+  const d=new Date(ts);
+  const m=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${m[d.getMonth()]} ${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+function elapsed(ts,end){
+  if(!ts) return '—';
+  const ms=(end?new Date(end):NOW)-new Date(ts);
+  const h=Math.floor(ms/3600000), m=Math.floor((ms%3600000)/60000);
+  if(h>=24){const d=Math.floor(h/24);return `${d}d ${h%24}h`;}
+  if(h>0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+function runStatusColor(s){
+  return {running:'var(--green-l)',booth_active:'var(--purple)',queued:'var(--blue)',
+          pending:'var(--text3)',complete:'var(--gold)'}[s]||'var(--text3)';
+}
+function runStatusLabel(s){
+  return {running:'Running',booth_active:'Booth Active',queued:'Queued',
+          pending:'Pending',complete:'Complete'}[s]||s;
+}
+function phaseStatusOf(run,ph){
+  return run.phases[ph]?.status || 'pending';
+}
+function stepsForPhase(run,ph){
+  if(ph==='postprocess'){
+    const path=run.ppPath||(run.phases.postprocess?.path);
+    return path ? (PP_STEPS[path]||[]) : [];
+  }
+  return RUN_STEPS[ph]||[];
+}
+function lotPhaseStatus(lot){
+  const ap=lot.activePhase;
+  const p={'purchase':'In Testing','receiving':'On Hand','extraction':'In Extraction','postprocess':'Post-Processing','production':'In Production'};
+  return p[ap]||ap;
+}
+function getRunsForLot(lot){
+  return lot.runIds.map(id=>RUNS.find(r=>r.id===id)).filter(Boolean);
+}
+function pctComplete(steps,stepData){
+  if(!steps.length)return 0;
+  const done=steps.filter(s=>(stepData[s.id]?.status||'pending')==='complete').length;
+  return Math.round(done/steps.length*100);
+}
+function materialTypeLabel(t){
+  return {
+    biomass:'Biomass',
+    dry_hte:'Dry HTE',
+    dry_thca:'Dry THCa',
+    golddrop:'GoldDrop',
+    liquid_diamonds:'Liquid Diamonds',
+    wholesale_thca:'Wholesale THCa',
+    terp_strip_output:'Terp Strip Output',
+  }[t]||t.replace(/_/g,' ');
+}
+function materialStatusLabel(s){
+  return {
+    queued_for_terp_strip:'Queued for terp strip',
+    queued_for_gold_drop:'Queued for GoldDrop',
+    in_production:'In production',
+    in_progress:'In progress',
+    in_refinement:'In refinement',
+    decision_pending:'Decision pending',
+    split_complete:'Split complete',
+    released:'Released',
+  }[s]||s.replace(/_/g,' ');
+}
+function getOutputLotsForRun(runId){
+  return MATERIAL_LOTS.filter(l=>l.parentRunId===runId);
+}
+function getChildLots(materialLot){
+  return MATERIAL_LOTS.filter(l=>(l.parentMaterialLotIds||[]).includes(materialLot.id));
+}
+function getDescendantLotsForSourceLot(lotId){
+  return MATERIAL_LOTS.filter(l=>(l.sourceLotIds||[]).includes(lotId));
+}
+function getRootDerivativeLotsForSourceLot(lotId){
+  return getDescendantLotsForSourceLot(lotId).filter(l=>!(l.parentMaterialLotIds||[]).length);
+}
+function geneCardHTML(lot){
+  const childLots=getChildLots(lot);
+  return `<div class="gene-card">
+    <div class="gene-top">
+      <div>
+        <div class="gene-id">${lot.tracking}</div>
+        <div class="gene-name">${lot.displayName}</div>
+      </div>
+      <div class="gene-type">${materialTypeLabel(lot.lotType)}</div>
+    </div>
+    <div class="gene-meta">
+      <div><strong>Qty:</strong> ${lot.quantity} ${lot.unit}</div>
+      <div><strong>Status:</strong> ${materialStatusLabel(lot.status)}</div>
+      <div><strong>Location:</strong> ${lot.currentLocation}</div>
+      <div><strong>Source Run:</strong> ${lot.parentRunId}</div>
+      ${childLots.length?`<div><strong>Descendants:</strong> ${childLots.map(c=>c.tracking).join(', ')}</div>`:''}
+      ${lot.notes?`<div style="margin-top:4px;">${lot.notes}</div>`:''}
+    </div>
+    <div class="gene-links">
+      ${lot.sourceLotIds.map(id=>`<button class="gene-link" onclick="navigateToLot('${id}')">Source ${id}</button>`).join('')}
+      <button class="gene-link" onclick="selectRun('${lot.parentRunId}',null)">${lot.parentRunId}</button>
+    </div>
+  </div>`;
+}
+function renderMaterialLotsSectionHTML(title,lots,emptyText){
+  return `<div class="runs-section">
+    <div class="section-label">${title}</div>
+    ${lots.length?`<div class="gene-grid">${lots.map(geneCardHTML).join('')}</div>`:`<div class="gene-empty">${emptyText}</div>`}
+  </div>`;
+}
+
+// ─── SIDEBAR ─────────────────────────────────────────────────────────────────
+function renderSidebar(){
+  document.getElementById('mode-lot').classList.toggle('active',mode==='lot');
+  document.getElementById('mode-run').classList.toggle('active',mode==='run');
+  const list=document.getElementById('sb-list');
+  if(mode==='lot') renderLotSidebar(list);
+  else renderRunSidebar(list);
+}
+
+function lotChipStyle(lot){
+  const s={'purchase':'#2a2510;border:1px solid #8a6820;color:#d4a843',
+            'receiving':'#102518;border:1px solid #2a6040;color:#6aaa78',
+            'extraction':'#220f30;border:1px solid #6a3e80;color:#ab7ebb',
+            'postprocess':'#2a1508;border:1px solid #8a4a1a;color:#e09060',
+            'production':'#081e22;border:1px solid #2a5a6a;color:#5baaba'};
+  return s[lot.activePhase]||'background:#222;color:#888';
+}
+
+function renderLotSidebar(list){
+  list.innerHTML=filteredLots.map(l=>{
+    const active=selectedLot?.id===l.id;
+    const runs=getRunsForLot(l);
+    const activeRun=runs.find(r=>['running','booth_active','queued'].includes(r.status));
+    const elapsed_str=activeRun&&activeRun.startTs?elapsed(activeRun.startTs)+' elapsed':'';
+    const chipSt=lotChipStyle(l);
+    return `<div class="lot-card ${active?'active':''}" onclick="selectLot('${l.id}')">
+      <div class="lc-top">
+        <div class="lc-id">${l.id}</div>
+        <div class="chip" style="background:${chipSt.split(';')[0].replace('background:','')};${chipSt.split(';').slice(1).join(';')}">${lotPhaseStatus(l)}</div>
+      </div>
+      <div class="lc-strain">${l.strain}</div>
+      <div class="lc-meta">
+        <div class="lc-wt">${(l.deliveredWeight||l.purchaseWeight).toLocaleString()} lbs${runs.length?` · ${runs.length} run${runs.length>1?'s':''}`:''}
+        </div>
+        <div class="lc-elapsed">${elapsed_str}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderRunSidebar(list){
+  const sorted=[...filteredRuns].sort((a,b)=>{
+    const ord={running:0,booth_active:1,queued:2,pending:3,complete:4};
+    return (ord[a.status]??4)-(ord[b.status]??4);
+  });
+  list.innerHTML=sorted.map(r=>{
+    const active=selectedRun?.id===r.id;
+    const color=runStatusColor(r.status);
+    const label=runStatusLabel(r.status);
+    const sources=r.sourceLots.map(s=>`${s.strain}${r.sourceLots.length>1?' '+s.lbs+'lb':''}`).join(' + ');
+    const loc=r.reactor?` · ${r.reactor}`:r.ppQueue?` · ${r.ppQueue}`:'';
+    const elapsed_str=r.startTs&&r.status!=='complete'?elapsed(r.startTs)+' elapsed':r.completeTs?fmt(r.completeTs):'';
+    return `<div class="run-card ${active?'active':''}" onclick="selectRun('${r.id}',null)">
+      <div class="rc-top">
+        <span class="rc-id">${r.id}</span>
+        <div class="chip" style="background:${color}20;border:1px solid ${color}60;color:${color};">${label}</div>
+      </div>
+      <div class="rc-source">${sources}</div>
+      <div class="rc-meta">
+        <div class="rc-lbs">${r.totalLbs} lbs${loc}</div>
+        <div class="rc-loc">${elapsed_str}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ─── MAIN PANEL ───────────────────────────────────────────────────────────────
+function renderMain(){
+  const el=document.getElementById('main');
+  if(mode==='lot'){
+    if(!selectedLot){el.innerHTML=`<div class="empty"><div>Select a lot to view its journey</div></div>`;return;}
+    renderLotView(el);
+  } else {
+    if(!selectedRun){el.innerHTML=`<div class="empty"><div>Select a run to view its journey</div></div>`;return;}
+    renderRunView(el);
+  }
+}
+
+// ─── LOT VIEW ────────────────────────────────────────────────────────────────
+function renderLotView(el){
+  const lot=selectedLot;
+  const wt=lot.deliveredWeight?`${lot.deliveredWeight.toLocaleString()} lbs delivered`:`${lot.purchaseWeight.toLocaleString()} lbs est.`;
+  const runs=getRunsForLot(lot);
+  const charged=runs.filter(r=>r.status!=='pending'&&r.id!=='RUN-AGG').reduce((a,r)=>a+r.sourceLots.find(s=>s.lotId===lot.id)?.lbs||0,0);
+  const derivativeLots=getDescendantLotsForSourceLot(lot.id);
+  const rootDerivativeLots=getRootDerivativeLotsForSourceLot(lot.id);
+
+  let html=`
+  <div class="lot-hdr">
+    <div class="lh-top">
+      <div class="lh-strain">${lot.strain}</div>
+      <div class="lh-id">${lot.id}</div>
+      <div class="lh-sup">${lot.supplier} · ${lot.buyer}</div>
+    </div>
+    <div class="lh-stats">
+      <div><div class="stat-label">Weight</div><div class="stat-val">${wt}</div></div>
+      <div><div class="stat-label">Potency</div><div class="stat-val gold">${lot.thcPct?lot.thcPct+'% THC':'Pending'}</div></div>
+      <div><div class="stat-label">Price</div><div class="stat-val">${lot.pricePerLb?'$'+lot.pricePerLb+'/lb':'—'}</div></div>
+      <div><div class="stat-label">Runs</div><div class="stat-val">${runs.length}</div></div>
+      <div><div class="stat-label">Lbs Charged</div><div class="stat-val">${charged||'—'}</div></div>
+    </div>
+  </div>
+  <div class="content-area" id="lot-content">`;
+
+  // Trunk bar
+  html+=`<div class="section">
+    <div class="section-label">Trunk — purchase & receiving</div>
+    <div class="trunk-bar">
+      ${renderTrunkPill('purchase',lot,'Purchase')}
+      <div class="trunk-arr">→</div>
+      ${renderTrunkPill('receiving',lot,'Receiving')}
+    </div>
+    ${trunkPhase?renderTrunkStepsHTML(lot,trunkPhase):`<div class="hint-sm">Click a phase to inspect steps</div>`}
+  </div>
+  <div class="divider"></div>`;
+
+  // Runs table
+  html+=renderRunsTableHTML(lot,runs);
+  html+=renderMaterialLotsSectionHTML('Derivative descendants', derivativeLots, 'No derivative lots have been created from this source lot yet.');
+  html+=`<div class="runs-section">
+    <div class="section-label">Genealogy summary</div>
+    <div class="legend-row">
+      <span><strong>Source lot:</strong> ${lot.id}</span>
+      <span><strong>Root derivative outputs:</strong> ${rootDerivativeLots.length}</span>
+      <span><strong>Total descendants:</strong> ${derivativeLots.length}</span>
+    </div>
+    <div class="mini-chain">
+      <div class="node">${lot.id}</div>
+      <div class="arrow">â†’</div>
+      <div class="node">${runs.length} run${runs.length===1?'':'s'}</div>
+      <div class="arrow">â†’</div>
+      <div class="node">${rootDerivativeLots.length} primary output lot${rootDerivativeLots.length===1?'':'s'}</div>
+      <div class="arrow">â†’</div>
+      <div class="node">${Math.max(0, derivativeLots.length-rootDerivativeLots.length)} downstream derivative lot${Math.max(0, derivativeLots.length-rootDerivativeLots.length)===1?'':'s'}</div>
+    </div>
+  </div>`;
+  html+=`</div>`;
+  el.innerHTML=html;
+}
+
+function renderTrunkPill(phId,lot,label){
+  const steps=TRUNK_STEPS[phId]||[];
+  const allDone=steps.every(s=>(lot.trunkSteps[s.id]?.status||'pending')==='complete');
+  const anyActive=steps.some(s=>lot.trunkSteps[s.id]?.status==='active');
+  const status=allDone?'complete':anyActive?'active':'pending';
+  const isViewing=trunkPhase===phId;
+  const pct=pctComplete(steps,lot.trunkSteps);
+  return `<div class="trunk-node" onclick="selectTrunkPhase('${phId}')">
+    <div class="trunk-pill ${status} ${isViewing?'viewing':''}">${status==='complete'?'✓ ':status==='active'?'● ':'○ '}${label}</div>
+    <div class="trunk-pct">${status==='complete'?'100%':pct+'%'}</div>
+  </div>`;
+}
+
+function renderTrunkStepsHTML(lot,phId){
+  const steps=TRUNK_STEPS[phId]||[];
+  let html=`<div class="steps-row" style="margin-top:14px;">`;
+  steps.forEach((step,i)=>{
+    const sd=lot.trunkSteps[step.id]||{status:'pending',ts:null,by:null,note:''};
+    const isSel=selectedStep===step.id;
+    const nextSd=i<steps.length-1?lot.trunkSteps[steps[i+1].id]:null;
+    const elStr=sd.status==='active'?elapsed(sd.ts)+' elapsed':sd.status==='complete'&&nextSd?.ts?elapsed(sd.ts,nextSd.ts):'';
+    html+=`<div class="step-node" onclick="selectStep('${step.id}')">
+      <div class="sp ${sd.status} ${isSel?'selected':''}">
+        <div class="s-row"><div class="s-dot ${sd.status}"></div><div class="s-st ${sd.status}">${sd.status.toUpperCase()}</div></div>
+        <div class="s-label ${sd.status==='pending'?'pending':''}">${step.label}</div>
+        <div class="s-time">${fmt(sd.ts)}</div>
+        ${elStr?`<div class="s-elapsed">${elStr}</div>`:''}
+      </div>
+    </div>`;
+    if(i<steps.length-1) html+=`<div class="s-arr ${sd.status==='complete'?'done':'pending'}"><svg width="16" height="10" viewBox="0 0 16 10"><path d="M0 5 L10 5 M7 1 L10 5 L7 9" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></div>`;
+  });
+  html+=`</div>`;
+  if(selectedStep){
+    const step=steps.find(s=>s.id===selectedStep);
+    const sdObj=lot.trunkSteps[selectedStep]||{};
+    if(step) html+=renderStepDetailHTML(step,sdObj);
+  }
+  return html;
+}
+
+function renderRunsTableHTML(lot,runs){
+  const activeRuns=runs.filter(r=>['running','booth_active'].includes(r.status));
+  const complete=runs.filter(r=>r.status==='complete').length;
+  let html=`<div class="runs-section">
+    <div class="section-label">Extraction runs</div>
+    <div class="runs-summary">
+      <span><span class="hi">${runs.length}</span> total runs</span>
+      ${activeRuns.length?`<span><span class="active-hi">${activeRuns.length} active</span></span>`:''}
+      <span><span class="hi">${complete}</span> complete</span>
+    </div>`;
+
+  // Sort: active first
+  const sorted=[...runs].sort((a,b)=>{
+    const o={booth_active:0,running:1,queued:2,pending:3,complete:4};
+    return (o[a.status]??4)-(o[b.status]??4);
+  });
+
+  sorted.forEach(run=>{
+    const isAgg=run.sourceLots.length>1;
+    const color=runStatusColor(run.status);
+    const label=runStatusLabel(run.status);
+    const lotContrib=run.sourceLots.find(s=>s.lotId===lot.id);
+    const lbs=lotContrib?lotContrib.lbs:run.totalLbs;
+    const loc=run.reactor?run.reactor:run.ppQueue?run.ppQueue:'';
+    const timeStr=run.status==='complete'&&run.completeTs?fmt(run.completeTs):
+                  run.startTs?elapsed(run.startTs)+' elapsed':'—';
+    const outcome=run.ppQueue?`→ ${run.ppQueue}`:'';
+    html+=`<div class="run-row ${['running','booth_active'].includes(run.status)?'is-active':''} ${isAgg?'is-aggregate':''}" onclick="selectRun('${run.id}','${lot.id}')">
+      <div class="run-dot" style="background:${color};${['running','booth_active'].includes(run.status)?'animation:dotPulse 1.5s ease infinite':''}"></div>
+      <div class="run-id-cell">${run.id}</div>
+      <div class="run-lbs-cell">${lbs} lbs</div>
+      <div class="run-status-cell">
+        <span style="color:${color};font-size:11px;font-weight:600;">${label}</span>
+        ${loc?`<span style="color:var(--text3);font-size:10px;margin-left:6px;">· ${loc}</span>`:''}
+        ${outcome?`<span style="color:var(--text3);font-size:10px;margin-left:6px;">${outcome}</span>`:''}
+        ${isAgg?`<div class="multi-source">Multi-lot aggregate: ${run.sourceLots.map(s=>`${s.strain} ${s.lbs} lbs`).join(' + ')}</div>`:''}
+      </div>
+      <div class="run-date-cell">${timeStr}</div>
+      <button class="run-view-btn" onclick="event.stopPropagation();selectRun('${run.id}','${lot.id}')">View →</button>
+    </div>`;
+  });
+
+  if(lot.remainder){
+    html+=`<div class="remainder-note">
+      <strong>${lot.remainder.lbs} lbs remainder</strong> — ${lot.remainder.note}
+    </div>`;
+  }
+
+  html+=`</div>`;
+  return html;
+}
+
+// ─── RUN VIEW ─────────────────────────────────────────────────────────────────
+function renderRunView(el){
+  const run=selectedRun;
+  const parentLot=prevLotId?LOTS.find(l=>l.id===prevLotId):null;
+  const isAgg=run.sourceLots.length>1;
+  const derivativeLots=getOutputLotsForRun(run.id);
+
+  let html=`<div class="run-hdr">
+    ${parentLot?`<button class="back-btn" onclick="backToLot()">← Back to ${parentLot.strain}</button>`:''}
+    <div class="rh-top">
+      <div class="rh-id">${run.id}</div>
+      ${isAgg?`<div class="rh-lbs" style="color:var(--blue);font-size:11px;">Aggregate run</div>`:`<div class="rh-lbs">${run.totalLbs} lbs · ${run.reactor||'—'}</div>`}
+    </div>
+    <div class="rh-sources">
+      ${run.sourceLots.map(s=>`<div class="source-chip" onclick="navigateToLot('${s.lotId}')">
+        <span>${s.strain}</span>
+        <span class="src-lbs">${s.lbs} lbs ↗</span>
+      </div>`).join('')}
+    </div>
+    <div class="rh-stats">
+      <div><div class="stat-label">Operator</div><div class="stat-val">${run.operator||'—'}</div></div>
+      <div><div class="stat-label">Reactor</div><div class="stat-val">${run.reactor||'—'}</div></div>
+      <div><div class="stat-label">Status</div><div class="stat-val" style="color:${runStatusColor(run.status)}">${runStatusLabel(run.status)}</div></div>
+      ${run.results?`<div><div class="stat-label">Wet THCa</div><div class="stat-val gold">${run.results.wetThca} lbs</div></div>
+      <div><div class="stat-label">Wet HTE</div><div class="stat-val gold">${run.results.wetHte} lbs</div></div>`:''}
+    </div>
+  </div>`;
+
+  // Phase bar
+  const runPhaseDefs=[
+    {id:'extraction',label:'Extraction'},
+    {id:'postprocess',label:'Post-Process'},
+    {id:'production',label:'Production'},
+  ];
+  html+=`<div class="phase-bar-wrap">
+    <div class="phase-bar-label">Run journey — click phase to inspect</div>
+    <div class="phase-bar">`;
+  runPhaseDefs.forEach((ph,i)=>{
+    const status=phaseStatusOf(run,ph.id);
+    const isViewing=runPhase===ph.id;
+    const stepsArr=ph.id==='postprocess'?
+      (run.ppPath?PP_STEPS[run.ppPath]||[]:[]):
+      (RUN_STEPS[ph.id]||[]);
+    const phStepData=run.phases[ph.id]?.steps||{};
+    const pct=stepsArr.length?pctComplete(stepsArr,phStepData):0;
+    html+=`<div class="ph-node" onclick="selectRunPhase('${ph.id}')">
+      <div class="ph-pill ${status} ${isViewing?'viewing':''}">${status==='complete'?'✓ ':status==='active'?'● ':'○ '}${ph.label}</div>
+      <div class="ph-pct ${status==='complete'?'done':''}">${status==='complete'?'100%':status==='active'&&pct?pct+'%':''}</div>
+    </div>`;
+    if(i<runPhaseDefs.length-1){
+      const done=phaseStatusOf(run,runPhaseDefs[i].id)==='complete';
+      html+=`<div class="ph-arr ${done?'done':''}">→</div>`;
+    }
+  });
+  html+=`</div></div>`;
+
+  html+=`<div class="content-area" id="run-content">`;
+  html+=renderRunGenealogyHTML(run, derivativeLots);
+  if(runPhase){
+    html+=renderRunStepsSection(run,runPhase);
+  } else {
+    html+=`<div class="steps-section"><div class="hint-sm">Click a phase above to inspect steps.</div></div>`;
+  }
+  html+=`</div>`;
+  el.innerHTML=html;
+}
+
+function renderRunGenealogyHTML(run, derivativeLots){
+  return `<div class="runs-section">
+    <div class="section-label">Material genealogy</div>
+    <div class="legend-row">
+      <span><strong>Mode:</strong> Run-centric view with linked source lots and derivative lots</span>
+      <span><strong>Source lots:</strong> ${run.sourceLots.length}</span>
+      <span><strong>Derivative lots:</strong> ${derivativeLots.length}</span>
+    </div>
+    <div class="mini-chain">
+      ${run.sourceLots.map(s=>`<div class="node">${s.lotId} (${s.lbs} lbs)</div>`).join('<div class="arrow">+</div>')}
+      <div class="arrow">â†’</div>
+      <div class="node">${run.id}</div>
+      <div class="arrow">â†’</div>
+      <div class="node">${derivativeLots.length?derivativeLots.map(l=>l.tracking).join(', '):'No derivative lots yet'}</div>
+    </div>
+    ${derivativeLots.length?`<div class="gene-grid">${derivativeLots.map(geneCardHTML).join('')}</div>`:`<div class="gene-empty">This run does not have derivative lot records yet. In the final model, each accountable HTE / THCa output would appear here even before downstream conversion.</div>`}
+  </div>`;
+}
+
+function renderRunStepsSection(run,phId){
+  const ph=run.phases[phId];
+  if(!ph) return `<div class="steps-section"><div style="color:var(--text3);font-size:12px;">No data for this phase.</div></div>`;
+
+  const steps=phId==='postprocess'?
+    (run.ppPath?PP_STEPS[run.ppPath]||[]:[]):
+    (RUN_STEPS[phId]||[]);
+
+  if(!steps.length) return `<div class="steps-section"><div style="color:var(--text3);font-size:12px;">${phId==='postprocess'?'Run type not yet selected.':'No steps defined.'}</div></div>`;
+
+  const stepData=ph.steps||{};
+  let html=`<div class="steps-section"><div class="steps-row">`;
+  steps.forEach((step,i)=>{
+    const sd=stepData[step.id]||{status:'pending',ts:null,by:null,note:''};
+    const isSel=selectedStep===step.id;
+    const nextSd=i<steps.length-1?stepData[steps[i+1].id]:null;
+    const elStr=sd.status==='active'?elapsed(sd.ts)+' elapsed':sd.status==='complete'&&nextSd?.ts?elapsed(sd.ts,nextSd.ts):'';
+    html+=`<div class="step-node" onclick="selectStep('${step.id}')">
+      <div class="sp ${sd.status} ${isSel?'selected':''}">
+        <div class="s-row"><div class="s-dot ${sd.status}"></div><div class="s-st ${sd.status}">${sd.status.toUpperCase()}</div></div>
+        <div class="s-label ${sd.status==='pending'?'pending':''}">${step.label}</div>
+        <div class="s-time">${fmt(sd.ts)}</div>
+        ${elStr?`<div class="s-elapsed">${elStr}</div>`:''}
+      </div>
+    </div>`;
+    if(i<steps.length-1) html+=`<div class="s-arr ${sd.status==='complete'?'done':'pending'}"><svg width="16" height="10" viewBox="0 0 16 10"><path d="M0 5 L10 5 M7 1 L10 5 L7 9" stroke="currentColor" stroke-width="1.5" fill="none"/></svg></div>`;
+  });
+  html+=`</div>`;
+
+  if(selectedStep){
+    const step=steps.find(s=>s.id===selectedStep);
+    const sdObj=stepData[selectedStep]||{};
+    if(step) html+=renderStepDetailHTML(step,sdObj);
+  } else {
+    html+=`<div class="hint-sm">Click any step for details.</div>`;
+  }
+  html+=`</div>`;
+  return html;
+}
+
+function renderStepDetailHTML(step,sd){
+  const dotColor=sd.status==='complete'?'var(--green)':sd.status==='active'?'var(--gold)':'var(--text3)';
+  return `<div class="step-detail">
+    <div class="sdp-top">
+      <div>
+        <div class="sdp-status" style="color:${dotColor}">
+          <div style="width:7px;height:7px;border-radius:50%;background:${dotColor};flex-shrink:0;"></div>
+          ${sd.status.toUpperCase()}
+        </div>
+        <div class="sdp-name">${step.label}</div>
+      </div>
+      <button class="sdp-close" onclick="clearStep()">×</button>
+    </div>
+    <div class="sdp-grid">
+      <div><div class="sdp-lbl">Started</div><div class="sdp-val hi">${fmt(sd.ts)}</div></div>
+      <div><div class="sdp-lbl">Duration / Elapsed</div><div class="sdp-val ${sd.status==='active'?'gold':''}">${sd.status==='active'?elapsed(sd.ts)+' (ongoing)':sd.status==='complete'?elapsed(sd.ts):'—'}</div></div>
+      <div><div class="sdp-lbl">By</div><div class="sdp-val hi">${sd.by||'—'}</div></div>
+      <div style="grid-column:span 3"><div class="sdp-lbl">App Surface</div><div class="sdp-val">${(step.app||[]).map(a=>`<span class="sdp-tag">${a}</span>`).join('')}</div></div>
+    </div>
+    ${sd.note?`<div class="sdp-note"><strong>Notes:</strong> ${sd.note}</div>`:''}
+  </div>`;
+}
+
+// ─── INTERACTIONS ─────────────────────────────────────────────────────────────
+function switchMode(m){
+  mode=m; trunkPhase=null; runPhase=null; selectedStep=null;
+  filterQ=''; document.getElementById('sb-search').value='';
+  filteredLots=[...LOTS]; filteredRuns=[...RUNS];
+  if(m==='lot'&&!selectedLot&&LOTS.length) selectLot(LOTS[0].id,true);
+  else if(m==='run'&&!selectedRun&&RUNS.length) selectRun(RUNS.find(r=>r.status!=='pending'&&r.status!=='complete')?.id||RUNS[0].id,null,true);
+  else { renderSidebar(); renderMain(); }
+}
+
+function selectLot(id,skipRender){
+  mode='lot';
+  selectedLot=LOTS.find(l=>l.id===id);
+  trunkPhase=null; selectedStep=null;
+  document.getElementById('mode-lot').classList.add('active');
+  document.getElementById('mode-run').classList.remove('active');
+  if(!skipRender){ renderSidebar(); renderMain(); }
+}
+
+function selectRun(id,fromLotId,skipRender){
+  mode='run';
+  selectedRun=RUNS.find(r=>r.id===id);
+  if(fromLotId) prevLotId=fromLotId;
+  // auto-select active or first phase
+  if(selectedRun){
+    const activePhase=['extraction','postprocess','production'].find(p=>selectedRun.phases[p]?.status==='active');
+    runPhase=activePhase||'extraction';
+  }
+  selectedStep=null;
+  document.getElementById('mode-run').classList.add('active');
+  document.getElementById('mode-lot').classList.remove('active');
+  if(!skipRender){ renderSidebar(); renderMain(); }
+}
+
+function backToLot(){
+  if(prevLotId) selectLot(prevLotId);
+}
+
+function navigateToLot(lotId){
+  selectLot(lotId);
+}
+
+function selectTrunkPhase(phId){
+  trunkPhase=trunkPhase===phId?null:phId;
+  selectedStep=null;
+  document.getElementById('lot-content').innerHTML=
+    `<div class="section"><div class="section-label">Trunk — purchase & receiving</div>
+    <div class="trunk-bar">
+      ${renderTrunkPill('purchase',selectedLot,'Purchase')}
+      <div class="trunk-arr">→</div>
+      ${renderTrunkPill('receiving',selectedLot,'Receiving')}
+    </div>
+    ${trunkPhase?renderTrunkStepsHTML(selectedLot,trunkPhase):'<div class="hint-sm">Click a phase to inspect steps.</div>'}
+    </div>
+    <div class="divider"></div>
+    ${renderRunsTableHTML(selectedLot,getRunsForLot(selectedLot))}`;
+}
+
+function selectRunPhase(phId){
+  runPhase=runPhase===phId?null:phId;
+  selectedStep=null;
+  const area=document.getElementById('run-content');
+  if(area) area.innerHTML=runPhase?renderRunStepsSection(selectedRun,runPhase):`<div class="steps-section"><div class="hint-sm">Click a phase to inspect steps.</div></div>`;
+}
+
+function selectStep(stepId){
+  selectedStep=selectedStep===stepId?null:stepId;
+  if(mode==='lot'&&trunkPhase){
+    const area=document.getElementById('lot-content');
+    if(area) area.innerHTML=`<div class="section"><div class="section-label">Trunk — purchase & receiving</div>
+      <div class="trunk-bar">
+        ${renderTrunkPill('purchase',selectedLot,'Purchase')}
+        <div class="trunk-arr">→</div>
+        ${renderTrunkPill('receiving',selectedLot,'Receiving')}
+      </div>
+      ${renderTrunkStepsHTML(selectedLot,trunkPhase)}
+      </div><div class="divider"></div>${renderRunsTableHTML(selectedLot,getRunsForLot(selectedLot))}`;
+  } else if(mode==='run'&&runPhase){
+    const area=document.getElementById('run-content');
+    if(area) area.innerHTML=renderRunStepsSection(selectedRun,runPhase);
+  }
+}
+
+function clearStep(){ selectStep(null); }
+
+function filterList(q){
+  filterQ=q.toLowerCase();
+  if(mode==='lot'){
+    filteredLots=q?LOTS.filter(l=>l.id.toLowerCase().includes(filterQ)||l.strain.toLowerCase().includes(filterQ)||l.supplier.toLowerCase().includes(filterQ)):[...LOTS];
+  } else {
+    filteredRuns=q?RUNS.filter(r=>r.id.toLowerCase().includes(filterQ)||r.sourceLots.some(s=>s.strain.toLowerCase().includes(filterQ))):[...RUNS];
+  }
+  renderSidebar();
+}
+
+// ─── CLOCK & INIT ─────────────────────────────────────────────────────────────
+function tick(){
+  const n=new Date(),m=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  document.getElementById('clock').textContent=`${m[n.getMonth()]} ${n.getDate()} ${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}:${String(n.getSeconds()).padStart(2,'0')}`;
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  tick(); setInterval(tick,1000);
+  renderSidebar();
+  selectLot('LOT-2504-004'); // open OG Kush to show multi-run lot
+});
+</script>
+</body>
+</html>

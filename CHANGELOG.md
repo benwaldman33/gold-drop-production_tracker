@@ -1,5 +1,56 @@
 # Changelog
 
+## 2026-04-25
+
+### Added
+- The first derivative-lot genealogy foundation is now live in the data model with additive `MaterialLot`, `MaterialTransformation`, `MaterialTransformationInput`, `MaterialTransformationOutput`, and `MaterialReconciliationIssue` tables.
+- `PurchaseLot` now has a genealogy bridge field (`material_lot_id`) so each biomass inventory lot can map to a first-class material lot without changing the current lot workflow.
+- A new genealogy helper service now backfills biomass `MaterialLot` rows from active `PurchaseLot` rows and resolves source biomass material lots for a run.
+- The first genealogy reconciliation checks are now available for runs, including missing source-allocation / missing-input-link and negative-balance detection.
+- Extraction runs with accountable dry outputs now auto-create additive genealogy records:
+  - one `MaterialTransformation(type=extraction)` per eligible run
+  - `dry_hte` and `dry_thca` derivative `MaterialLot` rows
+  - transformation input/output rows linking biomass source lots to derivative extraction outputs
+- The internal API now exposes first manager-facing derivative genealogy surfaces:
+  - `/api/v1/material-lots/<lot_id>`
+  - `/api/v1/material-lots/<lot_id>/journey`
+  - `/api/v1/material-lots/<lot_id>/ancestry`
+  - `/api/v1/material-lots/<lot_id>/descendants`
+- Existing purchase / lot / run journey payloads now include derivative `material_lots`, so managers can trace biomass source lots forward into accountable dry HTE / THCA output lots.
+- Reconciliation overview now includes open material genealogy issues alongside the existing Slack/import exception summary.
+- Material genealogy now supports correction-backed workflows instead of silent rewrites:
+  - quantity adjustment creates a correction transformation plus a replacement material lot
+  - parent replacement creates a correction transformation plus a replacement material lot
+  - mistaken derivative lots can be voided through a correction transformation with no replacement output
+- A minimal manager correction route is now available at `/material-lots/<lot_id>/correct` for logged-in editors.
+- Material genealogy cost visibility now includes `/api/v1/summary/material-costs`, which summarizes open derivative lots by lot type, quantity, and rolled-forward cost basis.
+- Downstream queue genealogy is now visible directly on the shared `Downstream Queues` board and the dedicated destination queue pages. Queue cards now show linked derivative lot type/tracking badges plus direct journey drill links for any derivative lots already created from that run.
+- Downstream genealogy now extends beyond extraction outputs into destination-native material transformations:
+  - GoldDrop queue release can create `golddrop` lots through `golddrop_production`
+  - THCA destination routing can create `wholesale_thca` or `liquid_diamonds` lots through `thca_split`
+  - terp strip completion can create `terp_strip_output` lots
+  - HP base oil release can create `hp_base_oil` lots
+  - distillate release can create `distillate` lots
+- Material genealogy now has a first reporting layer:
+  - `/reports/material-genealogy` in the main app
+  - `/api/v1/summary/material-genealogy` in the internal API
+  - reporting now covers open/released derivative inventory by type, source-to-derivative yield, rework volume, open reconciliation issues, and recent derivative lots with lineage links
+- New planning documents now define the target model and phased rollout for true end-to-end material genealogy:
+  - `DERIVATIVE_LOT_GENEALOGY_PLAN.md`
+  - `DERIVATIVE_LOT_GENEALOGY_IMPLEMENTATION_PLAN.md`
+
+### Changed
+- Startup bootstrap now creates the genealogy foundation tables and backfills biomass material lots automatically using the same additive schema pattern the app already uses elsewhere.
+
+### Tests
+- Added regression coverage for biomass material-lot backfill, run source-material resolution, and first-pass genealogy reconciliation issue creation.
+- Added genealogy regression coverage for extraction transformation/output-lot creation, material-lot ancestry/descendant payloads, material-lot API endpoints, and the new route registration.
+- Added correction-workflow regression coverage for replacement-lot quantity corrections and the new correction route registration.
+- Added regression coverage for the material-cost summary endpoint and its route registration.
+- Added downstream queue regression coverage ensuring GoldDrop queue cards render linked derivative lot genealogy without breaking the existing queue workflow surfaces.
+- Added genealogy regression coverage for downstream child-lot creation across GoldDrop, THCA routing, terp strip, HP base oil, and distillate conversions.
+- Added reporting regression coverage for the new material genealogy report page, the new summary endpoint, and route registration.
+
 ## 2026-04-24
 
 ### Added
@@ -11,9 +62,11 @@
 - The `GoldDrop Production Queue` is now a staged downstream workflow instead of a flat action list. GoldDrop runs now move through `Reviewed`, `Queued for production`, `In production`, `Packaging ready`, and `Released complete`, with only the appropriate next actions available at each stage.
 - The `Liquid Loud Hold` is now a staged downstream workflow instead of a flat hold/release list. Liquid Loud runs now move through `Reviewed`, `Reserved for Liquid Loud`, `Release ready`, and then into either `Release To GoldDrop Queue` or `Release Complete`, with release actions gated until the hold is marked release-ready.
 - The `Terp Strip / CDT Cage` is now a staged downstream workflow instead of a flat strip-action list. Terp strip runs now move through `Reviewed`, `Queued for Prescott`, `Strip in progress`, and `Strip complete`, with completion gated until strip work has actually started.
+- The `HP Base Oil Hold` and `Distillate Hold` now also behave like staged downstream workflows instead of flat hold/release lists. Both now move through `Reviewed`, `Hold confirmed`, `Release ready`, and `Released complete`, with final release blocked until the hold has been marked release-ready.
 - The shared downstream destination queue template now shows stage-specific next-step guidance and hides queue actions once a run reaches a terminal queue state.
 - Downstream queue ownership is now first-class on active queue items: supervisors can assign a queue owner from the shared `Downstream Queues` board or any dedicated destination queue page, and both surfaces now show the current owner plus assignment timing/context.
 - Downstream queue ownership now clears automatically when a run leaves active downstream queue management through completion, release, or send-back actions.
+- The shared `Downstream Queues` board and dedicated destination queue pages now include queue-reporting visibility for age, stale/blocked items, recent completions, and recent rework volume.
 - The standalone extraction workflow now follows booth-SOP checkpoints instead of only the earlier coarse progression buttons. The current guided flow covers vacuum confirmation, solvent charge, primary soak, mixer, filter clear, pressurization, recovery, flush-cycle setup, flush temperature verification, flush solvent charge, flow-resumed confirmation, final purge, final clarity, shutdown checklist completion, and final run completion.
 - The standalone extraction run screen now captures booth-specific SOP data including primary solvent charge, flush temperatures, flush solvent charge, flow-resumed decision, final clarity decision, final purge timing, shutdown checklist confirmations, and booth evidence uploads.
 - The shared extraction progression service now drives booth-session stage state from the backend so the main app, mobile API, and standalone extraction app remain aligned on the active checkpoint, validations, and event history.
@@ -47,6 +100,8 @@
 - Added Liquid Loud queue regression coverage for staged hold/release flow, including gating release actions until the run reaches release-ready state.
 - Added Terp Strip queue regression coverage for staged strip flow, including gating strip completion until active strip work has started.
 - Added downstream queue ownership regression coverage for owner assignment visibility on the shared board and dedicated queue pages, plus automatic owner clearing when a queue item is released complete.
+- Added downstream queue reporting regression coverage for queue-age display plus stale/blocked/rework/completion reporting on the shared board.
+- Added staged hold regression coverage for `HP Base Oil Hold` and `Distillate Hold`, including gating release until the hold reaches release-ready state.
 
 ## 2026-04-18
 

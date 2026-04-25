@@ -65,7 +65,14 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 
 ## Features
 
+- **Derivative lot genealogy foundation** - the app now has additive genealogy tables for traceable material lots, transformations, transformation inputs/outputs, and reconciliation issues. Active biomass `PurchaseLot` rows are bridged into first-class `MaterialLot` records, and eligible extraction runs now auto-create dry HTE / dry THCA derivative lots linked back to their biomass source lots.
+- **Correction-forward genealogy** - derivative lot mistakes no longer require silent data rewrites. Managers can record quantity corrections, parent-link replacements, or void actions as explicit correction transformations, preserving the original lot while producing a visible replacement or void trail.
+- **Derivative lot cost visibility** - open derivative lots now roll their cost basis into a summary surface at `/api/v1/summary/material-costs`, grouped by lot type so managers can see open quantity and open cost basis together.
+- **Downstream queue genealogy links** - shared and destination-specific downstream queue cards now show any linked derivative lots already created from that run, including lot type/tracking badges and direct journey links for lineage review from the queue surface.
+- **Destination-native genealogy transformations** - genealogy no longer stops at dry extraction outputs. The app can now create child lots for `golddrop`, `wholesale_thca`, `liquid_diamonds`, `terp_strip_output`, `hp_base_oil`, and `distillate` when the corresponding downstream workflow reaches its accountable completion point.
+- **Material genealogy reporting** - the app now includes a manager-facing `Genealogy Report` page plus `/api/v1/summary/material-genealogy`, covering open/released derivative inventory by type, source-to-derivative yield, rework volume, reconciliation issues, and direct ancestry/descendant drill links from recent derivative lots.
 - **Downstream queue ownership** - active downstream queue items can now be assigned to a specific editor from either the shared board or the dedicated destination queue pages, so supervisors have explicit current ownership instead of only queue-event history.
+- **Downstream queue reporting** - the shared downstream board and dedicated destination queue pages now show queue age, stale/blocked status, recent completions, and recent rework volume so supervisors can manage bottlenecks directly from the queue surfaces.
 
 - **Docs update (Apr 2026)** — Journey endpoints now share one validation path for missing/archived purchases, and Journey export rejects unsupported formats with an explicit `400` JSON error (`{"error":"Unsupported export format","supported_formats":["csv","json"]}`) instead of silently defaulting.
 - **Dashboard** — KPI cards with configurable green/yellow/red traffic lights (on-hand biomass and days-of-supply use **approved** purchases only; see **Purchases** below)
@@ -92,7 +99,9 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 - **Destination-specific downstream queues** — `Liquid Loud Hold`, `Terp Strip / CDT Cage`, and `HP Base Oil Hold` now also have their own dedicated main-app workflow pages with queue history and supervisor actions tailored to each hold or rework path.
 - **Liquid Loud staged workflow** — the Liquid Loud hold now behaves like a real staged hold/release workflow. Runs move through review, Liquid Loud reservation, release-ready state, and then into either GoldDrop release or direct completion, with only the valid next actions shown at each stage.
 - **Terp Strip staged workflow** — the Terp Strip / CDT Cage now behaves like a real staged work queue. Runs move through review, Prescott queueing, active strip work, and strip completion, with completion only available once strip work is in progress.
+- **HP Base Oil staged workflow** - the HP Base Oil hold now behaves like a staged hold workflow. Runs move through review, hold confirmation, release-ready state, and final release, with release blocked until the hold is marked release-ready.
 - **Distillate Hold** — The distillate pathway now also has its own dedicated main-app workflow page with queue history and hold/release actions, so all current downstream hold destinations have dedicated operational surfaces.
+- **Distillate staged workflow** - the Distillate hold now follows the same staged hold pattern as HP Base Oil, with review, hold confirmation, release-ready state, and final release gating.
 - **Lot tracking IDs** — Purchase lots now receive machine-readable tracking fields (`tracking_id`, barcode payload, QR payload, label metadata) at creation or approval time, and printable labels now render both a Code 39 barcode and a QR code for floor execution.
 - **Confirmed lot splitting** — Edit Purchase now includes **Split Existing Lot** so operators can break a confirmed lot's remaining inventory into a new child lot without leaving the purchase workflow; the original lot is reduced, the child lot gets fresh tracking fields, and the action is audited.
 - **Extraction charge workflow** — A lot can now be charged into production from either the main purchase form (**Charge Lot**) or the scanned-lot workflow. The app records a persisted extraction-charge event with lbs, reactor, charge time, notes, and source mode before opening the run form.
@@ -415,6 +424,10 @@ Current endpoints:
 - `/api/v1/lots`
 - `/api/v1/lots/<lot_id>`
 - `/api/v1/lots/<lot_id>/journey`
+- `/api/v1/material-lots/<lot_id>`
+- `/api/v1/material-lots/<lot_id>/journey`
+- `/api/v1/material-lots/<lot_id>/ancestry`
+- `/api/v1/material-lots/<lot_id>/descendants`
 - `/api/v1/runs`
 - `/api/v1/runs/<run_id>`
 - `/api/v1/runs/<run_id>/journey`
@@ -622,7 +635,10 @@ Use **Inventory → Import spreadsheet** when you need to bulk update existing l
 - **Cost Entries** are allocated across total dry grams in their date ranges
 - **Lots** → **Run Inputs** → **Runs** (many-to-many through run_inputs; `RunInput` is the explicit lot allocation record)
 - Purchase lots now carry `tracking_id`, barcode payload, QR payload, and label metadata for future scan / label workflows
+- **Material Lots** and **Material Transformations** add an additive genealogy layer over the existing purchase-lot and run workflow
+- Eligible extraction runs now generate derivative `MaterialLot` outputs for accountable dry HTE / THCA quantities, linked back to their biomass source lots through transformation input / output rows
 - Lot `remaining_weight_lbs` is automatically decremented when used in a run, and run saves require selected lot allocations to match `bio_in_reactor_lbs`
 - Slack run preview can rank candidate lots and prefill one-lot or split-lot allocations before the run form opens
 - Yield calculations and cost-per-gram are auto-computed on save
 - **Runs** may store **HTE pipeline stage** (awaiting lab → lab clean / queued for strip → stripped), **lab/COA file paths** (JSON, under `static/uploads/labs/`), and **terpenes / retail distillate grams** after stripping
+
