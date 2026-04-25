@@ -78,6 +78,14 @@ def register_routes(app, root):
     def supervisor_notification_resolve(notification_id):
         return supervisor_notification_resolve_view(root, notification_id)
 
+    @root.login_required
+    def supervisor_notification_approve(notification_id):
+        return supervisor_notification_approve_view(root, notification_id)
+
+    @root.login_required
+    def supervisor_notification_rework(notification_id):
+        return supervisor_notification_rework_view(root, notification_id)
+
     app.add_url_rule("/", endpoint="dashboard", view_func=dashboard)
     app.add_url_rule("/dept", endpoint="dept_index", view_func=dept_index)
     app.add_url_rule("/dept/", endpoint="dept_index_slash", view_func=dept_index)
@@ -89,6 +97,8 @@ def register_routes(app, root):
     app.add_url_rule("/cross-site/reconciliation", endpoint="cross_site_reconciliation", view_func=cross_site_reconciliation)
     app.add_url_rule("/supervisor-notifications/<notification_id>/ack", endpoint="supervisor_notification_ack", view_func=supervisor_notification_ack, methods=["POST"])
     app.add_url_rule("/supervisor-notifications/<notification_id>/resolve", endpoint="supervisor_notification_resolve", view_func=supervisor_notification_resolve, methods=["POST"])
+    app.add_url_rule("/supervisor-notifications/<notification_id>/approve", endpoint="supervisor_notification_approve", view_func=supervisor_notification_approve, methods=["POST"])
+    app.add_url_rule("/supervisor-notifications/<notification_id>/rework", endpoint="supervisor_notification_rework", view_func=supervisor_notification_rework, methods=["POST"])
 
 
 def _cross_site_ops_enabled(root) -> bool:
@@ -415,6 +425,58 @@ def supervisor_notification_resolve_view(root, notification_id):
     row.resolution_note = (root.request.form.get("resolution_note") or "").strip() or row.resolution_note
     root.db.session.commit()
     root.flash("Supervisor notification resolved.", "success")
+    return _supervisor_notifications_redirect(root)
+
+
+def supervisor_notification_approve_view(root, notification_id):
+    denied = _require_supervisor_notification_access(root)
+    if denied is not None:
+        return denied
+    row = root.db.session.get(root.SupervisorNotification, notification_id)
+    if row is None:
+        root.flash("Supervisor notification not found.", "error")
+        return _supervisor_notifications_redirect(root)
+    override_reason = (root.request.form.get("override_reason") or "").strip()
+    if not override_reason:
+        root.flash("Override reason is required to approve a deviation.", "error")
+        return _supervisor_notifications_redirect(root)
+    now = root.datetime.now(root.timezone.utc)
+    row.override_decision = "approved_deviation"
+    row.override_reason = override_reason
+    row.override_at = now
+    row.override_by_user_id = root.current_user.id
+    row.status = "resolved"
+    row.resolved_at = now
+    row.resolved_by_user_id = root.current_user.id
+    row.resolution_note = override_reason
+    root.db.session.commit()
+    root.flash("Deviation approved and recorded.", "success")
+    return _supervisor_notifications_redirect(root)
+
+
+def supervisor_notification_rework_view(root, notification_id):
+    denied = _require_supervisor_notification_access(root)
+    if denied is not None:
+        return denied
+    row = root.db.session.get(root.SupervisorNotification, notification_id)
+    if row is None:
+        root.flash("Supervisor notification not found.", "error")
+        return _supervisor_notifications_redirect(root)
+    override_reason = (root.request.form.get("override_reason") or "").strip()
+    if not override_reason:
+        root.flash("Override reason is required to require rework.", "error")
+        return _supervisor_notifications_redirect(root)
+    now = root.datetime.now(root.timezone.utc)
+    row.override_decision = "require_rework"
+    row.override_reason = override_reason
+    row.override_at = now
+    row.override_by_user_id = root.current_user.id
+    row.status = "acknowledged"
+    row.acknowledged_at = row.acknowledged_at or now
+    row.acknowledged_by_user_id = row.acknowledged_by_user_id or root.current_user.id
+    row.resolution_note = None
+    root.db.session.commit()
+    root.flash("Rework required and recorded.", "success")
     return _supervisor_notifications_redirect(root)
 
 

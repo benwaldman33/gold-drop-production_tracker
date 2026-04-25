@@ -338,14 +338,16 @@ The active work area is now the extraction booth SOP alignment layer that sits b
   - supervisor booth-review surface on the main run form
   - supervisor notifications inbox on the main dashboard
   - acknowledgement and resolve actions for booth/run alerts
+  - supervisor `Approve Deviation` / `Require Rework` control actions with recorded reasons
   - outbound Slack routing by notification class (`completions`, `warnings`, `reminders`)
+  - required operator reasons for off-target timing and booth exception paths
 
 ### In progress
 
 - the active product area is no longer only downstream execution
 - the current product area is full booth-SOP alignment:
   - matching the written extraction booth procedure more closely
-  - strengthening supervisor review, acknowledgement, and audit visibility
+  - strengthening supervisor review, override, and audit visibility
   - making booth deviations visible both in-app and through optional outbound Slack delivery
   - deciding how strict timing-policy enforcement should become
 
@@ -353,7 +355,7 @@ The active work area is now the extraction booth SOP alignment layer that sits b
 
 - deepen the extraction booth workflow where the SOP still exceeds the current system:
   - decide whether any timing targets should become warnings only vs hard gates
-  - decide whether supervisors need explicit override reasons on booth deviations beyond acknowledge/resolve
+  - decide whether any booth steps should block completion until a supervisor override exists
   - decide whether reminder notifications should be emitted automatically for stale unresolved booth alerts
 - after that, resume the downstream queue-deepening work from the stronger extraction foundation
 
@@ -417,7 +419,7 @@ The likely implementation order is:
 Current booth-SOP rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `78ef370`
+- commit: `pending current sprint closeout`
 
 Production deployment steps:
 

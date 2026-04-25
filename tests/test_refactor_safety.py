@@ -1542,7 +1542,7 @@ def test_run_edit_shows_booth_review_surface():
                 db.session.commit()
 
 
-def test_dashboard_shows_and_acknowledges_supervisor_notifications():
+def test_dashboard_shows_and_approves_supervisor_notifications():
     app = app_module.app
     run_id = None
     notification_id = None
@@ -1578,19 +1578,26 @@ def test_dashboard_shows_and_acknowledges_supervisor_notifications():
             assert dashboard.status_code == 200
             assert b"Supervisor Notifications" in dashboard.data
             assert b"Flush soak finished short of target" in dashboard.data
+            assert b"Approve Deviation" in dashboard.data
+            assert b"Require Rework" in dashboard.data
 
-            ack = client.post(
-                f"/supervisor-notifications/{notification_id}/ack",
-                data={"return_to": "/#supervisor-notifications"},
+            approve = client.post(
+                f"/supervisor-notifications/{notification_id}/approve",
+                data={
+                    "return_to": "/#supervisor-notifications",
+                    "override_reason": "Supervisor approved the short flush after review of booth conditions.",
+                },
                 follow_redirects=False,
             )
-            assert ack.status_code in (302, 303)
+            assert approve.status_code in (302, 303)
 
         with app.app_context():
             row = db.session.get(app_module.SupervisorNotification, notification_id)
             assert row is not None
-            assert row.status == "acknowledged"
-            assert row.acknowledged_by_user_id == admin_id
+            assert row.status == "resolved"
+            assert row.override_decision == "approved_deviation"
+            assert row.override_by_user_id == admin_id
+            assert row.override_reason == "Supervisor approved the short flush after review of booth conditions."
     finally:
         with app.app_context():
             row = db.session.get(app_module.SupervisorNotification, notification_id) if notification_id else None

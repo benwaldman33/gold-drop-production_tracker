@@ -414,6 +414,12 @@ def timing_control_payload(*, label: str, target_minutes: int | None, start_at: 
 
 def _notify_short_timing(root, run, session, *, event_key: str, label: str, actual_minutes: int | None, target_minutes: int | None) -> None:
     if actual_minutes is None or target_minutes is None or actual_minutes >= target_minutes:
+        resolve_matching_notifications(
+            root,
+            run=run,
+            dedupe_keys=[event_key],
+            note=f"{label} no longer appears short of target.",
+        )
         return
     create_notification(
         root,
@@ -426,6 +432,13 @@ def _notify_short_timing(root, run, session, *, event_key: str, label: str, actu
         title=f"{label} finished short of target",
         message=f"{label} recorded {actual_minutes} minute(s) against a {target_minutes}-minute target.",
     )
+
+
+def _required_reason(payload: dict, field_name: str, prompt: str) -> str:
+    reason = (payload.get(field_name) or "").strip()
+    if not reason:
+        raise ValueError(prompt)
+    return reason
 
 
 def run_timing_controls_payload(root, run) -> dict:
@@ -580,17 +593,46 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
         if run.mixer_started_at is None:
             raise ValueError("Start the mixer before stopping it.")
         run.mixer_ended_at = now
+        mixer_minutes = duration_minutes(run.mixer_started_at, run.mixer_ended_at)
+        mixer_target = extraction_timing_targets(root).get("mixer_minutes")
+        mixer_reason = None
+        if mixer_minutes is not None and mixer_target is not None and mixer_minutes < mixer_target:
+            mixer_reason = _required_reason(
+                payload,
+                "mixer_short_reason",
+                "Enter a reason when the mixer finishes short of target.",
+            )
         if _booth_event(root, session, "primary_mixer_stopped") is None:
-            _record_booth_event(root, session, event_key="primary_mixer_stopped", event_label="Primary mixer stopped")
+            _record_booth_event(
+                root,
+                session,
+                event_key="primary_mixer_stopped",
+                event_label="Primary mixer stopped",
+                text_value=mixer_reason,
+                payload={"reason": mixer_reason} if mixer_reason else None,
+            )
         _notify_short_timing(
             root,
             run,
             session,
             event_key="timing_short_mixer",
             label="Mixer",
-            actual_minutes=duration_minutes(run.mixer_started_at, run.mixer_ended_at),
-            target_minutes=extraction_timing_targets(root).get("mixer_minutes"),
+            actual_minutes=mixer_minutes,
+            target_minutes=mixer_target,
         )
+        if mixer_reason:
+            create_notification(
+                root,
+                run=run,
+                booth_session=session,
+                event_key="timing_short_mixer",
+                dedupe_key="timing_short_mixer",
+                notification_class="warnings",
+                severity="warning",
+                title="Mixer finished short of target",
+                message=f"Mixer recorded {mixer_minutes} minute(s) against a {mixer_target}-minute target.",
+                operator_reason=mixer_reason,
+            )
         session.current_stage_key = "ready_to_confirm_filter_clear"
         return
     if action == "confirm_filter_clear":
@@ -688,21 +730,58 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
         if run.flush_started_at is None:
             raise ValueError("Start the flush before stopping it.")
         run.flush_ended_at = now
+        flush_minutes = duration_minutes(run.flush_started_at, run.flush_ended_at)
+        flush_target = extraction_timing_targets(root).get("flush_minutes")
+        flush_reason = None
+        if flush_minutes is not None and flush_target is not None and flush_minutes < flush_target:
+            flush_reason = _required_reason(
+                payload,
+                "flush_short_reason",
+                "Enter a reason when the flush soak finishes short of target.",
+            )
+        _record_booth_event(
+            root,
+            session,
+            event_key="flush_stopped",
+            event_label="Flush soak stopped",
+            text_value=flush_reason,
+            payload={"reason": flush_reason} if flush_reason else None,
+        )
         _notify_short_timing(
             root,
             run,
             session,
             event_key="timing_short_flush",
             label="Flush soak",
-            actual_minutes=duration_minutes(run.flush_started_at, run.flush_ended_at),
-            target_minutes=extraction_timing_targets(root).get("flush_minutes"),
+            actual_minutes=flush_minutes,
+            target_minutes=flush_target,
         )
+        if flush_reason:
+            create_notification(
+                root,
+                run=run,
+                booth_session=session,
+                event_key="timing_short_flush",
+                dedupe_key="timing_short_flush",
+                notification_class="warnings",
+                severity="warning",
+                title="Flush soak finished short of target",
+                message=f"Flush soak recorded {flush_minutes} minute(s) against a {flush_target}-minute target.",
+                operator_reason=flush_reason,
+            )
         session.current_stage_key = "ready_to_confirm_flow_resumed"
         return
     if action == "confirm_flow_resumed":
         decision = (payload.get("flow_resumed_decision") or "").strip().lower()
         if decision not in {"yes", "no_adjusting"}:
             raise ValueError("Choose whether flow resumed before continuing.")
+        flow_reason = None
+        if decision == "no_adjusting":
+            flow_reason = _required_reason(
+                payload,
+                "flow_adjustment_reason",
+                "Enter a reason when flow is still being adjusted.",
+            )
         session.flow_resumed_decision = decision
         session.flow_resumed_confirmed_at = now
         _record_booth_event(
@@ -711,6 +790,8 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
             event_key="flow_resumed_decision",
             event_label="Flow resumed confirmed" if decision == "yes" else "Flow still adjusting",
             decision_value=decision,
+            text_value=flow_reason,
+            payload={"reason": flow_reason} if flow_reason else None,
         )
         if decision == "yes":
             resolve_matching_notifications(
@@ -730,6 +811,7 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
                 severity="critical",
                 title="Flow adjustment required",
                 message="Recovery flow did not resume after flush adjustments. Supervisor review is required until the flow check passes.",
+                operator_reason=flow_reason,
             )
         session.current_stage_key = "ready_to_start_final_purge" if decision == "yes" else "flow_adjustment_required"
         return
@@ -751,22 +833,58 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
         if session.final_purge_started_at is None:
             raise ValueError("Start final purge before stopping it.")
         session.final_purge_completed_at = now
-        _record_booth_event(root, session, event_key="final_purge_completed", event_label="Final purge completed")
+        final_purge_minutes = duration_minutes(session.final_purge_started_at, session.final_purge_completed_at)
+        final_purge_target = extraction_timing_targets(root).get("final_purge_minutes")
+        final_purge_reason = None
+        if final_purge_minutes is not None and final_purge_target is not None and final_purge_minutes < final_purge_target:
+            final_purge_reason = _required_reason(
+                payload,
+                "final_purge_short_reason",
+                "Enter a reason when the final purge finishes short of target.",
+            )
+        _record_booth_event(
+            root,
+            session,
+            event_key="final_purge_completed",
+            event_label="Final purge completed",
+            text_value=final_purge_reason,
+            payload={"reason": final_purge_reason} if final_purge_reason else None,
+        )
         _notify_short_timing(
             root,
             run,
             session,
             event_key="timing_short_final_purge",
             label="Final purge",
-            actual_minutes=duration_minutes(session.final_purge_started_at, session.final_purge_completed_at),
-            target_minutes=extraction_timing_targets(root).get("final_purge_minutes"),
+            actual_minutes=final_purge_minutes,
+            target_minutes=final_purge_target,
         )
+        if final_purge_reason:
+            create_notification(
+                root,
+                run=run,
+                booth_session=session,
+                event_key="timing_short_final_purge",
+                dedupe_key="timing_short_final_purge",
+                notification_class="warnings",
+                severity="warning",
+                title="Final purge finished short of target",
+                message=f"Final purge recorded {final_purge_minutes} minute(s) against a {final_purge_target}-minute target.",
+                operator_reason=final_purge_reason,
+            )
         session.current_stage_key = "ready_to_confirm_clarity"
         return
     if action == "confirm_final_clarity":
         decision = (payload.get("final_clarity_decision") or "").strip().lower()
         if decision not in {"yes", "not_yet"}:
             raise ValueError("Choose whether the system is clear enough to proceed.")
+        clarity_reason = None
+        if decision == "not_yet":
+            clarity_reason = _required_reason(
+                payload,
+                "final_clarity_reason",
+                "Enter a reason when final clarity is not yet acceptable.",
+            )
         session.final_clarity_decision = decision
         session.final_clarity_confirmed_at = now
         _record_booth_event(
@@ -775,6 +893,8 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
             event_key="final_clarity_confirmed",
             event_label="Final clarity confirmed" if decision == "yes" else "Final clarity not yet acceptable",
             decision_value=decision,
+            text_value=clarity_reason,
+            payload={"reason": clarity_reason} if clarity_reason else None,
         )
         if decision == "yes":
             resolve_matching_notifications(
@@ -794,6 +914,7 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
                 severity="critical",
                 title="Final clarity still out of scope",
                 message="Final clarity was marked not yet acceptable. Supervisor review is required until purge work is completed and clarity is re-confirmed.",
+                operator_reason=clarity_reason,
             )
         session.current_stage_key = "ready_to_complete_shutdown" if decision == "yes" else "clarity_adjustment_required"
         return

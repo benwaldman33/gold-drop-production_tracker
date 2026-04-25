@@ -444,12 +444,29 @@ Each notification shows:
 - timestamp
 - direct `Open run` link when the alert is tied to a run
 - recent delivery status if Slack outbound delivery was attempted
+- operator reason when the deviation required one
+- supervisor override decision and reason when one has been recorded
 
 Supervisors can:
 - `Acknowledge` a notification when they have reviewed it
+- `Approve Deviation` when the run may proceed or be accepted off-target
+- `Require Rework` when the operator must correct the booth condition before the alert can be cleared
 - `Resolve` a notification when the issue is fully closed
 
 The app stores the notification first. Slack is only an optional outbound delivery channel and is not the system of record.
+
+### Operator deviation reasons
+
+When the booth workflow records an off-target or exception condition, the operator must now enter a reason before the step can be submitted.
+
+Current required-reason cases include:
+- mixer finished short of target
+- flush soak finished short of target
+- final purge finished short of target
+- flow still adjusting
+- final clarity not yet acceptable
+
+Those reasons are stored in the booth event trail and shown to supervisors in the dashboard notification queue and on the run's `Booth Review` panel.
 
 ### Post-extraction handoff (Phase 1)
 
