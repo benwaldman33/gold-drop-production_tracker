@@ -12,6 +12,8 @@
 - The `Liquid Loud Hold` is now a staged downstream workflow instead of a flat hold/release list. Liquid Loud runs now move through `Reviewed`, `Reserved for Liquid Loud`, `Release ready`, and then into either `Release To GoldDrop Queue` or `Release Complete`, with release actions gated until the hold is marked release-ready.
 - The `Terp Strip / CDT Cage` is now a staged downstream workflow instead of a flat strip-action list. Terp strip runs now move through `Reviewed`, `Queued for Prescott`, `Strip in progress`, and `Strip complete`, with completion gated until strip work has actually started.
 - The shared downstream destination queue template now shows stage-specific next-step guidance and hides queue actions once a run reaches a terminal queue state.
+- Downstream queue ownership is now first-class on active queue items: supervisors can assign a queue owner from the shared `Downstream Queues` board or any dedicated destination queue page, and both surfaces now show the current owner plus assignment timing/context.
+- Downstream queue ownership now clears automatically when a run leaves active downstream queue management through completion, release, or send-back actions.
 - The standalone extraction workflow now follows booth-SOP checkpoints instead of only the earlier coarse progression buttons. The current guided flow covers vacuum confirmation, solvent charge, primary soak, mixer, filter clear, pressurization, recovery, flush-cycle setup, flush temperature verification, flush solvent charge, flow-resumed confirmation, final purge, final clarity, shutdown checklist completion, and final run completion.
 - The standalone extraction run screen now captures booth-specific SOP data including primary solvent charge, flush temperatures, flush solvent charge, flow-resumed decision, final clarity decision, final purge timing, shutdown checklist confirmations, and booth evidence uploads.
 - The shared extraction progression service now drives booth-session stage state from the backend so the main app, mobile API, and standalone extraction app remain aligned on the active checkpoint, validations, and event history.
@@ -44,6 +46,7 @@
 - Added GoldDrop queue regression coverage for the deeper staged workflow, including stage-specific action visibility and blocking final release until packaging-ready state is reached.
 - Added Liquid Loud queue regression coverage for staged hold/release flow, including gating release actions until the run reaches release-ready state.
 - Added Terp Strip queue regression coverage for staged strip flow, including gating strip completion until active strip work has started.
+- Added downstream queue ownership regression coverage for owner assignment visibility on the shared board and dedicated queue pages, plus automatic owner clearing when a queue item is released complete.
 
 ## 2026-04-18
 

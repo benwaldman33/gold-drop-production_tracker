@@ -366,14 +366,18 @@ The active work area is now the extraction booth SOP alignment layer that sits b
     - runs move through `Reviewed`, `Queued for Prescott`, `Strip in progress`, and `Strip complete`
     - strip actions are now stage-specific
     - `Strip Complete` is blocked until strip work has started
+  - downstream queue ownership / accountability is now first-class across active downstream destinations:
+    - queue items can now be assigned to a specific editor from the shared `Downstream Queues` board or the dedicated destination queue pages
+    - current owner, assignment time, and assigning user are visible on both surfaces
+    - owner state clears automatically when a queue item leaves active downstream management
 
 ### In progress
 
 - the active product area is no longer only downstream execution
 - the current product area is downstream queue deepening on top of the booth-SOP foundation:
   - making destination queues behave like real work surfaces instead of generic hold lists
-  - extending the staged workflow pattern from GoldDrop into the remaining destination queues
-  - deciding how far to push queue-specific state, accountability, and reporting before adding more schema
+  - deciding how far to push the remaining hold workflows before adding queue-reporting depth
+  - deciding what reporting matters first now that staged state and ownership are both present
 
 ### Next
 
@@ -412,7 +416,6 @@ with downstream:
 
 The next major build should stay in downstream execution, but move past the first three staged queues:
 
-- decide whether queue ownership / assignee / accountability should become first-class on downstream items
 - decide whether `HP Base Oil Hold` and `Distillate Hold` need deeper staged workflows or can remain simpler hold/release surfaces
 - add queue aging / blocked-item / throughput visibility once the destination workflow shape is settled
 
@@ -420,24 +423,24 @@ The next major build should stay in downstream execution, but move past the firs
 
 When work resumes, decide the next downstream operating slice after the first three staged queues and confirm:
 
-1. whether queue items now need explicit assignee / owner fields instead of event-only history
-2. whether `HP Base Oil Hold` and `Distillate Hold` should become staged workflows or stay lighter-weight
-3. what reporting matters first once queue stages stabilize: aging, blocked items, throughput, or rework volume
-4. whether any destination now needs a dedicated role-specific completion or rework state beyond queue removal
+1. whether `HP Base Oil Hold` and `Distillate Hold` should become staged workflows or stay lighter-weight
+2. what reporting matters first once queue stages and ownership are both present: aging, blocked items, throughput, or rework volume
+3. whether any destination now needs a dedicated role-specific completion or rework state beyond queue removal
+4. whether ownership should later expand from single-owner assignment into explicit handoff / team-state tracking
 
 The likely implementation order is:
 
-1. queue ownership / accountability
-2. remaining hold-workflow decisions
-3. stronger downstream completion/rework tracking
-4. queue reporting and management visibility
+1. remaining hold-workflow decisions
+2. stronger downstream completion/rework tracking
+3. queue reporting and management visibility
+4. later ownership refinements if needed
 
 ## Deployment note
 
 Current booth-SOP rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `a1f7d3e`
+- commit: `pending current sprint closeout`
 
 Production deployment steps:
 
@@ -445,14 +448,13 @@ Production deployment steps:
    - `git fetch origin`
    - `git checkout Claude_Consolidation`
    - `git pull --ff-only origin Claude_Consolidation`
-2. restart the backend so the Terp Strip queue stage logic and action gating are live
+2. restart the backend so the downstream queue ownership fields and assignment controls are live
 3. no standalone extraction app sync is required for this sprint
 4. verify in the main app and on a live extraction run:
-   - the `Terp Strip / CDT Cage` page shows stage-specific next-step guidance
-   - new Terp Strip items only show `Mark Reviewed` first
-   - `Queue Prescott` appears only after review
-   - `Start Strip Work` appears only after Prescott queueing
-   - `Strip Complete` is not available until strip work is in progress
+   - the shared `Downstream Queues` board shows `Queue owner` on active destination items
+   - the dedicated `GoldDrop`, `Liquid Loud`, `Terp Strip`, `HP Base Oil`, and `Distillate` pages show the same owner state
+   - assigning an owner from either surface persists and shows assignment timing/context
+   - releasing or completing a queue item clears the owner automatically
 
 ## Local note
 

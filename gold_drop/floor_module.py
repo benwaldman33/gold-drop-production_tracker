@@ -464,6 +464,10 @@ def register_routes(app, root):
         return downstream_queue_move_view(root, run_id)
 
     @root.editor_required
+    def downstream_queue_assign(run_id):
+        return downstream_queue_assign_view(root, run_id)
+
+    @root.editor_required
     def golddrop_queue_action(run_id):
         return golddrop_queue_action_view(root, run_id)
 
@@ -493,6 +497,7 @@ def register_routes(app, root):
     app.add_url_rule("/downstream-queues/distillate", endpoint="distillate_queue", view_func=distillate_queue)
     app.add_url_rule("/floor-ops/charges/<charge_id>/transition", endpoint="floor_charge_transition", view_func=floor_charge_transition, methods=["POST"])
     app.add_url_rule("/downstream-queues/runs/<run_id>/move", endpoint="downstream_queue_move", view_func=downstream_queue_move, methods=["POST"])
+    app.add_url_rule("/downstream-queues/runs/<run_id>/assign", endpoint="downstream_queue_assign", view_func=downstream_queue_assign, methods=["POST"])
     app.add_url_rule("/downstream-queues/golddrop/runs/<run_id>/action", endpoint="golddrop_queue_action", view_func=golddrop_queue_action, methods=["POST"])
     app.add_url_rule("/downstream-queues/liquid-loud/runs/<run_id>/action", endpoint="liquid_loud_queue_action", view_func=liquid_loud_queue_action, methods=["POST"])
     app.add_url_rule("/downstream-queues/terp-strip/runs/<run_id>/action", endpoint="terp_strip_queue_action", view_func=terp_strip_queue_action, methods=["POST"])
@@ -880,13 +885,45 @@ def _destination_queue_history(root, run_id: str, queue_key: str):
     )
 
 
+def _destination_queue_assignment_options(root):
+    users = (
+        root.User.query.filter_by(is_active_user=True)
+        .order_by(root.User.display_name.asc(), root.User.username.asc())
+        .all()
+    )
+    options = [{"value": "", "label": "Unassigned"}]
+    for user in users:
+        if not getattr(user, "can_edit", False):
+            continue
+        options.append({"value": user.id, "label": f"{user.display_name} ({user.username})"})
+    return options
+
+
+def _destination_queue_assignment_snapshot(root, run):
+    assignee = getattr(run, "downstream_queue_assignee", None)
+    assigned_by = getattr(run, "downstream_queue_assigned_by", None)
+    return {
+        "assignee_id": getattr(run, "downstream_queue_assignee_user_id", None),
+        "assignee_name": assignee.display_name if assignee and assignee.display_name else None,
+        "assignee_username": assignee.username if assignee and assignee.username else None,
+        "assigned_at_label": display_local_timestamp(getattr(run, "downstream_queue_assigned_at", None)),
+        "assigned_by_name": assigned_by.display_name if assigned_by and assigned_by.display_name else None,
+    }
+
+
 def _destination_queue_state(root, run, queue_key: str):
     config = DESTINATION_QUEUE_CONFIGS[queue_key]
     history = _destination_queue_history(root, run.id, queue_key)
     if not history:
         return config["default_state"], history
-    latest = (history[0].action_key or "").strip()
-    state_key = config["action_state_map"].get(latest, config["default_state"])
+    state_key = config["default_state"]
+    for entry in history:
+        action_key = (entry.action_key or "").strip()
+        if action_key == "entered_queue":
+            break
+        if action_key in config["action_state_map"]:
+            state_key = config["action_state_map"][action_key]
+            break
     return state_key, history
 
 
@@ -913,6 +950,7 @@ def _destination_queue_query(root, queue_key: str):
 def _build_destination_queue_detail(root, queue_key: str):
     config = DESTINATION_QUEUE_CONFIGS[queue_key]
     runs = _destination_queue_query(root, queue_key)
+    assignment_options = _destination_queue_assignment_options(root)
     items = []
     for run in runs:
         base = _build_downstream_queue_item(root, run)
@@ -920,9 +958,16 @@ def _build_destination_queue_detail(root, queue_key: str):
         base["queue_state_key"] = state_key
         base["queue_state_label"] = config["state_labels"][state_key]
         base["queue_next_step"] = config.get("stage_next_steps", {}).get(state_key, config["help_text"])
+        base["assignment"] = _destination_queue_assignment_snapshot(root, run)
         base["history"] = [
             {
-                "action_label": config["event_labels"].get(entry.action_key, entry.action_key.replace("_", " ").title()),
+                "action_label": config["event_labels"].get(
+                    entry.action_key,
+                    {
+                        "assign_owner": "Owner assigned",
+                        "clear_owner": "Owner cleared",
+                    }.get(entry.action_key, entry.action_key.replace("_", " ").title()),
+                ),
                 "timestamp_label": display_local_timestamp(entry.created_at),
                 "notes": entry.notes,
                 "creator_name": entry.creator.display_name if entry.creator and entry.creator.display_name else None,
@@ -939,6 +984,8 @@ def _build_destination_queue_detail(root, queue_key: str):
         "empty_text": config["empty_text"],
         "help_text": config["help_text"],
         "action_endpoint": config["action_endpoint"],
+        "assignment_endpoint": "downstream_queue_assign",
+        "assignment_options": assignment_options,
         "count": len(items),
         "items": items,
     }
@@ -971,6 +1018,8 @@ def _build_downstream_queues(root):
         if not queue_key:
             continue
         item["next_step"] = _downstream_next_step(item)
+        item["assignment"] = _destination_queue_assignment_snapshot(root, run)
+        item["can_assign_queue_owner"] = queue_key in DESTINATION_QUEUE_CONFIGS
         section_map[queue_key]["items"].append(item)
     sections = [section_map[key] for key, _label, _description in DOWNSTREAM_QUEUE_SECTIONS]
     summary_cards = [
@@ -985,6 +1034,7 @@ def _build_downstream_queues(root):
         "sections": sections,
         "summary_cards": summary_cards,
         "move_options": _downstream_move_options(),
+        "assignment_options": _destination_queue_assignment_options(root),
         "active_count": sum(card["count"] for card in summary_cards),
     }
 
@@ -1107,6 +1157,9 @@ def downstream_queue_move_view(root, run_id):
     if target == "complete":
         run.hte_queue_destination = None
         run.hte_potency_disposition = None
+        run.downstream_queue_assignee_user_id = None
+        run.downstream_queue_assigned_at = None
+        run.downstream_queue_assigned_by_user_id = None
         message = "Downstream queue item marked complete."
     elif target in {"hold_hp_base_oil", "hold_distillate"}:
         run.hte_potency_disposition = target
@@ -1136,6 +1189,62 @@ def downstream_queue_move_view(root, run_id):
     return root.redirect(root.url_for("downstream_queues"))
 
 
+def downstream_queue_assign_view(root, run_id):
+    run = root.db.session.get(root.Run, run_id)
+    redirect_target = (root.request.form.get("redirect_to") or "").strip()
+    if run is None or run.deleted_at is not None:
+        root.flash("Run not found.", "error")
+        return root.redirect(root.url_for("downstream_queues"))
+
+    active_queue = _downstream_active_queue(run)
+    if not active_queue or active_queue not in DESTINATION_QUEUE_CONFIGS:
+        root.flash("This run is not currently in an active downstream queue.", "error")
+        return root.redirect(root.url_for("downstream_queues"))
+
+    requested_user_id = (root.request.form.get("assignment_user_id") or "").strip()
+    previous_assignee = getattr(run, "downstream_queue_assignee", None)
+    if requested_user_id:
+        assignee = root.db.session.get(root.User, requested_user_id)
+        if assignee is None or not assignee.is_active_user or not getattr(assignee, "can_edit", False):
+            root.flash("Choose a valid downstream queue owner.", "error")
+            return root.redirect(redirect_target or root.url_for(DESTINATION_QUEUE_CONFIGS[active_queue]["view_endpoint"]))
+        run.downstream_queue_assignee_user_id = assignee.id
+        run.downstream_queue_assigned_at = root.datetime.now(root.timezone.utc)
+        run.downstream_queue_assigned_by_user_id = getattr(root.current_user, "id", None)
+        assignment_message = f"Queue owner assigned to {assignee.display_name}."
+        assignment_action = "assign_owner"
+        assignment_note = f"Assigned to {assignee.display_name}"
+        if previous_assignee and previous_assignee.id != assignee.id:
+            assignment_note += f" (reassigned from {previous_assignee.display_name})"
+    else:
+        run.downstream_queue_assignee_user_id = None
+        run.downstream_queue_assigned_at = None
+        run.downstream_queue_assigned_by_user_id = getattr(root.current_user, "id", None)
+        assignment_message = "Queue owner cleared."
+        assignment_action = "clear_owner"
+        assignment_note = "Queue owner cleared"
+
+    _log_downstream_queue_event(root, run, active_queue, assignment_action, notes=assignment_note)
+    root.log_audit(
+        "update",
+        "run",
+        run.id,
+        details=root.json.dumps(
+            {
+                "source": "downstream_queue_assignment",
+                "queue_key": active_queue,
+                "assignee_user_id": requested_user_id or None,
+                "previous_assignee_user_id": previous_assignee.id if previous_assignee else None,
+            }
+        ),
+    )
+    root.db.session.commit()
+    root.flash(assignment_message, "success")
+    if redirect_target.startswith("/downstream-queues"):
+        return root.redirect(redirect_target)
+    return root.redirect(root.url_for(DESTINATION_QUEUE_CONFIGS[active_queue]["view_endpoint"]))
+
+
 def golddrop_queue_action_view(root, run_id):
     return destination_queue_action_view(root, run_id, "golddrop_queue")
 
@@ -1161,9 +1270,15 @@ def destination_queue_action_view(root, run_id, queue_key: str):
     if queue_key == "golddrop_queue":
         if action == "release_complete":
             run.hte_queue_destination = None
+            run.downstream_queue_assignee_user_id = None
+            run.downstream_queue_assigned_at = None
+            run.downstream_queue_assigned_by_user_id = None
         elif action == "send_back":
             run.hte_queue_destination = None
             run.hte_potency_disposition = None
+            run.downstream_queue_assignee_user_id = None
+            run.downstream_queue_assigned_at = None
+            run.downstream_queue_assigned_by_user_id = None
     elif queue_key == "liquid_loud_hold":
         if action == "release_to_golddrop":
             run.hte_queue_destination = "golddrop_queue"
@@ -1171,9 +1286,15 @@ def destination_queue_action_view(root, run_id, queue_key: str):
         elif action == "release_complete":
             run.hte_queue_destination = None
             run.hte_potency_disposition = None
+            run.downstream_queue_assignee_user_id = None
+            run.downstream_queue_assigned_at = None
+            run.downstream_queue_assigned_by_user_id = None
         elif action == "send_back":
             run.hte_queue_destination = None
             run.hte_potency_disposition = None
+            run.downstream_queue_assignee_user_id = None
+            run.downstream_queue_assigned_at = None
+            run.downstream_queue_assigned_by_user_id = None
     elif queue_key == "terp_strip_cage":
         if action == "queue_prescott":
             run.hte_filter_outcome = "needs_prescott"
@@ -1181,13 +1302,25 @@ def destination_queue_action_view(root, run_id, queue_key: str):
         elif action == "strip_complete":
             run.hte_queue_destination = None
             run.hte_pipeline_stage = "terp_stripped"
+            run.downstream_queue_assignee_user_id = None
+            run.downstream_queue_assigned_at = None
+            run.downstream_queue_assigned_by_user_id = None
         elif action == "send_back":
             run.hte_queue_destination = None
+            run.downstream_queue_assignee_user_id = None
+            run.downstream_queue_assigned_at = None
+            run.downstream_queue_assigned_by_user_id = None
     elif queue_key in {"hold_hp_base_oil", "hold_distillate"}:
         if action == "release_complete":
             run.hte_potency_disposition = None
+            run.downstream_queue_assignee_user_id = None
+            run.downstream_queue_assigned_at = None
+            run.downstream_queue_assigned_by_user_id = None
         elif action == "send_back":
             run.hte_potency_disposition = None
+            run.downstream_queue_assignee_user_id = None
+            run.downstream_queue_assigned_at = None
+            run.downstream_queue_assigned_by_user_id = None
 
     _log_downstream_queue_event(root, run, queue_key, action, notes=notes)
     if queue_key == "liquid_loud_hold" and action == "release_to_golddrop":

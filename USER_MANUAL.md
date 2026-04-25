@@ -655,6 +655,15 @@ Use the destination dropdown on a queue card to:
 - move it into a potency-based hold
 - or mark the downstream queue item complete
 
+Each active downstream queue card also shows `Queue owner`.
+
+Use the owner dropdown on a queue card to:
+- assign the item to a specific editor
+- reassign it to a different editor
+- or set it back to `Unassigned`
+
+This ownership control only applies once a run is in an active downstream destination or hold. It is not used for `Needs Queue Decision`.
+
 When you open a run from this page, the main run form now shows **Back to Downstream Queues** so you can return to the same supervisor queue surface.
 
 ### GoldDrop Production Queue
@@ -670,6 +679,7 @@ Each queue card shows:
 - current queue state
 - source strain / supplier / lot context
 - wet and dry THCA / HTE totals
+- current queue owner when assigned
 - queue history with timestamps and operator names
 
 Available actions:
@@ -679,6 +689,8 @@ Available actions:
 - `Send Back For Re-routing`
 
 Use **Queue note (optional)** to capture a short planning or handoff note alongside the queue action.
+
+Use the queue-owner dropdown on the card when you need explicit accountability for who currently owns that GoldDrop item.
 
 `Release Complete` removes the run from the GoldDrop queue.
 
@@ -692,6 +704,8 @@ The other downstream destinations now also have dedicated workflow pages reached
 - **Open HP Base Oil Hold**
 
 Use these when a run has already been routed to that downstream destination and you want a cleaner operational surface than the generic routing board.
+
+These pages also show and edit the same `Queue owner` assignment used on the shared downstream board.
 
 #### Liquid Loud Hold
 - `Mark Reviewed`

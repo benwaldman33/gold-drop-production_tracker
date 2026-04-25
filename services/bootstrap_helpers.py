@@ -241,6 +241,12 @@ def ensure_sqlite_schema(root) -> None:
             root.db.session.execute(text("ALTER TABLE runs ADD COLUMN hte_potency_disposition VARCHAR(40)"))
         if "hte_queue_destination" not in cols:
             root.db.session.execute(text("ALTER TABLE runs ADD COLUMN hte_queue_destination VARCHAR(40)"))
+        if "downstream_queue_assignee_user_id" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN downstream_queue_assignee_user_id VARCHAR(36)"))
+        if "downstream_queue_assigned_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN downstream_queue_assigned_at DATETIME"))
+        if "downstream_queue_assigned_by_user_id" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN downstream_queue_assigned_by_user_id VARCHAR(36)"))
 
     if has_table("extraction_booth_sessions"):
         cols = column_names("extraction_booth_sessions")
@@ -551,6 +557,9 @@ def ensure_postgres_run_execution_columns(root) -> None:
         "ALTER TABLE runs ADD COLUMN IF NOT EXISTS hte_prescott_processed_at TIMESTAMP",
         "ALTER TABLE runs ADD COLUMN IF NOT EXISTS hte_potency_disposition VARCHAR(40)",
         "ALTER TABLE runs ADD COLUMN IF NOT EXISTS hte_queue_destination VARCHAR(40)",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS downstream_queue_assignee_user_id VARCHAR(36)",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS downstream_queue_assigned_at TIMESTAMP",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS downstream_queue_assigned_by_user_id VARCHAR(36)",
     ):
         root.db.session.execute(text(stmt))
     root.db.session.commit()

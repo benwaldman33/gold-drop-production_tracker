@@ -65,6 +65,8 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 
 ## Features
 
+- **Downstream queue ownership** - active downstream queue items can now be assigned to a specific editor from either the shared board or the dedicated destination queue pages, so supervisors have explicit current ownership instead of only queue-event history.
+
 - **Docs update (Apr 2026)** — Journey endpoints now share one validation path for missing/archived purchases, and Journey export rejects unsupported formats with an explicit `400` JSON error (`{"error":"Unsupported export format","supported_formats":["csv","json"]}`) instead of silently defaulting.
 - **Dashboard** — KPI cards with configurable green/yellow/red traffic lights (on-hand biomass and days-of-supply use **approved** purchases only; see **Purchases** below)
 - **Biomass purchasing** — Landing page (`/biomass-purchasing`) for weekly buyer targets vs actuals, office-created purchase opportunities, field submission queues, and reviewed history (first sidebar item after **Extraction**)
