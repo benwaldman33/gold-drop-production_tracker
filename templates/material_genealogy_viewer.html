@@ -99,7 +99,8 @@
             {% if lot_view.open_run_journey_url %}<a href="{{ lot_view.open_run_journey_url }}" class="btn btn-secondary btn-sm">Open Parent Run</a>{% endif %}
             {% if lot_view.open_run_url %}<a href="{{ lot_view.open_run_url }}" class="btn btn-secondary btn-sm">Open Run Record</a>{% endif %}
             {% if lot_view.open_purchase_url %}<a href="{{ lot_view.open_purchase_url }}" class="btn btn-secondary btn-sm">Open Purchase</a>{% endif %}
-            <a href="{{ url_for('material_genealogy_raw', entity_type='material_lot', material_lot_id=material.material_lot_id, payload='detail') }}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">Raw Detail</a>
+            <a href="{{ lot_view.correction_url }}" class="btn btn-primary btn-sm">Correct This Lot</a>
+            <a href="{{ url_for('material_genealogy_raw', entity_type='material_lot', material_lot_id=material.material_lot_id, payload='detail') }}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">View JSON</a>
           </div>
         </div>
         <div class="journey-summary-grid" style="margin-top:16px;">
@@ -212,6 +213,55 @@
         <div class="journey-empty">This lot does not have recorded descendant transformations yet.</div>
         {% endif %}
       </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Reconciliation And Corrections</h3>
+          <span class="text-sm cell-muted">Open genealogy issues and any correction-forward audit history for this lot.</span>
+        </div>
+        {% if lot_view.detail.reconciliation_issues %}
+        <div class="journey-chain" style="margin-bottom:14px;">
+          {% for issue in lot_view.detail.reconciliation_issues %}
+          <div class="journey-chain-row">
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;">
+              <strong>{{ issue.issue_type.replace('_', ' ').title() }}</strong>
+              <span class="badge status-{{ 'blocked' if issue.status == 'open' else 'done' }}">{{ issue.status.replace('_', ' ') }}</span>
+            </div>
+            <div class="text-sm cell-muted" style="margin-top:6px;">Severity: {{ issue.severity }} · Detected {{ issue.detected_at or "—" }}</div>
+            {% if issue.resolution_note %}
+            <div class="text-sm" style="margin-top:8px;"><strong>Resolution:</strong> {{ issue.resolution_note }}</div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="journey-section-note">No reconciliation issues are currently recorded for this lot.</div>
+        {% endif %}
+
+        {% if lot_view.correction_history %}
+        <div class="journey-chain">
+          {% for item in lot_view.correction_history %}
+          <div class="journey-chain-row">
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;">
+              <strong>{{ item.transformation_type.replace('_', ' ').title() }}</strong>
+              <span class="badge status-{{ item.status }}">{{ item.status.replace('_', ' ') }}</span>
+            </div>
+            <div class="text-sm cell-muted" style="margin-top:6px;">Recorded {{ item.performed_at or "—" }}</div>
+            {% if item.notes %}
+            <div class="text-sm" style="margin-top:8px;"><strong>Reason:</strong> {{ item.notes }}</div>
+            {% endif %}
+            {% if item.run_url %}
+            <div class="journey-link-row">
+              <a href="{{ item.run_url }}" class="btn btn-secondary btn-sm">Open Run</a>
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="journey-section-note" style="margin-top:14px;">No correction history is recorded for this lot yet.</div>
+        {% endif %}
+      </div>
     {% elif mode == 'run' and run_view %}
       {% set run = run_view.journey.run %}
       <div class="card">
@@ -222,7 +272,7 @@
           </div>
           <div class="journey-link-row">
             <a href="{{ run.run_url }}" class="btn btn-secondary btn-sm">Open Run Record</a>
-            <a href="{{ url_for('material_genealogy_raw', entity_type='run', run_id=run.run_id, payload='journey') }}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">Raw Journey</a>
+            <a href="{{ url_for('material_genealogy_raw', entity_type='run', run_id=run.run_id, payload='journey') }}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">View JSON</a>
           </div>
         </div>
         <div class="journey-summary-grid" style="margin-top:16px;">

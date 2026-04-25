@@ -815,11 +815,19 @@ From that report, use **Open Journey Viewer** or any linked derivative lot to op
 The **Material Journey Viewer** supports:
 - `By Lot`: start from a material lot and trace upstream inputs plus downstream child lots
 - `By Run`: start from an extraction run and trace source lots, allocations, and derivative outputs
+- in `By Lot`, the viewer now also shows:
+  - open reconciliation issues on that lot
+  - correction history for that lot
+  - a direct `Correct This Lot` action
+
+Use `View JSON` when you want the exact underlying payload for the current viewer page.
+On the report table, `Ancestry JSON` and `Descendants JSON` expose the raw lineage payloads for that lot.
 
 Use the viewer when you need a path-tracing answer instead of just a summary, for example:
 - start from a distillate or GoldDrop lot and trace it back to its biomass source lots
 - start from a run and see every accountable derivative lot created from it
 - move from a downstream queue card into the full lineage for a linked derivative lot
+- find a genealogy problem and move directly into correction from the same lot view
 
 Use this page for questions like:
 - what derivative inventory is still open by type

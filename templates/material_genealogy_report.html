@@ -229,9 +229,9 @@
           <td>
             <a href="{{ url_for('material_genealogy_viewer', mode='lot', material_lot_id=lot.material_lot_id) }}">Viewer</a>
             ·
-            <a href="{{ url_for('material_genealogy_raw', entity_type='material_lot', material_lot_id=lot.material_lot_id, payload='ancestry') }}" target="_blank" rel="noopener">Raw ancestry</a>
+            <a href="{{ url_for('material_genealogy_raw', entity_type='material_lot', material_lot_id=lot.material_lot_id, payload='ancestry') }}" target="_blank" rel="noopener">Ancestry JSON</a>
             ·
-            <a href="{{ url_for('material_genealogy_raw', entity_type='material_lot', material_lot_id=lot.material_lot_id, payload='descendants') }}" target="_blank" rel="noopener">Raw descendants</a>
+            <a href="{{ url_for('material_genealogy_raw', entity_type='material_lot', material_lot_id=lot.material_lot_id, payload='descendants') }}" target="_blank" rel="noopener">Descendants JSON</a>
           </td>
         </tr>
         {% endfor %}
