@@ -220,6 +220,9 @@
           <h3>Reconciliation And Corrections</h3>
           <span class="text-sm cell-muted">Open genealogy issues and any correction-forward audit history for this lot.</span>
         </div>
+        <div class="journey-link-row" style="margin-bottom:12px;">
+          <a href="{{ url_for('material_genealogy_issue_queue') }}" class="btn btn-secondary btn-sm">Open Issue Queue</a>
+        </div>
         {% if lot_view.detail.reconciliation_issues %}
         <div class="journey-chain" style="margin-bottom:14px;">
           {% for issue in lot_view.detail.reconciliation_issues %}
@@ -228,9 +231,12 @@
               <strong>{{ issue.issue_type.replace('_', ' ').title() }}</strong>
               <span class="badge status-{{ 'blocked' if issue.status == 'open' else 'done' }}">{{ issue.status.replace('_', ' ') }}</span>
             </div>
-            <div class="text-sm cell-muted" style="margin-top:6px;">Severity: {{ issue.severity }} · Detected {{ issue.detected_at or "—" }}</div>
+            <div class="text-sm cell-muted" style="margin-top:6px;">Severity: {{ issue.severity }} - Detected {{ issue.detected_at or "-" }} - Reminders {{ issue.reminder_count or 0 }}{% if issue.overdue %} - overdue{% endif %}</div>
             {% if issue.resolution_note %}
             <div class="text-sm" style="margin-top:8px;"><strong>Resolution:</strong> {{ issue.resolution_note }}</div>
+            {% endif %}
+            {% if issue.working_note and issue.status != 'resolved' %}
+            <div class="text-sm" style="margin-top:8px;"><strong>Working note:</strong> {{ issue.working_note }}</div>
             {% endif %}
           </div>
           {% endfor %}
@@ -369,6 +375,9 @@
           <h3>Run Reconciliation</h3>
           <span class="text-sm cell-muted">Genealogy issues, source-allocation exceptions, and direct links to affected child lots.</span>
         </div>
+        <div class="journey-link-row" style="margin-bottom:12px;">
+          <a href="{{ url_for('material_genealogy_issue_queue') }}" class="btn btn-secondary btn-sm">Open Issue Queue</a>
+        </div>
         {% if run_view.issues %}
         <div class="journey-chain" style="margin-bottom:14px;">
           {% for issue in run_view.issues %}
@@ -377,9 +386,12 @@
               <strong>{{ issue.issue_type.replace('_', ' ').title() }}</strong>
               <span class="badge status-{{ 'blocked' if issue.status == 'open' else 'done' }}">{{ issue.status.replace('_', ' ') }}</span>
             </div>
-            <div class="text-sm cell-muted" style="margin-top:6px;">Severity: {{ issue.severity }} · Detected {{ issue.detected_at or "—" }}</div>
+            <div class="text-sm cell-muted" style="margin-top:6px;">Severity: {{ issue.severity }} - Detected {{ issue.detected_at or "-" }} - Reminders {{ issue.reminder_count or 0 }}{% if issue.overdue %} - overdue{% endif %}</div>
             {% if issue.resolution_note %}
             <div class="text-sm" style="margin-top:8px;"><strong>Detail:</strong> {{ issue.resolution_note }}</div>
+            {% endif %}
+            {% if issue.working_note and issue.status != 'resolved' %}
+            <div class="text-sm" style="margin-top:8px;"><strong>Working note:</strong> {{ issue.working_note }}</div>
             {% endif %}
             <div class="journey-link-row">
               {% if issue.material_lot_id and run_view.material_lot_urls.get(issue.material_lot_id) %}
@@ -393,7 +405,7 @@
           {% endfor %}
         </div>
         {% else %}
-        <div class="journey-section-note">No open genealogy issues are currently recorded on this run.</div>
+        <div class="journey-section-note">No genealogy issues are currently recorded on this run.</div>
         {% endif %}
 
         {% if run_view.journey.exceptions %}

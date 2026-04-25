@@ -14,12 +14,54 @@
   <div class="summary-stat"><div class="label">Investigating</div><div class="value">{{ status_counts.investigating }}</div></div>
   <div class="summary-stat"><div class="label">Needs Follow-Up</div><div class="value">{{ status_counts.needs_follow_up }}</div></div>
   <div class="summary-stat"><div class="label">Resolved</div><div class="value">{{ status_counts.resolved }}</div></div>
+  <div class="summary-stat"><div class="label">Critical</div><div class="value">{{ severity_counts.critical }}</div></div>
+  <div class="summary-stat"><div class="label">Overdue</div><div class="value">{{ overdue_count }}</div></div>
 </div>
 
-<div class="btn-group" style="margin-bottom:18px;">
-  <a href="{{ url_for('material_genealogy_issue_queue', status='active') }}" class="btn {% if status_filter == 'active' %}btn-primary{% else %}btn-secondary{% endif %}">Active</a>
-  <a href="{{ url_for('material_genealogy_issue_queue', status='resolved') }}" class="btn {% if status_filter == 'resolved' %}btn-primary{% else %}btn-secondary{% endif %}">Resolved</a>
-  <a href="{{ url_for('material_genealogy_issue_queue', status='all') }}" class="btn {% if status_filter == 'all' %}btn-primary{% else %}btn-secondary{% endif %}">All</a>
+<div class="card" style="margin-bottom:18px;">
+  <form method="GET" action="{{ url_for('material_genealogy_issue_queue') }}">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;align-items:end;">
+      <div>
+        <label class="text-sm cell-muted" for="queue-status-filter">Status</label>
+        <select id="queue-status-filter" name="status">
+          <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Active</option>
+          <option value="resolved" {% if status_filter == 'resolved' %}selected{% endif %}>Resolved</option>
+          <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All</option>
+        </select>
+      </div>
+      <div>
+        <label class="text-sm cell-muted" for="queue-severity-filter">Severity</label>
+        <select id="queue-severity-filter" name="severity">
+          <option value="all" {% if severity_filter == 'all' %}selected{% endif %}>All severities</option>
+          <option value="critical" {% if severity_filter == 'critical' %}selected{% endif %}>Critical</option>
+          <option value="warning" {% if severity_filter == 'warning' %}selected{% endif %}>Warning</option>
+        </select>
+      </div>
+      <div>
+        <label class="text-sm cell-muted" for="queue-owner-filter">Owner</label>
+        <select id="queue-owner-filter" name="owner">
+          <option value="all" {% if owner_filter == 'all' %}selected{% endif %}>All owners</option>
+          <option value="unassigned" {% if owner_filter == 'unassigned' %}selected{% endif %}>Unassigned</option>
+          {% for option in assignment_options if option.value %}
+          <option value="{{ option.value }}" {% if owner_filter == option.value %}selected{% endif %}>{{ option.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="text-sm cell-muted" for="queue-age-filter">Age</label>
+        <select id="queue-age-filter" name="age">
+          <option value="all" {% if age_filter == 'all' %}selected{% endif %}>All ages</option>
+          <option value="overdue" {% if age_filter == 'overdue' %}selected{% endif %}>Overdue only</option>
+          <option value="7_plus" {% if age_filter == '7_plus' %}selected{% endif %}>7+ days</option>
+          <option value="30_plus" {% if age_filter == '30_plus' %}selected{% endif %}>30+ days</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-actions" style="justify-content:flex-start;margin-top:12px;">
+      <button type="submit" class="btn btn-primary btn-sm">Apply Filters</button>
+      <a href="{{ url_for('material_genealogy_issue_queue') }}" class="btn btn-secondary btn-sm">Clear</a>
+    </div>
+  </form>
 </div>
 
 {% if issues %}
@@ -29,36 +71,46 @@
   <div class="card" id="issue-{{ issue.issue_id }}">
     <div class="card-header">
       <h3>{{ issue.issue_type.replace('_', ' ').title() }}</h3>
-      <span class="text-sm cell-muted">{{ issue.severity }} · {{ issue.status.replace('_', ' ') }}{% if row.age_days is not none %} · {{ row.age_days }} day{% if row.age_days != 1 %}s{% endif %} old{% endif %}</span>
+      <span class="text-sm cell-muted">
+        {{ issue.severity }} - {{ issue.status.replace('_', ' ') }}
+        {% if row.age_days is not none %}- {{ row.age_days }} day{% if row.age_days != 1 %}s{% endif %} old{% endif %}
+        {% if row.reminder.overdue %}- overdue{% endif %}
+      </span>
     </div>
     <div class="summary-row" style="margin-bottom:12px;">
       <div class="summary-stat">
         <div class="label">Run</div>
-        <div class="value" style="font-size:1rem;">{% if row.run_view_url %}<a href="{{ row.run_view_url }}">Open Run View</a>{% else %}—{% endif %}</div>
+        <div class="value" style="font-size:1rem;">{% if row.run_view_url %}<a href="{{ row.run_view_url }}">Open Run View</a>{% else %}-{% endif %}</div>
       </div>
       <div class="summary-stat">
         <div class="label">Lot</div>
-        <div class="value" style="font-size:1rem;">{% if row.lot_view_url %}<a href="{{ row.lot_view_url }}">Open Lot View</a>{% else %}—{% endif %}</div>
+        <div class="value" style="font-size:1rem;">{% if row.lot_view_url %}<a href="{{ row.lot_view_url }}">Open Lot View</a>{% else %}-{% endif %}</div>
       </div>
       <div class="summary-stat">
         <div class="label">Owner</div>
         <div class="value" style="font-size:1rem;">{{ row.assignee_name or "Unassigned" }}</div>
       </div>
+      <div class="summary-stat">
+        <div class="label">Reminders</div>
+        <div class="value" style="font-size:1rem;">{{ row.reminder.reminder_count }}</div>
+      </div>
     </div>
     {% if issue.resolution_note %}
-    <div class="text-sm" style="margin-bottom:10px;"><strong>Detail:</strong> {{ issue.resolution_note }}</div>
+    <div class="text-sm" style="margin-bottom:10px;"><strong>Resolution:</strong> {{ issue.resolution_note }}</div>
     {% endif %}
+    {% if issue.working_note and issue.status != 'resolved' %}
+    <div class="text-sm" style="margin-bottom:10px;"><strong>Working note:</strong> {{ issue.working_note }}</div>
+    {% endif %}
+    {% if row.reminder.last_reminded_at %}
+    <div class="text-sm cell-muted" style="margin-bottom:10px;">Last reminder: {{ row.reminder.last_reminded_at }}{% if row.reminder.next_reminder_due_at %} - next due {{ row.reminder.next_reminder_due_at }}{% endif %}</div>
+    {% endif %}
+
     <form method="POST" action="{{ url_for('material_genealogy_issue_update', issue_id=issue.issue_id) }}">
       <input type="hidden" name="return_status" value="{{ status_filter }}">
+      <input type="hidden" name="return_severity" value="{{ severity_filter }}">
+      <input type="hidden" name="return_owner" value="{{ owner_filter }}">
+      <input type="hidden" name="return_age" value="{{ age_filter }}">
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;align-items:end;">
-        <div>
-          <label class="text-sm cell-muted" for="issue-status-{{ issue.issue_id }}">Status</label>
-          <select id="issue-status-{{ issue.issue_id }}" name="status">
-            {% for option in ['open', 'investigating', 'needs_follow_up', 'resolved'] %}
-            <option value="{{ option }}" {% if issue.status == option %}selected{% endif %}>{{ option.replace('_', ' ') }}</option>
-            {% endfor %}
-          </select>
-        </div>
         <div>
           <label class="text-sm cell-muted" for="issue-owner-{{ issue.issue_id }}">Owner</label>
           <select id="issue-owner-{{ issue.issue_id }}" name="assignee_user_id">
@@ -68,12 +120,25 @@
           </select>
         </div>
         <div style="grid-column:1 / -1;">
-          <label class="text-sm cell-muted" for="issue-note-{{ issue.issue_id }}">Working note</label>
-          <textarea id="issue-note-{{ issue.issue_id }}" name="working_note" rows="3" placeholder="Add investigation notes, next steps, or resolution context">{{ issue.working_note or '' }}</textarea>
+          <label class="text-sm cell-muted" for="issue-note-{{ issue.issue_id }}">
+            {% if issue.status == 'resolved' %}Resolution / reopen note{% else %}Working or resolution note{% endif %}
+          </label>
+          <textarea id="issue-note-{{ issue.issue_id }}" name="working_note" rows="3" placeholder="Add investigation notes, a resolution note, or reopen context">{{ issue.working_note or issue.resolution_note or '' }}</textarea>
         </div>
       </div>
-      <div class="form-actions" style="justify-content:flex-start;margin-top:12px;">
-        <button type="submit" class="btn btn-primary btn-sm">Update Issue</button>
+      <div class="form-actions" style="justify-content:flex-start;margin-top:12px;gap:8px;flex-wrap:wrap;">
+        <button type="submit" name="action" value="save" class="btn btn-secondary btn-sm">Save Note</button>
+        {% if issue.status != 'investigating' and issue.status != 'resolved' %}
+        <button type="submit" name="action" value="investigating" class="btn btn-secondary btn-sm">Start Investigating</button>
+        {% endif %}
+        {% if issue.status != 'needs_follow_up' and issue.status != 'resolved' %}
+        <button type="submit" name="action" value="needs_follow_up" class="btn btn-secondary btn-sm">Mark Follow-Up</button>
+        {% endif %}
+        {% if issue.status == 'resolved' %}
+        <button type="submit" name="action" value="reopen" class="btn btn-primary btn-sm">Reopen</button>
+        {% else %}
+        <button type="submit" name="action" value="resolved" class="btn btn-primary btn-sm">Resolve With Note</button>
+        {% endif %}
       </div>
     </form>
 
@@ -83,13 +148,14 @@
       <div style="display:grid;gap:8px;">
         {% for item in row.history %}
         <div style="border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:10px 12px;background:rgba(255,255,255,0.02);">
-          <div class="text-sm"><strong>{{ item.action }}</strong>{% if item.user_name %} · {{ item.user_name }}{% endif %}</div>
-          <div class="text-sm cell-muted" style="margin-top:4px;">{{ item.timestamp or "—" }}</div>
+          <div class="text-sm"><strong>{{ item.action }}</strong>{% if item.user_name %} - {{ item.user_name }}{% endif %}</div>
+          <div class="text-sm cell-muted" style="margin-top:4px;">{{ item.timestamp or "-" }}</div>
           {% if item.details %}
           <div class="text-sm" style="margin-top:6px;">
             {% if item.details.current %}
-              status: {{ item.details.current.status or "—" }}
-              {% if item.details.current.assignee_user_id %} · assignee: {{ item.details.current.assignee_user_id }}{% endif %}
+              status: {{ item.details.current.status or "-" }}
+              {% if item.details.current.assignee_user_id %} - assignee: {{ item.details.current.assignee_user_id }}{% endif %}
+              {% if item.details.current.reminder_count is not none %} - reminders: {{ item.details.current.reminder_count }}{% endif %}
             {% else %}
               {{ item.details }}
             {% endif %}

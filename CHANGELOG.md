@@ -58,12 +58,19 @@
   - expanded rework summary including rolled output cost basis
 - Correction-form navigation now supports a safe `return_to` path back into the viewer, so manager correction work can stay inside the genealogy workflow instead of bouncing back to the run or dashboard by default.
 - `Raw Detail` and `Raw Journey` were relabeled to `View JSON`, and report-side raw lineage links are now labeled `Ancestry JSON` / `Descendants JSON` for clarity.
+- The genealogy issue lifecycle is now operationally stronger:
+  - explicit `Resolve With Note`, `Reopen`, `Start Investigating`, and `Mark Follow-Up` actions in the issue queue
+  - queue filters for status, severity, owner, and age
+  - reminder metadata plus overdue escalation for unresolved genealogy issues
+  - correction-form follow-up controls so linked lot issues can be resolved, left open, or kept in follow-up when a correction is recorded
+- The `Material Journey Viewer` lot/run reconciliation surfaces now show reminder state and link directly back into the issue queue.
 - New planning documents now define the target model and phased rollout for true end-to-end material genealogy:
   - `DERIVATIVE_LOT_GENEALOGY_PLAN.md`
   - `DERIVATIVE_LOT_GENEALOGY_IMPLEMENTATION_PLAN.md`
 
 ### Changed
 - Startup bootstrap now creates the genealogy foundation tables and backfills biomass material lots automatically using the same additive schema pattern the app already uses elsewhere.
+- Startup bootstrap now also backfills the new genealogy issue lifecycle columns used for reopen tracking and reminder scheduling.
 
 ### Tests
 - Added regression coverage for biomass material-lot backfill, run source-material resolution, and first-pass genealogy reconciliation issue creation.
@@ -75,6 +82,7 @@
 - Added reporting regression coverage for the new material genealogy report page, the new summary endpoint, and route registration.
 - Added regression coverage for the new HTML genealogy viewer in both lot and run modes, plus the updated report links into that viewer.
 - Added regression coverage for the in-viewer correction entrypoint, issue rendering, and the browser-safe return path back to the genealogy viewer from the correction form.
+- Added genealogy lifecycle regression coverage for reminder escalation, explicit resolve/reopen actions, filtered queue management, and correction-linked follow-up handling.
 
 ## 2026-04-24
 

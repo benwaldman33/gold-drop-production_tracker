@@ -5,10 +5,14 @@ import json
 from gold_drop.purchases import budget_week_purchase_metrics, purchase_week_start
 from services.api_site import get_site_identity
 from services.material_genealogy import (
+    ACTIVE_MATERIAL_ISSUE_STATUSES,
+    apply_material_issue_action,
     build_material_lot_ancestry_payload,
     build_material_lot_descendants_payload,
     build_material_lot_detail_payload,
     build_material_lot_journey_payload,
+    issue_reminder_snapshot,
+    process_material_issue_reminders,
     serialize_reconciliation_issue,
 )
 from services.purchases_journey import build_run_journey_payload
@@ -683,11 +687,13 @@ def biomass_purchasing_dashboard_view(root):
 
 
 def material_genealogy_report_view(root):
+    process_material_issue_reminders(root)
     payload = root._build_material_reporting_payload(root)
     return root.render_template("material_genealogy_report.html", report=payload)
 
 
 def material_genealogy_viewer_view(root):
+    process_material_issue_reminders(root)
     mode = (root.request.args.get("mode") or "lot").strip().lower()
     if mode not in {"lot", "run"}:
         mode = "lot"
@@ -805,15 +811,25 @@ def material_genealogy_issue_queue_view(root):
         root.flash("Edit access is required for genealogy issue management.", "error")
         return root.redirect(root.url_for("material_genealogy_report"))
 
+    process_material_issue_reminders(root)
     status_filter = (root.request.args.get("status") or "active").strip().lower()
+    severity_filter = (root.request.args.get("severity") or "all").strip().lower()
+    owner_filter = (root.request.args.get("owner") or "all").strip()
+    age_filter = (root.request.args.get("age") or "all").strip().lower()
     query = root.MaterialReconciliationIssue.query.order_by(
         root.MaterialReconciliationIssue.detected_at.desc(),
         root.MaterialReconciliationIssue.id.desc(),
     )
     if status_filter == "active":
-        query = query.filter(root.MaterialReconciliationIssue.status.in_(("open", "investigating", "needs_follow_up")))
+        query = query.filter(root.MaterialReconciliationIssue.status.in_(ACTIVE_MATERIAL_ISSUE_STATUSES))
     elif status_filter == "resolved":
         query = query.filter(root.MaterialReconciliationIssue.status == "resolved")
+    if severity_filter in {"warning", "critical"}:
+        query = query.filter(root.MaterialReconciliationIssue.severity == severity_filter)
+    if owner_filter == "unassigned":
+        query = query.filter(root.MaterialReconciliationIssue.assignee_user_id.is_(None))
+    elif owner_filter not in {"", "all"}:
+        query = query.filter(root.MaterialReconciliationIssue.assignee_user_id == owner_filter)
 
     issues = query.limit(200).all()
     status_counts = {
@@ -822,15 +838,21 @@ def material_genealogy_issue_queue_view(root):
         "needs_follow_up": root.MaterialReconciliationIssue.query.filter_by(status="needs_follow_up").count(),
         "resolved": root.MaterialReconciliationIssue.query.filter_by(status="resolved").count(),
     }
+    severity_counts = {
+        "warning": root.MaterialReconciliationIssue.query.filter_by(severity="warning").count(),
+        "critical": root.MaterialReconciliationIssue.query.filter_by(severity="critical").count(),
+    }
     issue_rows = []
     now = root.datetime.now(root.timezone.utc)
     for issue in issues:
-        detected_at = issue.detected_at
-        age_days = None
-        if detected_at is not None:
-            if detected_at.tzinfo is None:
-                detected_at = detected_at.replace(tzinfo=root.timezone.utc)
-            age_days = max((now - detected_at).days, 0)
+        reminder = issue_reminder_snapshot(root, issue, now=now)
+        age_days = reminder["age_days"] if issue.detected_at is not None else None
+        if age_filter == "overdue" and not reminder["overdue"]:
+            continue
+        if age_filter == "7_plus" and reminder["age_days"] < 7:
+            continue
+        if age_filter == "30_plus" and reminder["age_days"] < 30:
+            continue
         issue_rows.append(
             {
                 "issue": serialize_reconciliation_issue(root, issue),
@@ -839,6 +861,7 @@ def material_genealogy_issue_queue_view(root):
                 "assignee_name": issue.assignee_user.display_name if issue.assignee_user else None,
                 "assigned_at": issue.assigned_at.isoformat() if issue.assigned_at else None,
                 "age_days": age_days,
+                "reminder": reminder,
                 "history": _material_issue_history(root, issue),
             }
         )
@@ -847,7 +870,12 @@ def material_genealogy_issue_queue_view(root):
         "material_genealogy_issue_queue.html",
         issues=issue_rows,
         status_filter=status_filter,
+        severity_filter=severity_filter,
+        owner_filter=owner_filter,
+        age_filter=age_filter,
         status_counts=status_counts,
+        severity_counts=severity_counts,
+        overdue_count=sum(1 for row in issue_rows if row["reminder"]["overdue"]),
         assignment_options=_material_issue_assignment_options(root),
     )
 
@@ -861,11 +889,7 @@ def material_genealogy_issue_update_view(root, issue_id):
     if issue is None:
         root.abort(404)
 
-    next_status = (root.request.form.get("status") or issue.status or "open").strip().lower()
-    if next_status not in {"open", "investigating", "needs_follow_up", "resolved"}:
-        root.flash("Choose a valid issue status.", "error")
-        return root.redirect(root.url_for("material_genealogy_issue_queue"))
-
+    action = (root.request.form.get("action") or "save").strip().lower()
     requested_assignee_id = (root.request.form.get("assignee_user_id") or "").strip()
     working_note = (root.request.form.get("working_note") or "").strip() or None
     assignee = root.db.session.get(root.User, requested_assignee_id) if requested_assignee_id else None
@@ -873,43 +897,38 @@ def material_genealogy_issue_update_view(root, issue_id):
         root.flash("Choose a valid issue owner.", "error")
         return root.redirect(root.url_for("material_genealogy_issue_queue"))
 
-    previous = {
-        "status": issue.status,
-        "assignee_user_id": issue.assignee_user_id,
-        "working_note": issue.working_note,
-    }
-    issue.status = next_status
-    issue.assignee_user_id = assignee.id if assignee is not None else None
-    issue.assigned_at = root.datetime.now(root.timezone.utc) if assignee is not None else None
-    issue.assigned_by_user_id = getattr(root.current_user, "id", None)
-    issue.working_note = working_note
-    if next_status == "resolved":
-        issue.resolved_at = root.datetime.now(root.timezone.utc)
-        issue.resolved_by_user_id = getattr(root.current_user, "id", None)
-        if working_note and not issue.resolution_note:
-            issue.resolution_note = working_note
-    else:
-        issue.resolved_at = None
-        issue.resolved_by_user_id = None
+    try:
+        apply_material_issue_action(
+            root,
+            issue,
+            action=action,
+            note=working_note,
+            assignee_user_id=assignee.id if assignee is not None else "",
+            acting_user_id=getattr(root.current_user, "id", None),
+        )
+        root.db.session.commit()
+    except ValueError as exc:
+        root.db.session.rollback()
+        root.flash(str(exc), "error")
+        return root.redirect(root.url_for("material_genealogy_issue_queue"))
 
-    root.log_audit(
-        "update",
-        "material_reconciliation_issue",
-        issue.id,
-        details=root.json.dumps(
-            {
-                "previous": previous,
-                "current": {
-                    "status": issue.status,
-                    "assignee_user_id": issue.assignee_user_id,
-                    "working_note": issue.working_note,
-                },
-            }
-        ),
+    flash_map = {
+        "resolved": "Genealogy issue resolved.",
+        "reopen": "Genealogy issue reopened.",
+        "investigating": "Genealogy issue marked investigating.",
+        "needs_follow_up": "Genealogy issue marked for follow-up.",
+        "save": "Genealogy issue updated.",
+    }
+    root.flash(flash_map.get(action, "Genealogy issue updated."), "success")
+    return root.redirect(
+        root.url_for(
+            "material_genealogy_issue_queue",
+            status=root.request.form.get("return_status") or "active",
+            severity=root.request.form.get("return_severity") or "all",
+            owner=root.request.form.get("return_owner") or "all",
+            age=root.request.form.get("return_age") or "all",
+        )
     )
-    root.db.session.commit()
-    root.flash("Genealogy issue updated.", "success")
-    return root.redirect(root.url_for("material_genealogy_issue_queue", status=root.request.form.get("return_status") or "active"))
 
 
 def cross_site_ops_view(root):

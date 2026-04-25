@@ -1473,6 +1473,8 @@ def material_lot_correct(lot_id):
             for value in (request.form.get("replacement_parent_ids") or "").split(",")
             if value.strip()
         ]
+        issue_follow_up_action = (request.form.get("issue_follow_up_action") or "resolve").strip().lower()
+        issue_follow_up_note = (request.form.get("issue_follow_up_note") or "").strip()
         try:
             result = _apply_material_lot_correction(
                 sys.modules[__name__],
@@ -1481,6 +1483,8 @@ def material_lot_correct(lot_id):
                 reason=reason,
                 new_quantity=new_quantity,
                 replacement_parent_ids=replacement_parent_ids,
+                issue_follow_up_action=issue_follow_up_action,
+                issue_follow_up_note=issue_follow_up_note,
             )
             db.session.commit()
         except ValueError as exc:
@@ -1501,6 +1505,7 @@ def material_lot_correct(lot_id):
         material_lot=material_lot,
         candidate_parents=candidate_parents,
         return_to=safe_return_to,
+        linked_issue_count=material_lot.reconciliation_issues.filter(MaterialReconciliationIssue.status.in_(("open", "investigating", "needs_follow_up"))).count(),
     )
 
 

@@ -1,6 +1,207 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from collections.abc import Iterable
+
+
+ACTIVE_MATERIAL_ISSUE_STATUSES = ("open", "investigating", "needs_follow_up")
+MATERIAL_ISSUE_REMINDER_DEFAULTS = {
+    "material_issue_reminder_warning_hours": ("24", "Hours before a warning genealogy issue becomes overdue."),
+    "material_issue_reminder_critical_hours": ("8", "Hours before a critical genealogy issue becomes overdue."),
+    "material_issue_reminder_repeat_hours": ("24", "Hours between repeated reminders for unresolved genealogy issues."),
+}
+
+
+def _positive_hours(raw_value, default_hours: int) -> int:
+    try:
+        candidate = int(float(raw_value or default_hours))
+    except (TypeError, ValueError):
+        candidate = default_hours
+    return max(candidate, 1)
+
+
+def material_issue_reminder_config(root) -> dict[str, int]:
+    return {
+        "warning_hours": _positive_hours(
+            root.SystemSetting.get(
+                "material_issue_reminder_warning_hours",
+                MATERIAL_ISSUE_REMINDER_DEFAULTS["material_issue_reminder_warning_hours"][0],
+            ),
+            24,
+        ),
+        "critical_hours": _positive_hours(
+            root.SystemSetting.get(
+                "material_issue_reminder_critical_hours",
+                MATERIAL_ISSUE_REMINDER_DEFAULTS["material_issue_reminder_critical_hours"][0],
+            ),
+            8,
+        ),
+        "repeat_hours": _positive_hours(
+            root.SystemSetting.get(
+                "material_issue_reminder_repeat_hours",
+                MATERIAL_ISSUE_REMINDER_DEFAULTS["material_issue_reminder_repeat_hours"][0],
+            ),
+            24,
+        ),
+    }
+
+
+def _issue_timestamp(root, value):
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=root.timezone.utc)
+    return value
+
+
+def issue_age_hours(root, issue, *, now=None) -> float:
+    if issue is None or issue.detected_at is None:
+        return 0.0
+    current = now or root.datetime.now(root.timezone.utc)
+    detected_at = _issue_timestamp(root, issue.detected_at)
+    return max((current - detected_at).total_seconds() / 3600.0, 0.0)
+
+
+def issue_reminder_snapshot(root, issue, *, now=None) -> dict:
+    current = now or root.datetime.now(root.timezone.utc)
+    age_hours = issue_age_hours(root, issue, now=current)
+    config = material_issue_reminder_config(root)
+    threshold_hours = config["critical_hours"] if (issue.severity or "").strip().lower() == "critical" else config["warning_hours"]
+    overdue = (issue.status or "") in ACTIVE_MATERIAL_ISSUE_STATUSES and age_hours >= threshold_hours
+    next_due_at = _issue_timestamp(root, issue.next_reminder_due_at)
+    return {
+        "age_hours": age_hours,
+        "age_days": int(age_hours // 24),
+        "threshold_hours": threshold_hours,
+        "overdue": overdue,
+        "reminder_count": int(issue.reminder_count or 0),
+        "last_reminded_at": issue.last_reminded_at.isoformat() if issue.last_reminded_at else None,
+        "next_reminder_due_at": next_due_at.isoformat() if next_due_at else None,
+        "due_now": overdue and (next_due_at is None or next_due_at <= current),
+    }
+
+
+def process_material_issue_reminders(root, *, now=None) -> dict[str, int]:
+    current = now or root.datetime.now(root.timezone.utc)
+    config = material_issue_reminder_config(root)
+    processed = 0
+    escalated = 0
+    query = root.MaterialReconciliationIssue.query.filter(
+        root.MaterialReconciliationIssue.status.in_(ACTIVE_MATERIAL_ISSUE_STATUSES)
+    )
+    for issue in query.all():
+        snapshot = issue_reminder_snapshot(root, issue, now=current)
+        if not snapshot["due_now"]:
+            continue
+        issue.reminder_count = int(issue.reminder_count or 0) + 1
+        issue.last_reminded_at = current
+        issue.next_reminder_due_at = current + timedelta(hours=config["repeat_hours"])
+        if issue.status == "open":
+            issue.status = "needs_follow_up"
+            escalated += 1
+        if hasattr(root, "log_audit") and getattr(getattr(root, "current_user", None), "is_authenticated", False):
+            root.log_audit(
+                "reminder",
+                "material_reconciliation_issue",
+                issue.id,
+                details=root.json.dumps(
+                    {
+                        "status": issue.status,
+                        "severity": issue.severity,
+                        "age_hours": round(snapshot["age_hours"], 2),
+                        "threshold_hours": snapshot["threshold_hours"],
+                        "reminder_count": issue.reminder_count,
+                    }
+                ),
+            )
+        processed += 1
+    if processed:
+        root.db.session.commit()
+    return {"processed": processed, "escalated": escalated}
+
+
+def apply_material_issue_action(
+    root,
+    issue,
+    *,
+    action: str,
+    note: str | None = None,
+    assignee_user_id: str | None = None,
+    acting_user_id: str | None = None,
+):
+    if issue is None:
+        raise ValueError("Issue is required")
+    normalized_action = (action or "").strip().lower()
+    if normalized_action not in {"investigating", "needs_follow_up", "resolved", "reopen", "save"}:
+        raise ValueError("Choose a valid issue action")
+    note = (note or "").strip() or None
+    now = root.datetime.now(root.timezone.utc)
+    previous = {
+        "status": issue.status,
+        "assignee_user_id": issue.assignee_user_id,
+        "working_note": issue.working_note,
+        "resolution_note": issue.resolution_note,
+        "resolved_at": issue.resolved_at.isoformat() if issue.resolved_at else None,
+        "reminder_count": int(issue.reminder_count or 0),
+    }
+    if assignee_user_id is not None:
+        issue.assignee_user_id = assignee_user_id or None
+        issue.assigned_at = now if assignee_user_id else None
+        issue.assigned_by_user_id = acting_user_id if assignee_user_id else None
+    if note:
+        issue.working_note = note
+
+    if normalized_action == "resolved":
+        if not note:
+            raise ValueError("A resolution note is required to resolve an issue")
+        issue.status = "resolved"
+        issue.resolution_note = note
+        issue.resolved_at = now
+        issue.resolved_by_user_id = acting_user_id
+        issue.next_reminder_due_at = None
+    elif normalized_action == "reopen":
+        issue.status = "open"
+        issue.reopened_at = now
+        issue.reopened_by_user_id = acting_user_id
+        issue.resolved_at = None
+        issue.resolved_by_user_id = None
+        issue.next_reminder_due_at = now + timedelta(hours=issue_reminder_snapshot(root, issue, now=now)["threshold_hours"])
+    elif normalized_action == "investigating":
+        issue.status = "investigating"
+    elif normalized_action == "needs_follow_up":
+        issue.status = "needs_follow_up"
+
+    if normalized_action in {"investigating", "needs_follow_up", "save"} and issue.status in ACTIVE_MATERIAL_ISSUE_STATUSES:
+        threshold_hours = issue_reminder_snapshot(root, issue, now=now)["threshold_hours"]
+        if issue.last_reminded_at is None and issue.next_reminder_due_at is None:
+            issue.next_reminder_due_at = _issue_timestamp(root, issue.detected_at) + timedelta(hours=threshold_hours) if issue.detected_at else now + timedelta(hours=threshold_hours)
+
+    if normalized_action != "resolved" and issue.status != "resolved":
+        issue.resolved_at = None
+        issue.resolved_by_user_id = None
+
+    if hasattr(root, "log_audit") and (
+        acting_user_id is not None or getattr(getattr(root, "current_user", None), "is_authenticated", False)
+    ):
+        root.log_audit(
+            normalized_action if normalized_action != "save" else "update",
+            "material_reconciliation_issue",
+            issue.id,
+            details=root.json.dumps(
+                {
+                    "previous": previous,
+                    "current": {
+                        "status": issue.status,
+                        "assignee_user_id": issue.assignee_user_id,
+                        "working_note": issue.working_note,
+                        "resolution_note": issue.resolution_note,
+                        "resolved_at": issue.resolved_at.isoformat() if issue.resolved_at else None,
+                        "reminder_count": int(issue.reminder_count or 0),
+                    },
+                }
+            ),
+            user_id=acting_user_id,
+        )
 
 
 def _material_tracking_id(root, lot_type: str, source_tracking_id: str | None, source_id: str) -> str:
@@ -111,6 +312,7 @@ def serialize_material_transformation(root, transformation) -> dict:
 
 
 def serialize_reconciliation_issue(root, issue) -> dict:
+    reminder = issue_reminder_snapshot(root, issue)
     return {
         "issue_id": issue.id,
         "issue_type": issue.issue_type,
@@ -128,6 +330,16 @@ def serialize_reconciliation_issue(root, issue) -> dict:
         "resolution_note": issue.resolution_note,
         "resolved_at": issue.resolved_at.isoformat() if issue.resolved_at else None,
         "resolved_by_user_id": issue.resolved_by_user_id,
+        "reopened_at": issue.reopened_at.isoformat() if issue.reopened_at else None,
+        "reopened_by_user_id": issue.reopened_by_user_id,
+        "reminder_count": reminder["reminder_count"],
+        "last_reminded_at": reminder["last_reminded_at"],
+        "next_reminder_due_at": reminder["next_reminder_due_at"],
+        "age_hours": reminder["age_hours"],
+        "age_days": reminder["age_days"],
+        "overdue": reminder["overdue"],
+        "due_now": reminder["due_now"],
+        "threshold_hours": reminder["threshold_hours"],
         "run_url": root.url_for("run_edit", run_id=issue.run_id) if issue.run_id else None,
     }
 
@@ -135,11 +347,12 @@ def serialize_reconciliation_issue(root, issue) -> dict:
 def _resolve_open_issues_for_material_lot(root, material_lot, *, note: str, resolved_by_user_id: str | None = None) -> None:
     if material_lot is None:
         return
-    for issue in material_lot.reconciliation_issues.filter_by(status="open").all():
+    for issue in material_lot.reconciliation_issues.filter(root.MaterialReconciliationIssue.status.in_(ACTIVE_MATERIAL_ISSUE_STATUSES)).all():
         issue.status = "resolved"
         issue.resolution_note = note
         issue.resolved_at = root.datetime.now(root.timezone.utc)
         issue.resolved_by_user_id = resolved_by_user_id
+        issue.next_reminder_due_at = None
 
 
 def _correction_tracking_id(root, material_lot, *, suffix: str) -> str:
@@ -183,6 +396,8 @@ def apply_material_lot_correction(
     reason: str,
     new_quantity: float | None = None,
     replacement_parent_ids: list[str] | None = None,
+    issue_follow_up_action: str = "resolve",
+    issue_follow_up_note: str | None = None,
 ):
     if material_lot is None:
         raise ValueError("material_lot is required")
@@ -268,7 +483,25 @@ def apply_material_lot_correction(
     material_lot.workflow_status = "corrected"
     material_lot.active_queue_key = None
 
-    _resolve_open_issues_for_material_lot(root, material_lot, note=f"Resolved by correction: {reason}", resolved_by_user_id=user_id)
+    follow_up_action = (issue_follow_up_action or "resolve").strip().lower()
+    follow_up_note = (issue_follow_up_note or "").strip() or reason
+    if follow_up_action == "resolve":
+        _resolve_open_issues_for_material_lot(
+            root,
+            material_lot,
+            note=f"Resolved by correction: {follow_up_note}",
+            resolved_by_user_id=user_id,
+        )
+    elif follow_up_action == "needs_follow_up":
+        for issue in material_lot.reconciliation_issues.filter(root.MaterialReconciliationIssue.status.in_(ACTIVE_MATERIAL_ISSUE_STATUSES)).all():
+            issue.status = "needs_follow_up"
+            issue.working_note = follow_up_note
+            threshold_hours = issue_reminder_snapshot(root, issue)["threshold_hours"]
+            issue.next_reminder_due_at = root.datetime.now(root.timezone.utc) + timedelta(hours=threshold_hours)
+    elif follow_up_action == "leave_open":
+        for issue in material_lot.reconciliation_issues.filter(root.MaterialReconciliationIssue.status.in_(ACTIVE_MATERIAL_ISSUE_STATUSES)).all():
+            if follow_up_note:
+                issue.working_note = follow_up_note
 
     if hasattr(root, "log_audit") and user_id is not None:
         root.log_audit(
@@ -283,6 +516,8 @@ def apply_material_lot_correction(
                     "transformation_id": transformation.id,
                     "replacement_parent_ids": replacement_parent_ids or [],
                     "new_quantity": float(new_quantity) if new_quantity is not None else None,
+                    "issue_follow_up_action": follow_up_action,
+                    "issue_follow_up_note": follow_up_note,
                 }
             ),
             user_id=user_id,
@@ -1331,7 +1566,7 @@ def build_material_reporting_payload(root) -> dict:
         )
 
     open_issues = (
-        root.MaterialReconciliationIssue.query.filter_by(status="open")
+        root.MaterialReconciliationIssue.query.filter(root.MaterialReconciliationIssue.status.in_(ACTIVE_MATERIAL_ISSUE_STATUSES))
         .order_by(root.MaterialReconciliationIssue.detected_at.desc())
         .limit(25)
         .all()
@@ -1419,7 +1654,7 @@ def derivative_material_lots_for_purchase_lot(root, purchase_lot) -> list:
 
 def first_open_reconciliation_issues(root, *, limit: int = 100) -> Iterable:
     return (
-        root.MaterialReconciliationIssue.query.filter_by(status="open")
+        root.MaterialReconciliationIssue.query.filter(root.MaterialReconciliationIssue.status.in_(ACTIVE_MATERIAL_ISSUE_STATUSES))
         .order_by(root.MaterialReconciliationIssue.detected_at.desc())
         .limit(limit)
         .all()

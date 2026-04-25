@@ -863,6 +863,11 @@ class MaterialReconciliationIssue(db.Model):
     resolution_note = db.Column(db.Text)
     resolved_at = db.Column(db.DateTime)
     resolved_by_user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
+    reopened_at = db.Column(db.DateTime)
+    reopened_by_user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
+    reminder_count = db.Column(db.Integer, nullable=False, default=0)
+    last_reminded_at = db.Column(db.DateTime)
+    next_reminder_due_at = db.Column(db.DateTime)
     updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, nullable=False)
 
     material_lot = db.relationship("MaterialLot", foreign_keys=[material_lot_id], backref=db.backref("reconciliation_issues", lazy="dynamic", cascade="all, delete-orphan"))
@@ -872,6 +877,7 @@ class MaterialReconciliationIssue(db.Model):
     assignee_user = db.relationship("User", foreign_keys=[assignee_user_id])
     assigned_by_user = db.relationship("User", foreign_keys=[assigned_by_user_id])
     resolved_by_user = db.relationship("User", foreign_keys=[resolved_by_user_id])
+    reopened_by_user = db.relationship("User", foreign_keys=[reopened_by_user_id])
 
 
 class SupervisorNotification(db.Model):

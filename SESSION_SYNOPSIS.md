@@ -712,12 +712,43 @@ Practical meaning:
   - recent yield / correction impact
 - managers can now use one report surface to answer not just "where did this come from?" but also "what did it cost, and how much correction/rework affected the reported output?"
 
+## Genealogy phase 17 update
+
+Genealogy issue lifecycle automation is now in place:
+
+- the issue queue now supports explicit actions:
+  - `Start Investigating`
+  - `Mark Follow-Up`
+  - `Resolve With Note`
+  - `Reopen`
+- the queue now supports manager filters for:
+  - status
+  - severity
+  - owner
+  - age / overdue state
+- unresolved genealogy issues now track reminder metadata:
+  - `reminder_count`
+  - `last_reminded_at`
+  - `next_reminder_due_at`
+- stale unresolved issues now escalate automatically into `needs_follow_up`
+- the lot correction form now asks how linked genealogy issues should be handled after a correction:
+  - resolve linked issues
+  - keep linked issues in follow-up
+  - leave linked issues open
+- the lot and run reconciliation surfaces inside `Material Journey Viewer` now show issue reminder state and link directly back into the issue queue
+
+Practical meaning:
+
+- genealogy issues are now actively supervised instead of only being assignable
+- managers can focus on the oldest, highest-risk, or unowned genealogy problems quickly
+- correction work now closes the loop more cleanly with issue management instead of leaving follow-up implicit
+
 ## Deployment note
 
 Current rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `7cf3cc6`
+- commit: `63be53b`
 
 Production deployment steps:
 
