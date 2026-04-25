@@ -693,6 +693,25 @@ Practical meaning:
   - lot-level correction
   - issue ownership and status tracking
 
+## Genealogy phase 16 update
+
+Genealogy-based cost and yield reporting is now in place:
+
+- `Material Genealogy Report` now includes:
+  - source-lot input quantity plus rolled descendant cost basis
+  - `Run Yield And Cost Review`
+  - `Correction Impact On Reported Yield`
+  - rework summary with output cost basis
+
+Practical meaning:
+
+- genealogy reporting now ties together:
+  - lineage
+  - reconciliation
+  - rolled-forward cost
+  - recent yield / correction impact
+- managers can now use one report surface to answer not just "where did this come from?" but also "what did it cost, and how much correction/rework affected the reported output?"
+
 ## Deployment note
 
 Current rollout commit:

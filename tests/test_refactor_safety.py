@@ -147,6 +147,8 @@ def test_material_genealogy_report_renders_downstream_reporting():
             assert b"Open Derivative Inventory By Type" in resp.data
             assert b"Released Derivative Inventory By Type" in resp.data
             assert b"Source-To-Derivative Yield" in resp.data
+            assert b"Run Yield And Cost Review" in resp.data
+            assert b"Correction Impact On Reported Yield" in resp.data
             assert b"wholesale_thca" in resp.data
             assert b"golddrop" in resp.data
             assert b"/journeys/material-genealogy?mode=lot" in resp.data

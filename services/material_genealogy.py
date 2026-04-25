@@ -1255,8 +1255,10 @@ def build_material_reporting_payload(root) -> dict:
         yield_rows.append(
             {
                 "source_lot": serialize_material_lot(root, source_lot),
+                "source_quantity": float(source_lot.quantity or 0),
                 "descendant_lot_count": len(descendants),
                 "descendant_quantities_by_type": quantities_by_type,
+                "descendant_cost_basis_total": float(sum(float(row.cost_basis_total or 0) for row in descendants)),
                 "descendants": [serialize_material_lot(root, row) for row in descendants[:8]],
             }
         )
@@ -1275,10 +1277,58 @@ def build_material_reporting_payload(root) -> dict:
                 "transformation_type": transformation.transformation_type,
                 "count": 0,
                 "quantity_total": 0.0,
+                "cost_basis_total": 0.0,
             },
         )
         bucket["count"] += 1
         bucket["quantity_total"] += sum(float(row.quantity_produced or 0) for row in transformation.outputs.all())
+        bucket["cost_basis_total"] += sum(float((row.material_lot.cost_basis_total or 0) if row.material_lot is not None else 0) for row in transformation.outputs.all())
+
+    run_rows = []
+    candidate_runs = (
+        root.Run.query.filter(root.Run.deleted_at.is_(None))
+        .order_by(root.Run.run_date.desc(), root.Run.created_at.desc())
+        .limit(80)
+        .all()
+    )
+    for run in candidate_runs:
+        material_lots = derivative_material_lots_for_run(root, run)
+        if not material_lots and run.material_reconciliation_issues.count() == 0:
+            continue
+        correction_count = run.material_transformations.filter(
+            root.MaterialTransformation.transformation_type.like("correction_%")
+        ).count()
+        total_cost_basis = float(sum(float(row.cost_basis_total or 0) for row in material_lots))
+        run_rows.append(
+            {
+                "run_id": run.id,
+                "run_date": run.run_date.isoformat() if run.run_date else None,
+                "reactor_number": run.reactor_number,
+                "input_lbs": float(run.bio_in_reactor_lbs or 0),
+                "dry_thca_g": float(run.dry_thca_g or 0),
+                "dry_hte_g": float(run.dry_hte_g or 0),
+                "derivative_lot_count": len(material_lots),
+                "derivative_cost_basis_total": total_cost_basis,
+                "correction_count": correction_count,
+                "issue_count": run.material_reconciliation_issues.filter(
+                    root.MaterialReconciliationIssue.status.in_(("open", "investigating", "needs_follow_up"))
+                ).count(),
+                "viewer_url": root.url_for("material_genealogy_viewer", mode="run", run_id=run.id),
+            }
+        )
+
+    correction_impact_rows = []
+    for transformation in rework_transformations:
+        correction_impact_rows.append(
+            {
+                "transformation_type": transformation.transformation_type,
+                "performed_at": transformation.performed_at.isoformat() if transformation.performed_at else None,
+                "run_id": transformation.run_id,
+                "output_quantity_total": sum(float(row.quantity_produced or 0) for row in transformation.outputs.all()),
+                "output_cost_basis_total": sum(float((row.material_lot.cost_basis_total or 0) if row.material_lot is not None else 0) for row in transformation.outputs.all()),
+                "run_view_url": root.url_for("material_genealogy_viewer", mode="run", run_id=transformation.run_id) if transformation.run_id else None,
+            }
+        )
 
     open_issues = (
         root.MaterialReconciliationIssue.query.filter_by(status="open")
@@ -1307,7 +1357,9 @@ def build_material_reporting_payload(root) -> dict:
         "open_inventory_groups": open_groups,
         "released_inventory_groups": released_groups,
         "source_yield_rows": yield_rows,
+        "run_yield_rows": run_rows[:25],
         "rework_summary": list(rework_summary.values()),
+        "correction_impact_rows": correction_impact_rows[:20],
         "open_reconciliation_issues": [serialize_reconciliation_issue(root, issue) for issue in open_issues],
         "issue_counts_by_severity": issue_counts_by_severity,
         "issue_counts_by_type": issue_counts_by_type,

@@ -806,7 +806,9 @@ The page currently shows:
 - open derivative inventory by type
 - released derivative inventory by type
 - source-to-derivative yield rows by biomass lot
+- run-level yield and cost review rows
 - rework volume from correction-backed genealogy transformations
+- correction impact on reported yield
 - open genealogy reconciliation issues
 - recent derivative lots with direct viewer / raw lineage links
 
@@ -853,6 +855,11 @@ Use it when you need to:
 - mark an issue as actively being worked
 - keep investigation notes on the issue itself
 - review which issues are still unresolved
+
+Use the report’s cost/yield sections when you need to answer:
+- which source lots produced which derivative outputs and cost basis
+- which runs now look correction-heavy
+- where rolled-forward derivative cost is concentrated across recent runs
 
 Use this page for questions like:
 - what derivative inventory is still open by type
