@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Alerts{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Alerts Home</h2>
+  <div class="btn-group">
+    <a href="{{ url_for('dashboard') }}#supervisor-notifications" class="btn btn-secondary">Open Supervisor Alerts</a>
+    <a href="{{ url_for('material_genealogy_issue_queue') }}" class="btn btn-secondary">Open Genealogy Issue Queue</a>
+    <a href="{{ url_for('journey_home') }}" class="btn btn-secondary">Open Journey Home</a>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:18px;">
+  <div class="card-header">
+    <h3>Action Queue</h3>
+    <span class="text-sm cell-muted">Alerts is the action surface. Use Journey when you need tracing and investigation detail.</span>
+  </div>
+  <div class="summary-row" style="margin-bottom:0;">
+    <div class="summary-stat">
+      <div class="label">Supervisor Open</div>
+      <div class="value">{{ supervisor_notifications.open_count }}</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Critical</div>
+      <div class="value">{{ supervisor_notifications.critical_count }}</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Genealogy Open</div>
+      <div class="value">{{ issue_counts.open }}</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Needs Follow-Up</div>
+      <div class="value">{{ issue_counts.needs_follow_up }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="summary-row">
+  <div class="card" style="flex:1 1 420px;margin:0;">
+    <div class="card-header">
+      <h3>Supervisor Notifications</h3>
+      <a href="{{ url_for('dashboard') }}#supervisor-notifications" class="btn btn-secondary btn-sm">Open Full List</a>
+    </div>
+    {% if supervisor_notifications.rows %}
+    <div style="display:grid;gap:10px;">
+      {% for row in supervisor_notifications.rows %}
+      <div style="border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:12px;">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;">
+          <strong>{{ row.title }}</strong>
+          <span class="badge status-{{ row.severity }}">{{ row.severity }}</span>
+        </div>
+        <div class="text-sm cell-muted" style="margin-top:6px;">{{ row.message }}</div>
+        {% if row.run_id %}
+        <div class="text-sm" style="margin-top:8px;"><a href="{{ url_for('run_edit', run_id=row.run_id) }}">Open run</a></div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-sm cell-muted">No supervisor notifications are currently open.</p>
+    {% endif %}
+  </div>
+
+  <div class="card" style="flex:1 1 420px;margin:0;">
+    <div class="card-header">
+      <h3>Genealogy Issues</h3>
+      <a href="{{ url_for('material_genealogy_issue_queue') }}" class="btn btn-secondary btn-sm">Open Queue</a>
+    </div>
+    {% if issue_rows %}
+    <div style="display:grid;gap:10px;">
+      {% for issue in issue_rows %}
+      <div style="border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:12px;">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;">
+          <strong>{{ issue.issue_type.replace('_', ' ').title() }}</strong>
+          <span class="badge status-{{ issue.severity }}">{{ issue.severity }}</span>
+        </div>
+        <div class="text-sm cell-muted" style="margin-top:6px;">Status: {{ issue.status.replace('_', ' ') }}{% if issue.detected_at %} · detected {{ issue.detected_at }}{% endif %}</div>
+        <div class="text-sm" style="margin-top:8px;">
+          {% if issue.run_url %}<a href="{{ issue.run_url }}">Open run view</a>{% endif %}
+          {% if issue.run_url and issue.material_lot_url %} · {% endif %}
+          {% if issue.material_lot_url %}<a href="{{ issue.material_lot_url }}">Open lot view</a>{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-sm cell-muted">No active genealogy issues are currently open.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

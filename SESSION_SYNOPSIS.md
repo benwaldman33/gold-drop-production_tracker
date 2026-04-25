@@ -794,6 +794,15 @@ Implementation sequencing is now documented separately in `UX_ROLE_WORKFLOW_IMPL
 4. standalone-app scope tightening
 5. journey + financial visibility consolidation
 
+The implementation phases are now shipped:
+
+- the main app sidebar is grouped into `Extraction`, `Downstream`, `Purchasing`, `Inventory`, `Alerts`, `Journey`, and `More`
+- users now land on a role-relevant workflow area, with last-section memory during the session
+- `Alerts Home` and `Journey Home` now exist as dedicated manager surfaces
+- extraction/downstream/journey copy now better distinguishes overview vs execution vs investigation
+- the standalone purchasing and receiving apps now have clearer focused-purpose copy and direct handoffs back to main-app purchase review
+- Journey now acts as a daily manager visibility surface for lineage plus cost-basis review, not just a secondary reporting area
+
 ## Deployment note
 
 Current rollout commit:

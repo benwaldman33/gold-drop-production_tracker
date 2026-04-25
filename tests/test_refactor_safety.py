@@ -823,6 +823,18 @@ def test_authenticated_dashboard_and_department_views_render():
     assert export_runs.mimetype.startswith("text/csv")
 
 
+def test_alerts_and_journey_hubs_render():
+    alerts = _call_view_as_user("/alerts", "alerts_home", "admin")
+    assert alerts.status_code == 200
+    assert b"Alerts Home" in alerts.data
+    assert b"Action Queue" in alerts.data
+
+    journey = _call_view_as_user("/journey", "journey_home", "admin")
+    assert journey.status_code == 200
+    assert b"Journey Home" in journey.data
+    assert b"Manager Journey Hub" in journey.data
+
+
 def test_photos_library_renders_for_authenticated_user():
     page = _call_view_as_user("/photos", "photos_library", "viewer")
     assert page.status_code == 200

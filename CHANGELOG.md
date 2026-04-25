@@ -3,6 +3,16 @@
 ## 2026-04-25
 
 ### Added
+- The UX role/workflow restructuring phases are now implemented in the main app:
+  - grouped top-level sidebar navigation for `Extraction`, `Downstream`, `Purchasing`, `Inventory`, `Alerts`, `Journey`, and `More`
+  - role-aware home routing with session memory for the last active top-level workflow area
+  - dedicated `Alerts Home` and `Journey Home` manager hubs
+  - clearer separation between extraction overview (`Extraction dashboard`), execution (`Floor Ops`), record management (`Runs`), downstream overview (`Downstream Queues`), and investigation (`Journey`)
+- `Journey Home` now consolidates genealogy visibility with manager-facing cost-basis context:
+  - open vs released derivative output mix
+  - recent run yield and derivative cost review
+  - downstream blocked-work visibility
+- The standalone purchasing and receiving apps are now more explicitly scoped as focused operational tools, with clearer purpose copy and direct `Open Purchase Review` / `Open in Main App` handoff links back to the main app.
 - The first derivative-lot genealogy foundation is now live in the data model with additive `MaterialLot`, `MaterialTransformation`, `MaterialTransformationInput`, `MaterialTransformationOutput`, and `MaterialReconciliationIssue` tables.
 - `PurchaseLot` now has a genealogy bridge field (`material_lot_id`) so each biomass inventory lot can map to a first-class material lot without changing the current lot workflow.
 - A new genealogy helper service now backfills biomass `MaterialLot` rows from active `PurchaseLot` rows and resolves source biomass material lots for a run.

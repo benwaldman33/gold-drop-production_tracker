@@ -277,6 +277,11 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
+function mainAppLink(url, label = "Open in Main App") {
+  if (!url) return "";
+  return `<a class="btn btn-secondary" href="${escapeHtml(url)}">${escapeHtml(label)}</a>`;
+}
+
 function shell(content) {
   const buyingWorkflow = buyingWorkflowState();
   return `
@@ -382,6 +387,12 @@ function renderHome() {
         <div><h2>Home</h2><div class="meta">Buyer dashboard and fast entry point for field work.</div></div>
         <div class="actions"><a class="btn btn-primary" href="#/opportunities/new">New Opportunity</a><a class="btn btn-secondary" href="#/suppliers">Search Suppliers</a></div>
       </div>
+      <section class="card">
+        <div class="stack">
+          <h3 style="margin:0;">Focused buying workflow</h3>
+          <p class="subtle">Use this app for buyer capture, supplier context, and delivery entry. Move to the main app when you need approval, broader reporting, or full purchase review.</p>
+        </div>
+      </section>
       <section class="card">
         <div class="row" style="grid-template-columns: 1fr auto;">
           <div class="stack">
@@ -821,6 +832,7 @@ function renderOpportunityDetail() {
         <div><h2>${escapeHtml(opportunityTitle(item))}</h2><div class="meta">Status driven workflow for opportunity to delivery.</div></div>
         <div class="actions">
           ${statusChip(item.status)}
+          ${mainAppLink(item.open_main_app_url, item.open_main_app_label || "Open Purchase Review")}
           ${canEdit ? `<a class="btn btn-secondary" href="#/opportunities/${encodeURIComponent(item.id)}/edit">Edit Opportunity</a>` : ""}
           ${deliveryAllowed ? `<a class="btn btn-primary" href="#/opportunities/${encodeURIComponent(item.id)}/delivery">Record Delivery</a>` : ""}
         </div>
@@ -970,6 +982,7 @@ function renderSupplierDetail() {
         <div class="actions">
           <a class="btn btn-secondary" href="#/suppliers">Back to search</a>
           <a class="btn btn-primary" href="#/opportunities/new?supplier_id=${encodeURIComponent(supplier.id)}">New Opportunity</a>
+          <a class="btn btn-secondary" href="/suppliers/${encodeURIComponent(supplier.id)}/edit">Open in Main App</a>
         </div>
       </div>
       <section class="grid-2">

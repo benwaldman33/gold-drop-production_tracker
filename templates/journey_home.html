@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}Journey{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Journey Home</h2>
+  <div class="btn-group">
+    <a href="{{ url_for('material_genealogy_viewer') }}" class="btn btn-primary">Open Journey Viewer</a>
+    <a href="{{ url_for('material_genealogy_report') }}" class="btn btn-secondary">Open Genealogy Report</a>
+    <a href="{{ url_for('material_genealogy_issue_queue') }}" class="btn btn-secondary">Open Issue Queue</a>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:18px;">
+  <div class="card-header">
+    <h3>Manager Journey Hub</h3>
+    <span class="text-sm cell-muted">Journey is the daily visibility surface for tracing material, understanding cost basis, and checking where output is heading next.</span>
+  </div>
+  <div class="summary-row" style="margin-bottom:0;">
+    <div class="summary-stat">
+      <div class="label">Open Cost Basis</div>
+      <div class="value">${{ "{:,.0f}".format(journey.report.summary.open_cost_basis_total or 0) }}</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Released Cost Basis</div>
+      <div class="value">${{ "{:,.0f}".format(journey.report.summary.released_cost_basis_total or 0) }}</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Open Genealogy Issues</div>
+      <div class="value">{{ journey.report.summary.open_issue_count }}</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Downstream Blocked</div>
+      <div class="value">{{ journey.queue_reporting.blocked_count or 0 }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="summary-row">
+  <div class="card" style="flex:1 1 420px;margin:0;">
+    <div class="card-header">
+      <h3>Open Output Mix</h3>
+      <span class="text-sm cell-muted">Material still in process and available for future revenue realization.</span>
+    </div>
+    {% if journey.open_mix %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Lot Type</th>
+            <th>Lots</th>
+            <th>Quantity</th>
+            <th>Cost Basis</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in journey.open_mix %}
+          <tr>
+            <td>{{ row.lot_type }}</td>
+            <td>{{ row.lot_count }}</td>
+            <td>{{ "{:,.2f}".format(row.quantity_total or 0) }} {{ row.unit }}</td>
+            <td>${{ "{:,.2f}".format(row.cost_basis_total or 0) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-sm cell-muted">No open derivative lots are currently recorded.</p>
+    {% endif %}
+  </div>
+
+  <div class="card" style="flex:1 1 420px;margin:0;">
+    <div class="card-header">
+      <h3>Released Output Mix</h3>
+      <span class="text-sm cell-muted">Completed output categories that can be used for historical revenue planning.</span>
+    </div>
+    {% if journey.released_mix %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Lot Type</th>
+            <th>Lots</th>
+            <th>Quantity</th>
+            <th>Cost Basis</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in journey.released_mix %}
+          <tr>
+            <td>{{ row.lot_type }}</td>
+            <td>{{ row.lot_count }}</td>
+            <td>{{ "{:,.2f}".format(row.quantity_total or 0) }} {{ row.unit }}</td>
+            <td>${{ "{:,.2f}".format(row.cost_basis_total or 0) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-sm cell-muted">No released derivative lots are currently recorded.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="summary-row" style="margin-top:18px;">
+  <div class="card" style="flex:1 1 520px;margin:0;">
+    <div class="card-header">
+      <h3>Run Yield And Cost Review</h3>
+      <span class="text-sm cell-muted">Trace recent runs from biomass input through derivative output and cost basis.</span>
+    </div>
+    {% if journey.recent_run_rows %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Run</th>
+            <th>Input</th>
+            <th>Outputs</th>
+            <th>Derivative Cost</th>
+            <th>Issues</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in journey.recent_run_rows %}
+          <tr>
+            <td><a href="{{ row.viewer_url }}">Reactor {{ row.reactor_number }}</a></td>
+            <td>{{ "{:,.1f}".format(row.input_lbs or 0) }} lbs</td>
+            <td>{{ "{:,.0f}".format(row.dry_thca_g or 0) }} g THCA · {{ "{:,.0f}".format(row.dry_hte_g or 0) }} g HTE</td>
+            <td>${{ "{:,.2f}".format(row.derivative_cost_basis_total or 0) }}</td>
+            <td>{{ row.issue_count }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-sm cell-muted">No genealogy-backed run rows are currently available.</p>
+    {% endif %}
+  </div>
+
+  <div class="card" style="flex:1 1 320px;margin:0;">
+    <div class="card-header">
+      <h3>How To Use This</h3>
+    </div>
+    <div class="text-sm cell-muted" style="display:grid;gap:10px;">
+      <div><strong style="color:var(--text-primary);">Investigate</strong><br>Use Journey Viewer to trace a lot or run backward to biomass inputs and forward to derivative output.</div>
+      <div><strong style="color:var(--text-primary);">Manage cost</strong><br>Use open and released cost basis here to understand what is still in process versus already released.</div>
+      <div><strong style="color:var(--text-primary);">Forecast next</strong><br>Use the output mix as the operating base for future revenue forecasting once sales-price assumptions are added.</div>
+      <div><strong style="color:var(--text-primary);">Act</strong><br>When something looks wrong, move to the Issue Queue or Alerts to correct it instead of staying in reporting views.</div>
+    </div>
+  </div>
+</div>
+{% endblock %}

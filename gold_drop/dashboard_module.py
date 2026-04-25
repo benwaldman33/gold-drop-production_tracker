@@ -7,6 +7,7 @@ from services.api_site import get_site_identity
 from services.material_genealogy import (
     ACTIVE_MATERIAL_ISSUE_STATUSES,
     apply_material_issue_action,
+    build_material_reporting_payload,
     build_material_lot_ancestry_payload,
     build_material_lot_descendants_payload,
     build_material_lot_detail_payload,
@@ -69,6 +70,14 @@ def register_routes(app, root):
         return biomass_purchasing_dashboard_view(root)
 
     @root.login_required
+    def alerts_home():
+        return alerts_home_view(root)
+
+    @root.login_required
+    def journey_home():
+        return journey_home_view(root)
+
+    @root.login_required
     def material_genealogy_report():
         return material_genealogy_report_view(root)
 
@@ -125,6 +134,8 @@ def register_routes(app, root):
     app.add_url_rule("/dept/", endpoint="dept_index_slash", view_func=dept_index)
     app.add_url_rule("/dept/<slug>", endpoint="dept_view", view_func=dept_view)
     app.add_url_rule("/biomass-purchasing", endpoint="biomass_purchasing_dashboard", view_func=biomass_purchasing_dashboard)
+    app.add_url_rule("/alerts", endpoint="alerts_home", view_func=alerts_home)
+    app.add_url_rule("/journey", endpoint="journey_home", view_func=journey_home)
     app.add_url_rule("/reports/material-genealogy", endpoint="material_genealogy_report", view_func=material_genealogy_report)
     app.add_url_rule("/journeys/material-genealogy", endpoint="material_genealogy_viewer", view_func=material_genealogy_viewer)
     app.add_url_rule("/journeys/material-genealogy/raw", endpoint="material_genealogy_raw", view_func=material_genealogy_raw)
@@ -322,6 +333,21 @@ def _material_issue_history(root, issue, *, limit: int = 5):
             }
         )
     return history
+
+
+def _journey_home_payload(root):
+    report = build_material_reporting_payload(root)
+    queue_reporting = root.downstream_state_payload(root).get("reporting", {})
+    recent_run_rows = report.get("run_yield_rows", [])[:6]
+    open_mix = report.get("open_inventory_groups", [])[:6]
+    released_mix = report.get("released_inventory_groups", [])[:6]
+    return {
+        "report": report,
+        "queue_reporting": queue_reporting,
+        "recent_run_rows": recent_run_rows,
+        "open_mix": open_mix,
+        "released_mix": released_mix,
+    }
 
 
 def _supervisor_notifications_redirect(root):
@@ -683,6 +709,37 @@ def biomass_purchasing_dashboard_view(root):
         pending_submissions_total_lbs=sum(float(getattr(s, "total_weight_lbs", 0) or 0) for s in pending),
         reviewed_approved_total_lbs=sum(float(getattr(s, "total_weight_lbs", 0) or 0) for s in reviewed if s.status == "approved"),
         reviewed_rejected_total_lbs=sum(float(getattr(s, "total_weight_lbs", 0) or 0) for s in reviewed if s.status == "rejected"),
+    )
+
+
+def alerts_home_view(root):
+    supervisor_notifications = summarize_notifications(root, limit=12) if manager_can_review(root.current_user) else {"open_count": 0, "critical_count": 0, "warning_count": 0, "info_count": 0, "rows": []}
+    active_issues = (
+        root.MaterialReconciliationIssue.query.filter(root.MaterialReconciliationIssue.status.in_(ACTIVE_MATERIAL_ISSUE_STATUSES))
+        .order_by(root.MaterialReconciliationIssue.detected_at.desc())
+        .limit(12)
+        .all()
+    )
+    issue_rows = [serialize_reconciliation_issue(root, issue) for issue in active_issues]
+    return root.render_template(
+        "alerts_home.html",
+        supervisor_notifications=supervisor_notifications,
+        issue_rows=issue_rows,
+        issue_counts={
+            "open": root.MaterialReconciliationIssue.query.filter_by(status="open").count(),
+            "investigating": root.MaterialReconciliationIssue.query.filter_by(status="investigating").count(),
+            "needs_follow_up": root.MaterialReconciliationIssue.query.filter_by(status="needs_follow_up").count(),
+            "critical": root.MaterialReconciliationIssue.query.filter_by(severity="critical").count(),
+        },
+    )
+
+
+def journey_home_view(root):
+    process_material_issue_reminders(root)
+    payload = _journey_home_payload(root)
+    return root.render_template(
+        "journey_home.html",
+        journey=payload,
     )
 
 

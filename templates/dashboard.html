@@ -12,6 +12,13 @@
   </div>
 </div>
 
+<div class="card" style="margin-bottom:16px;">
+  <div class="text-sm cell-muted">
+    <strong style="color:var(--text-primary);">Extraction overview:</strong> use this page for performance and throughput review.
+    For live execution go to <a href="{{ url_for('floor_ops') }}">Floor Ops</a>. For record administration and edits go to <a href="{{ url_for('runs_list') }}">Runs</a>.
+  </div>
+</div>
+
 {% if exclude_unpriced %}
 <div class="card" style="padding:12px 16px; margin-bottom:16px; border-color: rgba(251, 191, 36, 0.25);">
   <div class="text-sm" style="color:var(--yellow); font-weight:600;">

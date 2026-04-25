@@ -118,6 +118,11 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
+function mainAppLink(url, label = "Open in Main App") {
+  if (!url) return "";
+  return `<a class="btn btn-secondary" href="${escapeHtml(url)}">${escapeHtml(label)}</a>`;
+}
+
 function shell(content) {
   return `
     <div class="app-shell">
@@ -190,6 +195,12 @@ function renderHome() {
         <div><h2>Receiving Home</h2><div class="meta">Approved and committed material waiting to be received into the facility.</div></div>
         <div class="actions"><a class="btn btn-primary" href="#/queue">Open Queue</a></div>
       </div>
+      <section class="card">
+        <div class="stack">
+          <h3 style="margin:0;">Focused receiving workflow</h3>
+          <p class="subtle">Use this app for dock confirmation, receipt correction, and receiving photos. Move to the main app for broader purchase review, supplier administration, and downstream planning.</p>
+        </div>
+      </section>
       <section class="grid-3">
         <div class="card stat"><div class="label">Ready to Receive</div><div class="value">${ready}</div><div class="hint">Approved or committed items</div></div>
         <div class="card stat"><div class="label">Recently Delivered</div><div class="value">${delivered}</div><div class="hint">Closed receiving records</div></div>
@@ -254,6 +265,7 @@ function renderDetail() {
           <div class="meta">${escapeHtml(item.batch_id || item.id)} - ${statusChip(item.status)} - Approved ${escapeHtml(shortDateTime(item.approval?.approved_at))}</div>
         </div>
         <div class="actions">
+          ${mainAppLink(item.open_main_app_url, item.open_main_app_label || "Open Purchase Review")}
           ${canConfirm ? `<a class="btn btn-primary" href="#/queue/${encodeURIComponent(item.id)}/receive">Confirm Receipt</a>` : ""}
           ${!canConfirm && canEdit ? `<a class="btn btn-primary" href="#/queue/${encodeURIComponent(item.id)}/edit">Edit Receipt</a>` : ""}
         </div>
