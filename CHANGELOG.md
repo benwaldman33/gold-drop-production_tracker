@@ -16,11 +16,13 @@
 - Booth exception handling now supports non-happy-path loops: operators can mark flow as still adjusting, return to the flow check, mark final clarity as not yet acceptable, and resume another purge pass without breaking the run workflow.
 - `Settings -> Operational Parameters` now also includes extraction booth timing targets for primary soak, mixer, flush soak, and optional final purge duration.
 - Extraction run payloads and the standalone extraction UI now include timing-control status for the core booth timers so operators can see whether each timed step is not started, active, on target, or short against the configured SOP targets.
+- The main run form now includes a supervisor-facing `Booth Review` surface showing current booth stage, timing status, deviation flags, recent booth history, and linked booth evidence without leaving the admin edit screen.
 
 ### Tests
 - Extended extraction mobile API regression coverage for the booth-SOP sequence through shutdown and run completion.
 - Extended standalone extraction app regression coverage for the booth-SOP sequence and aligned mock-mode progression with the backend stage model.
 - Added regression coverage for booth exception-handling loops and timing-control payloads.
+- Added run-form regression coverage for the new supervisor booth-review surface.
 
 ## 2026-04-18
 

@@ -277,6 +277,107 @@
       <div class="text-sm" style="color:var(--text-muted);margin-bottom:10px;">
         <strong>{{ run_execution_fields.progression_stage_label }}</strong> — {{ run_execution_fields.progression_description }}
       </div>
+      <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px;margin:0 0 14px 0;">
+        <div style="font-weight:600;margin-bottom:8px;">Booth Review</div>
+        <div class="text-sm" style="color:var(--text-muted);margin-bottom:10px;">
+          Current booth stage: <strong>{{ booth_review.current_stage_label }}</strong>
+          {% if booth_review.booth_process_completed_at %}
+          <span style="display:block;margin-top:4px;">Booth process completed: {{ booth_review.booth_process_completed_at }}</span>
+          {% endif %}
+        </div>
+        <div class="form-row-3">
+          {% for key in ["primary_soak", "mixer", "flush", "final_purge"] %}
+          {% set timing = booth_review.timing_controls[key] %}
+          <div class="form-group" style="background:rgba(0,0,0,0.12);border-radius:8px;padding:10px;">
+            <div style="font-weight:600;">{{ timing.label }}</div>
+            <div class="text-sm" style="color:var(--text-muted);margin-top:4px;">Status: {{ timing.status.replace('_', ' ').title() }}</div>
+            <div class="text-sm" style="color:var(--text-muted);">
+              Target:
+              {% if timing.target_minutes is not none %}
+              {{ timing.target_minutes }} minute(s)
+              {% else %}
+              none
+              {% endif %}
+            </div>
+            {% if timing.actual_minutes is not none %}
+            <div class="text-sm" style="color:var(--text-muted);">Recorded: {{ timing.actual_minutes }} minute(s)</div>
+            {% elif timing.active_minutes is not none %}
+            <div class="text-sm" style="color:var(--text-muted);">Elapsed: {{ timing.active_minutes }} minute(s)</div>
+            {% endif %}
+            {% if timing.delta_minutes is not none %}
+            <div class="text-sm" style="color:var(--text-muted);">
+              {% if timing.delta_minutes >= 0 %}
+              {{ timing.delta_minutes }} minute(s) over target
+              {% else %}
+              {{ (timing.delta_minutes * -1)|int }} minute(s) under target
+              {% endif %}
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% if booth_review.deviations %}
+        <div style="margin-top:10px;">
+          <div style="font-weight:600;">Deviation Flags</div>
+          {% for item in booth_review.deviations %}
+          <div class="text-sm" style="color:#f4c26b;margin-top:4px;">{{ item }}</div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        <div class="form-row-3" style="margin-top:10px;">
+          <div class="form-group">
+            <label>Flow Resumed Decision</label>
+            <div class="text-sm" style="color:var(--text-muted);">{{ booth_review.flow_resumed_decision or 'Not set' }}</div>
+            {% if booth_review.flow_resumed_confirmed_at %}
+            <div class="text-sm" style="color:var(--text-muted);margin-top:4px;">{{ booth_review.flow_resumed_confirmed_at }}</div>
+            {% endif %}
+          </div>
+          <div class="form-group">
+            <label>Final Clarity Decision</label>
+            <div class="text-sm" style="color:var(--text-muted);">{{ booth_review.final_clarity_decision or 'Not set' }}</div>
+            {% if booth_review.final_clarity_confirmed_at %}
+            <div class="text-sm" style="color:var(--text-muted);margin-top:4px;">{{ booth_review.final_clarity_confirmed_at }}</div>
+            {% endif %}
+          </div>
+          <div class="form-group">
+            <label>Evidence Summary</label>
+            <div class="text-sm" style="color:var(--text-muted);">{{ booth_review.evidence|length }} file(s) linked</div>
+          </div>
+        </div>
+        <div class="form-row" style="margin-top:10px;">
+          <div class="form-group">
+            <label>Recent Booth History</label>
+            {% if booth_review.history %}
+            <div style="max-height:180px;overflow:auto;background:rgba(0,0,0,0.12);border-radius:8px;padding:10px;">
+              {% for item in booth_review.history %}
+              <div class="text-sm" style="color:var(--text-muted);margin-bottom:6px;">
+                <strong style="color:var(--text);">{{ item.event_label }}</strong><br>
+                {{ item.occurred_at }}
+              </div>
+              {% endfor %}
+            </div>
+            {% else %}
+            <div class="text-sm" style="color:var(--text-muted);">No booth history recorded yet.</div>
+            {% endif %}
+          </div>
+          <div class="form-group">
+            <label>Booth Evidence</label>
+            {% if booth_review.evidence %}
+            <div style="max-height:180px;overflow:auto;background:rgba(0,0,0,0.12);border-radius:8px;padding:10px;">
+              {% for item in booth_review.evidence %}
+              <div class="text-sm" style="color:var(--text-muted);margin-bottom:8px;">
+                <strong style="color:var(--text);">{{ item.evidence_label }}</strong><br>
+                {{ item.captured_at or 'Captured time unavailable' }}<br>
+                <a href="{{ item.url }}" target="_blank" rel="noopener">Open evidence</a>
+              </div>
+              {% endfor %}
+            </div>
+            {% else %}
+            <div class="text-sm" style="color:var(--text-muted);">No booth evidence linked yet.</div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
       <div class="form-row-3">
         <div class="form-group">
           <label>Run / Fill Start</label>

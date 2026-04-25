@@ -1456,6 +1456,80 @@ def test_run_edit_honors_floor_ops_return_context():
                 db.session.commit()
 
 
+def test_run_edit_shows_booth_review_surface():
+    app = app_module.app
+    run_id = None
+    try:
+        with app.app_context():
+            admin_id = app_module.User.query.filter_by(username="admin").first().id
+            run = app_module.Run(
+                run_date=date(2026, 4, 16),
+                reactor_number=2,
+                run_type="standard",
+                bio_in_reactor_lbs=20,
+                created_by=admin_id,
+                run_fill_started_at=app_module.datetime.now(app_module.timezone.utc) - timedelta(minutes=40),
+                run_fill_ended_at=app_module.datetime.now(app_module.timezone.utc) - timedelta(minutes=5),
+                mixer_started_at=app_module.datetime.now(app_module.timezone.utc) - timedelta(minutes=20),
+                mixer_ended_at=app_module.datetime.now(app_module.timezone.utc) - timedelta(minutes=10),
+                flush_started_at=app_module.datetime.now(app_module.timezone.utc) - timedelta(minutes=15),
+                flush_ended_at=app_module.datetime.now(app_module.timezone.utc) - timedelta(minutes=4),
+            )
+            db.session.add(run)
+            db.session.flush()
+            run_id = run.id
+
+            session = app_module.ExtractionBoothSession(
+                run_id=run.id,
+                current_stage_key="clarity_adjustment_required",
+                status="in_progress",
+                flow_resumed_decision="no_adjusting",
+                flow_resumed_confirmed_at=app_module.datetime.now(app_module.timezone.utc) - timedelta(minutes=12),
+                final_clarity_decision="not_yet",
+                final_clarity_confirmed_at=app_module.datetime.now(app_module.timezone.utc) - timedelta(minutes=3),
+                final_purge_started_at=app_module.datetime.now(app_module.timezone.utc) - timedelta(minutes=8),
+                final_purge_completed_at=app_module.datetime.now(app_module.timezone.utc) - timedelta(minutes=3),
+            )
+            db.session.add(session)
+            db.session.flush()
+            db.session.add(app_module.ExtractionBoothEvent(
+                session_id=session.id,
+                run_id=run.id,
+                event_key="final_purge_resumed",
+                event_label="Final purge resumed for additional clarity work",
+                occurred_at=app_module.datetime.now(app_module.timezone.utc) - timedelta(minutes=4),
+                recorded_by_user_id=admin_id,
+            ))
+            db.session.add(app_module.ExtractionBoothEvidence(
+                session_id=session.id,
+                run_id=run.id,
+                evidence_type="plate_temp_photo",
+                file_path="uploads/mobile/test-plate-photo.jpg",
+                captured_at=app_module.datetime.now(app_module.timezone.utc) - timedelta(minutes=6),
+                captured_by_user_id=admin_id,
+            ))
+            db.session.commit()
+
+        with app.test_client() as client:
+            _login(client, "admin")
+            resp = client.get(f"/runs/{run_id}/edit")
+            assert resp.status_code == 200
+            assert b"Booth Review" in resp.data
+            assert b"Deviation Flags" in resp.data
+            assert b"Flow is still being adjusted." in resp.data
+            assert b"Final clarity is not yet acceptable." in resp.data
+            assert b"Recent Booth History" in resp.data
+            assert b"Booth Evidence" in resp.data
+            assert b"Final purge resumed for additional clarity work" in resp.data
+            assert b"Open evidence" in resp.data
+    finally:
+        with app.app_context():
+            run = db.session.get(app_module.Run, run_id) if run_id else None
+            if run:
+                db.session.delete(run)
+                db.session.commit()
+
+
 def test_floor_ops_board_view_filter_shows_only_running_reactors():
     app = app_module.app
     charge_id = None

@@ -416,6 +416,19 @@ The top of the run screen now shows the current stage and the next action button
 
 Those actions write the matching timestamps and booth checkpoints automatically. When the run is marked complete, the run stores a completed timestamp and the linked extraction charge moves to completed as well when that charge is still the active reactor event.
 
+### Supervisor booth review
+
+On the main app `Run` edit screen, supervisors now have a `Booth Review` block above the editable extraction fields.
+
+Use it to review:
+- current booth stage
+- timing status for primary soak, mixer, flush soak, and final purge
+- deviation flags such as flow still adjusting or clarity not yet acceptable
+- recent booth event history
+- linked booth evidence uploads
+
+This section is intended as a read/review surface first. Supervisors still make corrections through the normal run fields below it.
+
 ### Post-extraction handoff (Phase 1)
 
 After **Mark Run Complete**, the same standalone run screen opens the first downstream handoff step.
