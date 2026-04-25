@@ -335,6 +335,7 @@ The active work area is now the extraction booth SOP alignment layer that sits b
   - booth evidence upload support for solvent chiller and plate temperature photos
   - exception/retry loops for flow adjustment and additional final-purge work
   - timing targets and timing-status payloads for the core booth timers
+  - supervisor booth-review surface on the main run form
 
 ### In progress
 
@@ -348,8 +349,8 @@ The active work area is now the extraction booth SOP alignment layer that sits b
 ### Next
 
 - deepen the extraction booth workflow where the SOP still exceeds the current system:
-  - add supervisor review surfaces for booth history, evidence, timing status, and completion
   - decide whether any timing targets should become warnings only vs hard gates
+  - decide whether supervisors need explicit acknowledgement / override actions on booth deviations
 - after that, resume the downstream queue-deepening work from the stronger extraction foundation
 
 ## Current planning baseline
@@ -427,6 +428,7 @@ Production deployment steps:
    - progression begins at `Confirm Vacuum Down`
    - booth timing controls show target durations
    - flow / clarity retry loops work without dead-ending the run
+   - the main run form shows `Booth Review` with history, timing status, and evidence links
    - shutdown reaches `Mark Run Complete`
    - `Booth evidence` uploads work for temperature photos
 

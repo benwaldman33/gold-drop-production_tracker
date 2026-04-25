@@ -139,11 +139,13 @@ from services.extraction_run import (
     HTE_QUEUE_DESTINATION_OPTIONS,
     POST_EXTRACTION_PATHWAY_OPTIONS,
     THCA_DESTINATION_OPTIONS,
+    booth_session_payload,
     display_local_datetime,
     downstream_state_payload,
     duration_minutes,
     post_extraction_progression_payload,
     run_progression_payload,
+    run_timing_controls_payload,
 )
 from gold_drop.slack import (
     SLACK_IMPORT_KIND_FILTER_CHOICES,
@@ -693,6 +695,7 @@ def _hte_pipeline_label(stage) -> str:
 
 
 def _run_form_extras(run=None):
+    root_ctx = sys.modules[__name__]
     progression = run_progression_payload(run) if run else run_progression_payload(type("DraftRun", (), {
         "run_completed_at": None,
         "flush_started_at": None,
@@ -720,6 +723,43 @@ def _run_form_extras(run=None):
         "hte_offgas_started_at": None,
         "hte_offgas_completed_at": None,
     })())
+    booth = booth_session_payload(root_ctx, run) if run else booth_session_payload(root_ctx, None)
+    timing_controls = run_timing_controls_payload(root_ctx, run) if run else {
+        "primary_soak": {"label": "Primary soak", "target_minutes": booth.get("timing_targets", {}).get("primary_soak_minutes"), "actual_minutes": None, "active_minutes": None, "status": "not_started", "delta_minutes": None},
+        "mixer": {"label": "Mixer", "target_minutes": booth.get("timing_targets", {}).get("mixer_minutes"), "actual_minutes": None, "active_minutes": None, "status": "not_started", "delta_minutes": None},
+        "flush": {"label": "Flush soak", "target_minutes": booth.get("timing_targets", {}).get("flush_minutes"), "actual_minutes": None, "active_minutes": None, "status": "not_started", "delta_minutes": None},
+        "final_purge": {"label": "Final purge", "target_minutes": booth.get("timing_targets", {}).get("final_purge_minutes"), "actual_minutes": None, "active_minutes": None, "status": "not_started", "delta_minutes": None},
+    }
+    booth_review = {
+        "status": booth.get("status", "not_started"),
+        "current_stage_key": booth.get("current_stage_key", "ready_to_confirm_vacuum"),
+        "current_stage_label": progression["stage_label"],
+        "timing_targets": booth.get("timing_targets", {}),
+        "timing_controls": timing_controls,
+        "flow_resumed_decision": booth.get("flow_resumed_decision", ""),
+        "flow_resumed_confirmed_at": booth.get("flow_resumed_confirmed_at", ""),
+        "final_clarity_decision": booth.get("final_clarity_decision", ""),
+        "final_clarity_confirmed_at": booth.get("final_clarity_confirmed_at", ""),
+        "booth_process_completed_at": booth.get("booth_process_completed_at", ""),
+        "deviations": [],
+        "history": list(booth.get("history", [])),
+        "evidence": [],
+    }
+    if booth_review["flow_resumed_decision"] == "no_adjusting":
+        booth_review["deviations"].append("Flow is still being adjusted.")
+    if booth_review["final_clarity_decision"] == "not_yet":
+        booth_review["deviations"].append("Final clarity is not yet acceptable.")
+    if run is not None and getattr(run, "booth_session", None) is not None and hasattr(run.booth_session.booth_evidence, "order_by"):
+        booth_review["evidence"] = [
+            {
+                "evidence_type": item.evidence_type,
+                "evidence_label": item.evidence_type.replace("_", " ").title(),
+                "captured_at": display_local_datetime(item.captured_at),
+                "url": url_for("static", filename=item.file_path),
+                "file_path": item.file_path,
+            }
+            for item in run.booth_session.booth_evidence.order_by(ExtractionBoothEvidence.captured_at.desc()).limit(12).all()
+        ]
     return {
         "hte_lab_paths": _json_paths(getattr(run, "hte_lab_result_paths_json", None) if run else None),
         "hte_pipeline_options": _hte_pipeline_options(),
@@ -765,6 +805,7 @@ def _run_form_extras(run=None):
             "hte_potency_disposition_label": downstream["hte_potency_disposition_label"],
             "hte_queue_destination_label": downstream["hte_queue_destination_label"],
         },
+        "booth_review": booth_review,
     }
 
 

@@ -411,6 +411,37 @@ def timing_control_payload(*, label: str, target_minutes: int | None, start_at: 
     }
 
 
+def run_timing_controls_payload(root, run) -> dict:
+    booth_session = getattr(run, "booth_session", None)
+    timing_targets = extraction_timing_targets(root)
+    return {
+        "primary_soak": timing_control_payload(
+            label="Primary soak",
+            target_minutes=timing_targets.get("primary_soak_minutes"),
+            start_at=getattr(run, "run_fill_started_at", None),
+            end_at=getattr(run, "run_fill_ended_at", None),
+        ),
+        "mixer": timing_control_payload(
+            label="Mixer",
+            target_minutes=timing_targets.get("mixer_minutes"),
+            start_at=getattr(run, "mixer_started_at", None),
+            end_at=getattr(run, "mixer_ended_at", None),
+        ),
+        "flush": timing_control_payload(
+            label="Flush soak",
+            target_minutes=timing_targets.get("flush_minutes"),
+            start_at=getattr(run, "flush_started_at", None),
+            end_at=getattr(run, "flush_ended_at", None),
+        ),
+        "final_purge": timing_control_payload(
+            label="Final purge",
+            target_minutes=timing_targets.get("final_purge_minutes"),
+            start_at=getattr(booth_session, "final_purge_started_at", None),
+            end_at=getattr(booth_session, "final_purge_completed_at", None),
+        ),
+    }
+
+
 def run_progression_payload(run) -> dict:
     session = getattr(run, "booth_session", None)
     if run.run_completed_at:
@@ -1009,33 +1040,7 @@ def ensure_run_for_charge(root, charge):
 def mobile_run_payload(root, run, charge) -> dict:
     lot = charge.lot
     booth_payload = booth_session_payload(root, run)
-    timing_targets = booth_payload.get("timing_targets") or extraction_timing_targets(root)
-    timing_controls = {
-        "primary_soak": timing_control_payload(
-            label="Primary soak",
-            target_minutes=timing_targets.get("primary_soak_minutes"),
-            start_at=run.run_fill_started_at,
-            end_at=run.run_fill_ended_at,
-        ),
-        "mixer": timing_control_payload(
-            label="Mixer",
-            target_minutes=timing_targets.get("mixer_minutes"),
-            start_at=run.mixer_started_at,
-            end_at=run.mixer_ended_at,
-        ),
-        "flush": timing_control_payload(
-            label="Flush soak",
-            target_minutes=timing_targets.get("flush_minutes"),
-            start_at=run.flush_started_at,
-            end_at=run.flush_ended_at,
-        ),
-        "final_purge": timing_control_payload(
-            label="Final purge",
-            target_minutes=timing_targets.get("final_purge_minutes"),
-            start_at=getattr(run.booth_session, "final_purge_started_at", None) if getattr(run, "booth_session", None) is not None else None,
-            end_at=getattr(run.booth_session, "final_purge_completed_at", None) if getattr(run, "booth_session", None) is not None else None,
-        ),
-    }
+    timing_controls = run_timing_controls_payload(root, run)
     return {
         "id": run.id,
         "run_date": run.run_date.isoformat() if run.run_date else None,
