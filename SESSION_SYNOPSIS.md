@@ -743,6 +743,46 @@ Practical meaning:
 - managers can focus on the oldest, highest-risk, or unowned genealogy problems quickly
 - correction work now closes the loop more cleanly with issue management instead of leaving follow-up implicit
 
+## UX / product-structure planning update
+
+A first-pass UX restructuring plan is now documented in:
+
+- `UX_ROLE_WORKFLOW_PLAN.md`
+
+Core direction:
+
+- stop treating all functions as first-level peers in the main app
+- reorganize the product by role, frequency, and device context
+- keep high-frequency operational work visually primary
+- move low-frequency / specialist / admin functions into second-level navigation
+- use standalone apps more aggressively for focused operational workflows
+
+Recommended product split:
+
+- standalone extraction app:
+  - charge workflow
+  - reactor board
+  - booth SOP execution
+  - immediate post-extraction handoff capture
+- standalone receiving app:
+  - receiving queue
+  - receipt confirmation / correction
+  - delivery photo capture
+- standalone purchasing app:
+  - buyer/mobile purchase opportunity workflow
+- main app:
+  - supervisor control surfaces
+  - downstream routing and queue management
+  - inventory and purchase review
+  - genealogy and reporting
+  - admin / maintenance
+
+Recommended first implementation step:
+
+- do a sidebar / information-architecture cleanup first
+- add grouped top-level navigation and a `More` bucket
+- avoid changing deep workflows in the same sprint
+
 ## Deployment note
 
 Current rollout commit:
