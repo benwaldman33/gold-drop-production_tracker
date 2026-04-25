@@ -7,6 +7,7 @@
 
 <!-- System Settings -->
 <div class="card" id="settings-system">
+  <span id="settings-operational"></span>
   <div class="card-header"><h3>Operational Parameters</h3></div>
   <form method="POST">
     <input type="hidden" name="form_type" value="system">
@@ -152,7 +153,7 @@
         When enabled, Dashboard/Supplier/Strain KPIs ignore runs that are unlinked or have any input lot without a Purchase price.
       </div>
     </div>
-    <div class="form-group" style="margin-top:12px;">
+    <div class="form-group" id="settings-journey-financials" style="margin-top:12px;">
       <label>Journey Revenue Assumptions ($/g)</label>
       <div class="text-sm" style="color:var(--text-muted); margin-bottom:8px;">
         Used by Journey and Genealogy Report to project revenue and gross margin from derivative lots. Leave a value at 0 when no reliable selling-price assumption exists yet.
@@ -213,7 +214,7 @@
       <div class="form-group"></div>
       <div class="form-group"></div>
     </div>
-    <div class="form-group" style="margin-top:16px;">
+    <div class="form-group" id="settings-extraction" style="margin-top:16px;">
       <label>Extraction run defaults</label>
       <div class="text-sm" style="color:var(--text-muted); margin-bottom:8px;">
         These values prepopulate the standalone extraction run screen so the iPad workflow starts from your most common operating assumptions.

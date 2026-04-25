@@ -24,9 +24,11 @@
           'purchasing': 'PU',
           'inventory': 'IV',
           'alerts': 'AL',
-          'journey': 'JR'
+          'journey': 'JR',
+          'settings': 'ST'
         } %}
         {% for section in nav_sections %}
+          {% if section.visible is undefined or section.visible %}
           {% set visible_links = section.links | selectattr('visible', 'undefined') | list %}
           {% set visible_links = visible_links + (section.links | selectattr('visible') | list) %}
           {% if visible_links %}
@@ -47,6 +49,7 @@
               {% endfor %}
             </div>
           </div>
+          {% endif %}
           {% endif %}
         {% endfor %}
 

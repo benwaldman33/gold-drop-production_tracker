@@ -66,15 +66,18 @@ Should remain the primary execution surface for:
 
 The main app should move toward this top-level structure:
 
-- `Extraction`
-- `Downstream`
 - `Purchasing`
 - `Inventory`
-- `Alerts`
+- `Extraction`
+- `Downstream`
 - `Journey`
+- `Alerts`
+- `Settings` (Super Admin only)
 - `More`
 
 This does not require all underlying routes to change immediately.
+
+Future optional enhancement: add `Settings -> Navigation` so Super Admins can configure sidebar group order. First implementation should use simple numeric order fields stored in `SystemSetting`, validate that required groups remain present, and fall back to the default order if the saved value is invalid.
 
 ## Phase 1 - Sidebar And Information Architecture Cleanup
 
@@ -87,6 +90,8 @@ Reduce sidebar overload without changing workflow logic.
 - replace the current flat sidebar with grouped top-level navigation
 - add a `More` bucket for low-frequency and specialist functions
 - add a first-level `Journey` area
+- promote `Settings` into its own Super Admin-only group with section links rather than burying it under `More`
+- use the default group order `Purchasing`, `Inventory`, `Extraction`, `Downstream`, `Journey`, `Alerts`, `Settings`, `More`
 - preserve existing route endpoints
 - preserve existing page internals
 - preserve permissions and capability gating

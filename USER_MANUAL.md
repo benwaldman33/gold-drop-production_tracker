@@ -25,12 +25,13 @@ Use the left sidebar:
 - The sidebar is now grouped by workflow area instead of exposing every function as a flat first-level item.
 - Each top-level sidebar section is collapsible, so you can keep submenus hidden until you need that workflow area.
 - Treat the top-level sections this way:
-  - `Extraction` = overview, floor execution, and run administration
-  - `Downstream` = queue triage plus destination-specific work surfaces
   - `Purchasing` = buyer workflow and purchase review
   - `Inventory` = on-hand lot visibility
-  - `Alerts` = action queue for supervisor and genealogy exceptions
+  - `Extraction` = overview, floor execution, and run administration
+  - `Downstream` = queue triage plus destination-specific work surfaces
   - `Journey` = daily manager tracing, lineage, cost-basis visibility, and assumption-backed revenue projection
+  - `Alerts` = action queue for supervisor and genealogy exceptions
+  - `Settings` = Super Admin-only configuration grouped into operational, Journey financial, extraction, Slack/notification, access, integration, and maintenance sections
   - `More` = lower-frequency admin and specialist tools, including `Scorecards (beta)`
 - **Extraction** (labeled on the home dashboard card): KPIs + quick actions
 - **Biomass purchasing**: buyer weekly snapshot, field submission queues, and reviewed history
@@ -47,7 +48,7 @@ Use the left sidebar:
 - **Strains**: strain performance analytics
 - **Photo Library**: searchable media across supplier/purchase/field contexts; editors can upload and remove certain attachment types here (see **Photo Library** section)
 - **Slack imports** (Slack Importer capability or Super Admin): triage synced Slack messages, preview mapped Run fields, review candidate source lots, optionally split a run across multiple lots, then **create run from Slack** (prefilled form)
-- **Settings** (Super Admin only): system parameters, KPIs, users, maintenance actions
+- **Settings** (Super Admin only): system parameters, Journey revenue assumptions, extraction controls, Slack/notification routing, users/access, integrations, and maintenance actions
 - **Cross-Site Ops** (only when enabled by Super Admin): cached local + remote-site rollups for multi-site reporting
 - **Fresh operational reset** (server-side admin task): clears operational business data while keeping users, passwords, settings, KPI targets, Slack sync config, and cost entries
 - **Import**: CSV import for **historical runs** (run-style exports)—not the same as **Purchases → Import spreadsheet**
