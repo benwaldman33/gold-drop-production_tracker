@@ -143,15 +143,116 @@ def test_material_genealogy_report_renders_downstream_reporting():
             resp = client.get("/reports/material-genealogy")
             assert resp.status_code == 200
             assert b"Material Genealogy Report" in resp.data
+            assert b"Open Journey Viewer" in resp.data
             assert b"Open Derivative Inventory By Type" in resp.data
             assert b"Released Derivative Inventory By Type" in resp.data
             assert b"Source-To-Derivative Yield" in resp.data
             assert b"wholesale_thca" in resp.data
             assert b"golddrop" in resp.data
+            assert b"/journeys/material-genealogy?mode=lot" in resp.data
     finally:
         with app.app_context():
             _release_test_db_session()
             app_module.DownstreamQueueEvent.query.filter_by(run_id=run_id).delete(synchronize_session=False)
+            app_module.MaterialReconciliationIssue.query.filter_by(run_id=run_id).delete(synchronize_session=False)
+            app_module.MaterialTransformation.query.filter_by(run_id=run_id).delete(synchronize_session=False)
+            for material_lot in app_module.MaterialLot.query.filter(app_module.MaterialLot.parent_run_id == run_id).all():
+                db.session.delete(material_lot)
+            source_material = app_module.MaterialLot.query.filter_by(source_purchase_lot_id=lot_id).first()
+            if source_material:
+                db.session.delete(source_material)
+            app_module.RunInput.query.filter_by(run_id=run_id).delete(synchronize_session=False)
+            run = db.session.get(app_module.Run, run_id) if run_id else None
+            if run:
+                db.session.delete(run)
+            lot = db.session.get(PurchaseLot, lot_id) if lot_id else None
+            if lot:
+                db.session.delete(lot)
+            purchase = db.session.get(Purchase, purchase_id) if purchase_id else None
+            if purchase:
+                db.session.delete(purchase)
+            supplier = db.session.get(Supplier, supplier_id) if supplier_id else None
+            if supplier:
+                db.session.delete(supplier)
+            db.session.commit()
+
+
+def test_material_genealogy_viewer_renders_lot_and_run_modes():
+    app = app_module.app
+    run_id = None
+    purchase_id = None
+    supplier_id = None
+    lot_id = None
+    try:
+        with app.app_context():
+            supplier = Supplier(name="Journey Viewer Supplier", is_active=True)
+            db.session.add(supplier)
+            db.session.flush()
+            supplier_id = supplier.id
+            purchase = Purchase(
+                supplier_id=supplier.id,
+                purchase_date=date(2026, 4, 25),
+                delivery_date=date(2026, 4, 25),
+                status="delivered",
+                stated_weight_lbs=100,
+                purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+                testing_status="completed",
+                clean_or_dirty="clean",
+                batch_id=f"JVW-{app_module.gen_uuid()[:6]}",
+            )
+            db.session.add(purchase)
+            db.session.flush()
+            purchase_id = purchase.id
+            lot = PurchaseLot(
+                purchase_id=purchase.id,
+                strain_name="Viewer Dream",
+                tracking_id="JVW-LOT-1",
+                weight_lbs=100,
+                remaining_weight_lbs=60,
+                floor_state="inventory",
+                milled=True,
+            )
+            db.session.add(lot)
+            db.session.flush()
+            lot_id = lot.id
+            run = app_module.Run(
+                run_date=date(2026, 4, 25),
+                reactor_number=6,
+                bio_in_reactor_lbs=40,
+                dry_hte_g=18,
+                dry_thca_g=22,
+            )
+            db.session.add(run)
+            db.session.flush()
+            run_id = run.id
+            db.session.add(app_module.RunInput(run_id=run.id, lot_id=lot.id, weight_lbs=40))
+            db.session.commit()
+
+            app_module._material_lot_for_purchase_lot(app_module, db.session.get(PurchaseLot, lot.id))
+            app_module._ensure_extraction_output_genealogy(app_module, db.session.get(app_module.Run, run.id))
+            db.session.commit()
+
+            derivative_lot = db.session.get(app_module.Run, run.id).material_lots.filter_by(lot_type="dry_hte").first()
+            derivative_lot_id = derivative_lot.id
+
+        with app.test_client() as client:
+            _login(client, "admin")
+            lot_resp = client.get(f"/journeys/material-genealogy?mode=lot&material_lot_id={derivative_lot_id}")
+            assert lot_resp.status_code == 200
+            assert b"Material Journey Viewer" in lot_resp.data
+            assert b"Ancestry Chain" in lot_resp.data
+            assert b"Descendant Transformations" in lot_resp.data
+            assert b"Open Parent Run" in lot_resp.data
+
+            run_resp = client.get(f"/journeys/material-genealogy?mode=run&run_id={run_id}")
+            assert run_resp.status_code == 200
+            assert b"Run Timeline" in run_resp.data
+            assert b"Source Material" in run_resp.data
+            assert b"Derivative Lots" in run_resp.data
+            assert b"/journeys/material-genealogy?mode=lot" in run_resp.data
+    finally:
+        with app.app_context():
+            _release_test_db_session()
             app_module.MaterialReconciliationIssue.query.filter_by(run_id=run_id).delete(synchronize_session=False)
             app_module.MaterialTransformation.query.filter_by(run_id=run_id).delete(synchronize_session=False)
             for material_lot in app_module.MaterialLot.query.filter(app_module.MaterialLot.parent_run_id == run_id).all():

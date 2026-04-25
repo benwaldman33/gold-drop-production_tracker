@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from gold_drop.purchases import budget_week_purchase_metrics, purchase_week_start
 from services.api_site import get_site_identity
+from services.material_genealogy import build_material_lot_detail_payload, build_material_lot_journey_payload
+from services.purchases_journey import build_run_journey_payload
 from services.site_aggregation import build_aggregation_summary
 from services.field_submissions import decorate_submission_rows
 from services.supervisor_notifications import manager_can_review, summarize_notifications
@@ -59,6 +61,10 @@ def register_routes(app, root):
         return material_genealogy_report_view(root)
 
     @root.login_required
+    def material_genealogy_viewer():
+        return material_genealogy_viewer_view(root)
+
+    @root.login_required
     def cross_site_ops():
         return cross_site_ops_view(root)
 
@@ -96,6 +102,7 @@ def register_routes(app, root):
     app.add_url_rule("/dept/<slug>", endpoint="dept_view", view_func=dept_view)
     app.add_url_rule("/biomass-purchasing", endpoint="biomass_purchasing_dashboard", view_func=biomass_purchasing_dashboard)
     app.add_url_rule("/reports/material-genealogy", endpoint="material_genealogy_report", view_func=material_genealogy_report)
+    app.add_url_rule("/journeys/material-genealogy", endpoint="material_genealogy_viewer", view_func=material_genealogy_viewer)
     app.add_url_rule("/cross-site", endpoint="cross_site_ops", view_func=cross_site_ops)
     app.add_url_rule("/cross-site/suppliers", endpoint="cross_site_suppliers", view_func=cross_site_suppliers)
     app.add_url_rule("/cross-site/strains", endpoint="cross_site_strains", view_func=cross_site_strains)
@@ -195,6 +202,61 @@ def _department_stat_sections(root, slug: str):
         }]
 
     return []
+
+
+def _material_genealogy_sidebar_lots(root, *, active_material_lot_id: str | None):
+    lots = (
+        root.MaterialLot.query.order_by(root.MaterialLot.created_at.desc(), root.MaterialLot.id.desc())
+        .limit(80)
+        .all()
+    )
+    rows = []
+    for lot in lots:
+        label_bits = [lot.tracking_id or lot.id[:8], lot.lot_type.replace("_", " ")]
+        if lot.strain_name_snapshot:
+            label_bits.append(lot.strain_name_snapshot)
+        rows.append(
+            {
+                "material_lot_id": lot.id,
+                "tracking_id": lot.tracking_id or lot.id[:8],
+                "lot_type": lot.lot_type,
+                "strain_name": lot.strain_name_snapshot,
+                "supplier_name": lot.supplier_name_snapshot,
+                "quantity_label": f"{float(lot.quantity or 0):,.2f} {lot.unit or ''}".strip(),
+                "status_label": (lot.inventory_status or "open").replace("_", " "),
+                "search_text": " ".join(bit for bit in label_bits if bit).lower(),
+                "url": root.url_for("material_genealogy_viewer", mode="lot", material_lot_id=lot.id),
+                "active": lot.id == active_material_lot_id,
+            }
+        )
+    return rows
+
+
+def _material_genealogy_sidebar_runs(root, *, active_run_id: str | None):
+    runs = (
+        root.Run.query.filter(root.Run.deleted_at.is_(None))
+        .order_by(root.Run.run_date.desc(), root.Run.created_at.desc(), root.Run.id.desc())
+        .limit(80)
+        .all()
+    )
+    rows = []
+    for run in runs:
+        source_tracking = [row.lot.tracking_id for row in run.inputs.limit(3).all() if row.lot and row.lot.tracking_id]
+        search_bits = [f"reactor {run.reactor_number}", run.id]
+        search_bits.extend(source_tracking)
+        rows.append(
+            {
+                "run_id": run.id,
+                "reactor_number": run.reactor_number,
+                "run_date_label": run.run_date.strftime("%Y-%m-%d") if run.run_date else "Unknown date",
+                "input_label": f"{float(run.bio_in_reactor_lbs or 0):,.1f} lbs",
+                "source_label": ", ".join(source_tracking) if source_tracking else "No source lots linked",
+                "search_text": " ".join(bit for bit in search_bits if bit).lower(),
+                "url": root.url_for("material_genealogy_viewer", mode="run", run_id=run.id),
+                "active": run.id == active_run_id,
+            }
+        )
+    return rows
 
 
 def _supervisor_notifications_redirect(root):
@@ -562,6 +624,67 @@ def biomass_purchasing_dashboard_view(root):
 def material_genealogy_report_view(root):
     payload = root._build_material_reporting_payload(root)
     return root.render_template("material_genealogy_report.html", report=payload)
+
+
+def material_genealogy_viewer_view(root):
+    mode = (root.request.args.get("mode") or "lot").strip().lower()
+    if mode not in {"lot", "run"}:
+        mode = "lot"
+
+    selected_material_lot_id = (root.request.args.get("material_lot_id") or "").strip() or None
+    selected_run_id = (root.request.args.get("run_id") or "").strip() or None
+
+    selected_material_lot = root.db.session.get(root.MaterialLot, selected_material_lot_id) if selected_material_lot_id else None
+    selected_run = root.db.session.get(root.Run, selected_run_id) if selected_run_id else None
+    if selected_run is not None and selected_run.deleted_at is not None:
+        selected_run = None
+
+    sidebar_lots = _material_genealogy_sidebar_lots(root, active_material_lot_id=selected_material_lot_id)
+    sidebar_runs = _material_genealogy_sidebar_runs(root, active_run_id=selected_run_id)
+
+    if mode == "lot" and selected_material_lot is None and sidebar_lots:
+        selected_material_lot_id = sidebar_lots[0]["material_lot_id"]
+        selected_material_lot = root.db.session.get(root.MaterialLot, selected_material_lot_id)
+        for row in sidebar_lots:
+            row["active"] = row["material_lot_id"] == selected_material_lot_id
+    if mode == "run" and selected_run is None and sidebar_runs:
+        selected_run_id = sidebar_runs[0]["run_id"]
+        selected_run = root.db.session.get(root.Run, selected_run_id)
+        for row in sidebar_runs:
+            row["active"] = row["run_id"] == selected_run_id
+
+    lot_view = None
+    run_view = None
+    if selected_material_lot is not None:
+        lot_detail = build_material_lot_detail_payload(root, selected_material_lot)
+        lot_journey = build_material_lot_journey_payload(root, selected_material_lot)
+        lot_view = {
+            "detail": lot_detail,
+            "journey": lot_journey,
+            "open_run_url": lot_detail["material_lot"]["links"].get("run_url"),
+            "open_purchase_url": lot_detail["material_lot"]["links"].get("purchase_url"),
+            "open_run_journey_url": root.url_for("material_genealogy_viewer", mode="run", run_id=selected_material_lot.parent_run_id)
+            if selected_material_lot.parent_run_id
+            else None,
+        }
+    if selected_run is not None:
+        run_journey = build_run_journey_payload(selected_run)
+        run_view = {
+            "journey": run_journey,
+            "material_lot_urls": {
+                lot["material_lot_id"]: root.url_for("material_genealogy_viewer", mode="lot", material_lot_id=lot["material_lot_id"])
+                for lot in run_journey.get("material_lots", [])
+            },
+        }
+
+    return root.render_template(
+        "material_genealogy_viewer.html",
+        mode=mode,
+        sidebar_lots=sidebar_lots,
+        sidebar_runs=sidebar_runs,
+        lot_view=lot_view,
+        run_view=run_view,
+    )
 
 
 def cross_site_ops_view(root):

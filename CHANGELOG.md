@@ -35,6 +35,9 @@
   - `/reports/material-genealogy` in the main app
   - `/api/v1/summary/material-genealogy` in the internal API
   - reporting now covers open/released derivative inventory by type, source-to-derivative yield, rework volume, open reconciliation issues, and recent derivative lots with lineage links
+- Material genealogy now has a real in-app journey viewer at `/journeys/material-genealogy` with `By Lot` and `By Run` modes. It turns the earlier `lot-journey-v2` mockup direction into a logged-in HTML surface backed by the existing genealogy payloads, so managers can path-trace from a derivative lot to its source biomass or from a run to its derivative lots without landing in raw JSON.
+- The `Genealogy Report` page and downstream queue cards now route managers into the HTML genealogy viewer instead of only offering raw API journey links.
+- The `Genealogy Report` sidebar label/icon rendering was normalized to avoid stray leading mojibake characters, and engineering guidance now explicitly requires checking new sidebar items for malformed icon text before final commit.
 - New planning documents now define the target model and phased rollout for true end-to-end material genealogy:
   - `DERIVATIVE_LOT_GENEALOGY_PLAN.md`
   - `DERIVATIVE_LOT_GENEALOGY_IMPLEMENTATION_PLAN.md`
@@ -50,6 +53,7 @@
 - Added downstream queue regression coverage ensuring GoldDrop queue cards render linked derivative lot genealogy without breaking the existing queue workflow surfaces.
 - Added genealogy regression coverage for downstream child-lot creation across GoldDrop, THCA routing, terp strip, HP base oil, and distillate conversions.
 - Added reporting regression coverage for the new material genealogy report page, the new summary endpoint, and route registration.
+- Added regression coverage for the new HTML genealogy viewer in both lot and run modes, plus the updated report links into that viewer.
 
 ## 2026-04-24
 

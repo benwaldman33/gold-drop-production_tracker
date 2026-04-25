@@ -1,0 +1,335 @@
+{% extends "base.html" %}
+{% block title %}Material Journey Viewer{% endblock %}
+{% block content %}
+<style>
+  .journey-shell { display:grid; grid-template-columns: 320px minmax(0, 1fr); gap:18px; align-items:start; }
+  .journey-sidebar { position:sticky; top:18px; }
+  .journey-mode-toggle { display:flex; gap:8px; margin-bottom:12px; }
+  .journey-mode-toggle .btn { flex:1 1 0; text-align:center; }
+  .journey-search { margin-bottom:12px; }
+  .journey-search input { width:100%; }
+  .journey-list { display:grid; gap:8px; max-height:70vh; overflow:auto; }
+  .journey-list-item { display:block; border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:10px 12px; text-decoration:none; color:inherit; background:rgba(255,255,255,0.02); }
+  .journey-list-item.active { border-color:rgba(228,180,82,0.9); background:rgba(228,180,82,0.08); }
+  .journey-list-item:hover { border-color:rgba(255,255,255,0.16); }
+  .journey-list-meta { display:flex; justify-content:space-between; gap:10px; font-size:0.8rem; color:var(--text-muted); margin-top:4px; }
+  .journey-main { display:grid; gap:18px; }
+  .journey-hero { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; flex-wrap:wrap; }
+  .journey-title { margin:0; font-size:2rem; }
+  .journey-subtitle { margin-top:6px; color:var(--text-muted); }
+  .journey-summary-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; }
+  .journey-stat { border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:12px; background:rgba(255,255,255,0.02); }
+  .journey-stat .label { color:var(--text-muted); font-size:0.8rem; text-transform:uppercase; letter-spacing:0.06em; }
+  .journey-stat .value { font-size:1.2rem; font-weight:700; margin-top:4px; }
+  .journey-events { display:grid; gap:10px; }
+  .journey-event { border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:12px 14px; background:rgba(255,255,255,0.02); }
+  .journey-event-top { display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap; }
+  .journey-chain { display:grid; gap:12px; }
+  .journey-chain-row { border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:12px 14px; background:rgba(255,255,255,0.02); }
+  .journey-chip-row { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+  .journey-chip { display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.04); text-decoration:none; color:inherit; font-size:0.9rem; }
+  .journey-chip:hover { border-color:rgba(228,180,82,0.9); color:inherit; }
+  .journey-section-note { color:var(--text-muted); margin-top:6px; }
+  .journey-empty { border:1px dashed rgba(255,255,255,0.12); border-radius:12px; padding:28px; text-align:center; color:var(--text-muted); }
+  .journey-link-row { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  @media (max-width: 980px) {
+    .journey-shell { grid-template-columns: 1fr; }
+    .journey-sidebar { position:static; }
+    .journey-list { max-height:none; }
+  }
+</style>
+
+<div class="page-header">
+  <h2>Material Journey Viewer</h2>
+  <div class="btn-group">
+    <a href="{{ url_for('material_genealogy_report') }}" class="btn btn-secondary">Back to Genealogy Report</a>
+    <a href="{{ url_for('downstream_queues') }}" class="btn btn-secondary">Open Downstream Queues</a>
+  </div>
+</div>
+
+<div class="journey-shell">
+  <aside class="journey-sidebar">
+    <div class="card">
+      <div class="journey-mode-toggle">
+        <a href="{{ url_for('material_genealogy_viewer', mode='lot') }}" class="btn {% if mode == 'lot' %}btn-primary{% else %}btn-secondary{% endif %}">By Lot</a>
+        <a href="{{ url_for('material_genealogy_viewer', mode='run') }}" class="btn {% if mode == 'run' %}btn-primary{% else %}btn-secondary{% endif %}">By Run</a>
+      </div>
+      <div class="journey-search">
+        <input id="journey-sidebar-search" type="text" placeholder="Filter this list">
+      </div>
+      <div class="journey-list" id="journey-sidebar-list">
+        {% if mode == 'lot' %}
+          {% for item in sidebar_lots %}
+          <a href="{{ item.url }}" class="journey-list-item{% if item.active %} active{% endif %}" data-search="{{ item.search_text }}">
+            <div><strong>{{ item.tracking_id }}</strong></div>
+            <div class="journey-list-meta">
+              <span>{{ item.lot_type.replace('_', ' ') }}</span>
+              <span>{{ item.quantity_label }}</span>
+            </div>
+            <div class="text-sm cell-muted" style="margin-top:4px;">{{ item.strain_name or item.supplier_name or "No source snapshot" }}</div>
+            <div class="text-sm cell-muted" style="margin-top:2px;">{{ item.status_label }}</div>
+          </a>
+          {% endfor %}
+        {% else %}
+          {% for item in sidebar_runs %}
+          <a href="{{ item.url }}" class="journey-list-item{% if item.active %} active{% endif %}" data-search="{{ item.search_text }}">
+            <div><strong>Run {{ item.run_date_label }}</strong></div>
+            <div class="journey-list-meta">
+              <span>Reactor {{ item.reactor_number }}</span>
+              <span>{{ item.input_label }}</span>
+            </div>
+            <div class="text-sm cell-muted" style="margin-top:4px;">{{ item.source_label }}</div>
+          </a>
+          {% endfor %}
+        {% endif %}
+      </div>
+    </div>
+  </aside>
+
+  <section class="journey-main">
+    {% if mode == 'lot' and lot_view %}
+      {% set material = lot_view.detail.material_lot %}
+      <div class="card">
+        <div class="journey-hero">
+          <div>
+            <h3 class="journey-title">{{ material.tracking_id }}</h3>
+            <div class="journey-subtitle">{{ material.lot_type.replace('_', ' ') }}{% if material.strain_name_snapshot %} · {{ material.strain_name_snapshot }}{% endif %}</div>
+          </div>
+          <div class="journey-link-row">
+            {% if lot_view.open_run_journey_url %}<a href="{{ lot_view.open_run_journey_url }}" class="btn btn-secondary btn-sm">Open Parent Run</a>{% endif %}
+            {% if lot_view.open_run_url %}<a href="{{ lot_view.open_run_url }}" class="btn btn-secondary btn-sm">Open Run Record</a>{% endif %}
+            {% if lot_view.open_purchase_url %}<a href="{{ lot_view.open_purchase_url }}" class="btn btn-secondary btn-sm">Open Purchase</a>{% endif %}
+            <a href="{{ material.links.material_lot_detail }}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">Raw Detail</a>
+          </div>
+        </div>
+        <div class="journey-summary-grid" style="margin-top:16px;">
+          <div class="journey-stat">
+            <div class="label">Quantity</div>
+            <div class="value">{{ "{:,.2f}".format(material.quantity or 0) }} {{ material.unit }}</div>
+          </div>
+          <div class="journey-stat">
+            <div class="label">Inventory Status</div>
+            <div class="value">{{ material.inventory_status.replace('_', ' ') }}</div>
+          </div>
+          <div class="journey-stat">
+            <div class="label">Ancestry Steps</div>
+            <div class="value">{{ lot_view.journey.summary.ancestor_transformation_count }}</div>
+          </div>
+          <div class="journey-stat">
+            <div class="label">Descendant Steps</div>
+            <div class="value">{{ lot_view.journey.summary.descendant_transformation_count }}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Journey Timeline</h3>
+          <span class="text-sm cell-muted">Material lot path tracing from source inventory through downstream transformations.</span>
+        </div>
+        <div class="journey-events">
+          {% for event in lot_view.journey.events %}
+          <div class="journey-event">
+            <div class="journey-event-top">
+              <strong>{{ event.stage_key.replace('_', ' ').title() }}</strong>
+              <span class="badge status-{{ event.state }}">{{ event.state.replace('_', ' ') }}</span>
+            </div>
+            <div class="text-sm cell-muted" style="margin-top:6px;">Start: {{ event.started_at or "—" }} · Complete: {{ event.completed_at or "—" }}</div>
+            {% if event.metrics %}
+            <div class="text-sm" style="margin-top:8px;">
+              {% for key, value in event.metrics.items() %}
+              <span style="display:inline-block;margin-right:12px;"><strong>{{ key.replace('_', ' ') }}:</strong> {{ value }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
+            {% if event.links %}
+            <div class="journey-link-row">
+              {% for link in event.links %}
+              <a href="{{ link.url }}" class="btn btn-secondary btn-sm">{{ link.label }}</a>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Ancestry Chain</h3>
+          <span class="text-sm cell-muted">Inputs and upstream transformations that created this lot.</span>
+        </div>
+        {% if lot_view.journey.ancestry %}
+        <div class="journey-chain">
+          {% for node in lot_view.journey.ancestry %}
+          <div class="journey-chain-row">
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;">
+              <strong>{{ node.transformation.transformation_type.replace('_', ' ').title() }}</strong>
+              <span class="badge status-{{ node.transformation.status }}">{{ node.transformation.status.replace('_', ' ') }}</span>
+            </div>
+            <div class="text-sm cell-muted" style="margin-top:6px;">Performed {{ node.transformation.performed_at or "—" }}</div>
+            <div class="journey-chip-row">
+              {% for input in node.inputs %}
+              <a href="{{ url_for('material_genealogy_viewer', mode='lot', material_lot_id=input.material_lot.material_lot_id) }}" class="journey-chip">
+                <span>{{ input.material_lot.tracking_id }}</span>
+                <span class="cell-muted">{{ input.material_lot.lot_type.replace('_', ' ') }}</span>
+              </a>
+              {% endfor %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="journey-empty">No upstream transformations are recorded for this lot yet.</div>
+        {% endif %}
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Descendant Transformations</h3>
+          <span class="text-sm cell-muted">Child lots and downstream paths produced from this lot.</span>
+        </div>
+        {% if lot_view.journey.descendants %}
+        <div class="journey-chain">
+          {% for node in lot_view.journey.descendants %}
+          <div class="journey-chain-row">
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;">
+              <strong>{{ node.transformation.transformation_type.replace('_', ' ').title() }}</strong>
+              <span class="badge status-{{ node.transformation.status }}">{{ node.transformation.status.replace('_', ' ') }}</span>
+            </div>
+            <div class="journey-chip-row">
+              {% for output in node.outputs %}
+              <a href="{{ url_for('material_genealogy_viewer', mode='lot', material_lot_id=output.material_lot.material_lot_id) }}" class="journey-chip">
+                <span>{{ output.material_lot.tracking_id }}</span>
+                <span class="cell-muted">{{ output.material_lot.lot_type.replace('_', ' ') }}</span>
+              </a>
+              {% endfor %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="journey-empty">This lot does not have recorded descendant transformations yet.</div>
+        {% endif %}
+      </div>
+    {% elif mode == 'run' and run_view %}
+      {% set run = run_view.journey.run %}
+      <div class="card">
+        <div class="journey-hero">
+          <div>
+            <h3 class="journey-title">Run {{ run.run_date or "Unknown date" }}</h3>
+            <div class="journey-subtitle">Reactor {{ run.reactor_number }} · {{ "{:,.1f}".format(run.bio_in_reactor_lbs or 0) }} lbs input</div>
+          </div>
+          <div class="journey-link-row">
+            <a href="{{ run.run_url }}" class="btn btn-secondary btn-sm">Open Run Record</a>
+            <a href="/api/v1/runs/{{ run.run_id }}/journey" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">Raw Journey</a>
+          </div>
+        </div>
+        <div class="journey-summary-grid" style="margin-top:16px;">
+          <div class="journey-stat">
+            <div class="label">Source Purchases</div>
+            <div class="value">{{ run_view.journey.summary.purchase_count }}</div>
+          </div>
+          <div class="journey-stat">
+            <div class="label">Source Lots</div>
+            <div class="value">{{ run_view.journey.summary.lot_count }}</div>
+          </div>
+          <div class="journey-stat">
+            <div class="label">Derivative Lots</div>
+            <div class="value">{{ run_view.journey.summary.derivative_lot_count }}</div>
+          </div>
+          <div class="journey-stat">
+            <div class="label">Dry Outputs</div>
+            <div class="value">{{ "{:,.0f}".format(run.dry_thca_g or 0) }} g THCA · {{ "{:,.0f}".format(run.dry_hte_g or 0) }} g HTE</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Run Timeline</h3>
+          <span class="text-sm cell-muted">Run-level path from source inventory through extraction and derivative-lot creation.</span>
+        </div>
+        <div class="journey-events">
+          {% for event in run_view.journey.events %}
+          <div class="journey-event">
+            <div class="journey-event-top">
+              <strong>{{ event.stage_key.replace('_', ' ').title() }}</strong>
+              <span class="badge status-{{ event.state }}">{{ event.state.replace('_', ' ') }}</span>
+            </div>
+            <div class="text-sm cell-muted" style="margin-top:6px;">Start: {{ event.started_at or "—" }} · Complete: {{ event.completed_at or "—" }}</div>
+            {% if event.metrics %}
+            <div class="text-sm" style="margin-top:8px;">
+              {% for key, value in event.metrics.items() %}
+              <span style="display:inline-block;margin-right:12px;"><strong>{{ key.replace('_', ' ') }}:</strong> {{ value }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Source Material</h3>
+          <span class="text-sm cell-muted">All biomass lots allocated into this run.</span>
+        </div>
+        {% if run_view.journey.lots %}
+        <div class="journey-chip-row">
+          {% for lot in run_view.journey.lots %}
+          <div class="journey-chip">
+            <span>{{ lot.tracking_id or lot.lot_id[:8] }}</span>
+            <span class="cell-muted">{{ "{:,.1f}".format(lot.remaining_weight_lbs or 0) }} lbs remaining</span>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="journey-section-note">
+          {% for edge in run_view.journey.allocations %}
+          <span style="display:inline-block;margin-right:12px;">{{ edge.weight_lbs }} lbs allocated{% if edge.allocation_source %} · {{ edge.allocation_source }}{% endif %}</span>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="journey-empty">No source lots are linked to this run yet.</div>
+        {% endif %}
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Derivative Lots</h3>
+          <span class="text-sm cell-muted">Open a child lot to keep tracing forward or backward through the process.</span>
+        </div>
+        {% if run_view.journey.material_lots %}
+        <div class="journey-chip-row">
+          {% for lot in run_view.journey.material_lots %}
+          <a href="{{ run_view.material_lot_urls[lot.material_lot_id] }}" class="journey-chip">
+            <span>{{ lot.tracking_id }}</span>
+            <span class="cell-muted">{{ lot.lot_type.replace('_', ' ') }}</span>
+          </a>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="journey-empty">No derivative lots have been created for this run yet.</div>
+        {% endif %}
+      </div>
+    {% else %}
+      <div class="journey-empty">No genealogy item is available for this view yet.</div>
+    {% endif %}
+  </section>
+</div>
+
+<script>
+  (function () {
+    const input = document.getElementById("journey-sidebar-search");
+    const items = Array.from(document.querySelectorAll("#journey-sidebar-list [data-search]"));
+    if (!input || !items.length) return;
+    input.addEventListener("input", function () {
+      const query = (input.value || "").trim().toLowerCase();
+      items.forEach(function (item) {
+        const haystack = item.getAttribute("data-search") || "";
+        item.style.display = !query || haystack.indexOf(query) !== -1 ? "" : "none";
+      });
+    });
+  }());
+</script>
+{% endblock %}

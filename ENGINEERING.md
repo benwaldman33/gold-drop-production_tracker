@@ -24,6 +24,7 @@ Before closing a coding sprint:
   - QA checklists
   - API reference docs such as `API_REFERENCE.md`
 - add a short deployment note for the sprint before the final commit whenever the shipped work changes production rollout, restart needs, schema bootstrap, static asset sync, or verification steps
+- when adding or changing left-sidebar navigation items, verify the rendered label/icon text does not contain mojibake, stray leading characters, or malformed symbol bytes before the final commit
 - commit the changes only after tests and docs are in sync
 - push to Git after the commit when the branch/repo state is ready for deployment
 

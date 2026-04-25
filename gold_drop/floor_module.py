@@ -915,7 +915,7 @@ def _build_downstream_queue_item(root, run):
                     "quantity": float(material_lot.quantity or 0),
                     "unit": material_lot.unit,
                     "detail_url": f"/api/v1/material-lots/{material_lot.id}",
-                    "journey_url": f"/api/v1/material-lots/{material_lot.id}/journey",
+                    "journey_url": root.url_for("material_genealogy_viewer", mode="lot", material_lot_id=material_lot.id),
                     "ancestry_url": f"/api/v1/material-lots/{material_lot.id}/ancestry",
                     "descendants_url": f"/api/v1/material-lots/{material_lot.id}/descendants",
                 }
