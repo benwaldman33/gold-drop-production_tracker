@@ -8,7 +8,7 @@ This guide explains how to use the Gold Drop web app day-to-day. It intentionall
 
 **Operator-facing additions in the current release:** Purchases and Inventory are more status-first, the Journey page is richer, Slack imports now includes inbox buckets, lot labels now print with scannable barcodes, `Floor Ops` gives operators a recent activity surface, the standalone receiving app can now correct a confirmed receipt before downstream lot consumption, the standalone extraction app now mirrors the reactor workflow with touch-first controls, and the data model supports live smart-scale capture.
 
-**Manager-facing note for the current release:** the app now includes the first usable derivative-lot genealogy layer. Current day-to-day workflows still use Purchases, Inventory, Runs, and Downstream Queues the same way, but the system can now bridge biomass lots into first-class material genealogy records, auto-create dry HTE / dry THCA derivative lots from eligible extraction runs, expose manager-facing ancestry / descendant journey endpoints through the internal API, record correction-forward genealogy fixes instead of silently overwriting bad lineage, and summarize open derivative cost basis through the internal API.
+**Manager-facing note for the current release:** the app now includes the first usable derivative-lot genealogy layer. Current day-to-day workflows still use Purchases, Inventory, Runs, and Downstream Queues the same way, but the system can now bridge biomass lots into first-class material genealogy records, auto-create dry HTE / dry THCA derivative lots from eligible extraction runs, expose manager-facing ancestry / descendant journey endpoints through the internal API, record correction-forward genealogy fixes instead of silently overwriting bad lineage, summarize open derivative cost basis through the internal API, and surface linked derivative lots directly on downstream queue cards.
 
 ---
 
@@ -649,8 +649,11 @@ For each queue card, the page shows:
 - run date and reactor
 - source strain / supplier / tracking IDs
 - wet and dry THCA / HTE totals
+- linked derivative lots when genealogy output lots already exist for that run
 - current THCA destination and HTE decision context when available
 - a direct **Open Run** action
+
+When derivative lots are shown on a queue card, use the journey links there to open manager-facing lineage context without leaving the downstream queue workflow first.
 
 Use the destination dropdown on a queue card to:
 - move a run to another downstream queue
@@ -689,6 +692,7 @@ Each queue card shows:
 - current queue state
 - source strain / supplier / lot context
 - wet and dry THCA / HTE totals
+- linked derivative lots with direct journey links when genealogy output lots already exist
 - current queue owner when assigned
 - queue history with timestamps and operator names
 

@@ -24,6 +24,7 @@
   - mistaken derivative lots can be voided through a correction transformation with no replacement output
 - A minimal manager correction route is now available at `/material-lots/<lot_id>/correct` for logged-in editors.
 - Material genealogy cost visibility now includes `/api/v1/summary/material-costs`, which summarizes open derivative lots by lot type, quantity, and rolled-forward cost basis.
+- Downstream queue genealogy is now visible directly on the shared `Downstream Queues` board and the dedicated destination queue pages. Queue cards now show linked derivative lot type/tracking badges plus direct journey drill links for any derivative lots already created from that run.
 - New planning documents now define the target model and phased rollout for true end-to-end material genealogy:
   - `DERIVATIVE_LOT_GENEALOGY_PLAN.md`
   - `DERIVATIVE_LOT_GENEALOGY_IMPLEMENTATION_PLAN.md`
@@ -36,6 +37,7 @@
 - Added genealogy regression coverage for extraction transformation/output-lot creation, material-lot ancestry/descendant payloads, material-lot API endpoints, and the new route registration.
 - Added correction-workflow regression coverage for replacement-lot quantity corrections and the new correction route registration.
 - Added regression coverage for the material-cost summary endpoint and its route registration.
+- Added downstream queue regression coverage ensuring GoldDrop queue cards render linked derivative lot genealogy without breaking the existing queue workflow surfaces.
 
 ## 2026-04-24
 

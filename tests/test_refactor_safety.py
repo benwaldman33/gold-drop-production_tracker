@@ -9,6 +9,7 @@ import gold_drop.bootstrap_module as bootstrap_module
 import gold_drop.purchases_module as purchases_module
 from models import ApiClient, AuditLog, BiomassAvailability, ExtractionCharge, FieldAccessToken, FieldPurchaseSubmission, LabTest, LotScanEvent, PhotoAsset, Purchase, PurchaseLot, RemoteSite, ScaleDevice, SlackIngestedMessage, Supplier, SupplierAttachment, SystemSetting, User, WeightCapture, db, gen_uuid
 from flask_login import login_user
+from sqlalchemy.orm import close_all_sessions
 from services.scale_ingest import create_weight_capture
 from services.supplier_merge import supplier_merge_preview
 
@@ -19,6 +20,19 @@ def _login(client, username: str, password: str = "golddrop2026"):
         data={"username": username, "password": password},
         follow_redirects=False,
     )
+
+
+def _release_test_db_session():
+    try:
+        db.session.rollback()
+    except Exception:
+        pass
+    close_all_sessions()
+    db.session.remove()
+    try:
+        db.engine.dispose()
+    except Exception:
+        pass
 
 
 def _call_view_as_user(
@@ -2654,6 +2668,8 @@ def test_golddrop_queue_page_renders_history_and_actions():
                 bio_in_reactor_lbs=40,
                 wet_hte_g=1100,
                 wet_thca_g=2800,
+                dry_hte_g=450,
+                dry_thca_g=1000,
                 created_by=admin_id,
                 run_completed_at=app_module.datetime.now(app_module.timezone.utc),
                 post_extraction_pathway="minor_run_200",
@@ -2666,6 +2682,8 @@ def test_golddrop_queue_page_renders_history_and_actions():
             db.session.flush()
             run_id = run.id
             db.session.add(app_module.RunInput(run_id=run.id, lot_id=lot.id, weight_lbs=40))
+            app_module._material_lot_for_purchase_lot(app_module, lot)
+            app_module._ensure_extraction_output_genealogy(app_module, run)
             db.session.add(
                 app_module.DownstreamQueueEvent(
                     run_id=run.id,
@@ -2685,6 +2703,8 @@ def test_golddrop_queue_page_renders_history_and_actions():
             assert b"GoldDrop Queue Dream" in resp.data
             assert b"Queue History" in resp.data
             assert b"Entered queue" in resp.data
+            assert b"dry_hte" in resp.data
+            assert b"Open HTE-" in resp.data
             assert b"Mark Reviewed" in resp.data
             assert b"Supervisor review is the next action before GoldDrop production planning." in resp.data
             assert b"Queue For Production" not in resp.data
@@ -2692,6 +2712,7 @@ def test_golddrop_queue_page_renders_history_and_actions():
             assert b"return_to=/downstream-queues/golddrop" in resp.data or b"return_to=%2Fdownstream-queues%2Fgolddrop" in resp.data
     finally:
         with app.app_context():
+            _release_test_db_session()
             app_module.DownstreamQueueEvent.query.filter_by(run_id=run_id).delete(synchronize_session=False)
             app_module.RunInput.query.filter_by(run_id=run_id).delete(synchronize_session=False)
             run = db.session.get(app_module.Run, run_id) if run_id else None
@@ -2852,6 +2873,7 @@ def test_golddrop_queue_actions_update_history_and_release_run():
             assert events[-2].notes == "Ready for final release"
     finally:
         with app.app_context():
+            _release_test_db_session()
             app_module.DownstreamQueueEvent.query.filter_by(run_id=run_id).delete(synchronize_session=False)
             app_module.RunInput.query.filter_by(run_id=run_id).delete(synchronize_session=False)
             run = db.session.get(app_module.Run, run_id) if run_id else None
@@ -2949,6 +2971,7 @@ def test_golddrop_queue_release_complete_only_available_after_packaging_ready():
             assert events == []
     finally:
         with app.app_context():
+            _release_test_db_session()
             app_module.DownstreamQueueEvent.query.filter_by(run_id=run_id).delete(synchronize_session=False)
             app_module.RunInput.query.filter_by(run_id=run_id).delete(synchronize_session=False)
             run = db.session.get(app_module.Run, run_id) if run_id else None
@@ -3104,6 +3127,7 @@ def test_liquid_loud_queue_page_and_release_to_golddrop():
             ]
     finally:
         with app.app_context():
+            _release_test_db_session()
             app_module.DownstreamQueueEvent.query.filter_by(run_id=run_id).delete(synchronize_session=False)
             app_module.RunInput.query.filter_by(run_id=run_id).delete(synchronize_session=False)
             run = db.session.get(app_module.Run, run_id) if run_id else None
@@ -3201,6 +3225,7 @@ def test_liquid_loud_release_actions_require_release_ready():
             assert events == []
     finally:
         with app.app_context():
+            _release_test_db_session()
             app_module.DownstreamQueueEvent.query.filter_by(run_id=run_id).delete(synchronize_session=False)
             app_module.RunInput.query.filter_by(run_id=run_id).delete(synchronize_session=False)
             run = db.session.get(app_module.Run, run_id) if run_id else None
@@ -3339,6 +3364,7 @@ def test_terp_strip_queue_actions_update_pipeline_state():
             ]
     finally:
         with app.app_context():
+            _release_test_db_session()
             app_module.DownstreamQueueEvent.query.filter_by(run_id=run_id).delete(synchronize_session=False)
             app_module.RunInput.query.filter_by(run_id=run_id).delete(synchronize_session=False)
             run = db.session.get(app_module.Run, run_id) if run_id else None
@@ -3437,6 +3463,7 @@ def test_terp_strip_complete_requires_active_strip_work():
             assert events == []
     finally:
         with app.app_context():
+            _release_test_db_session()
             app_module.DownstreamQueueEvent.query.filter_by(run_id=run_id).delete(synchronize_session=False)
             app_module.RunInput.query.filter_by(run_id=run_id).delete(synchronize_session=False)
             run = db.session.get(app_module.Run, run_id) if run_id else None

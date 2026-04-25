@@ -538,6 +538,24 @@ Practical meaning:
 - managers can now answer not just "what derivative lots exist?" but also "what open cost basis is sitting in derivative inventory by type?"
 - the genealogy layer now supports the first real cost-aware inventory summary without waiting for the broader reporting phase
 
+## Genealogy phase 9 update
+
+Derivative genealogy is now visible directly on downstream queue surfaces:
+
+- the shared `Downstream Queues` board now shows any linked derivative lots already created from a run
+- dedicated destination queue pages now show the same derivative lot context on each queue card
+- queue cards now render:
+  - derivative lot type
+  - derivative lot tracking ID
+  - direct journey links for each linked derivative lot
+- queue workflow ownership remains on `Run`; this slice only attaches genealogy visibility to the existing downstream operations UI
+
+Practical meaning:
+
+- supervisors can now move from queue management directly into derivative lot lineage review without leaving the queue surfaces blind
+- the genealogy layer is now visible in the real downstream operating workflow, not only in API or journey endpoints
+- the next remaining genealogy milestones are destination-native downstream transformations and reporting built directly on those new genealogy nodes
+
 ## Deployment note
 
 Current rollout commit:

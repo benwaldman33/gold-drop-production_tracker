@@ -58,6 +58,19 @@
             Dry THCA {{ "{:,.0f}".format(item.dry_thca_g or 0) }} g &middot;
             Dry HTE {{ "{:,.0f}".format(item.dry_hte_g or 0) }} g
           </div>
+          {% if item.material_lots %}
+          <div class="text-sm cell-muted" style="margin-top:8px;">
+            Derivative lots:
+            {% for material_lot in item.material_lots %}
+            <span class="badge bg-light text-dark border" style="margin-right:4px;">{{ material_lot.lot_type }} · {{ material_lot.tracking_id }}</span>
+            {% endfor %}
+          </div>
+          <div class="text-sm cell-muted" style="margin-top:4px;">
+            {% for material_lot in item.material_lots %}
+            <a href="{{ material_lot.journey_url }}" target="_blank" rel="noopener">Open {{ material_lot.tracking_id }} journey</a>{% if not loop.last %} &middot; {% endif %}
+            {% endfor %}
+          </div>
+          {% endif %}
           {% if item.thca_destination_label %}
           <div class="text-sm cell-muted" style="margin-top:8px;">THCA destination: {{ item.thca_destination_label }}</div>
           {% endif %}

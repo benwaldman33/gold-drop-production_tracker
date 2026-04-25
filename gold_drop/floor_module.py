@@ -904,6 +904,22 @@ def _build_downstream_queue_item(root, run):
     supplier_names = sorted({(lot.supplier_name or "").strip() for lot in lots if (lot.supplier_name or "").strip()})
     tracking_ids = [lot.tracking_id for lot in lots if lot.tracking_id]
     queue_key = _downstream_active_queue(run)
+    derivative_material_lots = []
+    if hasattr(root, "_derivative_material_lots_for_run"):
+        for material_lot in root._derivative_material_lots_for_run(root, run):
+            derivative_material_lots.append(
+                {
+                    "material_lot_id": material_lot.id,
+                    "tracking_id": material_lot.tracking_id,
+                    "lot_type": material_lot.lot_type,
+                    "quantity": float(material_lot.quantity or 0),
+                    "unit": material_lot.unit,
+                    "detail_url": f"/api/v1/material-lots/{material_lot.id}",
+                    "journey_url": f"/api/v1/material-lots/{material_lot.id}/journey",
+                    "ancestry_url": f"/api/v1/material-lots/{material_lot.id}/ancestry",
+                    "descendants_url": f"/api/v1/material-lots/{material_lot.id}/descendants",
+                }
+            )
     return {
         "run_id": run.id,
         "run_date_label": run.run_date.strftime("%Y-%m-%d") if run.run_date else "Unknown date",
@@ -917,6 +933,7 @@ def _build_downstream_queue_item(root, run):
         "wet_thca_g": float(run.wet_thca_g or 0),
         "dry_hte_g": float(run.dry_hte_g or 0),
         "dry_thca_g": float(run.dry_thca_g or 0),
+        "material_lots": derivative_material_lots,
         "post_extraction_started_at_label": display_local_timestamp(getattr(run, "post_extraction_started_at", None)),
         "outputs_confirmed_at_label": display_local_timestamp(getattr(run, "post_extraction_initial_outputs_recorded_at", None)),
         "thca_destination_label": THCA_DESTINATION_LABELS.get((run.thca_destination or "").strip(), ""),
