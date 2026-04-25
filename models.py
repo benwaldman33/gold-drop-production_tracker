@@ -976,6 +976,20 @@ class DownstreamQueueEvent(db.Model):
     creator = db.relationship("User", foreign_keys=[created_by])
 
 
+Run.downstream_queue_assignee_user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
+Run.downstream_queue_assigned_at = db.Column(db.DateTime)
+Run.downstream_queue_assigned_by_user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
+
+Run.downstream_queue_assignee = db.relationship(
+    "User",
+    foreign_keys=[Run.downstream_queue_assignee_user_id],
+)
+Run.downstream_queue_assigned_by = db.relationship(
+    "User",
+    foreign_keys=[Run.downstream_queue_assigned_by_user_id],
+)
+
+
 class CostEntry(db.Model):
     """Track operational costs: solvents, personnel, overhead."""
     __tablename__ = "cost_entries"
