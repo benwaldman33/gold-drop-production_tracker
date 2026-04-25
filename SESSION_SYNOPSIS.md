@@ -803,6 +803,7 @@ The implementation phases are now shipped:
 - the standalone purchasing and receiving apps now have clearer focused-purpose copy and direct handoffs back to main-app purchase review
 - Journey now acts as a daily manager visibility surface for lineage plus cost-basis review, not just a secondary reporting area
 - the grouped left sidebar is now collapsible by section, and `Departments` has been demoted to `Scorecards (beta)` inside `More`
+- Journey now includes assumption-backed financial projections: Settings stores per-output expected selling prices, and Journey/Genealogy Report show projected revenue and gross margin for derivative inventory, source-lot descendants, and run yield/cost rows
 
 ## Deployment note
 

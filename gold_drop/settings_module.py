@@ -21,6 +21,7 @@ from services.field_submissions import (
 from services.api_auth import generate_api_token, hash_api_token
 from services.extraction_charge import REACTOR_LIFECYCLE_DEFAULTS, reactor_lifecycle_settings
 from services.extraction_run import EXTRACTION_RUN_DEFAULTS, TIMING_POLICY_OPTIONS, TIMING_POLICY_DEFAULTS
+from services.material_genealogy import MATERIAL_REVENUE_LOT_TYPES, material_revenue_setting_key
 from services.site_aggregation import normalize_remote_base_url, pull_all_remote_sites, pull_remote_site
 from services.scale_ingest import SCALE_INTERFACE_TYPES, capture_weight_from_device_payload
 
@@ -303,6 +304,25 @@ def settings_view(root):
                     value=str(wb_val),
                     description="Weekly dollar budget for buyer/finance snapshot (Dashboard)",
                 ))
+
+            for lot_type, label in MATERIAL_REVENUE_LOT_TYPES:
+                key = material_revenue_setting_key(lot_type)
+                raw = (root.request.form.get(key) or "").strip()
+                try:
+                    price = float(raw) if raw else 0.0
+                except ValueError:
+                    price = 0.0
+                if price < 0:
+                    price = 0.0
+                existing = root.db.session.get(root.SystemSetting, key)
+                if existing:
+                    existing.value = str(price)
+                else:
+                    root.db.session.add(root.SystemSetting(
+                        key=key,
+                        value=str(price),
+                        description=f"Assumed selling price per gram for {label} material genealogy revenue projections",
+                    ))
 
             n1_raw = (root.request.form.get("potential_lot_days_to_old") or "").strip()
             n2_raw = (root.request.form.get("potential_lot_days_to_soft_delete") or "").strip()
@@ -711,6 +731,7 @@ def settings_view(root):
         last_api_client_name=last_api_client_name,
         last_api_client_scopes=last_api_client_scopes,
         timing_policy_options=TIMING_POLICY_OPTIONS,
+        material_revenue_lot_types=MATERIAL_REVENUE_LOT_TYPES,
     )
 
 

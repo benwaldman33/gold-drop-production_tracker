@@ -21,8 +21,20 @@
       <div class="value">${{ "{:,.0f}".format(journey.report.summary.open_cost_basis_total or 0) }}</div>
     </div>
     <div class="summary-stat">
+      <div class="label">Open Projected Revenue</div>
+      <div class="value">${{ "{:,.0f}".format(journey.report.summary.open_projected_revenue_total or 0) }}</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Open Projected Margin</div>
+      <div class="value">${{ "{:,.0f}".format(journey.report.summary.open_projected_margin_total or 0) }}</div>
+    </div>
+    <div class="summary-stat">
       <div class="label">Released Cost Basis</div>
       <div class="value">${{ "{:,.0f}".format(journey.report.summary.released_cost_basis_total or 0) }}</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Released Projected Revenue</div>
+      <div class="value">${{ "{:,.0f}".format(journey.report.summary.released_projected_revenue_total or 0) }}</div>
     </div>
     <div class="summary-stat">
       <div class="label">Open Genealogy Issues</div>
@@ -50,6 +62,9 @@
             <th>Lots</th>
             <th>Quantity</th>
             <th>Cost Basis</th>
+            <th>Assumed $/g</th>
+            <th>Projected Revenue</th>
+            <th>Projected Margin</th>
           </tr>
         </thead>
         <tbody>
@@ -59,6 +74,9 @@
             <td>{{ row.lot_count }}</td>
             <td>{{ "{:,.2f}".format(row.quantity_total or 0) }} {{ row.unit }}</td>
             <td>${{ "{:,.2f}".format(row.cost_basis_total or 0) }}</td>
+            <td>${{ "{:,.2f}".format(row.assumed_price_per_unit or 0) }}</td>
+            <td>${{ "{:,.2f}".format(row.projected_revenue_total or 0) }}</td>
+            <td>${{ "{:,.2f}".format(row.projected_margin_total or 0) }}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -83,6 +101,9 @@
             <th>Lots</th>
             <th>Quantity</th>
             <th>Cost Basis</th>
+            <th>Assumed $/g</th>
+            <th>Projected Revenue</th>
+            <th>Projected Margin</th>
           </tr>
         </thead>
         <tbody>
@@ -92,6 +113,9 @@
             <td>{{ row.lot_count }}</td>
             <td>{{ "{:,.2f}".format(row.quantity_total or 0) }} {{ row.unit }}</td>
             <td>${{ "{:,.2f}".format(row.cost_basis_total or 0) }}</td>
+            <td>${{ "{:,.2f}".format(row.assumed_price_per_unit or 0) }}</td>
+            <td>${{ "{:,.2f}".format(row.projected_revenue_total or 0) }}</td>
+            <td>${{ "{:,.2f}".format(row.projected_margin_total or 0) }}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -118,6 +142,8 @@
             <th>Input</th>
             <th>Outputs</th>
             <th>Derivative Cost</th>
+            <th>Projected Revenue</th>
+            <th>Projected Margin</th>
             <th>Issues</th>
           </tr>
         </thead>
@@ -128,6 +154,8 @@
             <td>{{ "{:,.1f}".format(row.input_lbs or 0) }} lbs</td>
             <td>{{ "{:,.0f}".format(row.dry_thca_g or 0) }} g THCA · {{ "{:,.0f}".format(row.dry_hte_g or 0) }} g HTE</td>
             <td>${{ "{:,.2f}".format(row.derivative_cost_basis_total or 0) }}</td>
+            <td>${{ "{:,.2f}".format(row.projected_revenue_total or 0) }}</td>
+            <td>${{ "{:,.2f}".format(row.projected_margin_total or 0) }}</td>
             <td>{{ row.issue_count }}</td>
           </tr>
           {% endfor %}
@@ -146,7 +174,7 @@
     <div class="text-sm cell-muted" style="display:grid;gap:10px;">
       <div><strong style="color:var(--text-primary);">Investigate</strong><br>Use Journey Viewer to trace a lot or run backward to biomass inputs and forward to derivative output.</div>
       <div><strong style="color:var(--text-primary);">Manage cost</strong><br>Use open and released cost basis here to understand what is still in process versus already released.</div>
-      <div><strong style="color:var(--text-primary);">Forecast next</strong><br>Use the output mix as the operating base for future revenue forecasting once sales-price assumptions are added.</div>
+      <div><strong style="color:var(--text-primary);">Forecast next</strong><br>Open and released output now use Settings price assumptions to estimate revenue and margin.</div>
       <div><strong style="color:var(--text-primary);">Act</strong><br>When something looks wrong, move to the Issue Queue or Alerts to correct it instead of staying in reporting views.</div>
     </div>
   </div>

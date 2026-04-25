@@ -30,7 +30,7 @@ Use the left sidebar:
   - `Purchasing` = buyer workflow and purchase review
   - `Inventory` = on-hand lot visibility
   - `Alerts` = action queue for supervisor and genealogy exceptions
-  - `Journey` = daily manager tracing, lineage, and cost-basis visibility
+  - `Journey` = daily manager tracing, lineage, cost-basis visibility, and assumption-backed revenue projection
   - `More` = lower-frequency admin and specialist tools, including `Scorecards (beta)`
 - **Extraction** (labeled on the home dashboard card): KPIs + quick actions
 - **Biomass purchasing**: buyer weekly snapshot, field submission queues, and reviewed history
@@ -58,6 +58,11 @@ Related mobile workflows:
 - the standalone extraction app is intended for extractors and assistant extractors on phone or tablet
 - all three workflows can be enabled or disabled independently by a Super Admin in **Settings -> Operational Parameters**
 - the standalone purchasing and receiving apps are intentionally focused tools; use their `Open Purchase Review` / `Open in Main App` handoff links when you need the full main-app review surface
+
+Journey revenue projections:
+- Super Admins can enter assumed selling prices by derivative output type in **Settings -> Operational Parameters -> Journey Revenue Assumptions**.
+- Journey and Genealogy Report use those assumptions to show projected revenue and projected gross margin for open output, released output, source-lot descendants, and run yield/cost rows.
+- These are planning projections, not actual sales records.
 
 ### Standalone Extraction Lab App
 
