@@ -238,15 +238,25 @@ def test_mobile_extraction_run_exception_handling_loops():
             {"flush_solvent_chiller_temp_f": -45, "flush_plate_temp_f": -41, "progression_action": "verify_flush_temps"},
             {"flush_solvent_charge_lbs": 500, "progression_action": "record_flush_solvent_charge"},
             {"progression_action": "start_flush"},
-            {"progression_action": "stop_flush"},
+            {"progression_action": "stop_flush", "flush_short_reason": "Paused early to correct recovery conditions."},
         ]
         for payload in sequence:
             response = client.post(f"/api/mobile/v1/extraction/charges/{charge_id}/run", json=payload)
             assert response.status_code == 200
 
-        flow_adjusting = client.post(
+        missing_flow_reason = client.post(
             f"/api/mobile/v1/extraction/charges/{charge_id}/run",
             json={"flow_resumed_decision": "no_adjusting", "progression_action": "confirm_flow_resumed"},
+        )
+        assert missing_flow_reason.status_code == 400
+
+        flow_adjusting = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={
+                "flow_resumed_decision": "no_adjusting",
+                "flow_adjustment_reason": "Recovery flow remained restricted after the first flush pass.",
+                "progression_action": "confirm_flow_resumed",
+            },
         )
         assert flow_adjusting.status_code == 200
         assert flow_adjusting.get_json()["data"]["run"]["progression"]["stage_key"] == "flow_adjustment_required"
@@ -272,13 +282,17 @@ def test_mobile_extraction_run_exception_handling_loops():
         assert start_purge.status_code == 200
         stop_purge = client.post(
             f"/api/mobile/v1/extraction/charges/{charge_id}/run",
-            json={"progression_action": "stop_final_purge"},
+            json={"progression_action": "stop_final_purge", "final_purge_short_reason": "Stopped early to inspect clarity and vessel response."},
         )
         assert stop_purge.status_code == 200
 
         clarity_retry = client.post(
             f"/api/mobile/v1/extraction/charges/{charge_id}/run",
-            json={"final_clarity_decision": "not_yet", "progression_action": "confirm_final_clarity"},
+            json={
+                "final_clarity_decision": "not_yet",
+                "final_clarity_reason": "Material was still not fully clear after the first purge pass.",
+                "progression_action": "confirm_final_clarity",
+            },
         )
         assert clarity_retry.status_code == 200
         assert clarity_retry.get_json()["data"]["run"]["progression"]["stage_key"] == "clarity_adjustment_required"
@@ -297,7 +311,7 @@ def test_mobile_extraction_run_exception_handling_loops():
         assert restart_purge.status_code == 200
         restop_purge = client.post(
             f"/api/mobile/v1/extraction/charges/{charge_id}/run",
-            json={"progression_action": "stop_final_purge"},
+            json={"progression_action": "stop_final_purge", "final_purge_short_reason": "Second purge pass stopped for another clarity verification."},
         )
         assert restop_purge.status_code == 200
 
@@ -321,6 +335,8 @@ def test_mobile_extraction_run_exception_handling_loops():
             ]
             assert "Flow adjustment required" in notification_titles
             assert "Final clarity still out of scope" in notification_titles
+            notification_reasons = [row.operator_reason for row in app_module.SupervisorNotification.query.filter_by(run_id=run.id).all()]
+            assert any(reason and "restricted" in reason for reason in notification_reasons)
 
 
 def test_mobile_opportunity_edit_delivery_and_photo_flow():
@@ -1185,7 +1201,7 @@ def test_mobile_extraction_run_execution_flow():
 
             stop_flush = client.post(
                 f"/api/mobile/v1/extraction/charges/{charge_id}/run",
-                json={"progression_action": "stop_flush"},
+                json={"progression_action": "stop_flush", "flush_short_reason": "Stopped early during the test path for timing validation."},
             )
             assert stop_flush.status_code == 200
             stopped_flush = stop_flush.get_json()["data"]["run"]
@@ -1211,7 +1227,7 @@ def test_mobile_extraction_run_execution_flow():
 
             stop_final_purge = client.post(
                 f"/api/mobile/v1/extraction/charges/{charge_id}/run",
-                json={"progression_action": "stop_final_purge"},
+                json={"progression_action": "stop_final_purge", "final_purge_short_reason": "Stopped early during the test path for timing validation."},
             )
             assert stop_final_purge.status_code == 200
             assert stop_final_purge.get_json()["data"]["run"]["progression"]["stage_key"] == "ready_to_confirm_clarity"

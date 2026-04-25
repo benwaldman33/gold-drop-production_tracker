@@ -129,6 +129,7 @@ def create_notification(
     run=None,
     booth_session=None,
     dedupe_key: str | None = None,
+    operator_reason: str | None = None,
     auto_deliver: bool = True,
 ):
     if not supervisor_notifications_enabled(root):
@@ -146,6 +147,7 @@ def create_notification(
             existing.message = message
             existing.notification_class = notification_class
             existing.severity = severity
+            existing.operator_reason = operator_reason or existing.operator_reason
             existing.updated_at = utc_now()
             return existing
 
@@ -158,6 +160,7 @@ def create_notification(
         severity=severity,
         title=title,
         message=message,
+        operator_reason=operator_reason,
         status="open",
     )
     root.db.session.add(notification)
@@ -214,11 +217,16 @@ def notification_row_payload(root, row) -> dict:
         "severity_label": _severity_label(row.severity),
         "title": row.title,
         "message": row.message,
+        "operator_reason": row.operator_reason,
         "status": row.status,
         "created_at": root.display_local_timestamp(row.created_at) if hasattr(root, "display_local_timestamp") else (row.created_at.isoformat() if row.created_at else ""),
         "acknowledged_at": root.display_local_timestamp(row.acknowledged_at) if hasattr(root, "display_local_timestamp") else (row.acknowledged_at.isoformat() if row.acknowledged_at else ""),
         "resolved_at": root.display_local_timestamp(row.resolved_at) if hasattr(root, "display_local_timestamp") else (row.resolved_at.isoformat() if row.resolved_at else ""),
         "acknowledged_by_name": row.acknowledged_by.display_name if getattr(row, "acknowledged_by", None) else None,
+        "override_decision": row.override_decision,
+        "override_reason": row.override_reason,
+        "override_at": root.display_local_timestamp(row.override_at) if hasattr(root, "display_local_timestamp") else (row.override_at.isoformat() if row.override_at else ""),
+        "override_by_name": row.override_by.display_name if getattr(row, "override_by", None) else None,
         "resolved_by_name": row.resolved_by.display_name if getattr(row, "resolved_by", None) else None,
         "run_id": row.run_id,
         "run_label": (

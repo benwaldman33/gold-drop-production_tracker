@@ -20,6 +20,8 @@
 - The main dashboard now includes a `Supervisor Notifications` inbox for open booth/run alerts, with acknowledge and resolve actions plus direct run links for review.
 - Booth workflow deviations and run completion now create durable `SupervisorNotification` records with linked `NotificationDelivery` rows so supervisor alerting is stored in-app before any Slack delivery is attempted.
 - Slack settings now support outbound notification routing by class (`completions`, `warnings`, `reminders`) through optional class-specific webhook URLs, while keeping Slack read/sync concerns separate.
+- Booth deviations that proceed off-target now require an operator reason, and that reason is stored on both the booth event trail and the linked supervisor notification.
+- Supervisor notification cards now support explicit `Approve Deviation` and `Require Rework` decisions with a required supervisor reason, so deviation handling is recorded as a real control action instead of only an acknowledgement.
 
 ### Tests
 - Extended extraction mobile API regression coverage for the booth-SOP sequence through shutdown and run completion.
@@ -27,6 +29,7 @@
 - Added regression coverage for booth exception-handling loops and timing-control payloads.
 - Added run-form regression coverage for the new supervisor booth-review surface.
 - Added regression coverage for the supervisor dashboard notification surface and acknowledgement flow.
+- Added regression coverage for operator-reason validation on booth deviations and supervisor deviation approval recording.
 
 ## 2026-04-18
 

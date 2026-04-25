@@ -308,16 +308,33 @@ def ensure_sqlite_schema(root) -> None:
             "severity VARCHAR(20) NOT NULL DEFAULT 'warning', "
             "title VARCHAR(200) NOT NULL, "
             "message TEXT NOT NULL, "
+            "operator_reason TEXT, "
             "status VARCHAR(20) NOT NULL DEFAULT 'open', "
             "created_at DATETIME NOT NULL, "
             "updated_at DATETIME NOT NULL, "
             "acknowledged_at DATETIME, "
             "acknowledged_by_user_id VARCHAR(36), "
+            "override_decision VARCHAR(24), "
+            "override_reason TEXT, "
+            "override_at DATETIME, "
+            "override_by_user_id VARCHAR(36), "
             "resolved_at DATETIME, "
             "resolved_by_user_id VARCHAR(36), "
             "resolution_note TEXT"
             ")"
         ))
+    elif has_table("supervisor_notifications"):
+        cols = column_names("supervisor_notifications")
+        if "operator_reason" not in cols:
+            root.db.session.execute(text("ALTER TABLE supervisor_notifications ADD COLUMN operator_reason TEXT"))
+        if "override_decision" not in cols:
+            root.db.session.execute(text("ALTER TABLE supervisor_notifications ADD COLUMN override_decision VARCHAR(24)"))
+        if "override_reason" not in cols:
+            root.db.session.execute(text("ALTER TABLE supervisor_notifications ADD COLUMN override_reason TEXT"))
+        if "override_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE supervisor_notifications ADD COLUMN override_at DATETIME"))
+        if "override_by_user_id" not in cols:
+            root.db.session.execute(text("ALTER TABLE supervisor_notifications ADD COLUMN override_by_user_id VARCHAR(36)"))
 
     if not has_table("notification_deliveries"):
         root.db.session.execute(text(

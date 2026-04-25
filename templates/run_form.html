@@ -333,6 +333,8 @@
               <strong style="color:var(--text);">{{ item.title }}</strong><br>
               {{ item.notification_class_label }} · {{ item.severity_label }} · {{ item.created_at }}<br>
               {{ item.message }}
+              {% if item.operator_reason %}<br>Operator reason: {{ item.operator_reason }}{% endif %}
+              {% if item.override_decision %}<br>Supervisor decision: {{ item.override_decision.replace('_', ' ').title() }}{% if item.override_by_name %} by {{ item.override_by_name }}{% endif %}{% endif %}
             </div>
             {% endfor %}
           </div>
