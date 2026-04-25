@@ -25,6 +25,8 @@
 - `Settings -> Operational Parameters` now includes per-step extraction timing policies for primary soak, mixer, flush soak, and final purge. Defaults stay permissive (`warning` for soak/mixer/flush and `informational` for final purge), but each step can now be tightened to `Require supervisor override` or `Hard stop` for training or intervention cases.
 - Booth progression now enforces those timing policies: `warning` and `informational` continue the workflow, `Require supervisor override` records a critical deviation and blocks later progression until approval exists, and `Hard stop` prevents the off-target stop action immediately.
 - The main run form now shows timing policy labels and any active booth policy block directly in `Booth Review` so supervisors can see why a run cannot advance.
+- Supervisor reminder automation is now live for unresolved booth alerts. The app can emit one durable `reminder` notification after a configurable delay for unresolved warning/critical supervisor alerts, and those reminders can route to the dedicated Slack reminders webhook.
+- `Settings -> Slack Integration` now includes reminder automation controls for enabling/disabling reminders plus separate delay thresholds for critical vs warning alerts.
 
 ### Tests
 - Extended extraction mobile API regression coverage for the booth-SOP sequence through shutdown and run completion.
@@ -34,6 +36,7 @@
 - Added regression coverage for the supervisor dashboard notification surface and acknowledgement flow.
 - Added regression coverage for operator-reason validation on booth deviations and supervisor deviation approval recording.
 - Added regression coverage for timing-policy enforcement, including permissive default continuation and supervisor-override blocking until approval.
+- Added regression coverage for reminder creation, deduplication across repeated dashboard loads, and automatic reminder resolution once the source alert is closed.
 
 ## 2026-04-18
 

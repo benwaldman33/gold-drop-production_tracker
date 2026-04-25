@@ -346,6 +346,11 @@ The active work area is now the extraction booth SOP alignment layer that sits b
     - steps can be tightened to `Require supervisor override` or `Hard stop`
     - override-required timing misses now block later booth progression until a supervisor approves the deviation
     - active timing policy blocks are visible in the main-app `Booth Review` surface
+  - reminder automation for unresolved supervisor alerts:
+    - warning / critical booth alerts can emit one durable reminder after a configurable delay
+    - reminder delay is configured separately for `critical` vs `warning` alerts
+    - reminders route through the existing `reminders` Slack webhook class when outbound Slack delivery is enabled
+    - resolving the source supervisor alert automatically resolves its reminder
 
 ### In progress
 
@@ -354,13 +359,12 @@ The active work area is now the extraction booth SOP alignment layer that sits b
   - matching the written extraction booth procedure more closely
   - strengthening supervisor review, override, and audit visibility
   - making booth deviations visible both in-app and through optional outbound Slack delivery
-  - deciding whether reminder automation should escalate unresolved booth alerts automatically
+  - deciding whether reminder automation should recur/escalate beyond a single reminder per unresolved alert
 
 ### Next
 
 - deepen the extraction booth workflow where the SOP still exceeds the current system:
-  - decide whether reminder notifications should be emitted automatically for stale unresolved booth alerts
-  - decide whether unresolved override-required timing deviations should trigger scheduled reminder escalation by severity / age
+  - decide whether unresolved override-required timing deviations should trigger repeated reminder escalation by severity / age instead of only one reminder
   - decide whether any non-timing booth checkpoints should eventually gain the same policy framework
 - after that, resume the downstream queue-deepening work from the stronger extraction foundation
 
@@ -424,7 +428,7 @@ The likely implementation order is:
 Current booth-SOP rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `f188911`
+- commit: `pending current sprint closeout`
 
 Production deployment steps:
 
@@ -432,14 +436,14 @@ Production deployment steps:
    - `git fetch origin`
    - `git checkout Claude_Consolidation`
    - `git pull --ff-only origin Claude_Consolidation`
-2. restart the backend so the new timing-policy settings and progression enforcement are live
+2. restart the backend so the new reminder-automation settings and notification processing are live
 3. no standalone extraction app sync is required for this sprint
 4. verify in the main app and on a live extraction run:
-   - `Settings -> Operational Parameters` shows timing policy selectors for primary soak, mixer, flush soak, and final purge
-   - the default policy selections remain permissive
-   - a warning-only short timing condition still lets the booth flow continue
-   - an override-required short timing condition blocks later progression until supervisor approval exists
-   - the main run form shows timing policy labels and any active policy block in `Booth Review`
+   - `Settings -> Slack Integration` shows reminder automation toggle plus critical/warning delay fields
+   - an unresolved warning/critical supervisor alert produces one reminder after the configured delay
+   - reminders show in the main dashboard inbox
+   - reminders route to the configured Slack reminders webhook when outbound Slack delivery is enabled
+   - resolving the source supervisor alert clears the reminder
 
 ## Local note
 

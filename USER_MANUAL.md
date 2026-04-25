@@ -442,6 +442,7 @@ Use it to review:
 - booth timing misses that finished short of target
 - booth exceptions such as `Flow adjustment required`
 - booth exceptions such as `Final clarity still out of scope`
+- reminder notifications when warning or critical booth alerts have stayed unresolved past the configured delay
 
 Each notification shows:
 - severity and class (`Completions`, `Warnings`, or `Reminders`)
@@ -458,6 +459,12 @@ Supervisors can:
 - `Resolve` a notification when the issue is fully closed
 
 The app stores the notification first. Slack is only an optional outbound delivery channel and is not the system of record.
+
+Reminder automation:
+- is configured under `Settings -> Slack Integration`
+- can be enabled or disabled separately from outbound Slack delivery
+- defaults to one durable reminder per unresolved alert after the configured age threshold
+- uses separate delay thresholds for `critical` vs `warning` supervisor alerts
 
 ### Operator deviation reasons
 
@@ -1110,6 +1117,7 @@ sudo systemctl restart golddrop
 - **Event Subscriptions:** In the Slack app, set the Request URL to `https://your-site/api/slack/events` (HTTPS). The app answers Slack’s URL challenge and accepts `event_callback` pings (extend later for channel messages). The **Signing Secret** in Slack must match the value saved in Settings.
 - **Channel history sync:** Under **Settings → Slack Integration → Channel history sync**, configure up to **six** channels (`#name` or channel ID), then use **Settings → Maintenance → Sync Slack channel history**. The **Days back** value applies to the **first** sync of each channel; after that, each channel keeps its own cursor (last message timestamp) so only newer messages are scanned. The bot must be **invited** to every channel and have `channels:history` + `channels:read` (and for private channels, `groups:history` + `groups:read`). Each message is stored once (deduped by channel + Slack timestamp).
 - **Outbound notification routing:** Under **Settings → Slack Integration**, you can now enable in-app supervisor notifications separately from outbound Slack delivery. When outbound Slack delivery is enabled, you can point completions, warnings, and reminders at separate webhook URLs; if a class-specific webhook is blank, the general outbound webhook is used.
+- **Reminder automation:** The same Slack Integration section now controls whether unresolved warning/critical supervisor alerts should emit reminders automatically, along with separate delay thresholds for critical vs warning alerts. A reminder is stored in-app first, then optionally delivered to Slack through the reminders webhook route.
 - **Slack imports & apply:** Sync **stores messages only**—it does not create Runs. Users with **Slack Importer** (or Super Admin) use **Slack imports** to filter/triage rows, open **Run preview**, review candidate source lots, optionally assign or split lot weights, and **Create run from Slack** so the normal Run form opens prefilled from **Settings → Slack → field mappings** (Run destination rules). Runs are created only when someone **saves** the Run form. Mapping rules for non-Run destinations remain preview/storage for future modules. Super Admins edit mappings at **`/settings/slack-run-mappings`**; the imports list is at **`/settings/slack-imports`** and is also linked from the sidebar for importers.
 - **Slack field mappings screen:** The mapping editor now shows business-friendly labels first and the stored field key in parentheses, for example `Wet THCA (g) (wet_thca_g)`. Use the **App area** picker first, then choose the matching **App field** from the destination-specific dropdown. Only use **Custom field...** when the field you need is not listed yet.
 
