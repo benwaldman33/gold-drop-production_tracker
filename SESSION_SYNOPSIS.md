@@ -361,20 +361,25 @@ The active work area is now the extraction booth SOP alignment layer that sits b
     - runs move through `Reviewed`, `Reserved for Liquid Loud`, and `Release ready`
     - release actions are now stage-specific
     - `Release To GoldDrop Queue` / `Release Complete` are blocked until release-ready state is reached
+  - third downstream queue deepening slice is now live in `Terp Strip / CDT Cage`:
+    - Terp Strip is no longer a flat strip-action list
+    - runs move through `Reviewed`, `Queued for Prescott`, `Strip in progress`, and `Strip complete`
+    - strip actions are now stage-specific
+    - `Strip Complete` is blocked until strip work has started
 
 ### In progress
 
 - the active product area is no longer only downstream execution
 - the current product area is downstream queue deepening on top of the booth-SOP foundation:
   - making destination queues behave like real work surfaces instead of generic hold lists
-  - extending the staged workflow pattern from GoldDrop into the other destination queues
+  - extending the staged workflow pattern from GoldDrop into the remaining destination queues
   - deciding how far to push queue-specific state, accountability, and reporting before adding more schema
 
 ### Next
 
 - deepen the remaining downstream destination queues from the stronger GoldDrop pattern:
-  - decide whether `Terp Strip / CDT Cage` should gain clearer active-work vs completed-work stages
   - decide whether queue state should eventually carry explicit assignee / owner fields instead of event-only history
+  - decide whether `HP Base Oil Hold` and `Distillate Hold` actually need staged workflows or can remain simpler hold/release surfaces
 - keep repeated reminder escalation on the future list, but not on the current critical path
 
 ## Current planning baseline
@@ -405,39 +410,34 @@ with downstream:
 
 ## Recommended next development step
 
-The next major build should be the next post-extraction phase after queues:
+The next major build should stay in downstream execution, but move past the first three staged queues:
 
-- turn the downstream queue surfaces into richer role-based work queues with next-step actions and completion/rework handling by destination
-
-Likely next queue-oriented surfaces to deepen first:
-
-1. `GoldDrop production queue`
-2. `Liquid Loud hold`
-3. `Terp strip / CDT cage`
-4. `HP base oil hold`
-5. `Distillate hold`
+- decide whether queue ownership / assignee / accountability should become first-class on downstream items
+- decide whether `HP Base Oil Hold` and `Distillate Hold` need deeper staged workflows or can remain simpler hold/release surfaces
+- add queue aging / blocked-item / throughput visibility once the destination workflow shape is settled
 
 ## Recommended concrete next session
 
-When work resumes, decide the first destination-specific queue to deepen and confirm:
+When work resumes, decide the next downstream operating slice after the first three staged queues and confirm:
 
-1. what the operator sees as the "next action" for that queue
-2. whether queue completion should simply clear the queue or stamp a dedicated downstream completion state later
-3. whether each queue needs its own role-specific screen or can stay on one shared board for now
-4. which destination should become the first detailed workflow after queue placement
+1. whether queue items now need explicit assignee / owner fields instead of event-only history
+2. whether `HP Base Oil Hold` and `Distillate Hold` should become staged workflows or stay lighter-weight
+3. what reporting matters first once queue stages stabilize: aging, blocked items, throughput, or rework volume
+4. whether any destination now needs a dedicated role-specific completion or rework state beyond queue removal
 
 The likely implementation order is:
 
-1. queue-specific next-step actions and labels
-2. destination-specific detail surfaces
+1. queue ownership / accountability
+2. remaining hold-workflow decisions
 3. stronger downstream completion/rework tracking
+4. queue reporting and management visibility
 
 ## Deployment note
 
 Current booth-SOP rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `00582e2`
+- commit: `a1f7d3e`
 
 Production deployment steps:
 
@@ -445,14 +445,14 @@ Production deployment steps:
    - `git fetch origin`
    - `git checkout Claude_Consolidation`
    - `git pull --ff-only origin Claude_Consolidation`
-2. restart the backend so the Liquid Loud queue stage logic and action gating are live
+2. restart the backend so the Terp Strip queue stage logic and action gating are live
 3. no standalone extraction app sync is required for this sprint
 4. verify in the main app and on a live extraction run:
-   - the `Liquid Loud Hold` page shows stage-specific next-step guidance
-   - new Liquid Loud items only show `Mark Reviewed` first
-   - `Reserve For Liquid Loud` appears only after review
-   - `Mark Release Ready` appears only after reservation
-   - `Release To GoldDrop Queue` / `Release Complete` are not available until release-ready state is reached
+   - the `Terp Strip / CDT Cage` page shows stage-specific next-step guidance
+   - new Terp Strip items only show `Mark Reviewed` first
+   - `Queue Prescott` appears only after review
+   - `Start Strip Work` appears only after Prescott queueing
+   - `Strip Complete` is not available until strip work is in progress
 
 ## Local note
 
