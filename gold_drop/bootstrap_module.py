@@ -5,6 +5,7 @@ import json
 from gold_drop.slack import _default_slack_run_field_rules
 from sqlalchemy.exc import OperationalError, ProgrammingError
 from services.extraction_run import EXTRACTION_RUN_DEFAULTS, TIMING_POLICY_DEFAULTS
+from services.supervisor_notifications import REMINDER_DEFAULTS
 from services.bootstrap_helpers import (
     backfill_default_inventory_lots,
     backfill_purchase_approval,
@@ -85,6 +86,7 @@ def init_db(root):
     }
     defaults.update(EXTRACTION_RUN_DEFAULTS)
     defaults.update(TIMING_POLICY_DEFAULTS)
+    defaults.update(REMINDER_DEFAULTS)
     for key, (value, description) in defaults.items():
         if not root.db.session.get(root.SystemSetting, key):
             root.db.session.add(root.SystemSetting(key=key, value=value, description=description))

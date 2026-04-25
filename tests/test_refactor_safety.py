@@ -1609,6 +1609,96 @@ def test_dashboard_shows_and_approves_supervisor_notifications():
             db.session.commit()
 
 
+def test_dashboard_emits_and_resolves_supervisor_reminders():
+    app = app_module.app
+    run_id = None
+    source_notification_id = None
+    reminder_id = None
+    try:
+        with app.app_context():
+            admin_id = app_module.User.query.filter_by(username="admin").first().id
+            for key, value in (
+                ("supervisor_reminder_automation_enabled", "1"),
+                ("supervisor_reminder_warning_hours", "1"),
+                ("supervisor_reminder_critical_hours", "1"),
+            ):
+                setting = db.session.get(SystemSetting, key)
+                if setting is None:
+                    setting = SystemSetting(key=key, value=value)
+                    db.session.add(setting)
+                setting.value = value
+            run = app_module.Run(
+                run_date=date(2026, 4, 25),
+                reactor_number=1,
+                run_type="standard",
+                bio_in_reactor_lbs=22,
+                created_by=admin_id,
+            )
+            db.session.add(run)
+            db.session.flush()
+            run_id = run.id
+            source_notification = app_module.SupervisorNotification(
+                run_id=run.id,
+                event_key="flow_adjustment_required",
+                dedupe_key="flow_adjustment_required",
+                notification_class="warnings",
+                severity="critical",
+                title="Flow adjustment required",
+                message="Recovery flow did not resume after flush adjustments.",
+                created_at=app_module.datetime.now(app_module.timezone.utc) - timedelta(hours=3),
+            )
+            db.session.add(source_notification)
+            db.session.commit()
+            source_notification_id = source_notification.id
+
+        with app.test_client() as client:
+            _login(client, "admin")
+            dashboard = client.get("/")
+            assert dashboard.status_code == 200
+            assert b"Reminder: Flow adjustment required" in dashboard.data
+
+            second_dashboard = client.get("/")
+            assert second_dashboard.status_code == 200
+
+        with app.app_context():
+            reminders = app_module.SupervisorNotification.query.filter_by(
+                notification_class="reminders",
+                dedupe_key=f"reminder_for:{source_notification_id}",
+            ).all()
+            assert len(reminders) == 1
+            reminder = reminders[0]
+            reminder_id = reminder.id
+            assert reminder.severity == "critical"
+            assert reminder.status == "open"
+
+            source_row = db.session.get(app_module.SupervisorNotification, source_notification_id)
+            source_row.status = "resolved"
+            source_row.resolved_at = app_module.datetime.now(app_module.timezone.utc)
+            db.session.commit()
+
+        with app.test_client() as client:
+            _login(client, "admin")
+            dashboard = client.get("/")
+            assert dashboard.status_code == 200
+
+        with app.app_context():
+            reminder = db.session.get(app_module.SupervisorNotification, reminder_id)
+            assert reminder is not None
+            assert reminder.status == "resolved"
+    finally:
+        with app.app_context():
+            reminder = db.session.get(app_module.SupervisorNotification, reminder_id) if reminder_id else None
+            if reminder:
+                db.session.delete(reminder)
+            source_row = db.session.get(app_module.SupervisorNotification, source_notification_id) if source_notification_id else None
+            if source_row:
+                db.session.delete(source_row)
+            run = db.session.get(app_module.Run, run_id) if run_id else None
+            if run:
+                db.session.delete(run)
+            db.session.commit()
+
+
 def test_floor_ops_board_view_filter_shows_only_running_reactors():
     app = app_module.app
     charge_id = None

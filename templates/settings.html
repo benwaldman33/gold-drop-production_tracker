@@ -767,7 +767,12 @@
           Enable outbound Slack delivery for notifications
         </label>
       </div>
-      <div class="form-group"></div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px; text-transform:none; letter-spacing:0; font-size:0.85rem; color:var(--text-secondary);">
+          <input type="checkbox" name="supervisor_reminder_automation_enabled" {% if system_settings.get('supervisor_reminder_automation_enabled', '1') in ('1','true','yes','on') %}checked{% endif %}>
+          Enable reminder automation for unresolved alerts
+        </label>
+      </div>
     </div>
     <div class="form-row-3">
       <div class="form-group">
@@ -793,6 +798,17 @@
     </div>
     <div class="form-row-3">
       <div class="form-group">
+        <label>Critical reminder delay (hours)</label>
+        <input type="number" name="supervisor_reminder_critical_hours" value="{{ system_settings.get('supervisor_reminder_critical_hours', '2') }}" min="0" step="0.5">
+      </div>
+      <div class="form-group">
+        <label>Warning reminder delay (hours)</label>
+        <input type="number" name="supervisor_reminder_warning_hours" value="{{ system_settings.get('supervisor_reminder_warning_hours', '8') }}" min="0" step="0.5">
+      </div>
+      <div class="form-group"></div>
+    </div>
+    <div class="form-row-3">
+      <div class="form-group">
         <label>Completions Webhook</label>
         <input type="text" name="slack_webhook_completions_url" value="{{ system_settings.get('slack_webhook_completions_url', '') }}" placeholder="Optional override for completions">
       </div>
@@ -814,6 +830,9 @@
     </div>
     <div class="text-sm" style="color:var(--text-muted); margin-bottom:10px;">
       Class-specific webhooks are optional. When blank, the general outbound webhook above is used for completions, warnings, and reminders.
+    </div>
+    <div class="text-sm" style="color:var(--text-muted); margin-bottom:10px;">
+      Reminder automation creates one durable reminder for unresolved warning or critical supervisor alerts after the configured delay. The timer resets from acknowledgement when a supervisor has already reviewed the original alert.
     </div>
     <button type="submit" class="btn btn-primary">Save Slack integration</button>
   </form>

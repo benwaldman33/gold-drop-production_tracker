@@ -265,17 +265,22 @@ def handle_settings_form(root) -> None:
         "slack_default_channel": "Default Slack channel",
         "supervisor_notifications_enabled": "Enable in-app supervisor notifications",
         "slack_outbound_notifications_enabled": "Enable outbound Slack delivery for supervisor notifications",
+        "supervisor_reminder_automation_enabled": "Enable reminder automation for unresolved supervisor alerts",
+        "supervisor_reminder_critical_hours": "Hours before a critical unresolved supervisor alert emits a reminder",
+        "supervisor_reminder_warning_hours": "Hours before a warning unresolved supervisor alert emits a reminder",
         "slack_webhook_completions_url": "Slack webhook URL for completion notifications",
         "slack_webhook_warnings_url": "Slack webhook URL for warning notifications",
         "slack_webhook_reminders_url": "Slack webhook URL for reminder notifications",
     }
     for key, desc in slack_map.items():
-        if key in {"slack_enabled", "supervisor_notifications_enabled", "slack_outbound_notifications_enabled"}:
+        if key in {"slack_enabled", "supervisor_notifications_enabled", "slack_outbound_notifications_enabled", "supervisor_reminder_automation_enabled"}:
             value = "1" if root.request.form.get("slack_enabled") else "0"
             if key == "supervisor_notifications_enabled":
                 value = "1" if root.request.form.get("supervisor_notifications_enabled") else "0"
             if key == "slack_outbound_notifications_enabled":
                 value = "1" if root.request.form.get("slack_outbound_notifications_enabled") else "0"
+            if key == "supervisor_reminder_automation_enabled":
+                value = "1" if root.request.form.get("supervisor_reminder_automation_enabled") else "0"
         else:
             value = (root.request.form.get(key) or "").strip()
         existing = root.db.session.get(root.SystemSetting, key)

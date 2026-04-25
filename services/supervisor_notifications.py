@@ -4,7 +4,7 @@ import json
 import urllib.error
 import urllib.request
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 
 NOTIFICATION_CLASS_LABELS = {
@@ -25,6 +25,12 @@ SLACK_WEBHOOK_SETTING_BY_CLASS = {
     "reminders": "slack_webhook_reminders_url",
 }
 
+REMINDER_DEFAULTS = {
+    "supervisor_reminder_automation_enabled": ("1", "Enable reminder notifications for unresolved supervisor alerts"),
+    "supervisor_reminder_critical_hours": ("2", "Hours before a critical unresolved supervisor alert emits a reminder"),
+    "supervisor_reminder_warning_hours": ("8", "Hours before a warning unresolved supervisor alert emits a reminder"),
+}
+
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
@@ -40,6 +46,11 @@ def slack_notifications_enabled(root) -> bool:
     return raw in {"1", "true", "yes", "on"}
 
 
+def reminder_automation_enabled(root) -> bool:
+    raw = (root.SystemSetting.get("supervisor_reminder_automation_enabled", REMINDER_DEFAULTS["supervisor_reminder_automation_enabled"][0]) or "1").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
 def manager_can_review(user) -> bool:
     if user is None:
         return False
@@ -52,6 +63,23 @@ def _class_label(class_key: str) -> str:
 
 def _severity_label(severity: str) -> str:
     return NOTIFICATION_SEVERITY_LABELS.get(severity, (severity or "Info").replace("_", " ").title())
+
+
+def _opt_positive_hours(raw_value: str | None) -> float | None:
+    value = (raw_value or "").strip()
+    if not value:
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def reminder_threshold_hours(root, severity: str) -> float | None:
+    key = "supervisor_reminder_critical_hours" if (severity or "").strip().lower() == "critical" else "supervisor_reminder_warning_hours"
+    default = REMINDER_DEFAULTS.get(key, ("", ""))[0]
+    return _opt_positive_hours(root.SystemSetting.get(key, default))
 
 
 def _slack_webhook_url(root, notification_class: str) -> str | None:
@@ -170,6 +198,98 @@ def create_notification(
     return notification
 
 
+def _reminder_dedupe_key(source_notification_id: str) -> str:
+    return f"reminder_for:{source_notification_id}"
+
+
+def _source_notification_id_from_reminder(row) -> str | None:
+    dedupe_key = (getattr(row, "dedupe_key", None) or "").strip()
+    prefix = "reminder_for:"
+    if dedupe_key.startswith(prefix):
+        return dedupe_key[len(prefix):] or None
+    return None
+
+
+def _source_anchor_at(row):
+    candidate = row.acknowledged_at or row.created_at
+    if candidate is None:
+        return None
+    if candidate.tzinfo is None:
+        return candidate.replace(tzinfo=timezone.utc)
+    return candidate.astimezone(timezone.utc)
+
+
+def _existing_reminder_for_source(root, source_row):
+    dedupe_key = _reminder_dedupe_key(source_row.id)
+    return root.SupervisorNotification.query.filter(
+        root.SupervisorNotification.dedupe_key == dedupe_key
+    ).order_by(root.SupervisorNotification.created_at.desc()).first()
+
+
+def _resolve_reminder_row(row, *, note: str) -> None:
+    if row is None or row.status == "resolved":
+        return
+    row.status = "resolved"
+    row.resolved_at = utc_now()
+    row.updated_at = row.resolved_at
+    row.resolution_note = note or row.resolution_note
+
+
+def process_reminder_notifications(root) -> dict[str, int]:
+    if not reminder_automation_enabled(root):
+        return {"created": 0, "resolved": 0}
+
+    created = 0
+    resolved = 0
+    now = utc_now()
+
+    reminder_rows = root.SupervisorNotification.query.filter(
+        root.SupervisorNotification.notification_class == "reminders"
+    ).all()
+    for row in reminder_rows:
+        source_id = _source_notification_id_from_reminder(row)
+        source_row = root.db.session.get(root.SupervisorNotification, source_id) if source_id else None
+        if source_row is None or source_row.status == "resolved":
+            before = row.status
+            _resolve_reminder_row(row, note="Source supervisor alert was resolved.")
+            if before != row.status:
+                resolved += 1
+
+    source_rows = root.SupervisorNotification.query.filter(
+        root.SupervisorNotification.notification_class == "warnings",
+        root.SupervisorNotification.severity.in_(("warning", "critical")),
+        root.SupervisorNotification.status.in_(("open", "acknowledged")),
+    ).all()
+    for source_row in source_rows:
+        threshold_hours = reminder_threshold_hours(root, source_row.severity)
+        anchor_at = _source_anchor_at(source_row)
+        if threshold_hours is None or anchor_at is None:
+            continue
+        if now < anchor_at + timedelta(hours=threshold_hours):
+            continue
+        if _existing_reminder_for_source(root, source_row) is not None:
+            continue
+        create_notification(
+            root,
+            run=getattr(source_row, "run", None),
+            booth_session=getattr(source_row, "booth_session", None),
+            event_key="supervisor_reminder_due",
+            dedupe_key=_reminder_dedupe_key(source_row.id),
+            notification_class="reminders",
+            severity=source_row.severity,
+            title=f"Reminder: {source_row.title}",
+            message=(
+                f"{source_row.title} is still unresolved and has been open since "
+                f"{root.display_local_timestamp(anchor_at) if hasattr(root, 'display_local_timestamp') else anchor_at.isoformat()}."
+            ),
+            operator_reason=source_row.operator_reason,
+        )
+        created += 1
+    if created or resolved:
+        root.db.session.commit()
+    return {"created": created, "resolved": resolved}
+
+
 def resolve_matching_notifications(root, *, run=None, dedupe_keys: list[str] | tuple[str, ...], note: str | None = None) -> int:
     if run is None or not dedupe_keys:
         return 0
@@ -188,6 +308,7 @@ def resolve_matching_notifications(root, *, run=None, dedupe_keys: list[str] | t
 
 
 def summarize_notifications(root, *, limit: int = 12) -> dict:
+    process_reminder_notifications(root)
     open_query = root.SupervisorNotification.query.filter(
         root.SupervisorNotification.status.in_(("open", "acknowledged"))
     )
