@@ -748,6 +748,7 @@ Practical meaning:
 A first-pass UX restructuring plan is now documented in:
 
 - `UX_ROLE_WORKFLOW_PLAN.md`
+- `UX_ROLE_WORKFLOW_IMPLEMENTATION_PLAN.md`
 
 Core direction:
 
@@ -784,6 +785,14 @@ Recommended first implementation step:
 - do a sidebar / information-architecture cleanup first
 - add grouped top-level navigation, including a first-level `Journey` area plus a `More` bucket
 - avoid changing deep workflows in the same sprint
+
+Implementation sequencing is now documented separately in `UX_ROLE_WORKFLOW_IMPLEMENTATION_PLAN.md`, with the recommended order:
+
+1. sidebar / navigation cleanup
+2. role-based landing defaults
+3. workflow rationalization across extraction / downstream / alerts / journey
+4. standalone-app scope tightening
+5. journey + financial visibility consolidation
 
 ## Deployment note
 
