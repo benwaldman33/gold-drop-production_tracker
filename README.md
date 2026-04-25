@@ -65,6 +65,7 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 
 ## Features
 
+- **Derivative lot genealogy foundation** - the app now has additive genealogy tables for traceable material lots, transformations, transformation inputs/outputs, and reconciliation issues. Active biomass `PurchaseLot` rows are now bridged into first-class `MaterialLot` records so later end-to-end ancestry / descendant tracking can be layered on without replacing current run and queue workflows.
 - **Downstream queue ownership** - active downstream queue items can now be assigned to a specific editor from either the shared board or the dedicated destination queue pages, so supervisors have explicit current ownership instead of only queue-event history.
 - **Downstream queue reporting** - the shared downstream board and dedicated destination queue pages now show queue age, stale/blocked status, recent completions, and recent rework volume so supervisors can manage bottlenecks directly from the queue surfaces.
 

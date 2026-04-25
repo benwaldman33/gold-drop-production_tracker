@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-04-25
+
+### Added
+- The first derivative-lot genealogy foundation is now live in the data model with additive `MaterialLot`, `MaterialTransformation`, `MaterialTransformationInput`, `MaterialTransformationOutput`, and `MaterialReconciliationIssue` tables.
+- `PurchaseLot` now has a genealogy bridge field (`material_lot_id`) so each biomass inventory lot can map to a first-class material lot without changing the current lot workflow.
+- A new genealogy helper service now backfills biomass `MaterialLot` rows from active `PurchaseLot` rows and resolves source biomass material lots for a run.
+- The first genealogy reconciliation checks are now available for runs, including missing source-allocation / missing-input-link and negative-balance detection.
+- New planning documents now define the target model and phased rollout for true end-to-end material genealogy:
+  - `DERIVATIVE_LOT_GENEALOGY_PLAN.md`
+  - `DERIVATIVE_LOT_GENEALOGY_IMPLEMENTATION_PLAN.md`
+
+### Changed
+- Startup bootstrap now creates the genealogy foundation tables and backfills biomass material lots automatically using the same additive schema pattern the app already uses elsewhere.
+
+### Tests
+- Added regression coverage for biomass material-lot backfill, run source-material resolution, and first-pass genealogy reconciliation issue creation.
+
 ## 2026-04-24
 
 ### Added

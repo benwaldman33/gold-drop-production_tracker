@@ -442,12 +442,33 @@ The likely implementation order is:
 2. broader reporting and management visibility
 3. later ownership refinements if needed
 
+## Genealogy foundation update
+
+The app now has the first additive derivative-lot genealogy foundation in place:
+
+- new first-class genealogy tables:
+  - `MaterialLot`
+  - `MaterialTransformation`
+  - `MaterialTransformationInput`
+  - `MaterialTransformationOutput`
+  - `MaterialReconciliationIssue`
+- `PurchaseLot` now bridges into genealogy through `material_lot_id`
+- startup bootstrap now backfills active biomass lots into `MaterialLot(type=biomass)`
+- helper logic now resolves source biomass material lots for a `Run`
+- first-pass reconciliation now detects basic genealogy problems such as missing run source links and negative source balances
+
+This is still foundation work only:
+
+- no operator workflow changed yet
+- current downstream queues still run off `Run`
+- derivative output lots and manager-facing genealogy read surfaces are the next implementation slices
+
 ## Deployment note
 
-Current booth-SOP rollout commit:
+Current rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `576a58c`
+- commit: `pending current sprint closeout`
 
 Production deployment steps:
 

@@ -413,10 +413,12 @@ class PurchaseLot(db.Model):
     notes = db.Column(db.Text)
     deleted_at = db.Column(db.DateTime)
     deleted_by = db.Column(db.String(36), db.ForeignKey("users.id"))
+    material_lot_id = db.Column(db.String(36), db.ForeignKey("material_lots.id"))
 
     run_inputs = db.relationship("RunInput", backref="lot", lazy="dynamic")
     scan_events = db.relationship("LotScanEvent", backref="lot", lazy="dynamic", cascade="all, delete-orphan")
     extraction_charges = db.relationship("ExtractionCharge", backref="lot", lazy="dynamic")
+    material_lot = db.relationship("MaterialLot", foreign_keys=[material_lot_id], post_update=True)
 
     @property
     def supplier_name(self):
@@ -765,6 +767,104 @@ class ExtractionBoothEvidence(db.Model):
     session = db.relationship("ExtractionBoothSession", back_populates="booth_evidence")
     run = db.relationship("Run", backref=db.backref("booth_evidence", lazy="dynamic"))
     captured_by_user = db.relationship("User", foreign_keys=[captured_by_user_id])
+
+
+class MaterialLot(db.Model):
+    __tablename__ = "material_lots"
+
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    tracking_id = db.Column(db.String(48), nullable=False, index=True)
+    lot_type = db.Column(db.String(40), nullable=False, index=True)
+    quantity = db.Column(db.Float, nullable=False, default=0.0)
+    unit = db.Column(db.String(16), nullable=False, default="lb")
+    strain_name_snapshot = db.Column(db.String(200))
+    supplier_name_snapshot = db.Column(db.String(200))
+    source_purchase_lot_id = db.Column(db.String(36), db.ForeignKey("purchase_lots.id"), index=True)
+    parent_run_id = db.Column(db.String(36), db.ForeignKey("runs.id"), index=True)
+    active_queue_key = db.Column(db.String(40))
+    inventory_status = db.Column(db.String(24), nullable=False, default="open")
+    workflow_status = db.Column(db.String(24), nullable=False, default="new")
+    cost_basis_total = db.Column(db.Float)
+    cost_basis_per_unit = db.Column(db.Float)
+    origin_confidence = db.Column(db.String(24), nullable=False, default="system_generated")
+    correction_state = db.Column(db.String(24), nullable=False, default="none")
+    notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+    closed_at = db.Column(db.DateTime)
+    closed_reason = db.Column(db.String(120))
+
+    source_purchase_lot = db.relationship("PurchaseLot", foreign_keys=[source_purchase_lot_id], backref=db.backref("derived_material_lots", lazy="dynamic", cascade="all"))
+    parent_run = db.relationship("Run", foreign_keys=[parent_run_id], backref=db.backref("material_lots", lazy="dynamic", cascade="all, delete-orphan"))
+
+
+class MaterialTransformation(db.Model):
+    __tablename__ = "material_transformations"
+
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    transformation_type = db.Column(db.String(40), nullable=False, index=True)
+    run_id = db.Column(db.String(36), db.ForeignKey("runs.id"), index=True)
+    source_record_type = db.Column(db.String(40))
+    source_record_id = db.Column(db.String(36))
+    performed_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    performed_by_user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
+    status = db.Column(db.String(24), nullable=False, default="completed")
+    notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+
+    run = db.relationship("Run", backref=db.backref("material_transformations", lazy="dynamic", cascade="all, delete-orphan"))
+    performed_by_user = db.relationship("User", foreign_keys=[performed_by_user_id])
+
+
+class MaterialTransformationInput(db.Model):
+    __tablename__ = "material_transformation_inputs"
+
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    transformation_id = db.Column(db.String(36), db.ForeignKey("material_transformations.id"), nullable=False, index=True)
+    material_lot_id = db.Column(db.String(36), db.ForeignKey("material_lots.id"), nullable=False, index=True)
+    quantity_consumed = db.Column(db.Float, nullable=False, default=0.0)
+    unit = db.Column(db.String(16), nullable=False, default="lb")
+    notes = db.Column(db.Text)
+
+    transformation = db.relationship("MaterialTransformation", backref=db.backref("inputs", lazy="dynamic", cascade="all, delete-orphan"))
+    material_lot = db.relationship("MaterialLot", backref=db.backref("transformation_inputs", lazy="dynamic", cascade="all, delete-orphan"))
+
+
+class MaterialTransformationOutput(db.Model):
+    __tablename__ = "material_transformation_outputs"
+
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    transformation_id = db.Column(db.String(36), db.ForeignKey("material_transformations.id"), nullable=False, index=True)
+    material_lot_id = db.Column(db.String(36), db.ForeignKey("material_lots.id"), nullable=False, index=True)
+    quantity_produced = db.Column(db.Float, nullable=False, default=0.0)
+    unit = db.Column(db.String(16), nullable=False, default="lb")
+    notes = db.Column(db.Text)
+
+    transformation = db.relationship("MaterialTransformation", backref=db.backref("outputs", lazy="dynamic", cascade="all, delete-orphan"))
+    material_lot = db.relationship("MaterialLot", backref=db.backref("transformation_outputs", lazy="dynamic", cascade="all, delete-orphan"))
+
+
+class MaterialReconciliationIssue(db.Model):
+    __tablename__ = "material_reconciliation_issues"
+
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    issue_type = db.Column(db.String(40), nullable=False, index=True)
+    severity = db.Column(db.String(20), nullable=False, default="warning")
+    material_lot_id = db.Column(db.String(36), db.ForeignKey("material_lots.id"), index=True)
+    transformation_id = db.Column(db.String(36), db.ForeignKey("material_transformations.id"), index=True)
+    run_id = db.Column(db.String(36), db.ForeignKey("runs.id"), index=True)
+    status = db.Column(db.String(24), nullable=False, default="open")
+    detected_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    detected_by = db.Column(db.String(36), db.ForeignKey("users.id"))
+    resolution_note = db.Column(db.Text)
+    resolved_at = db.Column(db.DateTime)
+    resolved_by_user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
+
+    material_lot = db.relationship("MaterialLot", foreign_keys=[material_lot_id], backref=db.backref("reconciliation_issues", lazy="dynamic", cascade="all, delete-orphan"))
+    transformation = db.relationship("MaterialTransformation", foreign_keys=[transformation_id], backref=db.backref("reconciliation_issues", lazy="dynamic", cascade="all, delete-orphan"))
+    run = db.relationship("Run", foreign_keys=[run_id], backref=db.backref("material_reconciliation_issues", lazy="dynamic", cascade="all, delete-orphan"))
+    detected_by_user = db.relationship("User", foreign_keys=[detected_by])
+    resolved_by_user = db.relationship("User", foreign_keys=[resolved_by_user_id])
 
 
 class SupervisorNotification(db.Model):

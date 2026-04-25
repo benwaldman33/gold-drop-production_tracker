@@ -7,6 +7,7 @@ from sqlalchemy.exc import OperationalError, ProgrammingError
 from services.extraction_run import EXTRACTION_RUN_DEFAULTS, TIMING_POLICY_DEFAULTS
 from services.supervisor_notifications import REMINDER_DEFAULTS
 from services.bootstrap_helpers import (
+    backfill_biomass_material_genealogy,
     backfill_default_inventory_lots,
     backfill_purchase_approval,
     ensure_postgres_run_hte_columns,
@@ -37,6 +38,7 @@ def init_db(root):
     backfill_default_inventory_lots(root)
     backfill_purchase_approval(root)
     migrate_biomass_to_purchase(root)
+    backfill_biomass_material_genealogy(root)
 
     if not root.User.query.first():
         admin = root.User(username="admin", display_name="Admin", role="super_admin")

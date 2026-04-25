@@ -42,7 +42,7 @@ from flask_login import (login_user, logout_user, login_required,
 from sqlalchemy import func, desc, and_, or_, text, select, exists
 from werkzeug.utils import secure_filename
 
-from models import (db, User, Supplier, Purchase, PurchaseLot, Run, RunInput, ExtractionCharge, ExtractionBoothSession, ExtractionBoothEvent, ExtractionBoothEvidence, SupervisorNotification, NotificationDelivery, DownstreamQueueEvent,
+from models import (db, User, Supplier, Purchase, PurchaseLot, Run, RunInput, ExtractionCharge, ExtractionBoothSession, ExtractionBoothEvent, ExtractionBoothEvidence, SupervisorNotification, NotificationDelivery, DownstreamQueueEvent, MaterialLot, MaterialTransformation, MaterialTransformationInput, MaterialTransformationOutput, MaterialReconciliationIssue,
                     KpiTarget, SystemSetting, AuditLog, BiomassAvailability, CostEntry,
                     FieldAccessToken, FieldPurchaseSubmission, LabTest, SupplierAttachment, PhotoAsset,
                     SlackIngestedMessage, SlackChannelSyncConfig, LotScanEvent, ScaleDevice, WeightCapture, gen_uuid)
@@ -122,6 +122,7 @@ from services.slack_workflow import (
     slack_run_prefill_put,
 )
 from services.bootstrap_helpers import (
+    backfill_biomass_material_genealogy as _backfill_biomass_material_genealogy_service,
     backfill_default_inventory_lots as _backfill_default_inventory_lots_service,
     backfill_purchase_approval as _backfill_purchase_approval_service,
     ensure_postgres_run_execution_columns as _ensure_postgres_run_execution_columns_service,
@@ -131,6 +132,12 @@ from services.bootstrap_helpers import (
     maintain_purchase_inventory_lots as _maintain_purchase_inventory_lots_service,
     migrate_biomass_to_purchase as _migrate_biomass_to_purchase_service,
     reconcile_closed_purchase_inventory_lots as _reconcile_closed_purchase_inventory_lots_service,
+)
+from services.material_genealogy import (
+    first_open_reconciliation_issues as _first_open_reconciliation_issues,
+    material_lot_for_purchase_lot as _material_lot_for_purchase_lot,
+    reconcile_run_material_genealogy as _reconcile_run_material_genealogy,
+    source_material_lots_for_run as _source_material_lots_for_run,
 )
 from services.extraction_run import (
     HTE_CLEAN_DECISION_OPTIONS,
