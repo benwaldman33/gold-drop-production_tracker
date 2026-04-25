@@ -670,6 +670,10 @@ def material_genealogy_viewer_view(root):
     if selected_material_lot is not None:
         lot_detail = build_material_lot_detail_payload(root, selected_material_lot)
         lot_journey = build_material_lot_journey_payload(root, selected_material_lot)
+        correction_history = [
+            row for row in (lot_detail.get("downstream_transformations") or [])
+            if (row.get("transformation_type") or "").startswith("correction_")
+        ]
         lot_view = {
             "detail": lot_detail,
             "journey": lot_journey,
@@ -678,6 +682,12 @@ def material_genealogy_viewer_view(root):
             "open_run_journey_url": root.url_for("material_genealogy_viewer", mode="run", run_id=selected_material_lot.parent_run_id)
             if selected_material_lot.parent_run_id
             else None,
+            "correction_url": root.url_for(
+                "material_lot_correct",
+                lot_id=selected_material_lot.id,
+                return_to=root.url_for("material_genealogy_viewer", mode="lot", material_lot_id=selected_material_lot.id),
+            ),
+            "correction_history": correction_history,
         }
     if selected_run is not None:
         run_journey = build_run_journey_payload(selected_run)

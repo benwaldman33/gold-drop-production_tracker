@@ -629,6 +629,29 @@ Practical meaning:
   - interactive HTML path tracing
 - the main app no longer mixes session-auth HTML navigation with token-only API links in this genealogy flow
 
+## Genealogy phase 13 update
+
+The genealogy viewer now supports correction-forward manager work in context:
+
+- `By Lot` now shows:
+  - open reconciliation issues
+  - correction history for that lot
+  - a direct `Correct This Lot` action
+- the existing correction form at `/material-lots/<lot_id>/correct` now accepts a safe `return_to` path and returns the user to the viewer after a correction when launched from genealogy
+- viewer labels were also clarified:
+  - `Raw Detail` -> `View JSON`
+  - `Raw Journey` -> `View JSON`
+  - report-side raw lineage links now read `Ancestry JSON` / `Descendants JSON`
+
+Practical meaning:
+
+- genealogy is no longer only reporting plus tracing; it now supports the first real manager correction loop in the same workflow
+- a manager can now:
+  - identify a lineage problem
+  - open the correction action
+  - record the fix
+  - return to the same genealogy surface without dropping out to unrelated admin screens
+
 ## Deployment note
 
 Current rollout commit:

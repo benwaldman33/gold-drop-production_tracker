@@ -1454,6 +1454,8 @@ def material_lot_correct(lot_id):
 
     run = material_lot.parent_run
     candidate_parents = _source_material_lots_for_run(sys.modules[__name__], run) if run is not None else []
+    return_to = (request.form.get("return_to") or request.args.get("return_to") or "").strip()
+    safe_return_to = return_to if return_to.startswith("/") else ""
 
     if request.method == "POST":
         correction_kind = (request.form.get("correction_kind") or "").strip().lower()
@@ -1465,7 +1467,7 @@ def material_lot_correct(lot_id):
                 new_quantity = float(new_quantity_raw)
             except ValueError:
                 flash("New quantity must be numeric.", "error")
-                return redirect(url_for("material_lot_correct", lot_id=lot_id))
+                return redirect(url_for("material_lot_correct", lot_id=lot_id, return_to=safe_return_to or None))
         replacement_parent_ids = [
             value.strip()
             for value in (request.form.get("replacement_parent_ids") or "").split(",")
@@ -1484,8 +1486,10 @@ def material_lot_correct(lot_id):
         except ValueError as exc:
             db.session.rollback()
             flash(str(exc), "error")
-            return redirect(url_for("material_lot_correct", lot_id=lot_id))
+            return redirect(url_for("material_lot_correct", lot_id=lot_id, return_to=safe_return_to or None))
         flash("Material genealogy correction recorded.", "success")
+        if safe_return_to:
+            return redirect(safe_return_to)
         replacement_lot = result.get("replacement_lot")
         target_run_id = replacement_lot.parent_run_id if replacement_lot is not None else material_lot.parent_run_id
         if target_run_id:
@@ -1496,6 +1500,7 @@ def material_lot_correct(lot_id):
         "material_lot_correction_form.html",
         material_lot=material_lot,
         candidate_parents=candidate_parents,
+        return_to=safe_return_to,
     )
 
 

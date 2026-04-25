@@ -234,6 +234,16 @@ def test_material_genealogy_viewer_renders_lot_and_run_modes():
 
             derivative_lot = db.session.get(app_module.Run, run.id).material_lots.filter_by(lot_type="dry_hte").first()
             derivative_lot_id = derivative_lot.id
+            issue = app_module.MaterialReconciliationIssue(
+                material_lot_id=derivative_lot_id,
+                run_id=run_id,
+                issue_type="test_issue",
+                severity="warning",
+                status="open",
+                detected_by="test",
+            )
+            db.session.add(issue)
+            db.session.commit()
 
         with app.test_client() as client:
             _login(client, "admin")
@@ -243,6 +253,9 @@ def test_material_genealogy_viewer_renders_lot_and_run_modes():
             assert b"Ancestry Chain" in lot_resp.data
             assert b"Descendant Transformations" in lot_resp.data
             assert b"Open Parent Run" in lot_resp.data
+            assert b"Correct This Lot" in lot_resp.data
+            assert b"Reconciliation And Corrections" in lot_resp.data
+            assert b"View JSON" in lot_resp.data
 
             run_resp = client.get(f"/journeys/material-genealogy?mode=run&run_id={run_id}")
             assert run_resp.status_code == 200
@@ -250,11 +263,19 @@ def test_material_genealogy_viewer_renders_lot_and_run_modes():
             assert b"Source Material" in run_resp.data
             assert b"Derivative Lots" in run_resp.data
             assert b"/journeys/material-genealogy?mode=lot" in run_resp.data
+            assert b"View JSON" in run_resp.data
 
             raw_resp = client.get(f"/journeys/material-genealogy/raw?entity_type=run&run_id={run_id}&payload=journey")
             assert raw_resp.status_code == 200
             assert b"run_id" in raw_resp.data
             assert b"derivative_lot_count" in raw_resp.data
+
+            correction_form = client.get(
+                f"/material-lots/{derivative_lot_id}/correct?return_to=%2Fjourneys%2Fmaterial-genealogy%3Fmode%3Dlot%26material_lot_id%3D{derivative_lot_id}"
+            )
+            assert correction_form.status_code == 200
+            assert b"Back to Viewer" in correction_form.data
+            assert b'name="return_to"' in correction_form.data
     finally:
         with app.app_context():
             _release_test_db_session()
