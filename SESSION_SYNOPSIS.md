@@ -356,19 +356,23 @@ The active work area is now the extraction booth SOP alignment layer that sits b
     - runs move through `Reviewed`, `Queued for production`, `In production`, `Packaging ready`, and `Released complete`
     - available actions are now stage-specific
     - final release is blocked until the run reaches packaging-ready state
+  - second downstream queue deepening slice is now live in `Liquid Loud Hold`:
+    - Liquid Loud is no longer a flat hold/release list
+    - runs move through `Reviewed`, `Reserved for Liquid Loud`, and `Release ready`
+    - release actions are now stage-specific
+    - `Release To GoldDrop Queue` / `Release Complete` are blocked until release-ready state is reached
 
 ### In progress
 
 - the active product area is no longer only downstream execution
 - the current product area is downstream queue deepening on top of the booth-SOP foundation:
   - making destination queues behave like real work surfaces instead of generic hold lists
-  - starting with GoldDrop production workflow maturity
+  - extending the staged workflow pattern from GoldDrop into the other destination queues
   - deciding how far to push queue-specific state, accountability, and reporting before adding more schema
 
 ### Next
 
 - deepen the remaining downstream destination queues from the stronger GoldDrop pattern:
-  - decide whether `Liquid Loud Hold` needs equivalent staged release/reserve states
   - decide whether `Terp Strip / CDT Cage` should gain clearer active-work vs completed-work stages
   - decide whether queue state should eventually carry explicit assignee / owner fields instead of event-only history
 - keep repeated reminder escalation on the future list, but not on the current critical path
@@ -433,7 +437,7 @@ The likely implementation order is:
 Current booth-SOP rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `791994f`
+- commit: `00582e2`
 
 Production deployment steps:
 
@@ -441,15 +445,14 @@ Production deployment steps:
    - `git fetch origin`
    - `git checkout Claude_Consolidation`
    - `git pull --ff-only origin Claude_Consolidation`
-2. restart the backend so the GoldDrop queue stage logic and action gating are live
+2. restart the backend so the Liquid Loud queue stage logic and action gating are live
 3. no standalone extraction app sync is required for this sprint
 4. verify in the main app and on a live extraction run:
-   - the `GoldDrop Production Queue` page shows stage-specific next-step guidance
-   - new GoldDrop items only show `Mark Reviewed` first
-   - `Queue For Production` appears only after review
-   - `Start Production` appears only after production queueing
-   - `Mark Packaging Ready` appears only after production starts
-   - `Release Complete` is not available until packaging-ready state is reached
+   - the `Liquid Loud Hold` page shows stage-specific next-step guidance
+   - new Liquid Loud items only show `Mark Reviewed` first
+   - `Reserve For Liquid Loud` appears only after review
+   - `Mark Release Ready` appears only after reservation
+   - `Release To GoldDrop Queue` / `Release Complete` are not available until release-ready state is reached
 
 ## Local note
 

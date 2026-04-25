@@ -483,6 +483,27 @@ Typical flow:
 
 If the run should not stay in GoldDrop, use `Send Back For Re-routing`.
 
+### Liquid Loud Hold
+
+The `Liquid Loud Hold` is now also a staged workflow instead of a flat hold/release list.
+
+Runs move through these stages:
+- `New in hold`
+- `Reviewed`
+- `Reserved for Liquid Loud`
+- `Release ready`
+- `Released to GoldDrop queue` or `Released complete`
+
+Typical flow:
+- `Mark Reviewed`
+- `Reserve For Liquid Loud`
+- `Mark Release Ready`
+- then either:
+  - `Release To GoldDrop Queue`
+  - or `Release Complete`
+
+The release actions do not appear until the run is marked `Release ready`.
+
 Reminder automation:
 - is configured under `Settings -> Slack Integration`
 - can be enabled or disabled separately from outbound Slack delivery
