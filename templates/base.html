@@ -30,6 +30,11 @@
         <a href="{{ url_for('floor_ops') }}" class="{% if request.endpoint in ('floor_ops', 'scan_center', 'scan_lot') %}active{% endif %}">
           <span class="icon">📱</span><span>Floor Ops</span>
         </a>
+        {% if current_user.is_authenticated and can_review_supervisor_notifications %}
+        <a href="{{ url_for('dashboard') }}#supervisor-notifications">
+          <span class="icon">! </span><span>Supervisor Alerts{% if supervisor_notification_summary.open_count %} ({{ supervisor_notification_summary.open_count }}){% endif %}</span>
+        </a>
+        {% endif %}
         <a href="{{ url_for('downstream_queues') }}" class="{% if request.endpoint == 'downstream_queues' %}active{% endif %}">
           <span class="icon">🧭</span><span>Downstream Queues</span>
         </a>

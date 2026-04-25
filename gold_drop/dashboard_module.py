@@ -3,8 +3,8 @@ from __future__ import annotations
 from gold_drop.purchases import budget_week_purchase_metrics, purchase_week_start
 from services.api_site import get_site_identity
 from services.site_aggregation import build_aggregation_summary
-
 from services.field_submissions import decorate_submission_rows
+from services.supervisor_notifications import manager_can_review, summarize_notifications
 
 
 DEPARTMENT_PAGES = {
@@ -70,6 +70,14 @@ def register_routes(app, root):
     def cross_site_reconciliation():
         return cross_site_reconciliation_view(root)
 
+    @root.login_required
+    def supervisor_notification_ack(notification_id):
+        return supervisor_notification_ack_view(root, notification_id)
+
+    @root.login_required
+    def supervisor_notification_resolve(notification_id):
+        return supervisor_notification_resolve_view(root, notification_id)
+
     app.add_url_rule("/", endpoint="dashboard", view_func=dashboard)
     app.add_url_rule("/dept", endpoint="dept_index", view_func=dept_index)
     app.add_url_rule("/dept/", endpoint="dept_index_slash", view_func=dept_index)
@@ -79,6 +87,8 @@ def register_routes(app, root):
     app.add_url_rule("/cross-site/suppliers", endpoint="cross_site_suppliers", view_func=cross_site_suppliers)
     app.add_url_rule("/cross-site/strains", endpoint="cross_site_strains", view_func=cross_site_strains)
     app.add_url_rule("/cross-site/reconciliation", endpoint="cross_site_reconciliation", view_func=cross_site_reconciliation)
+    app.add_url_rule("/supervisor-notifications/<notification_id>/ack", endpoint="supervisor_notification_ack", view_func=supervisor_notification_ack, methods=["POST"])
+    app.add_url_rule("/supervisor-notifications/<notification_id>/resolve", endpoint="supervisor_notification_resolve", view_func=supervisor_notification_resolve, methods=["POST"])
 
 
 def _cross_site_ops_enabled(root) -> bool:
@@ -170,6 +180,20 @@ def _department_stat_sections(root, slug: str):
         }]
 
     return []
+
+
+def _supervisor_notifications_redirect(root):
+    target = (root.request.form.get("return_to") or root.request.args.get("return_to") or "").strip()
+    if target.startswith("/"):
+        return root.redirect(target)
+    return root.redirect(f"{root.url_for('dashboard')}#supervisor-notifications")
+
+
+def _require_supervisor_notification_access(root):
+    if not manager_can_review(root.current_user):
+        root.flash("Supervisor notification access required.", "error")
+        return _supervisor_notifications_redirect(root)
+    return None
 
 
 def dashboard_view(root):
@@ -338,6 +362,7 @@ def dashboard_view(root):
             best_supplier_mom["pct_change"] = None
 
     fin = _weekly_finance_snapshot(root)
+    supervisor_notifications = summarize_notifications(root, limit=12) if manager_can_review(root.current_user) else {"open_count": 0, "critical_count": 0, "warning_count": 0, "info_count": 0, "rows": []}
     return root.render_template(
         "dashboard.html",
         kpi_cards=kpi_cards,
@@ -356,7 +381,41 @@ def dashboard_view(root):
         weekly_dollar_budget=fin["weekly_dollar_budget"],
         week_commitment_dollars=fin["week_commitment_dollars"],
         week_purchase_dollars=fin["week_purchase_dollars"],
+        supervisor_notifications=supervisor_notifications,
     )
+
+
+def supervisor_notification_ack_view(root, notification_id):
+    denied = _require_supervisor_notification_access(root)
+    if denied is not None:
+        return denied
+    row = root.db.session.get(root.SupervisorNotification, notification_id)
+    if row is None:
+        root.flash("Supervisor notification not found.", "error")
+        return _supervisor_notifications_redirect(root)
+    row.status = "acknowledged"
+    row.acknowledged_at = root.datetime.now(root.timezone.utc)
+    row.acknowledged_by_user_id = root.current_user.id
+    root.db.session.commit()
+    root.flash("Supervisor notification acknowledged.", "success")
+    return _supervisor_notifications_redirect(root)
+
+
+def supervisor_notification_resolve_view(root, notification_id):
+    denied = _require_supervisor_notification_access(root)
+    if denied is not None:
+        return denied
+    row = root.db.session.get(root.SupervisorNotification, notification_id)
+    if row is None:
+        root.flash("Supervisor notification not found.", "error")
+        return _supervisor_notifications_redirect(root)
+    row.status = "resolved"
+    row.resolved_at = root.datetime.now(root.timezone.utc)
+    row.resolved_by_user_id = root.current_user.id
+    row.resolution_note = (root.request.form.get("resolution_note") or "").strip() or row.resolution_note
+    root.db.session.commit()
+    root.flash("Supervisor notification resolved.", "success")
+    return _supervisor_notifications_redirect(root)
 
 
 def dept_index_view(root):

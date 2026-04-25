@@ -767,6 +767,49 @@ class ExtractionBoothEvidence(db.Model):
     captured_by_user = db.relationship("User", foreign_keys=[captured_by_user_id])
 
 
+class SupervisorNotification(db.Model):
+    __tablename__ = "supervisor_notifications"
+
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    run_id = db.Column(db.String(36), db.ForeignKey("runs.id"), index=True)
+    booth_session_id = db.Column(db.String(36), db.ForeignKey("extraction_booth_sessions.id"), index=True)
+    event_key = db.Column(db.String(64), nullable=False, index=True)
+    dedupe_key = db.Column(db.String(120), index=True)
+    notification_class = db.Column(db.String(20), nullable=False, default="warnings")
+    severity = db.Column(db.String(20), nullable=False, default="warning")
+    title = db.Column(db.String(200), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    status = db.Column(db.String(20), nullable=False, default="open")
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, nullable=False)
+    acknowledged_at = db.Column(db.DateTime)
+    acknowledged_by_user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
+    resolved_at = db.Column(db.DateTime)
+    resolved_by_user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
+    resolution_note = db.Column(db.Text)
+
+    run = db.relationship("Run", backref=db.backref("supervisor_notifications", lazy="dynamic", cascade="all, delete-orphan"))
+    booth_session = db.relationship("ExtractionBoothSession", backref=db.backref("supervisor_notifications", lazy="dynamic", cascade="all, delete-orphan"))
+    acknowledged_by = db.relationship("User", foreign_keys=[acknowledged_by_user_id])
+    resolved_by = db.relationship("User", foreign_keys=[resolved_by_user_id])
+
+
+class NotificationDelivery(db.Model):
+    __tablename__ = "notification_deliveries"
+
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    notification_id = db.Column(db.String(36), db.ForeignKey("supervisor_notifications.id"), nullable=False, index=True)
+    delivery_type = db.Column(db.String(20), nullable=False, default="slack")
+    target_label = db.Column(db.String(120))
+    status = db.Column(db.String(20), nullable=False, default="pending")
+    attempted_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    delivered_at = db.Column(db.DateTime)
+    response_code = db.Column(db.Integer)
+    error_message = db.Column(db.Text)
+
+    notification = db.relationship("SupervisorNotification", backref=db.backref("deliveries", lazy="dynamic", cascade="all, delete-orphan"))
+
+
 class ExtractionCharge(db.Model):
     __tablename__ = "extraction_charges"
     id = db.Column(db.String(36), primary_key=True, default=gen_uuid)

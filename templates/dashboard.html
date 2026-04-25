@@ -94,6 +94,74 @@
   </div>
 </div>
 
+{% if can_review_supervisor_notifications %}
+<div class="card" id="supervisor-notifications" style="margin-bottom:12px;">
+  <div class="card-header"><h3>Supervisor Notifications</h3></div>
+  <div style="padding:12px 16px;">
+    <div class="summary-row" style="margin:0 0 10px 0;">
+      <div class="summary-stat">
+        <div class="label">Open</div>
+        <div class="value">{{ supervisor_notifications.open_count }}</div>
+      </div>
+      <div class="summary-stat">
+        <div class="label">Critical</div>
+        <div class="value">{{ supervisor_notifications.critical_count }}</div>
+      </div>
+      <div class="summary-stat">
+        <div class="label">Warnings</div>
+        <div class="value">{{ supervisor_notifications.warning_count }}</div>
+      </div>
+      <div class="summary-stat">
+        <div class="label">Info</div>
+        <div class="value">{{ supervisor_notifications.info_count }}</div>
+      </div>
+    </div>
+    {% if supervisor_notifications.rows %}
+    <div style="display:grid;gap:10px;">
+      {% for row in supervisor_notifications.rows %}
+      <div style="border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:12px;background:rgba(255,255,255,0.03);">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">
+          <div>
+            <div style="font-weight:600;">{{ row.title }}</div>
+            <div class="text-sm" style="color:var(--text-muted);margin-top:4px;">
+              {{ row.notification_class_label }} · {{ row.severity_label }} · {{ row.created_at }}
+            </div>
+            {% if row.run_edit_url %}
+            <div class="text-sm" style="margin-top:6px;"><a href="{{ row.run_edit_url }}">Open run</a>{% if row.run_label %} · {{ row.run_label }}{% endif %}</div>
+            {% endif %}
+            <div class="text-sm" style="color:var(--text-secondary);margin-top:8px;">{{ row.message }}</div>
+            {% if row.delivery_statuses %}
+            <div class="text-sm" style="color:var(--text-muted);margin-top:8px;">
+              Delivery:
+              {% for delivery in row.delivery_statuses %}
+              {{ delivery.type }}={{ delivery.status }}{% if not loop.last %}, {% endif %}
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
+            {% if row.status == 'open' %}
+            <form method="POST" action="{{ url_for('supervisor_notification_ack', notification_id=row.id) }}">
+              <input type="hidden" name="return_to" value="/#supervisor-notifications">
+              <button type="submit" class="btn btn-secondary btn-sm">Acknowledge</button>
+            </form>
+            {% endif %}
+            <form method="POST" action="{{ url_for('supervisor_notification_resolve', notification_id=row.id) }}">
+              <input type="hidden" name="return_to" value="/#supervisor-notifications">
+              <button type="submit" class="btn btn-primary btn-sm">Resolve</button>
+            </form>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-sm" style="color:var(--text-muted);">No open supervisor notifications.</div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
 {% if best_supplier_mom %}
 <div class="card" style="margin-bottom:12px;">
   <div class="card-header"><h3>Best Yield Supplier (Month-over-Month)</h3></div>

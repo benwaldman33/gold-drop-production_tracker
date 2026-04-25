@@ -45,7 +45,7 @@ This is a review checklist, not a rule to make no-op edits. Update only the docu
   - single-lot label routes preserve caller context through `return_to`, so Inventory and Purchase surfaces can send operators back to the right page after printing
   - **`gold_drop/biomass_module.py`** - biomass pipeline list/form/archive route logic delegated from `app.py`
   - **`gold_drop/runs_module.py`** - run list/form/delete route logic delegated from `app.py`
-  - **`gold_drop/dashboard_module.py`** - dashboard, department, and biomass purchasing dashboard routes delegated from `app.py`
+  - **`gold_drop/dashboard_module.py`** - dashboard, department, biomass purchasing dashboard, and supervisor-notification acknowledgement/resolve routes delegated from `app.py`
   - **`gold_drop/field_intake_module.py`** - field/mobile intake and office purchase opportunity flows delegated from `app.py`
   - **`gold_drop/costs_module.py`** - cost entry list/form/delete routes delegated from `app.py`
   - **`gold_drop/inventory_module.py`** - inventory list/filter route delegated from `app.py`
@@ -64,7 +64,8 @@ This is a review checklist, not a rule to make no-op edits. Update only the docu
   - **`gold_drop/mobile_module.py`** - user-authenticated mobile write API routes under `/api/mobile/v1`
   - **`services/mobile_write_api.py`** - shared standalone/mobile write helpers for workflow enablement, same-origin enforcement, capabilities, and audit metadata
   - **`services/extraction_charge.py`** - canonical extraction-charge creation, lifecycle validation, board visibility rules, and run-prefill helpers shared by the main app, Slack path, and standalone extraction app
-  - **`services/extraction_run.py`** - standalone extraction run defaults, booth-SOP progression actions, booth-session payload shaping, booth evidence counts/history, the post-extraction handoff gates (`post_extraction_pathway`, downstream start, initial wet-output confirmation), and the downstream state fields for pot-pour, THCA-path, and HTE-path tracking that the tablet workflow renders
+  - **`services/extraction_run.py`** - standalone extraction run defaults, booth-SOP progression actions, booth-session payload shaping, booth evidence counts/history, booth-triggered supervisor notifications, the post-extraction handoff gates (`post_extraction_pathway`, downstream start, initial wet-output confirmation), and the downstream state fields for pot-pour, THCA-path, and HTE-path tracking that the tablet workflow renders
+  - **`services/supervisor_notifications.py`** - durable in-app supervisor notifications, Slack outbound delivery logging, dashboard/run-form payload shaping, and notification acknowledge/resolve helpers
   - **`gold_drop/floor_module.py`** - operator floor activity page for recent scans, recent scale captures, floor-state rollups, extraction-readiness rollups, and reactor charge queues; the template now uses the same card treatment for top summaries and detail lists so the page scans consistently with the rest of the app
   - **`static/js/scan_camera.js`** - in-browser camera scanning client for `/scan`, with `BarcodeDetector` support plus manual/scanner fallback
   - **`services/api_auth.py`** - bearer-token generation, hashing, lookup, and scope enforcement
