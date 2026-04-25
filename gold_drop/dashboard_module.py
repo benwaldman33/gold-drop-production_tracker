@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+import json
+
 from gold_drop.purchases import budget_week_purchase_metrics, purchase_week_start
 from services.api_site import get_site_identity
-from services.material_genealogy import build_material_lot_detail_payload, build_material_lot_journey_payload
+from services.material_genealogy import (
+    build_material_lot_ancestry_payload,
+    build_material_lot_descendants_payload,
+    build_material_lot_detail_payload,
+    build_material_lot_journey_payload,
+)
 from services.purchases_journey import build_run_journey_payload
 from services.site_aggregation import build_aggregation_summary
 from services.field_submissions import decorate_submission_rows
@@ -65,6 +72,10 @@ def register_routes(app, root):
         return material_genealogy_viewer_view(root)
 
     @root.login_required
+    def material_genealogy_raw():
+        return material_genealogy_raw_view(root)
+
+    @root.login_required
     def cross_site_ops():
         return cross_site_ops_view(root)
 
@@ -103,6 +114,7 @@ def register_routes(app, root):
     app.add_url_rule("/biomass-purchasing", endpoint="biomass_purchasing_dashboard", view_func=biomass_purchasing_dashboard)
     app.add_url_rule("/reports/material-genealogy", endpoint="material_genealogy_report", view_func=material_genealogy_report)
     app.add_url_rule("/journeys/material-genealogy", endpoint="material_genealogy_viewer", view_func=material_genealogy_viewer)
+    app.add_url_rule("/journeys/material-genealogy/raw", endpoint="material_genealogy_raw", view_func=material_genealogy_raw)
     app.add_url_rule("/cross-site", endpoint="cross_site_ops", view_func=cross_site_ops)
     app.add_url_rule("/cross-site/suppliers", endpoint="cross_site_suppliers", view_func=cross_site_suppliers)
     app.add_url_rule("/cross-site/strains", endpoint="cross_site_strains", view_func=cross_site_strains)
@@ -684,6 +696,43 @@ def material_genealogy_viewer_view(root):
         sidebar_runs=sidebar_runs,
         lot_view=lot_view,
         run_view=run_view,
+    )
+
+
+def material_genealogy_raw_view(root):
+    entity_type = (root.request.args.get("entity_type") or "").strip().lower()
+    payload_kind = (root.request.args.get("payload") or "journey").strip().lower()
+
+    payload = None
+    if entity_type == "run":
+        run_id = (root.request.args.get("run_id") or "").strip()
+        run = root.db.session.get(root.Run, run_id) if run_id else None
+        if run is None or run.deleted_at is not None:
+            root.abort(404)
+        if payload_kind != "journey":
+            root.abort(400)
+        payload = build_run_journey_payload(run)
+    elif entity_type == "material_lot":
+        material_lot_id = (root.request.args.get("material_lot_id") or "").strip()
+        material_lot = root.db.session.get(root.MaterialLot, material_lot_id) if material_lot_id else None
+        if material_lot is None:
+            root.abort(404)
+        if payload_kind == "detail":
+            payload = build_material_lot_detail_payload(root, material_lot)
+        elif payload_kind == "journey":
+            payload = build_material_lot_journey_payload(root, material_lot)
+        elif payload_kind == "ancestry":
+            payload = build_material_lot_ancestry_payload(root, material_lot)
+        elif payload_kind == "descendants":
+            payload = build_material_lot_descendants_payload(root, material_lot)
+        else:
+            root.abort(400)
+    else:
+        root.abort(400)
+
+    return root.Response(
+        json.dumps(payload, indent=2, sort_keys=True),
+        mimetype="application/json",
     )
 
 

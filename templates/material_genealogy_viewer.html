@@ -99,7 +99,7 @@
             {% if lot_view.open_run_journey_url %}<a href="{{ lot_view.open_run_journey_url }}" class="btn btn-secondary btn-sm">Open Parent Run</a>{% endif %}
             {% if lot_view.open_run_url %}<a href="{{ lot_view.open_run_url }}" class="btn btn-secondary btn-sm">Open Run Record</a>{% endif %}
             {% if lot_view.open_purchase_url %}<a href="{{ lot_view.open_purchase_url }}" class="btn btn-secondary btn-sm">Open Purchase</a>{% endif %}
-            <a href="{{ material.links.material_lot_detail }}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">Raw Detail</a>
+            <a href="{{ url_for('material_genealogy_raw', entity_type='material_lot', material_lot_id=material.material_lot_id, payload='detail') }}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">Raw Detail</a>
           </div>
         </div>
         <div class="journey-summary-grid" style="margin-top:16px;">
@@ -222,7 +222,7 @@
           </div>
           <div class="journey-link-row">
             <a href="{{ run.run_url }}" class="btn btn-secondary btn-sm">Open Run Record</a>
-            <a href="/api/v1/runs/{{ run.run_id }}/journey" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">Raw Journey</a>
+            <a href="{{ url_for('material_genealogy_raw', entity_type='run', run_id=run.run_id, payload='journey') }}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">Raw Journey</a>
           </div>
         </div>
         <div class="journey-summary-grid" style="margin-top:16px;">

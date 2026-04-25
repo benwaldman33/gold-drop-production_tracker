@@ -38,6 +38,8 @@
 - Material genealogy now has a real in-app journey viewer at `/journeys/material-genealogy` with `By Lot` and `By Run` modes. It turns the earlier `lot-journey-v2` mockup direction into a logged-in HTML surface backed by the existing genealogy payloads, so managers can path-trace from a derivative lot to its source biomass or from a run to its derivative lots without landing in raw JSON.
 - The `Genealogy Report` page and downstream queue cards now route managers into the HTML genealogy viewer instead of only offering raw API journey links.
 - The `Genealogy Report` sidebar label/icon rendering was normalized to avoid stray leading mojibake characters, and engineering guidance now explicitly requires checking new sidebar items for malformed icon text before final commit.
+- Logged-in browser-safe raw genealogy links are now available under `/journeys/material-genealogy/raw`, so `Raw Journey`, `Raw ancestry`, and `Raw descendants` no longer fail with missing bearer-token errors when opened from the main app.
+- The shared left sidebar now uses ASCII-safe icon tokens for all navigation items, removing the broader mojibake artifact that was leaking malformed leading characters across the menu.
 - New planning documents now define the target model and phased rollout for true end-to-end material genealogy:
   - `DERIVATIVE_LOT_GENEALOGY_PLAN.md`
   - `DERIVATIVE_LOT_GENEALOGY_IMPLEMENTATION_PLAN.md`

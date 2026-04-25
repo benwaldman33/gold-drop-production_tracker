@@ -617,6 +617,8 @@ The HTML genealogy viewer is now in place:
 - the `Genealogy Report` page now links into this viewer
 - downstream queue cards now open linked derivative lots in this viewer instead of landing only on raw API JSON
 - the left-sidebar `Genealogy Report` label was also normalized to remove the recurring malformed leading-character artifact for that item
+- browser-safe raw payload links now exist at `/journeys/material-genealogy/raw`, so logged-in users can open raw run/material genealogy JSON without hitting bearer-token API auth errors
+- the full left sidebar now uses ASCII-safe icon tokens, eliminating the broader malformed leading-character issue across the menu
 
 Practical meaning:
 
@@ -625,13 +627,14 @@ Practical meaning:
 - the genealogy stack now has both:
   - reporting
   - interactive HTML path tracing
+- the main app no longer mixes session-auth HTML navigation with token-only API links in this genealogy flow
 
 ## Deployment note
 
 Current rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `6f702f1`
+- commit: `173dd25`
 
 Production deployment steps:
 
