@@ -504,6 +504,25 @@ Typical flow:
 
 The release actions do not appear until the run is marked `Release ready`.
 
+### Terp Strip / CDT Cage
+
+The `Terp Strip / CDT Cage` is now a staged workflow instead of a flat strip-action list.
+
+Runs move through these stages:
+- `New in cage`
+- `Reviewed`
+- `Queued for Prescott`
+- `Strip in progress`
+- `Strip complete`
+
+Typical flow:
+- `Mark Reviewed`
+- `Queue Prescott`
+- `Start Strip Work`
+- `Strip Complete`
+
+The `Strip Complete` action does not appear until the run is marked `Strip in progress`.
+
 Reminder automation:
 - is configured under `Settings -> Slack Integration`
 - can be enabled or disabled separately from outbound Slack delivery
@@ -686,10 +705,17 @@ Use these when a run has already been routed to that downstream destination and 
 #### Terp Strip / CDT Cage
 - `Mark Reviewed`
 - `Queue Prescott`
+- `Start Strip Work`
 - `Strip Complete`
 - `Send Back For Re-routing`
 
-`Queue Prescott` marks the HTE filter outcome as needing Prescott handling. `Strip Complete` removes the run from the cage and marks the HTE pipeline stage as stripped.
+Typical staged flow:
+- `Mark Reviewed`
+- `Queue Prescott`
+- `Start Strip Work`
+- `Strip Complete`
+
+`Queue Prescott` marks the HTE filter outcome as needing Prescott handling. `Start Strip Work` marks the run as actively in terp strip / CDT handling. `Strip Complete` does not appear until strip work has started, and then removes the run from the cage while marking the HTE pipeline stage as stripped.
 
 #### HP Base Oil Hold
 - `Mark Reviewed`

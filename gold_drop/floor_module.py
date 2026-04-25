@@ -165,6 +165,7 @@ LIQUID_LOUD_QUEUE_STAGE_NEXT_STEPS = {
 TERP_STRIP_QUEUE_ACTIONS = (
     ("mark_reviewed", "Mark Reviewed"),
     ("queue_prescott", "Queue Prescott"),
+    ("start_strip_work", "Start Strip Work"),
     ("strip_complete", "Strip Complete"),
     ("send_back", "Send Back For Re-routing"),
 )
@@ -173,6 +174,7 @@ TERP_STRIP_QUEUE_STATE_LABELS = {
     "new_in_queue": "New in cage",
     "reviewed": "Reviewed",
     "queued_prescott": "Queued for Prescott",
+    "strip_in_progress": "Strip in progress",
     "strip_complete": "Strip complete",
     "sent_back": "Sent back",
 }
@@ -181,8 +183,27 @@ TERP_STRIP_QUEUE_EVENT_LABELS = {
     "entered_queue": "Entered cage",
     "mark_reviewed": "Marked reviewed",
     "queue_prescott": "Queued Prescott",
+    "start_strip_work": "Strip work started",
     "strip_complete": "Strip complete",
     "send_back": "Sent back",
+}
+
+TERP_STRIP_QUEUE_STAGE_ACTIONS = {
+    "new_in_queue": (("mark_reviewed", "Mark Reviewed"), ("send_back", "Send Back For Re-routing")),
+    "reviewed": (("queue_prescott", "Queue Prescott"), ("send_back", "Send Back For Re-routing")),
+    "queued_prescott": (("start_strip_work", "Start Strip Work"), ("send_back", "Send Back For Re-routing")),
+    "strip_in_progress": (("strip_complete", "Strip Complete"), ("send_back", "Send Back For Re-routing")),
+    "strip_complete": (),
+    "sent_back": (),
+}
+
+TERP_STRIP_QUEUE_STAGE_NEXT_STEPS = {
+    "new_in_queue": "Supervisor review is the next action before Prescott or strip handling is queued.",
+    "reviewed": "Queue Prescott once the dirty HTE strip path is confirmed.",
+    "queued_prescott": "Start strip work when upstairs terp strip / CDT work begins.",
+    "strip_in_progress": "Mark strip complete once the strip / CDT work is finished.",
+    "strip_complete": "Terp strip / CDT handling is complete for this run.",
+    "sent_back": "This run has been sent back for downstream re-routing.",
 }
 
 HP_BASE_OIL_QUEUE_ACTIONS = (
@@ -321,15 +342,19 @@ DESTINATION_QUEUE_CONFIGS = {
         "action_state_map": {
             "mark_reviewed": "reviewed",
             "queue_prescott": "queued_prescott",
+            "start_strip_work": "strip_in_progress",
             "strip_complete": "strip_complete",
             "send_back": "sent_back",
         },
-        "help_text": "Use this surface to review dirty HTE, queue Prescott handling, complete strip work, or send the run back for re-routing.",
+        "help_text": "Use this surface to review dirty HTE, queue Prescott handling, start strip work, complete strip work, or send the run back for re-routing.",
+        "stage_actions": TERP_STRIP_QUEUE_STAGE_ACTIONS,
+        "stage_next_steps": TERP_STRIP_QUEUE_STAGE_NEXT_STEPS,
         "entered_note": "Entered Terp strip / CDT cage.",
         "source_label": "terp_strip_queue",
         "action_messages": {
             "mark_reviewed": "Run marked reviewed in Terp strip / CDT cage.",
             "queue_prescott": "Run marked queued for Prescott handling.",
+            "start_strip_work": "Run marked in active terp strip / CDT work.",
             "strip_complete": "Run marked strip complete.",
             "send_back": "Run sent back for downstream re-routing.",
         },
