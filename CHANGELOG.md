@@ -3,6 +3,10 @@
 ## 2026-04-25
 
 ### Added
+- Journey now has a configurable financial projection layer on top of material genealogy:
+  - `Settings -> Operational Parameters` includes per-output assumed selling prices in dollars per gram
+  - `Journey Home` and `Genealogy Report` now show projected revenue and projected gross margin for open inventory, released output, source-lot descendants, and run yield/cost rows
+  - the projections are explicitly based on configured assumptions, leaving actual sales capture as a later accounting layer
 - The grouped left sidebar is now collapsible by section, so users can expand only the workflow area they are using and keep other submenu items out of the way.
 - `Departments` has been demoted inside `More` and relabeled `Scorecards (beta)` to reflect that it is not currently a primary operating workflow.
 - The UX role/workflow restructuring phases are now implemented in the main app:

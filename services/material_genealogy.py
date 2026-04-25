@@ -5,11 +5,42 @@ from collections.abc import Iterable
 
 
 ACTIVE_MATERIAL_ISSUE_STATUSES = ("open", "investigating", "needs_follow_up")
+MATERIAL_REVENUE_LOT_TYPES = (
+    ("dry_hte", "Dry HTE"),
+    ("dry_thca", "Dry THCA"),
+    ("wet_hte", "Wet HTE"),
+    ("wet_thca", "Wet THCA"),
+    ("golddrop", "GoldDrop"),
+    ("liquid_loud", "Liquid Loud"),
+    ("terp_strip_output", "Terp Strip Output"),
+    ("hp_base_oil", "HP Base Oil"),
+    ("distillate", "Distillate"),
+    ("wholesale_thca", "Wholesale THCA"),
+    ("liquid_diamonds", "Liquid Diamonds"),
+    ("packaged_goods", "Packaged Goods"),
+)
 MATERIAL_ISSUE_REMINDER_DEFAULTS = {
     "material_issue_reminder_warning_hours": ("24", "Hours before a warning genealogy issue becomes overdue."),
     "material_issue_reminder_critical_hours": ("8", "Hours before a critical genealogy issue becomes overdue."),
     "material_issue_reminder_repeat_hours": ("24", "Hours between repeated reminders for unresolved genealogy issues."),
 }
+
+
+def material_revenue_setting_key(lot_type: str) -> str:
+    return f"material_revenue_price_{lot_type}"
+
+
+def material_revenue_assumptions(root) -> dict[str, dict]:
+    assumptions = {}
+    for lot_type, label in MATERIAL_REVENUE_LOT_TYPES:
+        price = root.SystemSetting.get_float(material_revenue_setting_key(lot_type), 0.0)
+        assumptions[lot_type] = {
+            "lot_type": lot_type,
+            "label": label,
+            "price_per_unit": max(float(price or 0), 0.0),
+            "unit": "g",
+        }
+    return assumptions
 
 
 def _positive_hours(raw_value, default_hours: int) -> int:
@@ -1416,7 +1447,30 @@ def build_material_cost_summary_payload(root) -> dict:
     }
 
 
-def _material_inventory_groups(root, statuses: set[str]) -> list[dict]:
+def _annotate_financials(row: dict, assumptions: dict[str, dict]) -> dict:
+    lot_type = row.get("lot_type") or ""
+    quantity = float(row.get("quantity_total") or 0)
+    cost_basis = float(row.get("cost_basis_total") or 0)
+    assumption = assumptions.get(lot_type, {"price_per_unit": 0.0, "unit": row.get("unit") or "g"})
+    price_per_unit = float(assumption.get("price_per_unit") or 0)
+    projected_revenue = quantity * price_per_unit
+    projected_margin = projected_revenue - cost_basis
+    row["assumed_price_per_unit"] = price_per_unit
+    row["projected_revenue_total"] = projected_revenue
+    row["projected_margin_total"] = projected_margin
+    row["projected_margin_pct"] = (projected_margin / projected_revenue * 100.0) if projected_revenue > 0 else None
+    return row
+
+
+def _material_lot_projected_revenue(material_lot, assumptions: dict[str, dict]) -> float:
+    if material_lot is None:
+        return 0.0
+    assumption = assumptions.get(material_lot.lot_type or "", {})
+    return float(material_lot.quantity or 0) * float(assumption.get("price_per_unit") or 0)
+
+
+def _material_inventory_groups(root, statuses: set[str], assumptions: dict[str, dict] | None = None) -> list[dict]:
+    assumptions = assumptions or material_revenue_assumptions(root)
     rows = (
         root.MaterialLot.query.filter(root.MaterialLot.lot_type != "biomass")
         .filter(root.MaterialLot.inventory_status.in_(tuple(statuses)))
@@ -1438,7 +1492,7 @@ def _material_inventory_groups(root, statuses: set[str]) -> list[dict]:
         bucket["lot_count"] += 1
         bucket["quantity_total"] += float(material_lot.quantity or 0)
         bucket["cost_basis_total"] += float(material_lot.cost_basis_total or 0)
-    return list(grouped.values())
+    return [_annotate_financials(bucket, assumptions) for bucket in grouped.values()]
 
 
 def _descendant_material_lots(root, material_lot, *, seen=None):
@@ -1464,8 +1518,9 @@ def _descendant_material_lots(root, material_lot, *, seen=None):
 
 
 def build_material_reporting_payload(root) -> dict:
-    open_groups = _material_inventory_groups(root, {"open", "partially_consumed", "held"})
-    released_groups = _material_inventory_groups(root, {"released"})
+    revenue_assumptions = material_revenue_assumptions(root)
+    open_groups = _material_inventory_groups(root, {"open", "partially_consumed", "held"}, revenue_assumptions)
+    released_groups = _material_inventory_groups(root, {"released"}, revenue_assumptions)
     recent_lots = (
         root.MaterialLot.query.filter(root.MaterialLot.lot_type != "biomass")
         .order_by(root.MaterialLot.created_at.desc())
@@ -1494,6 +1549,11 @@ def build_material_reporting_payload(root) -> dict:
                 "descendant_lot_count": len(descendants),
                 "descendant_quantities_by_type": quantities_by_type,
                 "descendant_cost_basis_total": float(sum(float(row.cost_basis_total or 0) for row in descendants)),
+                "descendant_projected_revenue_total": float(sum(_material_lot_projected_revenue(row, revenue_assumptions) for row in descendants)),
+                "descendant_projected_margin_total": float(
+                    sum(_material_lot_projected_revenue(row, revenue_assumptions) for row in descendants) -
+                    sum(float(row.cost_basis_total or 0) for row in descendants)
+                ),
                 "descendants": [serialize_material_lot(root, row) for row in descendants[:8]],
             }
         )
@@ -1534,6 +1594,7 @@ def build_material_reporting_payload(root) -> dict:
             root.MaterialTransformation.transformation_type.like("correction_%")
         ).count()
         total_cost_basis = float(sum(float(row.cost_basis_total or 0) for row in material_lots))
+        projected_revenue_total = float(sum(_material_lot_projected_revenue(row, revenue_assumptions) for row in material_lots))
         run_rows.append(
             {
                 "run_id": run.id,
@@ -1544,6 +1605,9 @@ def build_material_reporting_payload(root) -> dict:
                 "dry_hte_g": float(run.dry_hte_g or 0),
                 "derivative_lot_count": len(material_lots),
                 "derivative_cost_basis_total": total_cost_basis,
+                "projected_revenue_total": projected_revenue_total,
+                "projected_margin_total": projected_revenue_total - total_cost_basis,
+                "projected_margin_pct": ((projected_revenue_total - total_cost_basis) / projected_revenue_total * 100.0) if projected_revenue_total > 0 else None,
                 "correction_count": correction_count,
                 "issue_count": run.material_reconciliation_issues.filter(
                     root.MaterialReconciliationIssue.status.in_(("open", "investigating", "needs_follow_up"))
@@ -1579,6 +1643,10 @@ def build_material_reporting_payload(root) -> dict:
 
     open_cost_basis_total = float(sum(float(group["cost_basis_total"] or 0) for group in open_groups))
     released_cost_basis_total = float(sum(float(group["cost_basis_total"] or 0) for group in released_groups))
+    open_projected_revenue_total = float(sum(float(group["projected_revenue_total"] or 0) for group in open_groups))
+    released_projected_revenue_total = float(sum(float(group["projected_revenue_total"] or 0) for group in released_groups))
+    open_projected_margin_total = open_projected_revenue_total - open_cost_basis_total
+    released_projected_margin_total = released_projected_revenue_total - released_cost_basis_total
 
     return {
         "summary": {
@@ -1586,9 +1654,16 @@ def build_material_reporting_payload(root) -> dict:
             "released_group_count": len(released_groups),
             "open_cost_basis_total": open_cost_basis_total,
             "released_cost_basis_total": released_cost_basis_total,
+            "open_projected_revenue_total": open_projected_revenue_total,
+            "released_projected_revenue_total": released_projected_revenue_total,
+            "open_projected_margin_total": open_projected_margin_total,
+            "released_projected_margin_total": released_projected_margin_total,
+            "open_projected_margin_pct": (open_projected_margin_total / open_projected_revenue_total * 100.0) if open_projected_revenue_total > 0 else None,
+            "released_projected_margin_pct": (released_projected_margin_total / released_projected_revenue_total * 100.0) if released_projected_revenue_total > 0 else None,
             "open_issue_count": len(open_issues),
             "rework_event_count": sum(int(item["count"]) for item in rework_summary.values()),
         },
+        "revenue_assumptions": list(revenue_assumptions.values()),
         "open_inventory_groups": open_groups,
         "released_inventory_groups": released_groups,
         "source_yield_rows": yield_rows,

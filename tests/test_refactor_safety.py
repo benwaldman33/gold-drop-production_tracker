@@ -131,6 +131,15 @@ def test_material_genealogy_report_renders_downstream_reporting():
                     action_key="release_complete",
                 )
             )
+            for key, value in {
+                "material_revenue_price_golddrop": "12",
+                "material_revenue_price_wholesale_thca": "8",
+            }.items():
+                setting = db.session.get(SystemSetting, key)
+                if setting is None:
+                    db.session.add(SystemSetting(key=key, value=value))
+                else:
+                    setting.value = value
             db.session.commit()
 
             app_module._material_lot_for_purchase_lot(app_module, db.session.get(PurchaseLot, lot.id))
@@ -148,6 +157,8 @@ def test_material_genealogy_report_renders_downstream_reporting():
             assert b"Released Derivative Inventory By Type" in resp.data
             assert b"Source-To-Derivative Yield" in resp.data
             assert b"Run Yield And Cost Review" in resp.data
+            assert b"Projected Revenue" in resp.data
+            assert b"Projected Margin" in resp.data
             assert b"Correction Impact On Reported Yield" in resp.data
             assert b"wholesale_thca" in resp.data
             assert b"golddrop" in resp.data
@@ -547,6 +558,14 @@ def test_settings_route_renders_smart_scales_section():
     assert b"Recent Weight Captures" in page.data
 
 
+def test_settings_route_renders_journey_revenue_assumptions():
+    page = _call_view_as_user("/settings", "settings", "admin")
+    assert page.status_code == 200
+    assert b"Journey Revenue Assumptions" in page.data
+    assert b"material_revenue_price_golddrop" in page.data
+    assert b"material_revenue_price_distillate" in page.data
+
+
 def test_cross_site_ops_is_hidden_until_enabled():
     app = app_module.app
     with app.app_context():
@@ -835,6 +854,7 @@ def test_alerts_and_journey_hubs_render():
     assert journey.status_code == 200
     assert b"Journey Home" in journey.data
     assert b"Manager Journey Hub" in journey.data
+    assert b"Open Projected Revenue" in journey.data
 
 
 def test_photos_library_renders_for_authenticated_user():

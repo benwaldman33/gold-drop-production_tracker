@@ -152,6 +152,21 @@
         When enabled, Dashboard/Supplier/Strain KPIs ignore runs that are unlinked or have any input lot without a Purchase price.
       </div>
     </div>
+    <div class="form-group" style="margin-top:12px;">
+      <label>Journey Revenue Assumptions ($/g)</label>
+      <div class="text-sm" style="color:var(--text-muted); margin-bottom:8px;">
+        Used by Journey and Genealogy Report to project revenue and gross margin from derivative lots. Leave a value at 0 when no reliable selling-price assumption exists yet.
+      </div>
+      <div class="form-row-3">
+        {% for lot_type, label in material_revenue_lot_types %}
+        {% set setting_key = 'material_revenue_price_' ~ lot_type %}
+        <div class="form-group" style="margin:0;">
+          <label>{{ label }}</label>
+          <input type="number" name="{{ setting_key }}" value="{{ system_settings.get(setting_key, '0') }}" step="0.01" min="0" placeholder="0.00">
+        </div>
+        {% endfor %}
+      </div>
+    </div>
     <div class="form-group" style="margin-top:8px;">
       <label style="display:flex;align-items:center;gap:8px; text-transform:none; letter-spacing:0; font-size:0.85rem; color:var(--text-secondary);">
         <input type="checkbox" name="standalone_purchasing_enabled" {% if system_settings.get('standalone_purchasing_enabled', '1') in ('1','true','yes','on') %}checked{% endif %}>
