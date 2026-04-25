@@ -2420,6 +2420,194 @@ def test_downstream_queue_move_updates_active_destination():
             db.session.commit()
 
 
+def test_downstream_queue_reporting_shows_age_blocked_throughput_and_rework():
+    app = app_module.app
+    run_ids = []
+    purchase_id = None
+    supplier_id = None
+    lot_ids = []
+    try:
+        with app.app_context():
+            admin_id = app_module.User.query.filter_by(username="admin").first().id
+            ops_id = app_module.User.query.filter_by(username="ops").first().id
+            supplier = Supplier(name="Downstream Reporting Supplier", is_active=True)
+            db.session.add(supplier)
+            db.session.flush()
+            supplier_id = supplier.id
+            purchase = Purchase(
+                supplier_id=supplier.id,
+                purchase_date=date(2026, 4, 25),
+                delivery_date=date(2026, 4, 25),
+                status="delivered",
+                stated_weight_lbs=240,
+                purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+                testing_status="completed",
+                clean_or_dirty="clean",
+                batch_id=f"DQRP-{app_module.gen_uuid()[:6]}",
+            )
+            db.session.add(purchase)
+            db.session.flush()
+            purchase_id = purchase.id
+            lots = []
+            for idx, strain in enumerate(("Blocked Dream", "Owned Dream", "Complete Dream", "Rework Dream"), start=1):
+                lot = PurchaseLot(
+                    purchase_id=purchase.id,
+                    strain_name=strain,
+                    tracking_id=f"DQRP-LOT-{idx}",
+                    weight_lbs=60,
+                    remaining_weight_lbs=20,
+                    floor_state="inventory",
+                    milled=True,
+                )
+                lots.append(lot)
+            db.session.add_all(lots)
+            db.session.flush()
+            lot_ids = [lot.id for lot in lots]
+
+            blocked_run = app_module.Run(
+                run_date=date(2026, 4, 25),
+                reactor_number=1,
+                run_type="standard",
+                bio_in_reactor_lbs=40,
+                wet_hte_g=1000,
+                wet_thca_g=2500,
+                created_by=admin_id,
+                run_completed_at=app_module.datetime.now(app_module.timezone.utc),
+                post_extraction_pathway="minor_run_200",
+                post_extraction_started_at=app_module.datetime.now(app_module.timezone.utc),
+                post_extraction_initial_outputs_recorded_at=app_module.datetime.now(app_module.timezone.utc),
+                hte_queue_destination="golddrop_queue",
+            )
+            owned_run = app_module.Run(
+                run_date=date(2026, 4, 25),
+                reactor_number=2,
+                run_type="standard",
+                bio_in_reactor_lbs=40,
+                wet_hte_g=900,
+                wet_thca_g=2400,
+                created_by=admin_id,
+                run_completed_at=app_module.datetime.now(app_module.timezone.utc),
+                post_extraction_pathway="minor_run_200",
+                post_extraction_started_at=app_module.datetime.now(app_module.timezone.utc),
+                post_extraction_initial_outputs_recorded_at=app_module.datetime.now(app_module.timezone.utc),
+                hte_queue_destination="liquid_loud_hold",
+                downstream_queue_assignee_user_id=ops_id,
+                downstream_queue_assigned_at=app_module.datetime.now(app_module.timezone.utc),
+                downstream_queue_assigned_by_user_id=admin_id,
+            )
+            completed_run = app_module.Run(
+                run_date=date(2026, 4, 25),
+                reactor_number=3,
+                run_type="standard",
+                bio_in_reactor_lbs=40,
+                wet_hte_g=800,
+                wet_thca_g=2300,
+                created_by=admin_id,
+                run_completed_at=app_module.datetime.now(app_module.timezone.utc),
+                post_extraction_pathway="minor_run_200",
+                post_extraction_started_at=app_module.datetime.now(app_module.timezone.utc),
+                post_extraction_initial_outputs_recorded_at=app_module.datetime.now(app_module.timezone.utc),
+            )
+            rework_run = app_module.Run(
+                run_date=date(2026, 4, 25),
+                reactor_number=4,
+                run_type="standard",
+                bio_in_reactor_lbs=40,
+                wet_hte_g=780,
+                wet_thca_g=2200,
+                created_by=admin_id,
+                run_completed_at=app_module.datetime.now(app_module.timezone.utc),
+                post_extraction_pathway="minor_run_200",
+                post_extraction_started_at=app_module.datetime.now(app_module.timezone.utc),
+                post_extraction_initial_outputs_recorded_at=app_module.datetime.now(app_module.timezone.utc),
+            )
+            db.session.add_all([blocked_run, owned_run, completed_run, rework_run])
+            db.session.flush()
+            run_ids = [blocked_run.id, owned_run.id, completed_run.id, rework_run.id]
+            db.session.add_all(
+                [
+                    app_module.RunInput(run_id=blocked_run.id, lot_id=lots[0].id, weight_lbs=40),
+                    app_module.RunInput(run_id=owned_run.id, lot_id=lots[1].id, weight_lbs=40),
+                    app_module.RunInput(run_id=completed_run.id, lot_id=lots[2].id, weight_lbs=40),
+                    app_module.RunInput(run_id=rework_run.id, lot_id=lots[3].id, weight_lbs=40),
+                ]
+            )
+            db.session.flush()
+            now = app_module.datetime.now(app_module.timezone.utc)
+            db.session.add_all(
+                [
+                    app_module.DownstreamQueueEvent(
+                        run_id=blocked_run.id,
+                        queue_key="golddrop_queue",
+                        action_key="entered_queue",
+                        notes="Old blocked queue item",
+                        created_by=admin_id,
+                        created_at=now - app_module.timedelta(days=4),
+                    ),
+                    app_module.DownstreamQueueEvent(
+                        run_id=owned_run.id,
+                        queue_key="liquid_loud_hold",
+                        action_key="entered_queue",
+                        notes="Owned queue item",
+                        created_by=admin_id,
+                        created_at=now,
+                    ),
+                    app_module.DownstreamQueueEvent(
+                        run_id=completed_run.id,
+                        queue_key="golddrop_queue",
+                        action_key="release_complete",
+                        notes="Recent completion",
+                        created_by=admin_id,
+                        created_at=now,
+                    ),
+                    app_module.DownstreamQueueEvent(
+                        run_id=rework_run.id,
+                        queue_key="terp_strip_cage",
+                        action_key="send_back",
+                        notes="Recent rework",
+                        created_by=admin_id,
+                        created_at=now,
+                    ),
+                ]
+            )
+            db.session.commit()
+
+        with app.test_client() as client:
+            _login(client, "admin")
+            resp = client.get("/downstream-queues")
+            assert resp.status_code == 200
+            assert b"Completed 7 Days" in resp.data
+            assert b"Rework 30 Days" in resp.data
+            assert b"Stale 3+ Days" in resp.data
+            assert b"Queue age: 4 days in queue" in resp.data
+            assert b"Blocked" in resp.data
+            assert b"VP Operations" in resp.data
+
+            queue_page = client.get("/downstream-queues/golddrop")
+            assert queue_page.status_code == 200
+            assert b"Queue age: 4 days in queue" in queue_page.data
+            assert b"Blocked" in queue_page.data
+    finally:
+        with app.app_context():
+            for run_id in run_ids:
+                app_module.DownstreamQueueEvent.query.filter_by(run_id=run_id).delete(synchronize_session=False)
+                app_module.RunInput.query.filter_by(run_id=run_id).delete(synchronize_session=False)
+                run = db.session.get(app_module.Run, run_id)
+                if run:
+                    db.session.delete(run)
+            for lot_id in lot_ids:
+                lot = db.session.get(PurchaseLot, lot_id)
+                if lot:
+                    db.session.delete(lot)
+            purchase = db.session.get(Purchase, purchase_id) if purchase_id else None
+            if purchase:
+                db.session.delete(purchase)
+            supplier = db.session.get(Supplier, supplier_id) if supplier_id else None
+            if supplier:
+                db.session.delete(supplier)
+            db.session.commit()
+
+
 def test_golddrop_queue_page_renders_history_and_actions():
     app = app_module.app
     run_id = None
@@ -3330,19 +3518,44 @@ def test_hp_base_oil_queue_actions_render_and_release():
             page = client.get("/downstream-queues/hp-base-oil")
             assert page.status_code == 200
             assert b"HP Base Oil Hold" in page.data
-            assert b"Confirm Hold" in page.data
-            assert b"Release Complete" in page.data
+            assert b"Mark Reviewed" in page.data
+            assert b"Confirm Hold" not in page.data
+            assert b"Release Complete" not in page.data
 
             reviewed = client.post(
                 f"/downstream-queues/hp-base-oil/runs/{run_id}/action",
-                data={"queue_action": "confirm_hold", "queue_notes": "Hold confirmed"},
+                data={"queue_action": "mark_reviewed", "queue_notes": "Reviewed for HP base oil"},
                 follow_redirects=False,
             )
             assert reviewed.status_code in (302, 303)
 
+            confirmed_page = client.get("/downstream-queues/hp-base-oil")
+            assert confirmed_page.status_code == 200
+            assert b"Confirm Hold" in confirmed_page.data
+            assert b"Mark Release Ready" not in confirmed_page.data
+
+            confirmed = client.post(
+                f"/downstream-queues/hp-base-oil/runs/{run_id}/action",
+                data={"queue_action": "confirm_hold", "queue_notes": "Hold confirmed"},
+                follow_redirects=False,
+            )
+            assert confirmed.status_code in (302, 303)
+
+            release_ready_page = client.get("/downstream-queues/hp-base-oil")
+            assert release_ready_page.status_code == 200
+            assert b"Mark Release Ready" in release_ready_page.data
+            assert b"Release Complete" not in release_ready_page.data
+
+            ready = client.post(
+                f"/downstream-queues/hp-base-oil/runs/{run_id}/action",
+                data={"queue_action": "mark_release_ready", "queue_notes": "HP base oil hold ready to close"},
+                follow_redirects=False,
+            )
+            assert ready.status_code in (302, 303)
+
             released = client.post(
                 f"/downstream-queues/hp-base-oil/runs/{run_id}/action",
-                data={"queue_action": "release_complete"},
+                data={"queue_action": "release_complete", "queue_notes": "Hold closed"},
                 follow_redirects=False,
             )
             assert released.status_code in (302, 303)
@@ -3356,7 +3569,7 @@ def test_hp_base_oil_queue_actions_render_and_release():
                 .order_by(app_module.DownstreamQueueEvent.created_at.asc())
                 .all()
             )
-            assert [event.action_key for event in events] == ["confirm_hold", "release_complete"]
+            assert [event.action_key for event in events] == ["mark_reviewed", "confirm_hold", "mark_release_ready", "release_complete"]
     finally:
         with app.app_context():
             app_module.DownstreamQueueEvent.query.filter_by(run_id=run_id).delete(synchronize_session=False)
@@ -3440,8 +3653,21 @@ def test_distillate_queue_actions_render_and_release():
             page = client.get("/downstream-queues/distillate")
             assert page.status_code == 200
             assert b"Distillate Hold" in page.data
-            assert b"Confirm Hold" in page.data
-            assert b"Release Complete" in page.data
+            assert b"Mark Reviewed" in page.data
+            assert b"Confirm Hold" not in page.data
+            assert b"Release Complete" not in page.data
+
+            reviewed = client.post(
+                f"/downstream-queues/distillate/runs/{run_id}/action",
+                data={"queue_action": "mark_reviewed", "queue_notes": "Reviewed for distillate"},
+                follow_redirects=False,
+            )
+            assert reviewed.status_code in (302, 303)
+
+            confirmed_page = client.get("/downstream-queues/distillate")
+            assert confirmed_page.status_code == 200
+            assert b"Confirm Hold" in confirmed_page.data
+            assert b"Mark Release Ready" not in confirmed_page.data
 
             confirmed = client.post(
                 f"/downstream-queues/distillate/runs/{run_id}/action",
@@ -3450,9 +3676,21 @@ def test_distillate_queue_actions_render_and_release():
             )
             assert confirmed.status_code in (302, 303)
 
+            release_ready_page = client.get("/downstream-queues/distillate")
+            assert release_ready_page.status_code == 200
+            assert b"Mark Release Ready" in release_ready_page.data
+            assert b"Release Complete" not in release_ready_page.data
+
+            ready = client.post(
+                f"/downstream-queues/distillate/runs/{run_id}/action",
+                data={"queue_action": "mark_release_ready", "queue_notes": "Distillate hold ready to close"},
+                follow_redirects=False,
+            )
+            assert ready.status_code in (302, 303)
+
             released = client.post(
                 f"/downstream-queues/distillate/runs/{run_id}/action",
-                data={"queue_action": "release_complete"},
+                data={"queue_action": "release_complete", "queue_notes": "Distillate hold closed"},
                 follow_redirects=False,
             )
             assert released.status_code in (302, 303)
@@ -3466,7 +3704,7 @@ def test_distillate_queue_actions_render_and_release():
                 .order_by(app_module.DownstreamQueueEvent.created_at.asc())
                 .all()
             )
-            assert [event.action_key for event in events] == ["confirm_hold", "release_complete"]
+            assert [event.action_key for event in events] == ["mark_reviewed", "confirm_hold", "mark_release_ready", "release_complete"]
     finally:
         with app.app_context():
             app_module.DownstreamQueueEvent.query.filter_by(run_id=run_id).delete(synchronize_session=False)
@@ -3477,6 +3715,145 @@ def test_distillate_queue_actions_render_and_release():
             lot = db.session.get(PurchaseLot, lot_id) if lot_id else None
             if lot:
                 db.session.delete(lot)
+            purchase = db.session.get(Purchase, purchase_id) if purchase_id else None
+            if purchase:
+                db.session.delete(purchase)
+            supplier = db.session.get(Supplier, supplier_id) if supplier_id else None
+            if supplier:
+                db.session.delete(supplier)
+            db.session.commit()
+
+
+def test_hold_release_actions_require_release_ready():
+    app = app_module.app
+    run_ids = []
+    purchase_id = None
+    supplier_id = None
+    lot_ids = []
+    try:
+        with app.app_context():
+            admin_id = app_module.User.query.filter_by(username="admin").first().id
+            supplier = Supplier(name="Hold Release Ready Supplier", is_active=True)
+            db.session.add(supplier)
+            db.session.flush()
+            supplier_id = supplier.id
+            purchase = Purchase(
+                supplier_id=supplier.id,
+                purchase_date=date(2026, 4, 25),
+                delivery_date=date(2026, 4, 25),
+                status="delivered",
+                stated_weight_lbs=120,
+                purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+                testing_status="completed",
+                clean_or_dirty="clean",
+                batch_id=f"HRR-{app_module.gen_uuid()[:6]}",
+            )
+            db.session.add(purchase)
+            db.session.flush()
+            purchase_id = purchase.id
+            hp_lot = PurchaseLot(
+                purchase_id=purchase.id,
+                strain_name="HP Ready Dream",
+                tracking_id="HRR-LOT-1",
+                weight_lbs=60,
+                remaining_weight_lbs=20,
+                floor_state="inventory",
+                milled=True,
+            )
+            dist_lot = PurchaseLot(
+                purchase_id=purchase.id,
+                strain_name="Dist Ready Dream",
+                tracking_id="HRR-LOT-2",
+                weight_lbs=60,
+                remaining_weight_lbs=20,
+                floor_state="inventory",
+                milled=True,
+            )
+            db.session.add_all([hp_lot, dist_lot])
+            db.session.flush()
+            lot_ids = [hp_lot.id, dist_lot.id]
+
+            hp_run = app_module.Run(
+                run_date=date(2026, 4, 25),
+                reactor_number=5,
+                run_type="standard",
+                bio_in_reactor_lbs=40,
+                wet_hte_g=700,
+                wet_thca_g=2000,
+                created_by=admin_id,
+                run_completed_at=app_module.datetime.now(app_module.timezone.utc),
+                post_extraction_pathway="minor_run_200",
+                post_extraction_started_at=app_module.datetime.now(app_module.timezone.utc),
+                post_extraction_initial_outputs_recorded_at=app_module.datetime.now(app_module.timezone.utc),
+                hte_potency_disposition="hold_hp_base_oil",
+            )
+            dist_run = app_module.Run(
+                run_date=date(2026, 4, 25),
+                reactor_number=6,
+                run_type="standard",
+                bio_in_reactor_lbs=40,
+                wet_hte_g=710,
+                wet_thca_g=2010,
+                created_by=admin_id,
+                run_completed_at=app_module.datetime.now(app_module.timezone.utc),
+                post_extraction_pathway="minor_run_200",
+                post_extraction_started_at=app_module.datetime.now(app_module.timezone.utc),
+                post_extraction_initial_outputs_recorded_at=app_module.datetime.now(app_module.timezone.utc),
+                hte_potency_disposition="hold_distillate",
+            )
+            db.session.add_all([hp_run, dist_run])
+            db.session.flush()
+            run_ids = [hp_run.id, dist_run.id]
+            db.session.add_all(
+                [
+                    app_module.RunInput(run_id=hp_run.id, lot_id=hp_lot.id, weight_lbs=40),
+                    app_module.RunInput(run_id=dist_run.id, lot_id=dist_lot.id, weight_lbs=40),
+                ]
+            )
+            db.session.commit()
+
+        with app.test_client() as client:
+            _login(client, "admin")
+            hp_rejected = client.post(
+                f"/downstream-queues/hp-base-oil/runs/{run_ids[0]}/action",
+                data={"queue_action": "release_complete"},
+                follow_redirects=False,
+            )
+            dist_rejected = client.post(
+                f"/downstream-queues/distillate/runs/{run_ids[1]}/action",
+                data={"queue_action": "release_complete"},
+                follow_redirects=False,
+            )
+            assert hp_rejected.status_code in (302, 303)
+            assert dist_rejected.status_code in (302, 303)
+
+        with app.app_context():
+            hp_run = db.session.get(app_module.Run, run_ids[0])
+            dist_run = db.session.get(app_module.Run, run_ids[1])
+            assert hp_run is not None and hp_run.hte_potency_disposition == "hold_hp_base_oil"
+            assert dist_run is not None and dist_run.hte_potency_disposition == "hold_distillate"
+            assert (
+                app_module.DownstreamQueueEvent.query.filter_by(run_id=run_ids[0], queue_key="hold_hp_base_oil")
+                .order_by(app_module.DownstreamQueueEvent.created_at.asc())
+                .all()
+            ) == []
+            assert (
+                app_module.DownstreamQueueEvent.query.filter_by(run_id=run_ids[1], queue_key="hold_distillate")
+                .order_by(app_module.DownstreamQueueEvent.created_at.asc())
+                .all()
+            ) == []
+    finally:
+        with app.app_context():
+            for run_id in run_ids:
+                app_module.DownstreamQueueEvent.query.filter_by(run_id=run_id).delete(synchronize_session=False)
+                app_module.RunInput.query.filter_by(run_id=run_id).delete(synchronize_session=False)
+                run = db.session.get(app_module.Run, run_id)
+                if run:
+                    db.session.delete(run)
+            for lot_id in lot_ids:
+                lot = db.session.get(PurchaseLot, lot_id)
+                if lot:
+                    db.session.delete(lot)
             purchase = db.session.get(Purchase, purchase_id) if purchase_id else None
             if purchase:
                 db.session.delete(purchase)
@@ -3666,6 +4043,24 @@ def test_downstream_queue_assignment_clears_when_queue_item_releases_complete():
 
         with app.test_client() as client:
             _login(client, "admin")
+            reviewed = client.post(
+                f"/downstream-queues/hp-base-oil/runs/{run_id}/action",
+                data={"queue_action": "mark_reviewed"},
+                follow_redirects=False,
+            )
+            assert reviewed.status_code in (302, 303)
+            confirmed = client.post(
+                f"/downstream-queues/hp-base-oil/runs/{run_id}/action",
+                data={"queue_action": "confirm_hold"},
+                follow_redirects=False,
+            )
+            assert confirmed.status_code in (302, 303)
+            ready = client.post(
+                f"/downstream-queues/hp-base-oil/runs/{run_id}/action",
+                data={"queue_action": "mark_release_ready"},
+                follow_redirects=False,
+            )
+            assert ready.status_code in (302, 303)
             released = client.post(
                 f"/downstream-queues/hp-base-oil/runs/{run_id}/action",
                 data={"queue_action": "release_complete"},
@@ -3684,7 +4079,7 @@ def test_downstream_queue_assignment_clears_when_queue_item_releases_complete():
                 .order_by(app_module.DownstreamQueueEvent.created_at.asc())
                 .all()
             )
-            assert [event.action_key for event in events] == ["release_complete"]
+            assert [event.action_key for event in events] == ["mark_reviewed", "confirm_hold", "mark_release_ready", "release_complete"]
     finally:
         with app.app_context():
             app_module.DownstreamQueueEvent.query.filter_by(run_id=run_id).delete(synchronize_session=False)

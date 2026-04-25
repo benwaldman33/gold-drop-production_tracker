@@ -66,6 +66,7 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 ## Features
 
 - **Downstream queue ownership** - active downstream queue items can now be assigned to a specific editor from either the shared board or the dedicated destination queue pages, so supervisors have explicit current ownership instead of only queue-event history.
+- **Downstream queue reporting** - the shared downstream board and dedicated destination queue pages now show queue age, stale/blocked status, recent completions, and recent rework volume so supervisors can manage bottlenecks directly from the queue surfaces.
 
 - **Docs update (Apr 2026)** — Journey endpoints now share one validation path for missing/archived purchases, and Journey export rejects unsupported formats with an explicit `400` JSON error (`{"error":"Unsupported export format","supported_formats":["csv","json"]}`) instead of silently defaulting.
 - **Dashboard** — KPI cards with configurable green/yellow/red traffic lights (on-hand biomass and days-of-supply use **approved** purchases only; see **Purchases** below)
@@ -92,7 +93,9 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 - **Destination-specific downstream queues** — `Liquid Loud Hold`, `Terp Strip / CDT Cage`, and `HP Base Oil Hold` now also have their own dedicated main-app workflow pages with queue history and supervisor actions tailored to each hold or rework path.
 - **Liquid Loud staged workflow** — the Liquid Loud hold now behaves like a real staged hold/release workflow. Runs move through review, Liquid Loud reservation, release-ready state, and then into either GoldDrop release or direct completion, with only the valid next actions shown at each stage.
 - **Terp Strip staged workflow** — the Terp Strip / CDT Cage now behaves like a real staged work queue. Runs move through review, Prescott queueing, active strip work, and strip completion, with completion only available once strip work is in progress.
+- **HP Base Oil staged workflow** - the HP Base Oil hold now behaves like a staged hold workflow. Runs move through review, hold confirmation, release-ready state, and final release, with release blocked until the hold is marked release-ready.
 - **Distillate Hold** — The distillate pathway now also has its own dedicated main-app workflow page with queue history and hold/release actions, so all current downstream hold destinations have dedicated operational surfaces.
+- **Distillate staged workflow** - the Distillate hold now follows the same staged hold pattern as HP Base Oil, with review, hold confirmation, release-ready state, and final release gating.
 - **Lot tracking IDs** — Purchase lots now receive machine-readable tracking fields (`tracking_id`, barcode payload, QR payload, label metadata) at creation or approval time, and printable labels now render both a Code 39 barcode and a QR code for floor execution.
 - **Confirmed lot splitting** — Edit Purchase now includes **Split Existing Lot** so operators can break a confirmed lot's remaining inventory into a new child lot without leaving the purchase workflow; the original lot is reduced, the child lot gets fresh tracking fields, and the action is audited.
 - **Extraction charge workflow** — A lot can now be charged into production from either the main purchase form (**Charge Lot**) or the scanned-lot workflow. The app records a persisted extraction-charge event with lbs, reactor, charge time, notes, and source mode before opening the run form.
@@ -626,3 +629,4 @@ Use **Inventory → Import spreadsheet** when you need to bulk update existing l
 - Slack run preview can rank candidate lots and prefill one-lot or split-lot allocations before the run form opens
 - Yield calculations and cost-per-gram are auto-computed on save
 - **Runs** may store **HTE pipeline stage** (awaiting lab → lab clean / queued for strip → stripped), **lab/COA file paths** (JSON, under `static/uploads/labs/`), and **terpenes / retail distillate grams** after stripping
+

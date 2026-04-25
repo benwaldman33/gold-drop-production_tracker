@@ -370,20 +370,28 @@ The active work area is now the extraction booth SOP alignment layer that sits b
     - queue items can now be assigned to a specific editor from the shared `Downstream Queues` board or the dedicated destination queue pages
     - current owner, assignment time, and assigning user are visible on both surfaces
     - owner state clears automatically when a queue item leaves active downstream management
+  - downstream queue reporting is now visible directly on the queue surfaces:
+    - the shared board shows queue aging, blocked count, stale count, completions in the last 7 days, and rework in the last 30 days
+    - individual queue cards now show queue age plus stale / blocked status
+    - dedicated destination pages show the same age / stale / blocked view for their own queue
+  - `HP Base Oil Hold` and `Distillate Hold` are now staged workflows instead of flat hold/release surfaces:
+    - both now move through `Reviewed`, `Hold confirmed`, `Release ready`, and `Released complete`
+    - final release is blocked until release-ready state is reached
 
 ### In progress
 
 - the active product area is no longer only downstream execution
 - the current product area is downstream queue deepening on top of the booth-SOP foundation:
   - making destination queues behave like real work surfaces instead of generic hold lists
-  - deciding how far to push the remaining hold workflows before adding queue-reporting depth
-  - deciding what reporting matters first now that staged state and ownership are both present
+  - deciding how far to push downstream completion / rework semantics now that all current destination surfaces are staged or owned
+  - deciding where queue reporting should live beyond the queue surfaces themselves
 
 ### Next
 
-- deepen the remaining downstream destination queues from the stronger GoldDrop pattern:
-  - decide whether queue state should eventually carry explicit assignee / owner fields instead of event-only history
-  - decide whether `HP Base Oil Hold` and `Distillate Hold` actually need staged workflows or can remain simpler hold/release surfaces
+- deepen the downstream operating model after queue staging:
+  - decide whether downstream completion should stamp stronger final outcome states instead of simply removing the item from queue management
+  - decide whether rework / send-back paths now need richer destination-specific reasons or resolution tracking
+  - decide whether queue reporting should also surface on the main dashboard or a dedicated reporting page
 - keep repeated reminder escalation on the future list, but not on the current critical path
 
 ## Current planning baseline
@@ -414,33 +422,32 @@ with downstream:
 
 ## Recommended next development step
 
-The next major build should stay in downstream execution, but move past the first three staged queues:
+The next major build should stay in downstream execution, but move past queue staging itself:
 
-- decide whether `HP Base Oil Hold` and `Distillate Hold` need deeper staged workflows or can remain simpler hold/release surfaces
-- add queue aging / blocked-item / throughput visibility once the destination workflow shape is settled
+- turn downstream completion and rework into stronger tracked outcomes instead of mostly queue removal
+- decide whether queue reporting now belongs on the main dashboard or a dedicated reporting surface
 
 ## Recommended concrete next session
 
-When work resumes, decide the next downstream operating slice after the first three staged queues and confirm:
+When work resumes, decide the next downstream operating slice after queue reporting and staged holds and confirm:
 
-1. whether `HP Base Oil Hold` and `Distillate Hold` should become staged workflows or stay lighter-weight
-2. what reporting matters first once queue stages and ownership are both present: aging, blocked items, throughput, or rework volume
-3. whether any destination now needs a dedicated role-specific completion or rework state beyond queue removal
+1. whether downstream completion should simply clear a queue item or stamp a stronger destination-specific completion state
+2. what rework needs next: send-back reasons, rework categories, or tracked resolution states
+3. whether queue reporting should stay embedded in queue surfaces or expand into dashboard / reporting pages
 4. whether ownership should later expand from single-owner assignment into explicit handoff / team-state tracking
 
 The likely implementation order is:
 
-1. remaining hold-workflow decisions
-2. stronger downstream completion/rework tracking
-3. queue reporting and management visibility
-4. later ownership refinements if needed
+1. stronger downstream completion/rework tracking
+2. broader reporting and management visibility
+3. later ownership refinements if needed
 
 ## Deployment note
 
 Current booth-SOP rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `78532b1`
+- commit: `pending current sprint closeout`
 
 Production deployment steps:
 
@@ -448,13 +455,13 @@ Production deployment steps:
    - `git fetch origin`
    - `git checkout Claude_Consolidation`
    - `git pull --ff-only origin Claude_Consolidation`
-2. restart the backend so the downstream queue ownership fields and assignment controls are live
+2. restart the backend so the queue-reporting surfaces and staged HP Base Oil / Distillate workflows are live
 3. no standalone extraction app sync is required for this sprint
 4. verify in the main app and on a live extraction run:
-   - the shared `Downstream Queues` board shows `Queue owner` on active destination items
-   - the dedicated `GoldDrop`, `Liquid Loud`, `Terp Strip`, `HP Base Oil`, and `Distillate` pages show the same owner state
-   - assigning an owner from either surface persists and shows assignment timing/context
-   - releasing or completing a queue item clears the owner automatically
+   - the shared `Downstream Queues` board shows queue age, stale / blocked status, `Completed 7 Days`, and `Rework 30 Days`
+   - the dedicated destination pages show queue age plus stale / blocked status for each item
+   - `HP Base Oil Hold` and `Distillate Hold` now require `Mark Release Ready` before `Release Complete`
+   - owner assignment still works and still clears automatically when a queue item leaves active management
 
 ## Local note
 

@@ -14,6 +14,24 @@
     <h3>Queue Summary</h3>
     <span class="text-sm cell-muted">{{ queue.count }} run{% if queue.count != 1 %}s{% endif %} {{ queue.summary_description|lower }}</span>
   </div>
+  <div class="summary-row" style="margin-bottom:16px;">
+    <div class="summary-stat">
+      <div class="label">Queue Items</div>
+      <div class="value">{{ queue.reporting.active_count }}</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Unassigned</div>
+      <div class="value">{{ queue.reporting.unassigned_count }}</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Stale 3+ Days</div>
+      <div class="value">{{ queue.reporting.stale_count }}</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Blocked</div>
+      <div class="value">{{ queue.reporting.blocked_count }}</div>
+    </div>
+  </div>
   {% if queue["items"] %}
   <div class="summary-row">
     {% for item in queue["items"] %}
@@ -61,6 +79,10 @@
             {% else %}
             Unassigned
             {% endif %}
+          </div>
+          <div class="text-sm cell-muted" style="margin-top:4px;">
+            Queue age: {{ item.queue_age_label }}
+            {% if item.queue_is_blocked %}&middot; <span style="color:#f4c26b;">Blocked</span>{% elif item.queue_is_stale %}&middot; <span style="color:#f4c26b;">Stale</span>{% endif %}
           </div>
           <div class="summary-footnote" style="margin-top:10px;">{{ item.queue_next_step or queue.help_text }}</div>
           <div class="form-actions" style="justify-content:flex-start;margin-top:10px;">

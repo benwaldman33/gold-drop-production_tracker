@@ -664,6 +664,14 @@ Use the owner dropdown on a queue card to:
 
 This ownership control only applies once a run is in an active downstream destination or hold. It is not used for `Needs Queue Decision`.
 
+The shared downstream board now also includes queue reporting:
+- `Blocked`
+- `Stale 3+ Days`
+- `Completed 7 Days`
+- `Rework 30 Days`
+
+Each queue card also shows `Queue age`, plus `Blocked` or `Stale` status when applicable.
+
 When you open a run from this page, the main run form now shows **Back to Downstream Queues** so you can return to the same supervisor queue surface.
 
 ### GoldDrop Production Queue
@@ -734,10 +742,17 @@ Typical staged flow:
 #### HP Base Oil Hold
 - `Mark Reviewed`
 - `Confirm Hold`
+- `Mark Release Ready`
 - `Release Complete`
 - `Send Back For Re-routing`
 
-This page is for low-potency output held for HP base oil decisions. `Release Complete` clears the hold when that downstream decision is finished.
+Typical staged flow:
+- `Mark Reviewed`
+- `Confirm Hold`
+- `Mark Release Ready`
+- `Release Complete`
+
+This page is for low-potency output held for HP base oil decisions. `Release Complete` does not appear until the hold is marked release-ready.
 
 ### Distillate Hold
 
@@ -748,10 +763,17 @@ Use it when high-potency output is being held to be made into distillate.
 Actions:
 - `Mark Reviewed`
 - `Confirm Hold`
+- `Mark Release Ready`
 - `Release Complete`
 - `Send Back For Re-routing`
 
-This mirrors the HP base oil hold pattern, but for the distillate path instead of the low-potency hold path.
+Typical staged flow:
+- `Mark Reviewed`
+- `Confirm Hold`
+- `Mark Release Ready`
+- `Release Complete`
+
+This mirrors the HP base oil hold pattern, but for the distillate path instead of the low-potency hold path. `Release Complete` does not appear until the hold is marked release-ready.
 
 Use **Confirm Movement** to record a standard movement action:
 - move to vault
