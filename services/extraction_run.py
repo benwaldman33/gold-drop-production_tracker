@@ -26,6 +26,20 @@ EXTRACTION_RUN_DEFAULTS = {
     "extraction_target_final_purge_minutes": ("", "Optional target minutes for the final purge window"),
 }
 
+TIMING_POLICY_OPTIONS = [
+    ("informational", "Informational"),
+    ("warning", "Warning only"),
+    ("supervisor_override", "Require supervisor override"),
+    ("hard_stop", "Hard stop"),
+]
+
+TIMING_POLICY_DEFAULTS = {
+    "extraction_policy_primary_soak": ("warning", "Policy for primary soak timing deviations"),
+    "extraction_policy_mixer": ("warning", "Policy for mixer timing deviations"),
+    "extraction_policy_flush": ("warning", "Policy for flush soak timing deviations"),
+    "extraction_policy_final_purge": ("informational", "Policy for final purge timing deviations"),
+}
+
 RUN_PROGRESSION = {
     "ready_to_confirm_vacuum": {
         "label": "Confirm vacuum down",
@@ -244,6 +258,21 @@ def extraction_timing_targets(root) -> dict[str, int | None]:
     }
 
 
+def extraction_timing_policies(root) -> dict[str, str]:
+    allowed = {value for value, _label in TIMING_POLICY_OPTIONS}
+    return {
+        "primary_soak": _normalized_timing_policy(root.SystemSetting.get("extraction_policy_primary_soak", TIMING_POLICY_DEFAULTS["extraction_policy_primary_soak"][0]), allowed),
+        "mixer": _normalized_timing_policy(root.SystemSetting.get("extraction_policy_mixer", TIMING_POLICY_DEFAULTS["extraction_policy_mixer"][0]), allowed),
+        "flush": _normalized_timing_policy(root.SystemSetting.get("extraction_policy_flush", TIMING_POLICY_DEFAULTS["extraction_policy_flush"][0]), allowed),
+        "final_purge": _normalized_timing_policy(root.SystemSetting.get("extraction_policy_final_purge", TIMING_POLICY_DEFAULTS["extraction_policy_final_purge"][0]), allowed),
+    }
+
+
+def _normalized_timing_policy(raw_value: str | None, allowed: set[str]) -> str:
+    value = (raw_value or "").strip().lower()
+    return value if value in allowed else "warning"
+
+
 def _utc_now_localized() -> datetime:
     return datetime.now(app_display_zoneinfo()).astimezone(timezone.utc)
 
@@ -412,7 +441,18 @@ def timing_control_payload(*, label: str, target_minutes: int | None, start_at: 
     }
 
 
-def _notify_short_timing(root, run, session, *, event_key: str, label: str, actual_minutes: int | None, target_minutes: int | None) -> None:
+def _notify_short_timing(
+    root,
+    run,
+    session,
+    *,
+    event_key: str,
+    label: str,
+    actual_minutes: int | None,
+    target_minutes: int | None,
+    policy: str = "warning",
+    operator_reason: str | None = None,
+) -> None:
     if actual_minutes is None or target_minutes is None or actual_minutes >= target_minutes:
         resolve_matching_notifications(
             root,
@@ -421,6 +461,8 @@ def _notify_short_timing(root, run, session, *, event_key: str, label: str, actu
             note=f"{label} no longer appears short of target.",
         )
         return
+    if policy == "informational":
+        return
     create_notification(
         root,
         run=run,
@@ -428,9 +470,13 @@ def _notify_short_timing(root, run, session, *, event_key: str, label: str, actu
         event_key=event_key,
         dedupe_key=event_key,
         notification_class="warnings",
-        severity="warning",
+        severity="critical" if policy == "supervisor_override" else "warning",
         title=f"{label} finished short of target",
-        message=f"{label} recorded {actual_minutes} minute(s) against a {target_minutes}-minute target.",
+        message=(
+            f"{label} recorded {actual_minutes} minute(s) against a {target_minutes}-minute target."
+            + (" Supervisor override is required before continuing." if policy == "supervisor_override" else "")
+        ),
+        operator_reason=operator_reason,
     )
 
 
@@ -441,10 +487,55 @@ def _required_reason(payload: dict, field_name: str, prompt: str) -> str:
     return reason
 
 
+def _notification_override_approved(root, run, dedupe_key: str) -> bool:
+    if run is None or getattr(run, "id", None) is None:
+        return False
+    row = root.SupervisorNotification.query.filter(
+        root.SupervisorNotification.run_id == run.id,
+        root.SupervisorNotification.dedupe_key == dedupe_key,
+    ).order_by(root.SupervisorNotification.created_at.desc()).first()
+    return bool(row is not None and (row.override_decision or "") == "approved_deviation")
+
+
+def _active_override_required_notification(root, run, dedupe_key: str):
+    if run is None or getattr(run, "id", None) is None:
+        return None
+    return root.SupervisorNotification.query.filter(
+        root.SupervisorNotification.run_id == run.id,
+        root.SupervisorNotification.dedupe_key == dedupe_key,
+        root.SupervisorNotification.status.in_(("open", "acknowledged")),
+    ).order_by(root.SupervisorNotification.created_at.desc()).first()
+
+
+def _policy_block_payload(root, run, timing_key: str, dedupe_key: str, title: str) -> dict | None:
+    policy = extraction_timing_policies(root).get(timing_key, "warning")
+    if policy != "supervisor_override":
+        return None
+    row = _active_override_required_notification(root, run, dedupe_key)
+    if row is None:
+        return None
+    if _notification_override_approved(root, run, dedupe_key):
+        return None
+    return {
+        "timing_key": timing_key,
+        "dedupe_key": dedupe_key,
+        "title": title,
+        "message": f"{title} requires supervisor override before the booth workflow can continue.",
+        "notification_id": row.id,
+    }
+
+
+def _timing_policy_message(label: str, policy: str) -> str:
+    if policy == "hard_stop":
+        return f"{label} is configured as a hard stop. Continue the timed step until target is met."
+    return f"{label} requires supervisor override before the booth workflow can continue."
+
+
 def run_timing_controls_payload(root, run) -> dict:
     booth_session = getattr(run, "booth_session", None)
     timing_targets = extraction_timing_targets(root)
-    return {
+    timing_policies = extraction_timing_policies(root)
+    payload = {
         "primary_soak": timing_control_payload(
             label="Primary soak",
             target_minutes=timing_targets.get("primary_soak_minutes"),
@@ -470,9 +561,12 @@ def run_timing_controls_payload(root, run) -> dict:
             end_at=getattr(booth_session, "final_purge_completed_at", None),
         ),
     }
+    for key, item in payload.items():
+        item["policy"] = timing_policies.get(key, "warning")
+    return payload
 
 
-def run_progression_payload(run) -> dict:
+def run_progression_payload(root, run) -> dict:
     session = getattr(run, "booth_session", None)
     if run.run_completed_at:
         stage_key = "completed"
@@ -489,16 +583,30 @@ def run_progression_payload(run) -> dict:
     else:
         stage_key = "ready_to_confirm_vacuum"
     config = dict(RUN_PROGRESSION[stage_key])
+    block = None
+    if root is not None and run is not None:
+        if stage_key in {"ready_to_start_mixer"}:
+            block = _policy_block_payload(root, run, "primary_soak", "timing_short_primary_soak", "Primary soak timing deviation")
+        elif stage_key in {"ready_to_confirm_filter_clear", "ready_to_start_pressurization", "ready_to_begin_recovery", "ready_to_begin_flush_cycle"}:
+            block = _policy_block_payload(root, run, "mixer", "timing_short_mixer", "Mixer timing deviation")
+        elif stage_key in {"ready_to_confirm_flow_resumed", "flow_adjustment_required", "ready_to_start_final_purge"}:
+            block = _policy_block_payload(root, run, "flush", "timing_short_flush", "Flush timing deviation")
+        elif stage_key in {"ready_to_confirm_clarity", "clarity_adjustment_required", "ready_to_complete_shutdown", "ready_to_complete"}:
+            block = _policy_block_payload(root, run, "final_purge", "timing_short_final_purge", "Final purge timing deviation")
     if session is not None and stage_key == "ready_to_confirm_flow_resumed" and (session.flow_resumed_decision or "").strip().lower() == "no_adjusting":
         config["description"] = "Flow is still being adjusted. Re-check once recovery flow has resumed, then continue to final purge."
     if session is not None and stage_key == "ready_to_confirm_clarity" and (session.final_clarity_decision or "").strip().lower() == "not_yet":
         config["description"] = "Final clarity is not there yet. Confirm again after additional purge or adjustment work."
+    if block is not None:
+        config["description"] = block["message"]
+        config["actions"] = []
     return {
         "stage_key": stage_key,
         "stage_label": config["label"],
         "description": config["description"],
         "actions": list(config["actions"]),
         "completed_at": display_local_datetime(run.run_completed_at),
+        "policy_block": block,
     }
 
 
@@ -544,6 +652,14 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
     now = _utc_now_localized()
     session = ensure_booth_session(root, run)
     payload = payload or {}
+    active_block = (
+        _policy_block_payload(root, run, "primary_soak", "timing_short_primary_soak", "Primary soak timing deviation")
+        or _policy_block_payload(root, run, "mixer", "timing_short_mixer", "Mixer timing deviation")
+        or _policy_block_payload(root, run, "flush", "timing_short_flush", "Flush timing deviation")
+        or _policy_block_payload(root, run, "final_purge", "timing_short_final_purge", "Final purge timing deviation")
+    )
+    if active_block is not None:
+        raise ValueError(active_block["message"])
     if action == "confirm_vacuum_down":
         if _booth_event(root, session, "reactor_vacuum_confirmed") is None:
             _record_booth_event(root, session, event_key="reactor_vacuum_confirmed", event_label="Reactor vacuum confirmed")
@@ -583,6 +699,52 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
     if action == "start_mixer":
         if run.run_fill_started_at is None:
             raise ValueError("Start the primary soak before starting the mixer.")
+        primary_soak_minutes = _active_duration_minutes(run.run_fill_started_at)
+        primary_soak_target = extraction_timing_targets(root).get("primary_soak_minutes")
+        primary_soak_policy = extraction_timing_policies(root).get("primary_soak", "warning")
+        primary_soak_short = (
+            primary_soak_minutes is not None
+            and primary_soak_target is not None
+            and primary_soak_minutes < primary_soak_target
+        )
+        if primary_soak_short and primary_soak_policy == "hard_stop":
+            raise ValueError(_timing_policy_message("Primary soak", "hard_stop"))
+        if primary_soak_short and primary_soak_policy == "supervisor_override" and not _notification_override_approved(root, run, "timing_short_primary_soak"):
+            primary_reason = _required_reason(
+                payload,
+                "primary_soak_short_reason",
+                "Enter a reason when the primary soak finishes short of target.",
+            )
+            create_notification(
+                root,
+                run=run,
+                booth_session=session,
+                event_key="timing_short_primary_soak",
+                dedupe_key="timing_short_primary_soak",
+                notification_class="warnings",
+                severity="critical",
+                title="Primary soak finished short of target",
+                message=f"Primary soak reached {primary_soak_minutes} minute(s) against a {primary_soak_target}-minute target and requires supervisor override.",
+                operator_reason=primary_reason,
+            )
+            raise ValueError(_timing_policy_message("Primary soak", "supervisor_override"))
+        if primary_soak_short and primary_soak_policy == "warning":
+            primary_reason = _required_reason(
+                payload,
+                "primary_soak_short_reason",
+                "Enter a reason when the primary soak finishes short of target.",
+            )
+            _notify_short_timing(
+                root,
+                run,
+                session,
+                event_key="timing_short_primary_soak",
+                label="Primary soak",
+                actual_minutes=primary_soak_minutes,
+                target_minutes=primary_soak_target,
+                policy=primary_soak_policy,
+                operator_reason=primary_reason,
+            )
         if run.mixer_started_at is None:
             run.mixer_started_at = now
         if _booth_event(root, session, "primary_mixer_started") is None:
@@ -592,11 +754,16 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
     if action == "stop_mixer":
         if run.mixer_started_at is None:
             raise ValueError("Start the mixer before stopping it.")
+        prospective_mixer_minutes = duration_minutes(run.mixer_started_at, now)
+        mixer_target = extraction_timing_targets(root).get("mixer_minutes")
+        mixer_policy = extraction_timing_policies(root).get("mixer", "warning")
+        if prospective_mixer_minutes is not None and mixer_target is not None and prospective_mixer_minutes < mixer_target and mixer_policy == "hard_stop":
+            raise ValueError(_timing_policy_message("Mixer", "hard_stop"))
         run.mixer_ended_at = now
         mixer_minutes = duration_minutes(run.mixer_started_at, run.mixer_ended_at)
-        mixer_target = extraction_timing_targets(root).get("mixer_minutes")
+        mixer_short = mixer_minutes is not None and mixer_target is not None and mixer_minutes < mixer_target
         mixer_reason = None
-        if mixer_minutes is not None and mixer_target is not None and mixer_minutes < mixer_target:
+        if mixer_short:
             mixer_reason = _required_reason(
                 payload,
                 "mixer_short_reason",
@@ -619,20 +786,9 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
             label="Mixer",
             actual_minutes=mixer_minutes,
             target_minutes=mixer_target,
+            policy=mixer_policy,
+            operator_reason=mixer_reason,
         )
-        if mixer_reason:
-            create_notification(
-                root,
-                run=run,
-                booth_session=session,
-                event_key="timing_short_mixer",
-                dedupe_key="timing_short_mixer",
-                notification_class="warnings",
-                severity="warning",
-                title="Mixer finished short of target",
-                message=f"Mixer recorded {mixer_minutes} minute(s) against a {mixer_target}-minute target.",
-                operator_reason=mixer_reason,
-            )
         session.current_stage_key = "ready_to_confirm_filter_clear"
         return
     if action == "confirm_filter_clear":
@@ -729,11 +885,16 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
     if action == "stop_flush":
         if run.flush_started_at is None:
             raise ValueError("Start the flush before stopping it.")
+        prospective_flush_minutes = duration_minutes(run.flush_started_at, now)
+        flush_target = extraction_timing_targets(root).get("flush_minutes")
+        flush_policy = extraction_timing_policies(root).get("flush", "warning")
+        if prospective_flush_minutes is not None and flush_target is not None and prospective_flush_minutes < flush_target and flush_policy == "hard_stop":
+            raise ValueError(_timing_policy_message("Flush soak", "hard_stop"))
         run.flush_ended_at = now
         flush_minutes = duration_minutes(run.flush_started_at, run.flush_ended_at)
-        flush_target = extraction_timing_targets(root).get("flush_minutes")
+        flush_short = flush_minutes is not None and flush_target is not None and flush_minutes < flush_target
         flush_reason = None
-        if flush_minutes is not None and flush_target is not None and flush_minutes < flush_target:
+        if flush_short:
             flush_reason = _required_reason(
                 payload,
                 "flush_short_reason",
@@ -755,20 +916,9 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
             label="Flush soak",
             actual_minutes=flush_minutes,
             target_minutes=flush_target,
+            policy=flush_policy,
+            operator_reason=flush_reason,
         )
-        if flush_reason:
-            create_notification(
-                root,
-                run=run,
-                booth_session=session,
-                event_key="timing_short_flush",
-                dedupe_key="timing_short_flush",
-                notification_class="warnings",
-                severity="warning",
-                title="Flush soak finished short of target",
-                message=f"Flush soak recorded {flush_minutes} minute(s) against a {flush_target}-minute target.",
-                operator_reason=flush_reason,
-            )
         session.current_stage_key = "ready_to_confirm_flow_resumed"
         return
     if action == "confirm_flow_resumed":
@@ -832,11 +982,16 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
     if action == "stop_final_purge":
         if session.final_purge_started_at is None:
             raise ValueError("Start final purge before stopping it.")
+        prospective_final_purge_minutes = duration_minutes(session.final_purge_started_at, now)
+        final_purge_target = extraction_timing_targets(root).get("final_purge_minutes")
+        final_purge_policy = extraction_timing_policies(root).get("final_purge", "informational")
+        if prospective_final_purge_minutes is not None and final_purge_target is not None and prospective_final_purge_minutes < final_purge_target and final_purge_policy == "hard_stop":
+            raise ValueError(_timing_policy_message("Final purge", "hard_stop"))
         session.final_purge_completed_at = now
         final_purge_minutes = duration_minutes(session.final_purge_started_at, session.final_purge_completed_at)
-        final_purge_target = extraction_timing_targets(root).get("final_purge_minutes")
+        final_purge_short = final_purge_minutes is not None and final_purge_target is not None and final_purge_minutes < final_purge_target
         final_purge_reason = None
-        if final_purge_minutes is not None and final_purge_target is not None and final_purge_minutes < final_purge_target:
+        if final_purge_short:
             final_purge_reason = _required_reason(
                 payload,
                 "final_purge_short_reason",
@@ -858,20 +1013,9 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
             label="Final purge",
             actual_minutes=final_purge_minutes,
             target_minutes=final_purge_target,
+            policy=final_purge_policy,
+            operator_reason=final_purge_reason,
         )
-        if final_purge_reason:
-            create_notification(
-                root,
-                run=run,
-                booth_session=session,
-                event_key="timing_short_final_purge",
-                dedupe_key="timing_short_final_purge",
-                notification_class="warnings",
-                severity="warning",
-                title="Final purge finished short of target",
-                message=f"Final purge recorded {final_purge_minutes} minute(s) against a {final_purge_target}-minute target.",
-                operator_reason=final_purge_reason,
-            )
         session.current_stage_key = "ready_to_confirm_clarity"
         return
     if action == "confirm_final_clarity":
@@ -1279,7 +1423,7 @@ def mobile_run_payload(root, run, charge) -> dict:
         "flush_ended_at": display_local_datetime(run.flush_ended_at),
         "flush_duration_minutes": duration_minutes(run.flush_started_at, run.flush_ended_at),
         "run_completed_at": display_local_datetime(run.run_completed_at),
-        "progression": run_progression_payload(run),
+        "progression": run_progression_payload(root, run),
         "booth": booth_payload,
         "timing_controls": timing_controls,
         "primary_solvent_charge_lbs": booth_payload["primary_solvent_charge_lbs"],

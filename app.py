@@ -714,7 +714,7 @@ def _hte_pipeline_label(stage) -> str:
 
 def _run_form_extras(run=None):
     root_ctx = sys.modules[__name__]
-    progression = run_progression_payload(run) if run else run_progression_payload(type("DraftRun", (), {
+    progression = run_progression_payload(root_ctx, run) if run else run_progression_payload(root_ctx, type("DraftRun", (), {
         "run_completed_at": None,
         "flush_started_at": None,
         "flush_ended_at": None,
@@ -743,15 +743,16 @@ def _run_form_extras(run=None):
     })())
     booth = booth_session_payload(root_ctx, run) if run else booth_session_payload(root_ctx, None)
     timing_controls = run_timing_controls_payload(root_ctx, run) if run else {
-        "primary_soak": {"label": "Primary soak", "target_minutes": booth.get("timing_targets", {}).get("primary_soak_minutes"), "actual_minutes": None, "active_minutes": None, "status": "not_started", "delta_minutes": None},
-        "mixer": {"label": "Mixer", "target_minutes": booth.get("timing_targets", {}).get("mixer_minutes"), "actual_minutes": None, "active_minutes": None, "status": "not_started", "delta_minutes": None},
-        "flush": {"label": "Flush soak", "target_minutes": booth.get("timing_targets", {}).get("flush_minutes"), "actual_minutes": None, "active_minutes": None, "status": "not_started", "delta_minutes": None},
-        "final_purge": {"label": "Final purge", "target_minutes": booth.get("timing_targets", {}).get("final_purge_minutes"), "actual_minutes": None, "active_minutes": None, "status": "not_started", "delta_minutes": None},
+        "primary_soak": {"label": "Primary soak", "target_minutes": booth.get("timing_targets", {}).get("primary_soak_minutes"), "actual_minutes": None, "active_minutes": None, "status": "not_started", "delta_minutes": None, "policy": "warning"},
+        "mixer": {"label": "Mixer", "target_minutes": booth.get("timing_targets", {}).get("mixer_minutes"), "actual_minutes": None, "active_minutes": None, "status": "not_started", "delta_minutes": None, "policy": "warning"},
+        "flush": {"label": "Flush soak", "target_minutes": booth.get("timing_targets", {}).get("flush_minutes"), "actual_minutes": None, "active_minutes": None, "status": "not_started", "delta_minutes": None, "policy": "warning"},
+        "final_purge": {"label": "Final purge", "target_minutes": booth.get("timing_targets", {}).get("final_purge_minutes"), "actual_minutes": None, "active_minutes": None, "status": "not_started", "delta_minutes": None, "policy": "informational"},
     }
     booth_review = {
         "status": booth.get("status", "not_started"),
         "current_stage_key": booth.get("current_stage_key", "ready_to_confirm_vacuum"),
         "current_stage_label": progression["stage_label"],
+        "policy_block": progression.get("policy_block"),
         "timing_targets": booth.get("timing_targets", {}),
         "timing_controls": timing_controls,
         "flow_resumed_decision": booth.get("flow_resumed_decision", ""),

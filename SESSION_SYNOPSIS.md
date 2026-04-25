@@ -341,6 +341,11 @@ The active work area is now the extraction booth SOP alignment layer that sits b
   - supervisor `Approve Deviation` / `Require Rework` control actions with recorded reasons
   - outbound Slack routing by notification class (`completions`, `warnings`, `reminders`)
   - required operator reasons for off-target timing and booth exception paths
+  - per-step timing-policy enforcement for booth timers:
+    - defaults remain permissive (`warning` for primary soak / mixer / flush and `informational` for final purge)
+    - steps can be tightened to `Require supervisor override` or `Hard stop`
+    - override-required timing misses now block later booth progression until a supervisor approves the deviation
+    - active timing policy blocks are visible in the main-app `Booth Review` surface
 
 ### In progress
 
@@ -349,14 +354,14 @@ The active work area is now the extraction booth SOP alignment layer that sits b
   - matching the written extraction booth procedure more closely
   - strengthening supervisor review, override, and audit visibility
   - making booth deviations visible both in-app and through optional outbound Slack delivery
-  - deciding how strict timing-policy enforcement should become
+  - deciding whether reminder automation should escalate unresolved booth alerts automatically
 
 ### Next
 
 - deepen the extraction booth workflow where the SOP still exceeds the current system:
-  - decide whether any timing targets should become warnings only vs hard gates
-  - decide whether any booth steps should block completion until a supervisor override exists
   - decide whether reminder notifications should be emitted automatically for stale unresolved booth alerts
+  - decide whether unresolved override-required timing deviations should trigger scheduled reminder escalation by severity / age
+  - decide whether any non-timing booth checkpoints should eventually gain the same policy framework
 - after that, resume the downstream queue-deepening work from the stronger extraction foundation
 
 ## Current planning baseline
@@ -419,7 +424,7 @@ The likely implementation order is:
 Current booth-SOP rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `84a8dc5`
+- commit: `pending current sprint closeout`
 
 Production deployment steps:
 
@@ -427,16 +432,14 @@ Production deployment steps:
    - `git fetch origin`
    - `git checkout Claude_Consolidation`
    - `git pull --ff-only origin Claude_Consolidation`
-2. restart the backend so the booth-session / booth-evidence schema bootstrap runs and the new extraction routes load
-3. sync the standalone extraction app files to the tablet web root
-4. reload the tablet browser
-5. verify on a live extraction run:
-   - progression begins at `Confirm Vacuum Down`
-   - booth timing controls show target durations
-   - flow / clarity retry loops work without dead-ending the run
-   - the main run form shows `Booth Review` with history, timing status, and evidence links
-   - shutdown reaches `Mark Run Complete`
-   - `Booth evidence` uploads work for temperature photos
+2. restart the backend so the new timing-policy settings and progression enforcement are live
+3. no standalone extraction app sync is required for this sprint
+4. verify in the main app and on a live extraction run:
+   - `Settings -> Operational Parameters` shows timing policy selectors for primary soak, mixer, flush soak, and final purge
+   - the default policy selections remain permissive
+   - a warning-only short timing condition still lets the booth flow continue
+   - an override-required short timing condition blocks later progression until supervisor approval exists
+   - the main run form shows timing policy labels and any active policy block in `Booth Review`
 
 ## Local note
 

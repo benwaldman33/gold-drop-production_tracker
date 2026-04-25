@@ -266,6 +266,47 @@
         <div class="form-group"></div>
         <div class="form-group"></div>
       </div>
+      <div class="form-row-3" style="margin-top:8px;">
+        <div class="form-group">
+          <label>Primary soak policy</label>
+          <select name="extraction_policy_primary_soak">
+            {% for value, label in timing_policy_options %}
+            <option value="{{ value }}" {% if system_settings.get('extraction_policy_primary_soak', 'warning') == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Mixer policy</label>
+          <select name="extraction_policy_mixer">
+            {% for value, label in timing_policy_options %}
+            <option value="{{ value }}" {% if system_settings.get('extraction_policy_mixer', 'warning') == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Flush soak policy</label>
+          <select name="extraction_policy_flush">
+            {% for value, label in timing_policy_options %}
+            <option value="{{ value }}" {% if system_settings.get('extraction_policy_flush', 'warning') == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="form-row-3" style="margin-top:8px;">
+        <div class="form-group">
+          <label>Final purge policy</label>
+          <select name="extraction_policy_final_purge">
+            {% for value, label in timing_policy_options %}
+            <option value="{{ value }}" {% if system_settings.get('extraction_policy_final_purge', 'informational') == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">
+            Default policies are permissive so the booth workflow can continue unless you explicitly tighten a step for training or intervention.
+          </div>
+        </div>
+        <div class="form-group"></div>
+        <div class="form-group"></div>
+      </div>
     </div>
     <div class="form-group" style="margin-top:16px;">
       <label>Reactor lifecycle controls</label>
