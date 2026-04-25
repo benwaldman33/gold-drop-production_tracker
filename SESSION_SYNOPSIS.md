@@ -497,6 +497,29 @@ What still remains after this slice:
 - destination-native downstream transformations
 - reporting surfaces built directly on genealogy
 
+## Genealogy phase 7 update
+
+Correction-forward genealogy is now in place:
+
+- managers/editors can open `/material-lots/<lot_id>/correct`
+- correction actions now create explicit `MaterialTransformation` rows instead of silently rewriting existing genealogy
+- supported correction actions:
+  - `adjust_quantity`
+  - `replace_parent`
+  - `void_lot`
+- quantity adjustments and parent replacements now:
+  - close the original lot
+  - preserve the original lineage record
+  - create a replacement `MaterialLot`
+- void actions now close the mistaken lot through a correction transformation with no replacement output
+- open reconciliation issues on the corrected lot are automatically resolved with the correction note
+
+Practical meaning:
+
+- managers can now fix a bad derivative-lot quantity without deleting history
+- managers can now replace an incorrect parent link without hiding the original mistake
+- the genealogy layer now has the first real correction trail instead of being read-only
+
 ## Deployment note
 
 Current rollout commit:

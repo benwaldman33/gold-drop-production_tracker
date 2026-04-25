@@ -128,6 +128,169 @@ def serialize_reconciliation_issue(root, issue) -> dict:
     }
 
 
+def _resolve_open_issues_for_material_lot(root, material_lot, *, note: str, resolved_by_user_id: str | None = None) -> None:
+    if material_lot is None:
+        return
+    for issue in material_lot.reconciliation_issues.filter_by(status="open").all():
+        issue.status = "resolved"
+        issue.resolution_note = note
+        issue.resolved_at = root.datetime.now(root.timezone.utc)
+        issue.resolved_by_user_id = resolved_by_user_id
+
+
+def _correction_tracking_id(root, material_lot, *, suffix: str) -> str:
+    base = material_lot.tracking_id or _material_tracking_id(root, material_lot.lot_type, None, material_lot.id)
+    return f"{base}-{suffix}"
+
+
+def _clone_material_lot_for_correction(root, material_lot, *, quantity: float, reason: str):
+    replacement = root.MaterialLot(
+        tracking_id=_correction_tracking_id(root, material_lot, suffix="R1"),
+        lot_type=material_lot.lot_type,
+        quantity=float(quantity or 0),
+        unit=material_lot.unit,
+        strain_name_snapshot=material_lot.strain_name_snapshot,
+        supplier_name_snapshot=material_lot.supplier_name_snapshot,
+        source_purchase_lot_id=material_lot.source_purchase_lot_id,
+        parent_run_id=material_lot.parent_run_id,
+        active_queue_key=material_lot.active_queue_key,
+        inventory_status="open" if float(quantity or 0) > 0 else "closed",
+        workflow_status=material_lot.workflow_status,
+        cost_basis_total=None,
+        cost_basis_per_unit=material_lot.cost_basis_per_unit,
+        origin_confidence="corrected",
+        correction_state="replacement",
+        notes=f"Correction replacement for {material_lot.tracking_id or material_lot.id}. Reason: {reason}",
+    )
+    if material_lot.cost_basis_per_unit is not None:
+        replacement.cost_basis_total = float(material_lot.cost_basis_per_unit) * float(quantity or 0)
+    elif material_lot.cost_basis_total is not None and float(material_lot.quantity or 0) > 0:
+        replacement.cost_basis_total = float(material_lot.cost_basis_total)
+    root.db.session.add(replacement)
+    root.db.session.flush()
+    return replacement
+
+
+def apply_material_lot_correction(
+    root,
+    material_lot,
+    *,
+    correction_kind: str,
+    reason: str,
+    new_quantity: float | None = None,
+    replacement_parent_ids: list[str] | None = None,
+):
+    if material_lot is None:
+        raise ValueError("material_lot is required")
+    correction_kind = (correction_kind or "").strip().lower()
+    reason = (reason or "").strip()
+    if correction_kind not in {"adjust_quantity", "replace_parent", "void_lot"}:
+        raise ValueError("Unsupported correction kind")
+    if not reason:
+        raise ValueError("Correction reason is required")
+    if correction_kind == "adjust_quantity" and new_quantity is None:
+        raise ValueError("new_quantity is required for adjust_quantity")
+    if correction_kind == "replace_parent" and not replacement_parent_ids:
+        raise ValueError("replacement_parent_ids are required for replace_parent")
+
+    now = root.datetime.now(root.timezone.utc)
+    user_id = getattr(getattr(root, "current_user", None), "id", None)
+    transformation_type = {
+        "adjust_quantity": "correction_quantity_adjustment",
+        "replace_parent": "correction_reparent",
+        "void_lot": "correction_void",
+    }[correction_kind]
+    transformation = root.MaterialTransformation(
+        transformation_type=transformation_type,
+        run_id=material_lot.parent_run_id,
+        source_record_type="material_lot",
+        source_record_id=material_lot.id,
+        performed_at=now,
+        performed_by_user_id=user_id,
+        status="completed",
+        notes=reason,
+    )
+    root.db.session.add(transformation)
+    root.db.session.flush()
+
+    root.db.session.add(
+        root.MaterialTransformationInput(
+            transformation_id=transformation.id,
+            material_lot_id=material_lot.id,
+            quantity_consumed=float(material_lot.quantity or 0),
+            unit=material_lot.unit,
+            notes="Corrected source lot.",
+        )
+    )
+
+    replacement_lot = None
+    if correction_kind == "adjust_quantity":
+        replacement_lot = _clone_material_lot_for_correction(root, material_lot, quantity=float(new_quantity or 0), reason=reason)
+    elif correction_kind == "replace_parent":
+        replacement_lot = _clone_material_lot_for_correction(root, material_lot, quantity=float(material_lot.quantity or 0), reason=reason)
+        for parent_id in replacement_parent_ids or []:
+            parent_lot = root.db.session.get(root.MaterialLot, parent_id)
+            if parent_lot is None:
+                continue
+            root.db.session.add(
+                root.MaterialTransformationInput(
+                    transformation_id=transformation.id,
+                    material_lot_id=parent_lot.id,
+                    quantity_consumed=float(parent_lot.quantity or 0),
+                    unit=parent_lot.unit,
+                    notes="Replacement parent material lot.",
+                )
+            )
+
+    if replacement_lot is not None:
+        root.db.session.add(
+            root.MaterialTransformationOutput(
+                transformation_id=transformation.id,
+                material_lot_id=replacement_lot.id,
+                quantity_produced=float(replacement_lot.quantity or 0),
+                unit=replacement_lot.unit,
+                notes="Corrected replacement lot.",
+            )
+        )
+
+    material_lot.correction_state = {
+        "adjust_quantity": "replaced",
+        "replace_parent": "replaced",
+        "void_lot": "voided",
+    }[correction_kind]
+    material_lot.inventory_status = "closed"
+    material_lot.closed_at = now
+    material_lot.closed_reason = reason
+    material_lot.workflow_status = "corrected"
+    material_lot.active_queue_key = None
+
+    _resolve_open_issues_for_material_lot(root, material_lot, note=f"Resolved by correction: {reason}", resolved_by_user_id=user_id)
+
+    if hasattr(root, "log_audit") and user_id is not None:
+        root.log_audit(
+            "correct",
+            "material_lot",
+            material_lot.id,
+            details=root.json.dumps(
+                {
+                    "correction_kind": correction_kind,
+                    "reason": reason,
+                    "replacement_material_lot_id": replacement_lot.id if replacement_lot is not None else None,
+                    "transformation_id": transformation.id,
+                    "replacement_parent_ids": replacement_parent_ids or [],
+                    "new_quantity": float(new_quantity) if new_quantity is not None else None,
+                }
+            ),
+            user_id=user_id,
+        )
+
+    root.db.session.flush()
+    return {
+        "transformation": transformation,
+        "replacement_lot": replacement_lot,
+    }
+
+
 def ensure_biomass_material_lot(root, purchase_lot):
     if purchase_lot is None:
         return None

@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h2 class="mb-1">Correct Material Lot</h2>
+      <div class="text-muted small">
+        {{ material_lot.tracking_id }} · {{ material_lot.lot_type }} · {{ "%.2f"|format(material_lot.quantity or 0) }} {{ material_lot.unit }}
+      </div>
+    </div>
+    {% if material_lot.parent_run_id %}
+      <a href="{{ url_for('run_edit', run_id=material_lot.parent_run_id) }}" class="btn btn-outline-secondary">Back to Run</a>
+    {% else %}
+      <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">Back to Dashboard</a>
+    {% endif %}
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <form method="post">
+        <div class="mb-3">
+          <label class="form-label">Correction type</label>
+          <select name="correction_kind" class="form-select" required>
+            <option value="adjust_quantity">Adjust quantity</option>
+            <option value="replace_parent">Replace parent link</option>
+            <option value="void_lot">Void lot</option>
+          </select>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">New quantity</label>
+          <input type="number" step="0.01" min="0" name="new_quantity" class="form-control" placeholder="Only used for quantity adjustments">
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Replacement parent material lot IDs</label>
+          <input type="text" name="replacement_parent_ids" class="form-control" placeholder="Comma-separated material lot IDs for reparent corrections">
+          {% if candidate_parents %}
+            <div class="form-text">
+              Candidate source material lots for this run:
+              {% for parent in candidate_parents %}
+                <span class="badge bg-light text-dark border me-1">{{ parent.id }} · {{ parent.tracking_id }} · {{ parent.lot_type }}</span>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Reason</label>
+          <textarea name="reason" class="form-control" rows="4" required placeholder="Explain why this correction is needed."></textarea>
+        </div>
+
+        <div class="d-flex gap-2">
+          <button type="submit" class="btn btn-primary">Record Correction</button>
+          {% if material_lot.parent_run_id %}
+            <a href="{{ url_for('run_edit', run_id=material_lot.parent_run_id) }}" class="btn btn-outline-secondary">Cancel</a>
+          {% else %}
+            <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">Cancel</a>
+          {% endif %}
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

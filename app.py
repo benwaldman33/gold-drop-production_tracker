@@ -135,6 +135,7 @@ from services.bootstrap_helpers import (
     reconcile_closed_purchase_inventory_lots as _reconcile_closed_purchase_inventory_lots_service,
 )
 from services.material_genealogy import (
+    apply_material_lot_correction as _apply_material_lot_correction,
     build_material_lot_ancestry_payload as _build_material_lot_ancestry_payload,
     build_material_lot_descendants_payload as _build_material_lot_descendants_payload,
     build_material_lot_detail_payload as _build_material_lot_detail_payload,
@@ -1439,6 +1440,61 @@ def _register_extracted_routes(flask_app):
         strains_module.register_routes(flask_app, root)
     if "mobile_auth_login" not in existing:
         mobile_module.register_routes(flask_app, root)
+
+
+@app.route("/material-lots/<lot_id>/correct", methods=["GET", "POST"])
+@login_required
+@editor_required
+def material_lot_correct(lot_id):
+    material_lot = db.session.get(MaterialLot, lot_id)
+    if material_lot is None:
+        abort(404)
+
+    run = material_lot.parent_run
+    candidate_parents = _source_material_lots_for_run(sys.modules[__name__], run) if run is not None else []
+
+    if request.method == "POST":
+        correction_kind = (request.form.get("correction_kind") or "").strip().lower()
+        reason = (request.form.get("reason") or "").strip()
+        new_quantity_raw = (request.form.get("new_quantity") or "").strip()
+        new_quantity = None
+        if new_quantity_raw:
+            try:
+                new_quantity = float(new_quantity_raw)
+            except ValueError:
+                flash("New quantity must be numeric.", "error")
+                return redirect(url_for("material_lot_correct", lot_id=lot_id))
+        replacement_parent_ids = [
+            value.strip()
+            for value in (request.form.get("replacement_parent_ids") or "").split(",")
+            if value.strip()
+        ]
+        try:
+            result = _apply_material_lot_correction(
+                sys.modules[__name__],
+                material_lot,
+                correction_kind=correction_kind,
+                reason=reason,
+                new_quantity=new_quantity,
+                replacement_parent_ids=replacement_parent_ids,
+            )
+            db.session.commit()
+        except ValueError as exc:
+            db.session.rollback()
+            flash(str(exc), "error")
+            return redirect(url_for("material_lot_correct", lot_id=lot_id))
+        flash("Material genealogy correction recorded.", "success")
+        replacement_lot = result.get("replacement_lot")
+        target_run_id = replacement_lot.parent_run_id if replacement_lot is not None else material_lot.parent_run_id
+        if target_run_id:
+            return redirect(url_for("run_edit", run_id=target_run_id))
+        return redirect(url_for("dashboard"))
+
+    return render_template(
+        "material_lot_correction_form.html",
+        material_lot=material_lot,
+        candidate_parents=candidate_parents,
+    )
 
 
 _base_create_app = create_app

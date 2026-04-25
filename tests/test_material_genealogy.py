@@ -5,6 +5,7 @@ from datetime import date, datetime, timezone
 import app as app_module
 from models import MaterialLot, MaterialReconciliationIssue, MaterialTransformation, Purchase, PurchaseLot, Run, RunInput, Supplier, db
 from services.material_genealogy import (
+    apply_material_lot_correction,
     backfill_biomass_material_lots,
     build_material_lot_ancestry_payload,
     build_material_lot_descendants_payload,
@@ -246,6 +247,79 @@ def test_material_lot_payloads_include_ancestry_and_descendants():
             for output in run.material_lots.all():
                 db.session.delete(output)
             MaterialTransformation.query.filter_by(run_id=run.id).delete()
+            if lot.material_lot_id:
+                material_lot = db.session.get(MaterialLot, lot.material_lot_id)
+                if material_lot is not None:
+                    db.session.delete(material_lot)
+            db.session.delete(run)
+            db.session.delete(lot)
+            db.session.delete(purchase)
+            db.session.delete(supplier)
+            db.session.commit()
+
+
+def test_apply_material_lot_correction_adjusts_quantity_with_replacement_and_audit():
+    app = app_module.app
+    with app.app_context():
+        supplier = Supplier(name=f"Correction Supplier {app_module.gen_uuid()[:6]}", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = _approved_purchase(supplier.id)
+        db.session.add(purchase)
+        db.session.flush()
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Runtz",
+            weight_lbs=100,
+            remaining_weight_lbs=60,
+            tracking_id=f"LOT-{app_module.gen_uuid()[:8].upper()}",
+        )
+        run = Run(
+            run_date=date.today(),
+            reactor_number=5,
+            bio_in_reactor_lbs=40,
+            dry_hte_g=10,
+        )
+        db.session.add_all([lot, run])
+        db.session.flush()
+        db.session.add(RunInput(run_id=run.id, lot_id=lot.id, weight_lbs=40))
+        db.session.commit()
+
+        try:
+            backfill_biomass_material_lots(app_module)
+            ensure_extraction_output_genealogy(app_module, run)
+            db.session.commit()
+
+            derivative_lot = run.material_lots.filter_by(lot_type="dry_hte").first()
+            result = apply_material_lot_correction(
+                app_module,
+                derivative_lot,
+                correction_kind="adjust_quantity",
+                reason="Correct dry HTE weight after recount.",
+                new_quantity=8.5,
+            )
+            db.session.commit()
+
+            replacement = result["replacement_lot"]
+            db.session.refresh(derivative_lot)
+            assert derivative_lot.correction_state == "replaced"
+            assert derivative_lot.inventory_status == "closed"
+            assert replacement is not None
+            assert replacement.quantity == 8.5
+            assert replacement.origin_confidence == "corrected"
+
+            correction = MaterialTransformation.query.filter_by(
+                run_id=run.id,
+                transformation_type="correction_quantity_adjustment",
+                source_record_id=derivative_lot.id,
+            ).first()
+            assert correction is not None
+            assert correction.outputs.count() == 1
+        finally:
+            MaterialReconciliationIssue.query.filter_by(run_id=run.id).delete()
+            MaterialTransformation.query.filter_by(run_id=run.id).delete()
+            for output in run.material_lots.all():
+                db.session.delete(output)
             if lot.material_lot_id:
                 material_lot = db.session.get(MaterialLot, lot.material_lot_id)
                 if material_lot is not None:
