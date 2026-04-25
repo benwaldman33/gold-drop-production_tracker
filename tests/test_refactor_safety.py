@@ -2498,8 +2498,9 @@ def test_golddrop_queue_page_renders_history_and_actions():
             assert b"Queue History" in resp.data
             assert b"Entered queue" in resp.data
             assert b"Mark Reviewed" in resp.data
-            assert b"Queue For Production" in resp.data
-            assert b"Release Complete" in resp.data
+            assert b"Supervisor review is the next action before GoldDrop production planning." in resp.data
+            assert b"Queue For Production" not in resp.data
+            assert b"Release Complete" not in resp.data
             assert b"return_to=/downstream-queues/golddrop" in resp.data or b"return_to=%2Fdownstream-queues%2Fgolddrop" in resp.data
     finally:
         with app.app_context():
@@ -2600,6 +2601,42 @@ def test_golddrop_queue_actions_update_history_and_release_run():
 
         with app.test_client() as client:
             _login(client, "admin")
+            queue_page = client.get("/downstream-queues/golddrop")
+            assert queue_page.status_code == 200
+            assert b"Queue For Production" in queue_page.data
+            assert b"Start Production" not in queue_page.data
+
+            queued = client.post(
+                f"/downstream-queues/golddrop/runs/{run_id}/action",
+                data={"queue_action": "queue_for_production", "queue_notes": "Queued on production board"},
+                follow_redirects=False,
+            )
+            assert queued.status_code in (302, 303)
+
+            in_production_page = client.get("/downstream-queues/golddrop")
+            assert in_production_page.status_code == 200
+            assert b"Start Production" in in_production_page.data
+            assert b"Mark Packaging Ready" not in in_production_page.data
+
+            started = client.post(
+                f"/downstream-queues/golddrop/runs/{run_id}/action",
+                data={"queue_action": "start_production", "queue_notes": "Production started"},
+                follow_redirects=False,
+            )
+            assert started.status_code in (302, 303)
+
+            packaging_page = client.get("/downstream-queues/golddrop")
+            assert packaging_page.status_code == 200
+            assert b"Mark Packaging Ready" in packaging_page.data
+            assert b"Release Complete" not in packaging_page.data
+
+            packaged = client.post(
+                f"/downstream-queues/golddrop/runs/{run_id}/action",
+                data={"queue_action": "mark_packaging_ready", "queue_notes": "Ready for final release"},
+                follow_redirects=False,
+            )
+            assert packaged.status_code in (302, 303)
+
             released = client.post(
                 f"/downstream-queues/golddrop/runs/{run_id}/action",
                 data={"queue_action": "release_complete"},
@@ -2616,8 +2653,112 @@ def test_golddrop_queue_actions_update_history_and_release_run():
                 .order_by(app_module.DownstreamQueueEvent.created_at.asc())
                 .all()
             )
-            assert len(events) == 2
-            assert events[-1].action_key == "release_complete"
+            assert len(events) == 5
+            assert [event.action_key for event in events] == [
+                "mark_reviewed",
+                "queue_for_production",
+                "start_production",
+                "mark_packaging_ready",
+                "release_complete",
+            ]
+            assert events[-2].notes == "Ready for final release"
+    finally:
+        with app.app_context():
+            app_module.DownstreamQueueEvent.query.filter_by(run_id=run_id).delete(synchronize_session=False)
+            app_module.RunInput.query.filter_by(run_id=run_id).delete(synchronize_session=False)
+            run = db.session.get(app_module.Run, run_id) if run_id else None
+            if run:
+                db.session.delete(run)
+            lot = db.session.get(PurchaseLot, lot_id) if lot_id else None
+            if lot:
+                db.session.delete(lot)
+            purchase = db.session.get(Purchase, purchase_id) if purchase_id else None
+            if purchase:
+                db.session.delete(purchase)
+            supplier = db.session.get(Supplier, supplier_id) if supplier_id else None
+            if supplier:
+                db.session.delete(supplier)
+            db.session.commit()
+
+
+def test_golddrop_queue_release_complete_only_available_after_packaging_ready():
+    app = app_module.app
+    run_id = None
+    purchase_id = None
+    supplier_id = None
+    lot_id = None
+    try:
+        with app.app_context():
+            admin_id = app_module.User.query.filter_by(username="admin").first().id
+            supplier = Supplier(name="GoldDrop Queue Stage Supplier", is_active=True)
+            db.session.add(supplier)
+            db.session.flush()
+            supplier_id = supplier.id
+            purchase = Purchase(
+                supplier_id=supplier.id,
+                purchase_date=date(2026, 4, 25),
+                delivery_date=date(2026, 4, 25),
+                status="delivered",
+                stated_weight_lbs=65,
+                purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+                testing_status="completed",
+                clean_or_dirty="clean",
+                batch_id=f"GDQS-{app_module.gen_uuid()[:6]}",
+            )
+            db.session.add(purchase)
+            db.session.flush()
+            purchase_id = purchase.id
+            lot = PurchaseLot(
+                purchase_id=purchase.id,
+                strain_name="GoldDrop Stage Dream",
+                tracking_id="GDQS-LOT-1",
+                weight_lbs=65,
+                remaining_weight_lbs=25,
+                floor_state="inventory",
+                milled=True,
+            )
+            db.session.add(lot)
+            db.session.flush()
+            lot_id = lot.id
+            run = app_module.Run(
+                run_date=date(2026, 4, 25),
+                reactor_number=3,
+                run_type="standard",
+                bio_in_reactor_lbs=40,
+                wet_hte_g=850,
+                wet_thca_g=2300,
+                created_by=admin_id,
+                run_completed_at=app_module.datetime.now(app_module.timezone.utc),
+                post_extraction_pathway="minor_run_200",
+                post_extraction_started_at=app_module.datetime.now(app_module.timezone.utc),
+                post_extraction_initial_outputs_recorded_at=app_module.datetime.now(app_module.timezone.utc),
+                hte_queue_destination="golddrop_queue",
+            )
+            db.session.add(run)
+            db.session.flush()
+            run_id = run.id
+            db.session.add(app_module.RunInput(run_id=run.id, lot_id=lot.id, weight_lbs=40))
+            db.session.commit()
+
+        with app.test_client() as client:
+            _login(client, "admin")
+            rejected = client.post(
+                f"/downstream-queues/golddrop/runs/{run_id}/action",
+                data={"queue_action": "release_complete"},
+                follow_redirects=False,
+            )
+            assert rejected.status_code in (302, 303)
+
+        with app.app_context():
+            run = db.session.get(app_module.Run, run_id)
+            assert run is not None
+            assert run.hte_queue_destination == "golddrop_queue"
+            events = (
+                app_module.DownstreamQueueEvent.query.filter_by(run_id=run_id, queue_key="golddrop_queue")
+                .order_by(app_module.DownstreamQueueEvent.created_at.asc())
+                .all()
+            )
+            assert events == []
     finally:
         with app.app_context():
             app_module.DownstreamQueueEvent.query.filter_by(run_id=run_id).delete(synchronize_session=False)

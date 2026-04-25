@@ -8,6 +8,8 @@
 - The extraction mobile API now exposes `GET/POST /api/mobile/v1/extraction/charges/<charge_id>/run/evidence` for booth evidence uploads.
 
 ### Changed
+- The `GoldDrop Production Queue` is now a staged downstream workflow instead of a flat action list. GoldDrop runs now move through `Reviewed`, `Queued for production`, `In production`, `Packaging ready`, and `Released complete`, with only the appropriate next actions available at each stage.
+- The shared downstream destination queue template now shows stage-specific next-step guidance and hides queue actions once a run reaches a terminal queue state.
 - The standalone extraction workflow now follows booth-SOP checkpoints instead of only the earlier coarse progression buttons. The current guided flow covers vacuum confirmation, solvent charge, primary soak, mixer, filter clear, pressurization, recovery, flush-cycle setup, flush temperature verification, flush solvent charge, flow-resumed confirmation, final purge, final clarity, shutdown checklist completion, and final run completion.
 - The standalone extraction run screen now captures booth-specific SOP data including primary solvent charge, flush temperatures, flush solvent charge, flow-resumed decision, final clarity decision, final purge timing, shutdown checklist confirmations, and booth evidence uploads.
 - The shared extraction progression service now drives booth-session stage state from the backend so the main app, mobile API, and standalone extraction app remain aligned on the active checkpoint, validations, and event history.
@@ -37,6 +39,7 @@
 - Added regression coverage for operator-reason validation on booth deviations and supervisor deviation approval recording.
 - Added regression coverage for timing-policy enforcement, including permissive default continuation and supervisor-override blocking until approval.
 - Added regression coverage for reminder creation, deduplication across repeated dashboard loads, and automatic reminder resolution once the source alert is closed.
+- Added GoldDrop queue regression coverage for the deeper staged workflow, including stage-specific action visibility and blocking final release until packaging-ready state is reached.
 
 ## 2026-04-18
 

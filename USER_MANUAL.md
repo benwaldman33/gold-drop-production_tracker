@@ -460,6 +460,29 @@ Supervisors can:
 
 The app stores the notification first. Slack is only an optional outbound delivery channel and is not the system of record.
 
+### GoldDrop Production Queue
+
+The `GoldDrop Production Queue` is now a staged workflow instead of a single list of interchangeable actions.
+
+Runs move through these stages:
+- `New in queue`
+- `Reviewed`
+- `Queued for production`
+- `In production`
+- `Packaging ready`
+- `Released complete`
+
+The queue page now only shows the next actions that make sense from the current stage.
+
+Typical flow:
+- `Mark Reviewed`
+- `Queue For Production`
+- `Start Production`
+- `Mark Packaging Ready`
+- `Release Complete`
+
+If the run should not stay in GoldDrop, use `Send Back For Re-routing`.
+
 Reminder automation:
 - is configured under `Settings -> Slack Integration`
 - can be enabled or disabled separately from outbound Slack delivery

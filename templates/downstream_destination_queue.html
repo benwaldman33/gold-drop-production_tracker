@@ -54,10 +54,11 @@
           {% if item.hte_potency_disposition_label %}
           <div class="text-sm cell-muted" style="margin-top:4px;">Potency hold: {{ item.hte_potency_disposition_label }}</div>
           {% endif %}
-          <div class="summary-footnote" style="margin-top:10px;">{{ queue.help_text }}</div>
+          <div class="summary-footnote" style="margin-top:10px;">{{ item.queue_next_step or queue.help_text }}</div>
           <div class="form-actions" style="justify-content:flex-start;margin-top:10px;">
             <a href="{{ url_for('run_edit', run_id=item.run_id, return_to=request.full_path.rstrip('?')) }}" class="btn btn-secondary btn-sm">Open Run</a>
           </div>
+          {% if item.available_actions %}
           <form method="POST" action="{{ url_for(queue.action_endpoint, run_id=item.run_id) }}" style="margin-top:12px;">
             <div class="form-actions" style="justify-content:flex-start;gap:8px;flex-wrap:wrap;">
               {% for action_value, action_label in item.available_actions %}
@@ -69,6 +70,9 @@
               <input id="queue_notes_{{ item.run_id }}" type="text" name="queue_notes" placeholder="Add a short queue note">
             </div>
           </form>
+          {% else %}
+          <div class="text-sm cell-muted" style="margin-top:12px;">No further queue actions are available from this state.</div>
+          {% endif %}
         </div>
       </div>
       {% if item.history %}
