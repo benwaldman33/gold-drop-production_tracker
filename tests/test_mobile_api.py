@@ -194,6 +194,129 @@ def test_mobile_supplier_create_accepts_standalone_form_shape():
             db.session.commit()
 
 
+def test_mobile_extraction_run_exception_handling_loops():
+    app = app_module.create_app()
+    _set_mobile_workflows(app)
+    with app.test_client() as client:
+        _login_mobile(client)
+        with app.app_context():
+            supplier = Supplier(name=f"Exception Flow Supplier {gen_uuid()[:6]}", is_active=True)
+            db.session.add(supplier)
+            db.session.flush()
+            purchase = Purchase(
+                supplier_id=supplier.id,
+                purchase_date=app_module.date.today(),
+                status="delivered",
+                stated_weight_lbs=100,
+                actual_weight_lbs=100,
+                purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            )
+            db.session.add(purchase)
+            db.session.flush()
+            db.session.add(app_module.PurchaseLot(purchase_id=purchase.id, strain_name="Blue Dream", weight_lbs=100, remaining_weight_lbs=100))
+            db.session.commit()
+            lot = purchase.lots[0]
+            charge = ExtractionCharge(
+                purchase_lot_id=lot.id,
+                reactor_number=1,
+                charged_weight_lbs=22.5,
+                source_mode="standalone_extraction",
+            )
+            db.session.add(charge)
+            db.session.commit()
+            charge_id = charge.id
+
+        sequence = [
+            {"progression_action": "confirm_vacuum_down"},
+            {"primary_solvent_charge_lbs": 500, "progression_action": "record_solvent_charge"},
+            {"progression_action": "start_primary_soak"},
+            {"mixer_started_at": "2026-04-24T09:10", "mixer_ended_at": "2026-04-24T09:20"},
+            {"progression_action": "confirm_filter_clear"},
+            {"progression_action": "start_pressurization"},
+            {"progression_action": "begin_recovery"},
+            {"progression_action": "begin_flush_cycle"},
+            {"flush_solvent_chiller_temp_f": -45, "flush_plate_temp_f": -41, "progression_action": "verify_flush_temps"},
+            {"flush_solvent_charge_lbs": 500, "progression_action": "record_flush_solvent_charge"},
+            {"progression_action": "start_flush"},
+            {"progression_action": "stop_flush"},
+        ]
+        for payload in sequence:
+            response = client.post(f"/api/mobile/v1/extraction/charges/{charge_id}/run", json=payload)
+            assert response.status_code == 200
+
+        flow_adjusting = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={"flow_resumed_decision": "no_adjusting", "progression_action": "confirm_flow_resumed"},
+        )
+        assert flow_adjusting.status_code == 200
+        assert flow_adjusting.get_json()["data"]["run"]["progression"]["stage_key"] == "flow_adjustment_required"
+
+        flow_recheck = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={"progression_action": "resume_flow_check"},
+        )
+        assert flow_recheck.status_code == 200
+        assert flow_recheck.get_json()["data"]["run"]["progression"]["stage_key"] == "ready_to_confirm_flow_resumed"
+
+        flow_resumed = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={"flow_resumed_decision": "yes", "progression_action": "confirm_flow_resumed"},
+        )
+        assert flow_resumed.status_code == 200
+        assert flow_resumed.get_json()["data"]["run"]["progression"]["stage_key"] == "ready_to_start_final_purge"
+
+        start_purge = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={"progression_action": "start_final_purge"},
+        )
+        assert start_purge.status_code == 200
+        stop_purge = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={"progression_action": "stop_final_purge"},
+        )
+        assert stop_purge.status_code == 200
+
+        clarity_retry = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={"final_clarity_decision": "not_yet", "progression_action": "confirm_final_clarity"},
+        )
+        assert clarity_retry.status_code == 200
+        assert clarity_retry.get_json()["data"]["run"]["progression"]["stage_key"] == "clarity_adjustment_required"
+
+        resume_purge = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={"progression_action": "resume_final_purge"},
+        )
+        assert resume_purge.status_code == 200
+        assert resume_purge.get_json()["data"]["run"]["progression"]["stage_key"] == "ready_to_start_final_purge"
+
+        restart_purge = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={"progression_action": "start_final_purge"},
+        )
+        assert restart_purge.status_code == 200
+        restop_purge = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={"progression_action": "stop_final_purge"},
+        )
+        assert restop_purge.status_code == 200
+
+        clarity_yes = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={"final_clarity_decision": "yes", "progression_action": "confirm_final_clarity"},
+        )
+        assert clarity_yes.status_code == 200
+        assert clarity_yes.get_json()["data"]["run"]["progression"]["stage_key"] == "ready_to_complete_shutdown"
+
+        with app.app_context():
+            run = db.session.get(ExtractionCharge, charge_id).run
+            history_labels = [event.event_label for event in run.booth_session.booth_events.order_by(app_module.ExtractionBoothEvent.created_at.asc()).all()]
+            assert "Flow still adjusting" in history_labels
+            assert "Flow adjustment resumed" in history_labels
+            assert "Final clarity not yet acceptable" in history_labels
+            assert "Final purge resumed for additional clarity work" in history_labels
+
+
 def test_mobile_opportunity_edit_delivery_and_photo_flow():
     app = app_module.create_app()
     _set_mobile_workflows(app)
@@ -922,7 +1045,7 @@ def test_mobile_extraction_run_execution_flow():
             assert run_payload["run"]["run_fill_started_at"] == ""
             assert run_payload["run"]["reactor_number"] == 1
             assert run_payload["run"]["bio_in_reactor_lbs"] == 50.0
-            assert run_payload["run"]["progression"]["stage_key"] == "ready_to_start"
+            assert run_payload["run"]["progression"]["stage_key"] == "ready_to_confirm_vacuum"
             assert run_payload["run"]["biomass_blend_milled_pct"] == 50.0
             assert run_payload["run"]["biomass_blend_unmilled_pct"] == 50.0
             assert run_payload["run"]["fill_count"] == 2
@@ -934,15 +1057,40 @@ def test_mobile_extraction_run_execution_flow():
             assert run_payload["run"]["inherited"]["tracking_id"]
             assert run_payload["run"]["post_extraction"]["stage_key"] == "blocked_until_run_complete"
             assert run_payload["run"]["post_extraction_pathway_options"]
+            assert run_payload["run"]["booth"]["current_stage_key"] == "ready_to_confirm_vacuum"
+            assert run_payload["run"]["booth"]["timing_targets"]["primary_soak_minutes"] == 30
+            assert run_payload["run"]["booth"]["timing_targets"]["mixer_minutes"] == 5
+            assert run_payload["run"]["booth"]["timing_targets"]["flush_minutes"] == 10
+            assert run_payload["run"]["timing_controls"]["primary_soak"]["status"] == "not_started"
 
-            start_run = client.post(
+            confirm_vacuum = client.post(
                 f"/api/mobile/v1/extraction/charges/{charge_id}/run",
-                json={"progression_action": "start_run"},
+                json={"progression_action": "confirm_vacuum_down"},
             )
-            assert start_run.status_code == 200
-            started = start_run.get_json()["data"]["run"]
-            assert started["run_fill_started_at"]
-            assert started["progression"]["stage_key"] == "ready_to_mix"
+            assert confirm_vacuum.status_code == 200
+            vacuumed = confirm_vacuum.get_json()["data"]["run"]
+            assert vacuumed["progression"]["stage_key"] == "ready_to_record_solvent_charge"
+
+            charge_solvent = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={
+                    "primary_solvent_charge_lbs": 500,
+                    "progression_action": "record_solvent_charge",
+                },
+            )
+            assert charge_solvent.status_code == 200
+            solvent_recorded = charge_solvent.get_json()["data"]["run"]
+            assert solvent_recorded["primary_solvent_charge_lbs"] == 500.0
+            assert solvent_recorded["progression"]["stage_key"] == "ready_to_start_primary_soak"
+
+            start_soak = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={"progression_action": "start_primary_soak"},
+            )
+            assert start_soak.status_code == 200
+            soak_started = start_soak.get_json()["data"]["run"]
+            assert soak_started["run_fill_started_at"]
+            assert soak_started["progression"]["stage_key"] == "ready_to_start_mixer"
 
             run_save = client.post(
                 f"/api/mobile/v1/extraction/charges/{charge_id}/run",
@@ -959,8 +1107,6 @@ def test_mobile_extraction_run_execution_flow():
                     "crc_blend": "House CRC",
                     "mixer_started_at": "2026-04-19T09:10",
                     "mixer_ended_at": "2026-04-19T09:20",
-                    "flush_started_at": "2026-04-19T09:21",
-                    "flush_ended_at": "2026-04-19T09:33",
                     "notes": "Touch-first run capture",
                 },
             )
@@ -968,10 +1114,124 @@ def test_mobile_extraction_run_execution_flow():
             saved = run_save.get_json()["data"]["run"]
             assert saved["run_fill_duration_minutes"] is not None
             assert saved["mixer_duration_minutes"] == 10
-            assert saved["flush_duration_minutes"] == 12
+            assert saved["timing_controls"]["primary_soak"]["status"] == "on_target"
+            assert saved["timing_controls"]["mixer"]["status"] == "on_target"
             assert saved["crc_blend"] == "House CRC"
             run_id = saved["id"]
             assert saved["open_main_app_url"].endswith(f"/runs/{run_id}/edit?return_to=/floor-ops")
+
+            filter_clear = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={"progression_action": "confirm_filter_clear"},
+            )
+            assert filter_clear.status_code == 200
+            assert filter_clear.get_json()["data"]["run"]["progression"]["stage_key"] == "ready_to_start_pressurization"
+
+            pressurize = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={"progression_action": "start_pressurization"},
+            )
+            assert pressurize.status_code == 200
+            assert pressurize.get_json()["data"]["run"]["progression"]["stage_key"] == "ready_to_begin_recovery"
+
+            recovery = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={"progression_action": "begin_recovery"},
+            )
+            assert recovery.status_code == 200
+            assert recovery.get_json()["data"]["run"]["progression"]["stage_key"] == "ready_to_begin_flush_cycle"
+
+            begin_flush_cycle = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={"progression_action": "begin_flush_cycle"},
+            )
+            assert begin_flush_cycle.status_code == 200
+            assert begin_flush_cycle.get_json()["data"]["run"]["progression"]["stage_key"] == "ready_to_verify_flush_temps"
+
+            verify_temps = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={
+                    "flush_solvent_chiller_temp_f": -45,
+                    "flush_plate_temp_f": -41,
+                    "flush_temp_slack_post_confirmed": "1",
+                    "progression_action": "verify_flush_temps",
+                },
+            )
+            assert verify_temps.status_code == 200
+            assert verify_temps.get_json()["data"]["run"]["progression"]["stage_key"] == "ready_to_record_flush_solvent_charge"
+
+            flush_charge = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={
+                    "flush_solvent_charge_lbs": 500,
+                    "progression_action": "record_flush_solvent_charge",
+                },
+            )
+            assert flush_charge.status_code == 200
+            assert flush_charge.get_json()["data"]["run"]["progression"]["stage_key"] == "ready_to_flush"
+
+            start_flush = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={"progression_action": "start_flush"},
+            )
+            assert start_flush.status_code == 200
+            assert start_flush.get_json()["data"]["run"]["progression"]["stage_key"] == "flushing"
+
+            stop_flush = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={"progression_action": "stop_flush"},
+            )
+            assert stop_flush.status_code == 200
+            stopped_flush = stop_flush.get_json()["data"]["run"]
+            assert stopped_flush["flush_duration_minutes"] is not None
+            assert stopped_flush["progression"]["stage_key"] == "ready_to_confirm_flow_resumed"
+
+            flow_resumed = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={
+                    "flow_resumed_decision": "yes",
+                    "progression_action": "confirm_flow_resumed",
+                },
+            )
+            assert flow_resumed.status_code == 200
+            assert flow_resumed.get_json()["data"]["run"]["progression"]["stage_key"] == "ready_to_start_final_purge"
+
+            start_final_purge = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={"progression_action": "start_final_purge"},
+            )
+            assert start_final_purge.status_code == 200
+            assert start_final_purge.get_json()["data"]["run"]["progression"]["stage_key"] == "purging"
+
+            stop_final_purge = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={"progression_action": "stop_final_purge"},
+            )
+            assert stop_final_purge.status_code == 200
+            assert stop_final_purge.get_json()["data"]["run"]["progression"]["stage_key"] == "ready_to_confirm_clarity"
+
+            final_clarity = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={
+                    "final_clarity_decision": "yes",
+                    "progression_action": "confirm_final_clarity",
+                },
+            )
+            assert final_clarity.status_code == 200
+            assert final_clarity.get_json()["data"]["run"]["progression"]["stage_key"] == "ready_to_complete_shutdown"
+
+            shutdown = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={
+                    "shutdown_recovery_inlets_closed": "1",
+                    "shutdown_filtration_pumpdown_started": "1",
+                    "shutdown_nitrogen_off": "1",
+                    "shutdown_dewax_inlet_closed": "1",
+                    "progression_action": "complete_shutdown",
+                },
+            )
+            assert shutdown.status_code == 200
+            assert shutdown.get_json()["data"]["run"]["progression"]["stage_key"] == "ready_to_complete"
 
             complete_run = client.post(
                 f"/api/mobile/v1/extraction/charges/{charge_id}/run",
@@ -1075,6 +1335,14 @@ def test_mobile_extraction_run_execution_flow():
             assert run.hte_potency_disposition == "hold_distillate"
             assert run.hte_queue_destination == "liquid_loud_hold"
             assert run.notes == "Touch-first run capture"
+            assert run.booth_session is not None
+            assert run.booth_session.primary_solvent_charge_lbs == 500
+            assert run.booth_session.flush_solvent_chiller_temp_f == -45
+            assert run.booth_session.flush_solvent_charge_lbs == 500
+            assert run.booth_session.flow_resumed_decision == "yes"
+            assert run.booth_session.final_clarity_decision == "yes"
+            assert run.booth_session.booth_process_completed_at is not None
+            assert run.booth_session.status == "completed"
     finally:
         with app.app_context():
             charge = db.session.get(ExtractionCharge, charge_id) if charge_id else None

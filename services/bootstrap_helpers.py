@@ -242,6 +242,60 @@ def ensure_sqlite_schema(root) -> None:
         if "hte_queue_destination" not in cols:
             root.db.session.execute(text("ALTER TABLE runs ADD COLUMN hte_queue_destination VARCHAR(40)"))
 
+    if has_table("extraction_booth_sessions"):
+        cols = column_names("extraction_booth_sessions")
+        if "flush_solvent_chiller_temp_f" not in cols:
+            root.db.session.execute(text("ALTER TABLE extraction_booth_sessions ADD COLUMN flush_solvent_chiller_temp_f FLOAT"))
+        if "flush_plate_temp_f" not in cols:
+            root.db.session.execute(text("ALTER TABLE extraction_booth_sessions ADD COLUMN flush_plate_temp_f FLOAT"))
+        if "flush_temp_verified_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE extraction_booth_sessions ADD COLUMN flush_temp_verified_at DATETIME"))
+        if "flush_temp_threshold_passed" not in cols:
+            root.db.session.execute(text("ALTER TABLE extraction_booth_sessions ADD COLUMN flush_temp_threshold_passed BOOLEAN"))
+        if "flush_temp_slack_post_confirmed_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE extraction_booth_sessions ADD COLUMN flush_temp_slack_post_confirmed_at DATETIME"))
+        if "flush_solvent_charge_lbs" not in cols:
+            root.db.session.execute(text("ALTER TABLE extraction_booth_sessions ADD COLUMN flush_solvent_charge_lbs FLOAT"))
+        if "flush_solvent_charged_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE extraction_booth_sessions ADD COLUMN flush_solvent_charged_at DATETIME"))
+        if "flow_resumed_decision" not in cols:
+            root.db.session.execute(text("ALTER TABLE extraction_booth_sessions ADD COLUMN flow_resumed_decision VARCHAR(20)"))
+        if "flow_resumed_confirmed_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE extraction_booth_sessions ADD COLUMN flow_resumed_confirmed_at DATETIME"))
+        if "final_purge_started_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE extraction_booth_sessions ADD COLUMN final_purge_started_at DATETIME"))
+        if "final_purge_completed_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE extraction_booth_sessions ADD COLUMN final_purge_completed_at DATETIME"))
+        if "final_clarity_decision" not in cols:
+            root.db.session.execute(text("ALTER TABLE extraction_booth_sessions ADD COLUMN final_clarity_decision VARCHAR(20)"))
+        if "final_clarity_confirmed_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE extraction_booth_sessions ADD COLUMN final_clarity_confirmed_at DATETIME"))
+        if "final_recovery_inlets_closed_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE extraction_booth_sessions ADD COLUMN final_recovery_inlets_closed_at DATETIME"))
+        if "filtration_pumpdown_started_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE extraction_booth_sessions ADD COLUMN filtration_pumpdown_started_at DATETIME"))
+        if "nitrogen_turned_off_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE extraction_booth_sessions ADD COLUMN nitrogen_turned_off_at DATETIME"))
+        if "dewax_inlet_closed_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE extraction_booth_sessions ADD COLUMN dewax_inlet_closed_at DATETIME"))
+        if "booth_process_completed_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE extraction_booth_sessions ADD COLUMN booth_process_completed_at DATETIME"))
+
+    if not has_table("extraction_booth_evidence"):
+        root.db.session.execute(text(
+            "CREATE TABLE extraction_booth_evidence ("
+            "id VARCHAR(36) PRIMARY KEY, "
+            "session_id VARCHAR(36) NOT NULL, "
+            "run_id VARCHAR(36) NOT NULL, "
+            "evidence_type VARCHAR(40) NOT NULL, "
+            "file_path VARCHAR(500) NOT NULL, "
+            "captured_at DATETIME NOT NULL, "
+            "captured_by_user_id VARCHAR(36), "
+            "notes TEXT, "
+            "created_at DATETIME NOT NULL"
+            ")"
+        ))
+
     if has_table("purchase_lots"):
         cols = column_names("purchase_lots")
         if "tracking_id" not in cols:
@@ -444,6 +498,41 @@ def ensure_postgres_run_execution_columns(root) -> None:
         "ALTER TABLE runs ADD COLUMN IF NOT EXISTS hte_queue_destination VARCHAR(40)",
     ):
         root.db.session.execute(text(stmt))
+    root.db.session.commit()
+
+    for stmt in (
+        "ALTER TABLE extraction_booth_sessions ADD COLUMN IF NOT EXISTS flush_solvent_chiller_temp_f DOUBLE PRECISION",
+        "ALTER TABLE extraction_booth_sessions ADD COLUMN IF NOT EXISTS flush_plate_temp_f DOUBLE PRECISION",
+        "ALTER TABLE extraction_booth_sessions ADD COLUMN IF NOT EXISTS flush_temp_verified_at TIMESTAMP",
+        "ALTER TABLE extraction_booth_sessions ADD COLUMN IF NOT EXISTS flush_temp_threshold_passed BOOLEAN",
+        "ALTER TABLE extraction_booth_sessions ADD COLUMN IF NOT EXISTS flush_temp_slack_post_confirmed_at TIMESTAMP",
+        "ALTER TABLE extraction_booth_sessions ADD COLUMN IF NOT EXISTS flush_solvent_charge_lbs DOUBLE PRECISION",
+        "ALTER TABLE extraction_booth_sessions ADD COLUMN IF NOT EXISTS flush_solvent_charged_at TIMESTAMP",
+        "ALTER TABLE extraction_booth_sessions ADD COLUMN IF NOT EXISTS flow_resumed_decision VARCHAR(20)",
+        "ALTER TABLE extraction_booth_sessions ADD COLUMN IF NOT EXISTS flow_resumed_confirmed_at TIMESTAMP",
+        "ALTER TABLE extraction_booth_sessions ADD COLUMN IF NOT EXISTS final_purge_started_at TIMESTAMP",
+        "ALTER TABLE extraction_booth_sessions ADD COLUMN IF NOT EXISTS final_purge_completed_at TIMESTAMP",
+        "ALTER TABLE extraction_booth_sessions ADD COLUMN IF NOT EXISTS final_clarity_decision VARCHAR(20)",
+        "ALTER TABLE extraction_booth_sessions ADD COLUMN IF NOT EXISTS final_clarity_confirmed_at TIMESTAMP",
+        "ALTER TABLE extraction_booth_sessions ADD COLUMN IF NOT EXISTS final_recovery_inlets_closed_at TIMESTAMP",
+        "ALTER TABLE extraction_booth_sessions ADD COLUMN IF NOT EXISTS filtration_pumpdown_started_at TIMESTAMP",
+        "ALTER TABLE extraction_booth_sessions ADD COLUMN IF NOT EXISTS nitrogen_turned_off_at TIMESTAMP",
+        "ALTER TABLE extraction_booth_sessions ADD COLUMN IF NOT EXISTS dewax_inlet_closed_at TIMESTAMP",
+        "ALTER TABLE extraction_booth_sessions ADD COLUMN IF NOT EXISTS booth_process_completed_at TIMESTAMP",
+    ):
+        root.db.session.execute(text(stmt))
+    root.db.session.execute(text(
+        "CREATE TABLE IF NOT EXISTS extraction_booth_evidence ("
+        "id VARCHAR(36) PRIMARY KEY, "
+        "session_id VARCHAR(36) NOT NULL, "
+        "run_id VARCHAR(36) NOT NULL, "
+        "evidence_type VARCHAR(40) NOT NULL, "
+        "file_path VARCHAR(500) NOT NULL, "
+        "captured_at TIMESTAMP NOT NULL, "
+        "captured_by_user_id VARCHAR(36), "
+        "notes TEXT, "
+        "created_at TIMESTAMP NOT NULL)"
+    ))
     root.db.session.commit()
 
 

@@ -55,8 +55,13 @@ Related mobile workflows:
 - It mirrors the same charge and lifecycle workflow the main app uses on `Floor Ops`.
 - After recording a charge, it can now open a dedicated standalone run-execution screen for the extractor workflow, and it can still open the main run form when deeper admin editing is needed.
 - On the `Reactors` board, use the large `Open Run` button on the reactor card before `Mark Running` when the current policy requires a linked run.
-- Inside the standalone run screen, use the guided progression buttons to move the run forward with minimal typing: `Start Run`, `Start Mixer`, `Stop Mixer`, `Start Flush`, `Stop Flush`, and `Mark Run Complete`.
-- `Settings -> Operational Parameters -> Extraction run defaults` controls the initial values the standalone run screen opens with for blend, fill count, total fill weight, flush count, total flush weight, stringer baskets, and CRC blend.
+- Inside the standalone run screen, use the guided progression buttons to move through the booth procedure with minimal typing: confirm vacuum, record solvent charge, start soak, run the mixer, confirm filter clear, start pressurization, begin recovery, move into flush, verify temperatures, record flush solvent charge, confirm flow resumed, run final purge, confirm final clarity, complete shutdown, then mark the run complete.
+- The same screen now stores booth-specific proof fields such as primary solvent charge, flush chiller temperature, plate temperature, flush solvent charge, final purge timing, flow-resumed / clarity decisions, and the shutdown checklist.
+- Use the `Booth evidence` section on the run screen to upload the required solvent chiller and plate temperature photos when your SOP calls for photo proof.
+- The `Booth timing controls` section shows the live or recorded duration for primary soak, mixer, flush soak, and final purge, along with the configured target for each step.
+- If flow has not resumed yet, choose `Still adjusting` and use the returned `Re-check Flow` step when recovery is ready to be checked again.
+- If final clarity is not acceptable yet, choose `Not yet` and use `Resume Final Purge` to loop back through another purge pass before shutdown.
+- `Settings -> Operational Parameters -> Extraction run defaults` controls the initial values the standalone run screen opens with for blend, fill count, total fill weight, flush count, total flush weight, stringer baskets, CRC blend, and the booth timing targets.
 
 ---
 
@@ -387,20 +392,33 @@ The timer-heavy fields use touch-first buttons instead of keyboard entry:
 - `Start / Now`
 - `Stop / Now`
 
-The top of the run screen now shows the current stage and the next action buttons. The normal sequence is:
+The top of the run screen now shows the current stage and the next action buttons. The normal booth sequence is:
 
-- **Start Run**
+- **Confirm Vacuum Down**
+- **Record Solvent Charge**
+- **Start Primary Soak**
 - **Start Mixer**
 - **Stop Mixer**
+- **Confirm Filter Clear**
+- **Start Pressurization**
+- **Begin Recovery**
+- **Begin Flush Cycle**
+- **Verify Flush Temps**
+- **Record Flush Solvent Charge**
 - **Start Flush**
 - **Stop Flush**
+- **Confirm Flow Resumed**
+- **Start Final Purge**
+- **Stop Final Purge**
+- **Confirm Final Clarity**
+- **Complete Shutdown**
 - **Mark Run Complete**
 
-Those buttons write the matching timestamps automatically. When the run is marked complete, the run stores a completed timestamp and the linked extraction charge moves to completed as well when that charge is still the active reactor event.
+Those actions write the matching timestamps and booth checkpoints automatically. When the run is marked complete, the run stores a completed timestamp and the linked extraction charge moves to completed as well when that charge is still the active reactor event.
 
 ### Post-extraction handoff (Phase 1)
 
-After **Mark Run Complete**, the same standalone run screen now opens the first downstream handoff step.
+After **Mark Run Complete**, the same standalone run screen opens the first downstream handoff step.
 
 1. Choose the **Downstream pathway**:
 - `100 lb pot pour`

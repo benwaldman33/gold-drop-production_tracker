@@ -19,27 +19,71 @@ EXTRACTION_RUN_DEFAULTS = {
     "extraction_default_flush_total_weight_lbs": ("", "Default total flush weight (lbs) for extraction run drafts"),
     "extraction_default_stringer_basket_count": ("0", "Default stringer basket count for extraction run drafts"),
     "extraction_default_crc_blend": ("", "Default CRC blend note for extraction run drafts"),
+    "extraction_target_primary_soak_minutes": ("30", "Target minutes for the primary soak window"),
+    "extraction_target_mixer_minutes": ("5", "Target minutes for the primary mixer window"),
+    "extraction_target_flush_minutes": ("10", "Target minutes for the flush soak window"),
+    "extraction_target_final_purge_minutes": ("", "Optional target minutes for the final purge window"),
 }
 
 RUN_PROGRESSION = {
-    "ready_to_start": {
-        "label": "Ready to start",
-        "description": "Record the start of the run before moving into mixer work.",
-        "actions": [{"action_id": "start_run", "label": "Start Run"}],
+    "ready_to_confirm_vacuum": {
+        "label": "Confirm vacuum down",
+        "description": "Confirm the reactor was vacuumed down before solvent charging begins.",
+        "actions": [{"action_id": "confirm_vacuum_down", "label": "Confirm Vacuum Down"}],
     },
-    "ready_to_mix": {
-        "label": "Ready to mix",
-        "description": "The run has started. Start the mixer when material is loaded.",
+    "ready_to_record_solvent_charge": {
+        "label": "Record solvent charge",
+        "description": "Enter the primary solvent charge and record it before starting the soak.",
+        "actions": [{"action_id": "record_solvent_charge", "label": "Record Solvent Charge"}],
+    },
+    "ready_to_start_primary_soak": {
+        "label": "Start primary soak",
+        "description": "The primary solvent charge is recorded. Start the primary soak to begin booth execution timing.",
+        "actions": [{"action_id": "start_primary_soak", "label": "Start Primary Soak"}],
+    },
+    "ready_to_start_mixer": {
+        "label": "Ready to start mixer",
+        "description": "Primary soak is active. Start the mixer when agitation begins.",
         "actions": [{"action_id": "start_mixer", "label": "Start Mixer"}],
     },
     "mixing": {
         "label": "Mixer running",
-        "description": "Mixer timing is active. Stop the mixer when that step is done.",
+        "description": "Mixer timing is active during primary extraction. Stop it when agitation is done.",
         "actions": [{"action_id": "stop_mixer", "label": "Stop Mixer"}],
     },
+    "ready_to_confirm_filter_clear": {
+        "label": "Confirm filter clear",
+        "description": "Mixer timing is complete. Confirm the basket filter is cleared before pressurization.",
+        "actions": [{"action_id": "confirm_filter_clear", "label": "Confirm Filter Clear"}],
+    },
+    "ready_to_start_pressurization": {
+        "label": "Start pressurization",
+        "description": "Begin nitrogen pressurization after the filter-clear checkpoint is complete.",
+        "actions": [{"action_id": "start_pressurization", "label": "Start Pressurization"}],
+    },
+    "ready_to_begin_recovery": {
+        "label": "Begin recovery",
+        "description": "Pressurization has started. Begin flow to filtration and recovery.",
+        "actions": [{"action_id": "begin_recovery", "label": "Begin Recovery"}],
+    },
+    "ready_to_begin_flush_cycle": {
+        "label": "Begin flush cycle",
+        "description": "Primary extraction checkpoints are complete. Move into the flush cycle.",
+        "actions": [{"action_id": "begin_flush_cycle", "label": "Begin Flush Cycle"}],
+    },
+    "ready_to_verify_flush_temps": {
+        "label": "Verify flush temperatures",
+        "description": "Record the solvent chiller and plate temperatures before flush solvent is charged.",
+        "actions": [{"action_id": "verify_flush_temps", "label": "Verify Flush Temps"}],
+    },
+    "ready_to_record_flush_solvent_charge": {
+        "label": "Record flush solvent charge",
+        "description": "Record the flush solvent charge after temperature verification is complete.",
+        "actions": [{"action_id": "record_flush_solvent_charge", "label": "Record Flush Solvent Charge"}],
+    },
     "ready_to_flush": {
-        "label": "Ready to flush",
-        "description": "Mixer timing is complete. Start the flush when the reactor is ready.",
+        "label": "Start flush soak",
+        "description": "The flush solvent charge is recorded. Start the flush timer when the flush soak begins.",
         "actions": [{"action_id": "start_flush", "label": "Start Flush"}],
     },
     "flushing": {
@@ -47,9 +91,44 @@ RUN_PROGRESSION = {
         "description": "Flush timing is active. Stop it when the flush is done.",
         "actions": [{"action_id": "stop_flush", "label": "Stop Flush"}],
     },
+    "ready_to_confirm_flow_resumed": {
+        "label": "Confirm flow resumed",
+        "description": "Record whether flow resumed after flush recovery adjustments.",
+        "actions": [{"action_id": "confirm_flow_resumed", "label": "Confirm Flow Resumed"}],
+    },
+    "flow_adjustment_required": {
+        "label": "Flow adjustment required",
+        "description": "Flow has not resumed yet. Keep adjusting recovery, then return here to re-check the flow decision.",
+        "actions": [{"action_id": "resume_flow_check", "label": "Re-check Flow"}],
+    },
+    "ready_to_start_final_purge": {
+        "label": "Start final purge",
+        "description": "Flow resumed is confirmed. Start the final purge / burp step.",
+        "actions": [{"action_id": "start_final_purge", "label": "Start Final Purge"}],
+    },
+    "purging": {
+        "label": "Final purge running",
+        "description": "Final purge timing is active. Stop it when the purge is complete.",
+        "actions": [{"action_id": "stop_final_purge", "label": "Stop Final Purge"}],
+    },
+    "ready_to_confirm_clarity": {
+        "label": "Confirm final clarity",
+        "description": "Record whether the system is clear enough to proceed into shutdown.",
+        "actions": [{"action_id": "confirm_final_clarity", "label": "Confirm Final Clarity"}],
+    },
+    "clarity_adjustment_required": {
+        "label": "More purge / clarity work required",
+        "description": "The system is not clear enough yet. Resume final purge or additional adjustment work, then confirm clarity again.",
+        "actions": [{"action_id": "resume_final_purge", "label": "Resume Final Purge"}],
+    },
+    "ready_to_complete_shutdown": {
+        "label": "Complete shutdown checklist",
+        "description": "Finish the shutdown checklist before closing the booth process.",
+        "actions": [{"action_id": "complete_shutdown", "label": "Complete Shutdown"}],
+    },
     "ready_to_complete": {
         "label": "Ready to complete",
-        "description": "Core extraction steps are timed. Complete the run to close out the operator workflow.",
+        "description": "Booth checkpoints and shutdown are complete. Complete the run to close out the operator workflow.",
         "actions": [{"action_id": "mark_complete", "label": "Mark Run Complete"}],
     },
     "completed": {
@@ -57,6 +136,30 @@ RUN_PROGRESSION = {
         "description": "This run has been marked complete in the standalone execution workflow.",
         "actions": [],
     },
+}
+
+RUN_STAGE_SEQUENCE = {
+    "ready_to_confirm_vacuum": "ready_to_record_solvent_charge",
+    "ready_to_record_solvent_charge": "ready_to_start_primary_soak",
+    "ready_to_start_primary_soak": "ready_to_start_mixer",
+    "ready_to_start_mixer": "mixing",
+    "mixing": "ready_to_confirm_filter_clear",
+    "ready_to_confirm_filter_clear": "ready_to_start_pressurization",
+    "ready_to_start_pressurization": "ready_to_begin_recovery",
+    "ready_to_begin_recovery": "ready_to_begin_flush_cycle",
+    "ready_to_begin_flush_cycle": "ready_to_verify_flush_temps",
+    "ready_to_verify_flush_temps": "ready_to_record_flush_solvent_charge",
+    "ready_to_record_flush_solvent_charge": "ready_to_flush",
+    "ready_to_flush": "flushing",
+    "flushing": "ready_to_confirm_flow_resumed",
+    "flow_adjustment_required": "ready_to_confirm_flow_resumed",
+    "ready_to_confirm_flow_resumed": "ready_to_start_final_purge",
+    "ready_to_start_final_purge": "purging",
+    "purging": "ready_to_confirm_clarity",
+    "clarity_adjustment_required": "ready_to_start_final_purge",
+    "ready_to_confirm_clarity": "ready_to_complete_shutdown",
+    "ready_to_complete_shutdown": "ready_to_complete",
+    "ready_to_complete": "completed",
 }
 
 POST_EXTRACTION_PATHWAY_OPTIONS = [
@@ -131,13 +234,189 @@ def extraction_run_defaults(root) -> dict[str, float | int | str]:
     }
 
 
+def extraction_timing_targets(root) -> dict[str, int | None]:
+    return {
+        "primary_soak_minutes": int(root.SystemSetting.get_float("extraction_target_primary_soak_minutes", 30) or 30),
+        "mixer_minutes": int(root.SystemSetting.get_float("extraction_target_mixer_minutes", 5) or 5),
+        "flush_minutes": int(root.SystemSetting.get_float("extraction_target_flush_minutes", 10) or 10),
+        "final_purge_minutes": _opt_int(root.SystemSetting.get("extraction_target_final_purge_minutes", "") or "", field="Final purge target"),
+    }
+
+
 def _utc_now_localized() -> datetime:
     return datetime.now(app_display_zoneinfo()).astimezone(timezone.utc)
 
 
+def ensure_booth_session(root, run, charge=None):
+    session = getattr(run, "booth_session", None)
+    if session is None and getattr(run, "id", None):
+        session = root.ExtractionBoothSession.query.filter_by(run_id=run.id).first()
+    if session is not None:
+        if charge is not None and getattr(session, "charge_id", None) != getattr(charge, "id", None):
+            session.charge_id = getattr(charge, "id", None)
+        if getattr(session, "operator_user_id", None) is None:
+            session.operator_user_id = getattr(root.current_user, "id", None)
+        return session
+
+    session = root.ExtractionBoothSession(
+        run_id=run.id,
+        charge_id=getattr(charge, "id", None),
+        operator_user_id=getattr(root.current_user, "id", None),
+        current_stage_key="ready_to_confirm_vacuum",
+        status="in_progress",
+    )
+    root.db.session.add(session)
+    root.db.session.flush()
+    return session
+
+
+def _booth_event(root, session, event_key: str):
+    return (
+        session.booth_events.filter_by(event_key=event_key)
+        .order_by(root.ExtractionBoothEvent.occurred_at.desc())
+        .first()
+    )
+
+
+def _record_booth_event(root, session, *, event_key: str, event_label: str, numeric_value=None, text_value=None, decision_value=None, payload=None):
+    event = root.ExtractionBoothEvent(
+        session_id=session.id,
+        run_id=session.run_id,
+        event_key=event_key,
+        event_label=event_label,
+        stage_key=session.current_stage_key,
+        occurred_at=_utc_now_localized(),
+        recorded_by_user_id=getattr(root.current_user, "id", None),
+        decision_value=decision_value,
+        numeric_value=numeric_value,
+        text_value=text_value,
+        payload_json=root.json.dumps(payload or {}) if payload else None,
+    )
+    root.db.session.add(event)
+    return event
+
+
+def booth_session_payload(root, run) -> dict:
+    session = getattr(run, "booth_session", None)
+    if session is None:
+        return {
+            "status": "not_started",
+            "current_stage_key": "ready_to_confirm_vacuum",
+            "primary_solvent_charge_lbs": None,
+            "primary_solvent_charged_at": "",
+            "flush_solvent_chiller_temp_f": None,
+            "flush_plate_temp_f": None,
+            "flush_temp_verified_at": "",
+            "flush_temp_threshold_passed": None,
+            "flush_temp_slack_post_confirmed_at": "",
+            "flush_solvent_charge_lbs": None,
+            "flush_solvent_charged_at": "",
+            "flow_resumed_decision": "",
+            "flow_resumed_confirmed_at": "",
+            "final_purge_started_at": "",
+            "final_purge_completed_at": "",
+            "final_purge_duration_minutes": None,
+            "final_clarity_decision": "",
+            "final_clarity_confirmed_at": "",
+            "final_recovery_inlets_closed_at": "",
+            "filtration_pumpdown_started_at": "",
+            "nitrogen_turned_off_at": "",
+            "dewax_inlet_closed_at": "",
+            "booth_process_completed_at": "",
+            "timing_targets": extraction_timing_targets(root),
+            "evidence_counts": {},
+            "history": [],
+        }
+    history = (
+        session.booth_events.order_by(root.ExtractionBoothEvent.occurred_at.desc()).limit(8).all()
+        if hasattr(session.booth_events, "order_by")
+        else []
+    )
+    return {
+        "status": session.status,
+        "current_stage_key": session.current_stage_key,
+        "primary_solvent_charge_lbs": float(session.primary_solvent_charge_lbs or 0) if session.primary_solvent_charge_lbs is not None else None,
+        "primary_solvent_charged_at": display_local_datetime(session.primary_solvent_charged_at),
+        "flush_solvent_chiller_temp_f": float(session.flush_solvent_chiller_temp_f or 0) if session.flush_solvent_chiller_temp_f is not None else None,
+        "flush_plate_temp_f": float(session.flush_plate_temp_f or 0) if session.flush_plate_temp_f is not None else None,
+        "flush_temp_verified_at": display_local_datetime(session.flush_temp_verified_at),
+        "flush_temp_threshold_passed": session.flush_temp_threshold_passed,
+        "flush_temp_slack_post_confirmed_at": display_local_datetime(session.flush_temp_slack_post_confirmed_at),
+        "flush_solvent_charge_lbs": float(session.flush_solvent_charge_lbs or 0) if session.flush_solvent_charge_lbs is not None else None,
+        "flush_solvent_charged_at": display_local_datetime(session.flush_solvent_charged_at),
+        "flow_resumed_decision": session.flow_resumed_decision or "",
+        "flow_resumed_confirmed_at": display_local_datetime(session.flow_resumed_confirmed_at),
+        "final_purge_started_at": display_local_datetime(session.final_purge_started_at),
+        "final_purge_completed_at": display_local_datetime(session.final_purge_completed_at),
+        "final_purge_duration_minutes": duration_minutes(session.final_purge_started_at, session.final_purge_completed_at),
+        "final_clarity_decision": session.final_clarity_decision or "",
+        "final_clarity_confirmed_at": display_local_datetime(session.final_clarity_confirmed_at),
+        "final_recovery_inlets_closed_at": display_local_datetime(session.final_recovery_inlets_closed_at),
+        "filtration_pumpdown_started_at": display_local_datetime(session.filtration_pumpdown_started_at),
+        "nitrogen_turned_off_at": display_local_datetime(session.nitrogen_turned_off_at),
+        "dewax_inlet_closed_at": display_local_datetime(session.dewax_inlet_closed_at),
+        "booth_process_completed_at": display_local_datetime(session.booth_process_completed_at),
+        "timing_targets": extraction_timing_targets(root),
+        "evidence_counts": {
+            "solvent_chiller_temp_photo": session.booth_evidence.filter_by(evidence_type="solvent_chiller_temp_photo").count(),
+            "plate_temp_photo": session.booth_evidence.filter_by(evidence_type="plate_temp_photo").count(),
+        } if hasattr(session.booth_evidence, "filter_by") else {},
+        "history": [
+            {
+                "event_key": item.event_key,
+                "event_label": item.event_label,
+                "occurred_at": display_local_timestamp(item.occurred_at),
+            }
+            for item in history
+        ],
+    }
+
+
+def _active_duration_minutes(start_at: datetime | None) -> int | None:
+    if start_at is None:
+        return None
+    start = start_at if start_at.tzinfo is not None else start_at.replace(tzinfo=timezone.utc)
+    delta_seconds = (_utc_now_localized() - start).total_seconds()
+    if delta_seconds < 0:
+        return None
+    return int(round(delta_seconds / 60.0))
+
+
+def timing_control_payload(*, label: str, target_minutes: int | None, start_at: datetime | None, end_at: datetime | None) -> dict:
+    actual_minutes = duration_minutes(start_at, end_at)
+    active_minutes = _active_duration_minutes(start_at) if start_at is not None and end_at is None else None
+    if start_at is None:
+        status = "not_started"
+    elif end_at is None:
+        if target_minutes is None:
+            status = "active"
+        else:
+            status = "active_target_reached" if (active_minutes or 0) >= target_minutes else "active_on_track"
+    elif target_minutes is None:
+        status = "recorded"
+    else:
+        status = "on_target" if (actual_minutes or 0) >= target_minutes else "short"
+    delta_minutes = None
+    if target_minutes is not None:
+        baseline = active_minutes if end_at is None else actual_minutes
+        if baseline is not None:
+            delta_minutes = baseline - target_minutes
+    return {
+        "label": label,
+        "target_minutes": target_minutes,
+        "actual_minutes": actual_minutes,
+        "active_minutes": active_minutes,
+        "status": status,
+        "delta_minutes": delta_minutes,
+    }
+
+
 def run_progression_payload(run) -> dict:
+    session = getattr(run, "booth_session", None)
     if run.run_completed_at:
         stage_key = "completed"
+    elif session is not None and (session.current_stage_key or "").strip() in RUN_PROGRESSION and (session.current_stage_key or "").strip() != "completed":
+        stage_key = session.current_stage_key
     elif run.flush_started_at and not run.flush_ended_at:
         stage_key = "flushing"
     elif run.flush_ended_at:
@@ -145,12 +424,14 @@ def run_progression_payload(run) -> dict:
     elif run.mixer_started_at and not run.mixer_ended_at:
         stage_key = "mixing"
     elif run.mixer_ended_at:
-        stage_key = "ready_to_flush"
-    elif run.run_fill_started_at:
-        stage_key = "ready_to_mix"
+        stage_key = "ready_to_confirm_filter_clear"
     else:
-        stage_key = "ready_to_start"
-    config = RUN_PROGRESSION[stage_key]
+        stage_key = "ready_to_confirm_vacuum"
+    config = dict(RUN_PROGRESSION[stage_key])
+    if session is not None and stage_key == "ready_to_confirm_flow_resumed" and (session.flow_resumed_decision or "").strip().lower() == "no_adjusting":
+        config["description"] = "Flow is still being adjusted. Re-check once recovery flow has resumed, then continue to final purge."
+    if session is not None and stage_key == "ready_to_confirm_clarity" and (session.final_clarity_decision or "").strip().lower() == "not_yet":
+        config["description"] = "Final clarity is not there yet. Confirm again after additional purge or adjustment work."
     return {
         "stage_key": stage_key,
         "stage_label": config["label"],
@@ -195,41 +476,247 @@ def post_extraction_progression_payload(run) -> dict:
     }
 
 
-def apply_progression_action(run, action_id: str | None) -> None:
+def apply_progression_action(root, run, action_id: str | None, payload: dict | None = None) -> None:
     action = (action_id or "").strip()
     if not action:
         return
     now = _utc_now_localized()
-    if action == "start_run":
+    session = ensure_booth_session(root, run)
+    payload = payload or {}
+    if action == "confirm_vacuum_down":
+        if _booth_event(root, session, "reactor_vacuum_confirmed") is None:
+            _record_booth_event(root, session, event_key="reactor_vacuum_confirmed", event_label="Reactor vacuum confirmed")
+        session.current_stage_key = "ready_to_record_solvent_charge"
+        return
+    if action == "record_solvent_charge":
+        if _booth_event(root, session, "reactor_vacuum_confirmed") is None:
+            raise ValueError("Confirm vacuum down before recording solvent charge.")
+        try:
+            solvent_lbs = float(payload.get("primary_solvent_charge_lbs") or 0)
+        except (TypeError, ValueError):
+            raise ValueError("Primary solvent charge must be a number.")
+        if solvent_lbs <= 0:
+            raise ValueError("Enter the primary solvent charge before continuing.")
+        session.primary_solvent_charge_lbs = solvent_lbs
+        if session.primary_solvent_charged_at is None:
+            session.primary_solvent_charged_at = now
+        if _booth_event(root, session, "primary_solvent_charged") is None:
+            _record_booth_event(
+                root,
+                session,
+                event_key="primary_solvent_charged",
+                event_label="Primary solvent charge recorded",
+                numeric_value=solvent_lbs,
+            )
+        session.current_stage_key = "ready_to_start_primary_soak"
+        return
+    if action == "start_primary_soak":
+        if session.primary_solvent_charged_at is None:
+            raise ValueError("Record the primary solvent charge before starting the soak.")
         if run.run_fill_started_at is None:
             run.run_fill_started_at = now
+        if _booth_event(root, session, "primary_soak_started") is None:
+            _record_booth_event(root, session, event_key="primary_soak_started", event_label="Primary soak started")
+        session.current_stage_key = "ready_to_start_mixer"
         return
     if action == "start_mixer":
         if run.run_fill_started_at is None:
-            raise ValueError("Start the run before starting the mixer.")
+            raise ValueError("Start the primary soak before starting the mixer.")
         if run.mixer_started_at is None:
             run.mixer_started_at = now
+        if _booth_event(root, session, "primary_mixer_started") is None:
+            _record_booth_event(root, session, event_key="primary_mixer_started", event_label="Primary mixer started")
+        session.current_stage_key = "mixing"
         return
     if action == "stop_mixer":
         if run.mixer_started_at is None:
             raise ValueError("Start the mixer before stopping it.")
         run.mixer_ended_at = now
+        if _booth_event(root, session, "primary_mixer_stopped") is None:
+            _record_booth_event(root, session, event_key="primary_mixer_stopped", event_label="Primary mixer stopped")
+        session.current_stage_key = "ready_to_confirm_filter_clear"
+        return
+    if action == "confirm_filter_clear":
+        if run.mixer_ended_at is None:
+            raise ValueError("Stop the mixer before confirming the filter-clear step.")
+        if _booth_event(root, session, "basket_filter_cleared") is None:
+            _record_booth_event(root, session, event_key="basket_filter_cleared", event_label="Basket filter cleared")
+        session.current_stage_key = "ready_to_start_pressurization"
+        return
+    if action == "start_pressurization":
+        if _booth_event(root, session, "basket_filter_cleared") is None:
+            raise ValueError("Confirm filter clear before starting pressurization.")
+        if _booth_event(root, session, "nitrogen_pressurization_started") is None:
+            _record_booth_event(
+                root,
+                session,
+                event_key="nitrogen_pressurization_started",
+                event_label="Nitrogen pressurization started",
+            )
+        session.current_stage_key = "ready_to_begin_recovery"
+        return
+    if action == "begin_recovery":
+        if _booth_event(root, session, "nitrogen_pressurization_started") is None:
+            raise ValueError("Start pressurization before beginning recovery.")
+        if _booth_event(root, session, "recovery_flow_started") is None:
+            _record_booth_event(root, session, event_key="recovery_flow_started", event_label="Recovery flow started")
+        session.current_stage_key = "ready_to_begin_flush_cycle"
+        return
+    if action == "begin_flush_cycle":
+        if _booth_event(root, session, "recovery_flow_started") is None:
+            raise ValueError("Begin recovery before moving into the flush cycle.")
+        if _booth_event(root, session, "flush_cycle_started") is None:
+            _record_booth_event(root, session, event_key="flush_cycle_started", event_label="Flush cycle started")
+        session.current_stage_key = "ready_to_verify_flush_temps"
+        return
+    if action == "verify_flush_temps":
+        try:
+            chiller_temp = float(payload.get("flush_solvent_chiller_temp_f") or 0)
+            plate_temp = float(payload.get("flush_plate_temp_f") or 0)
+        except (TypeError, ValueError):
+            raise ValueError("Flush temperatures must be numbers.")
+        if payload.get("flush_solvent_chiller_temp_f") in (None, "") or payload.get("flush_plate_temp_f") in (None, ""):
+            raise ValueError("Enter both flush temperatures before continuing.")
+        session.flush_solvent_chiller_temp_f = chiller_temp
+        session.flush_plate_temp_f = plate_temp
+        session.flush_temp_verified_at = now
+        session.flush_temp_threshold_passed = bool(chiller_temp <= -40.0)
+        if not session.flush_temp_threshold_passed:
+            raise ValueError("Solvent chiller temperature must be at or below -40F before continuing.")
+        if _truthy(payload.get("flush_temp_slack_post_confirmed")):
+            session.flush_temp_slack_post_confirmed_at = now
+        if _booth_event(root, session, "flush_temp_verified") is None:
+            _record_booth_event(
+                root,
+                session,
+                event_key="flush_temp_verified",
+                event_label="Flush temperatures verified",
+                payload={"chiller_temp_f": chiller_temp, "plate_temp_f": plate_temp},
+            )
+        session.current_stage_key = "ready_to_record_flush_solvent_charge"
+        return
+    if action == "record_flush_solvent_charge":
+        if session.flush_temp_verified_at is None or not session.flush_temp_threshold_passed:
+            raise ValueError("Verify flush temperatures before recording the flush solvent charge.")
+        try:
+            flush_solvent_lbs = float(payload.get("flush_solvent_charge_lbs") or 0)
+        except (TypeError, ValueError):
+            raise ValueError("Flush solvent charge must be a number.")
+        if flush_solvent_lbs <= 0:
+            raise ValueError("Enter the flush solvent charge before continuing.")
+        session.flush_solvent_charge_lbs = flush_solvent_lbs
+        session.flush_solvent_charged_at = now
+        if _booth_event(root, session, "flush_solvent_charged") is None:
+            _record_booth_event(
+                root,
+                session,
+                event_key="flush_solvent_charged",
+                event_label="Flush solvent charge recorded",
+                numeric_value=flush_solvent_lbs,
+            )
+        session.current_stage_key = "ready_to_flush"
         return
     if action == "start_flush":
         if run.mixer_ended_at is None:
             raise ValueError("Stop the mixer before starting the flush.")
+        if _booth_event(root, session, "flush_cycle_started") is None:
+            raise ValueError("Begin the flush cycle before starting the flush timer.")
+        if session.flush_solvent_charged_at is None:
+            raise ValueError("Record the flush solvent charge before starting the flush.")
         if run.flush_started_at is None:
             run.flush_started_at = now
+        session.current_stage_key = "flushing"
         return
     if action == "stop_flush":
         if run.flush_started_at is None:
             raise ValueError("Start the flush before stopping it.")
         run.flush_ended_at = now
+        session.current_stage_key = "ready_to_confirm_flow_resumed"
+        return
+    if action == "confirm_flow_resumed":
+        decision = (payload.get("flow_resumed_decision") or "").strip().lower()
+        if decision not in {"yes", "no_adjusting"}:
+            raise ValueError("Choose whether flow resumed before continuing.")
+        session.flow_resumed_decision = decision
+        session.flow_resumed_confirmed_at = now
+        _record_booth_event(
+            root,
+            session,
+            event_key="flow_resumed_decision",
+            event_label="Flow resumed confirmed" if decision == "yes" else "Flow still adjusting",
+            decision_value=decision,
+        )
+        session.current_stage_key = "ready_to_start_final_purge" if decision == "yes" else "flow_adjustment_required"
+        return
+    if action == "resume_flow_check":
+        if session.flow_resumed_decision != "no_adjusting":
+            raise ValueError("Use flow adjustment only when flow is still being adjusted.")
+        _record_booth_event(root, session, event_key="flow_adjustment_resumed", event_label="Flow adjustment resumed")
+        session.current_stage_key = "ready_to_confirm_flow_resumed"
+        return
+    if action == "start_final_purge":
+        if session.flow_resumed_decision != "yes":
+            raise ValueError("Confirm flow resumed before starting final purge.")
+        session.final_purge_started_at = now
+        session.final_purge_completed_at = None
+        _record_booth_event(root, session, event_key="final_purge_started", event_label="Final purge started")
+        session.current_stage_key = "purging"
+        return
+    if action == "stop_final_purge":
+        if session.final_purge_started_at is None:
+            raise ValueError("Start final purge before stopping it.")
+        session.final_purge_completed_at = now
+        _record_booth_event(root, session, event_key="final_purge_completed", event_label="Final purge completed")
+        session.current_stage_key = "ready_to_confirm_clarity"
+        return
+    if action == "confirm_final_clarity":
+        decision = (payload.get("final_clarity_decision") or "").strip().lower()
+        if decision not in {"yes", "not_yet"}:
+            raise ValueError("Choose whether the system is clear enough to proceed.")
+        session.final_clarity_decision = decision
+        session.final_clarity_confirmed_at = now
+        _record_booth_event(
+            root,
+            session,
+            event_key="final_clarity_confirmed",
+            event_label="Final clarity confirmed" if decision == "yes" else "Final clarity not yet acceptable",
+            decision_value=decision,
+        )
+        session.current_stage_key = "ready_to_complete_shutdown" if decision == "yes" else "clarity_adjustment_required"
+        return
+    if action == "resume_final_purge":
+        if session.final_clarity_decision != "not_yet":
+            raise ValueError("Resume final purge only when clarity is not yet acceptable.")
+        _record_booth_event(root, session, event_key="final_purge_resumed", event_label="Final purge resumed for additional clarity work")
+        session.current_stage_key = "ready_to_start_final_purge"
+        return
+    if action == "complete_shutdown":
+        if not _truthy(payload.get("shutdown_recovery_inlets_closed")):
+            raise ValueError("Confirm recovery inlets are closed before completing shutdown.")
+        if not _truthy(payload.get("shutdown_filtration_pumpdown_started")):
+            raise ValueError("Confirm filtration pump-down started before completing shutdown.")
+        if not _truthy(payload.get("shutdown_nitrogen_off")):
+            raise ValueError("Confirm nitrogen is off before completing shutdown.")
+        if not _truthy(payload.get("shutdown_dewax_inlet_closed")):
+            raise ValueError("Confirm the dewax inlet is closed before completing shutdown.")
+        session.final_recovery_inlets_closed_at = session.final_recovery_inlets_closed_at or now
+        session.filtration_pumpdown_started_at = session.filtration_pumpdown_started_at or now
+        session.nitrogen_turned_off_at = session.nitrogen_turned_off_at or now
+        session.dewax_inlet_closed_at = session.dewax_inlet_closed_at or now
+        session.booth_process_completed_at = now
+        if _booth_event(root, session, "shutdown_completed") is None:
+            _record_booth_event(root, session, event_key="shutdown_completed", event_label="Shutdown checklist completed")
+        session.current_stage_key = "ready_to_complete"
         return
     if action == "mark_complete":
         if run.flush_ended_at is None:
             raise ValueError("Stop the flush before completing the run.")
+        if session.booth_process_completed_at is None:
+            raise ValueError("Complete the shutdown checklist before completing the run.")
         run.run_completed_at = now
+        session.current_stage_key = "completed"
+        session.completed_at = now
+        session.status = "completed"
         return
     raise ValueError("Unknown run progression action.")
 
@@ -327,6 +814,14 @@ def _opt_int(value, *, field: str) -> int | None:
         return int(float(value))
     except (TypeError, ValueError):
         raise ValueError(f"{field} must be a whole number.")
+
+
+def _truthy(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _clamped_percent(value, *, field: str) -> float | None:
@@ -484,12 +979,14 @@ def ensure_run_for_charge(root, charge):
         run = root.db.session.get(root.Run, charge.run_id)
         if run is not None:
             _ensure_run_input(root, run, charge)
+            ensure_booth_session(root, run, charge)
             return run
 
     run = _draft_run_for_charge(root, charge)
     root.db.session.add(run)
     root.db.session.flush()
     _ensure_run_input(root, run, charge)
+    ensure_booth_session(root, run, charge)
     charge.run_id = run.id
     if (charge.status or "pending").strip() == "pending":
         update_charge_state(
@@ -511,6 +1008,34 @@ def ensure_run_for_charge(root, charge):
 
 def mobile_run_payload(root, run, charge) -> dict:
     lot = charge.lot
+    booth_payload = booth_session_payload(root, run)
+    timing_targets = booth_payload.get("timing_targets") or extraction_timing_targets(root)
+    timing_controls = {
+        "primary_soak": timing_control_payload(
+            label="Primary soak",
+            target_minutes=timing_targets.get("primary_soak_minutes"),
+            start_at=run.run_fill_started_at,
+            end_at=run.run_fill_ended_at,
+        ),
+        "mixer": timing_control_payload(
+            label="Mixer",
+            target_minutes=timing_targets.get("mixer_minutes"),
+            start_at=run.mixer_started_at,
+            end_at=run.mixer_ended_at,
+        ),
+        "flush": timing_control_payload(
+            label="Flush soak",
+            target_minutes=timing_targets.get("flush_minutes"),
+            start_at=run.flush_started_at,
+            end_at=run.flush_ended_at,
+        ),
+        "final_purge": timing_control_payload(
+            label="Final purge",
+            target_minutes=timing_targets.get("final_purge_minutes"),
+            start_at=getattr(run.booth_session, "final_purge_started_at", None) if getattr(run, "booth_session", None) is not None else None,
+            end_at=getattr(run.booth_session, "final_purge_completed_at", None) if getattr(run, "booth_session", None) is not None else None,
+        ),
+    }
     return {
         "id": run.id,
         "run_date": run.run_date.isoformat() if run.run_date else None,
@@ -536,6 +1061,9 @@ def mobile_run_payload(root, run, charge) -> dict:
         "flush_duration_minutes": duration_minutes(run.flush_started_at, run.flush_ended_at),
         "run_completed_at": display_local_datetime(run.run_completed_at),
         "progression": run_progression_payload(run),
+        "booth": booth_payload,
+        "timing_controls": timing_controls,
+        "primary_solvent_charge_lbs": booth_payload["primary_solvent_charge_lbs"],
         "wet_hte_g": float(run.wet_hte_g or 0) if run.wet_hte_g is not None else None,
         "wet_thca_g": float(run.wet_thca_g or 0) if run.wet_thca_g is not None else None,
         "post_extraction_pathway": run.post_extraction_pathway or "",

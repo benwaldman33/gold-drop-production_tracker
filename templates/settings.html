@@ -241,6 +241,31 @@
         </div>
         <div class="form-group"></div>
       </div>
+      <div class="form-row-3" style="margin-top:8px;">
+        <div class="form-group">
+          <label>Primary soak target (min)</label>
+          <input type="number" name="extraction_target_primary_soak_minutes" value="{{ system_settings.get('extraction_target_primary_soak_minutes', '30') }}" step="1" min="0">
+        </div>
+        <div class="form-group">
+          <label>Mixer target (min)</label>
+          <input type="number" name="extraction_target_mixer_minutes" value="{{ system_settings.get('extraction_target_mixer_minutes', '5') }}" step="1" min="0">
+        </div>
+        <div class="form-group">
+          <label>Flush soak target (min)</label>
+          <input type="number" name="extraction_target_flush_minutes" value="{{ system_settings.get('extraction_target_flush_minutes', '10') }}" step="1" min="0">
+        </div>
+      </div>
+      <div class="form-row-3" style="margin-top:8px;">
+        <div class="form-group">
+          <label>Final purge target (min)</label>
+          <input type="number" name="extraction_target_final_purge_minutes" value="{{ system_settings.get('extraction_target_final_purge_minutes', '') }}" step="1" min="0" placeholder="Optional">
+          <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">
+            Leave blank if the final purge should be timed but not scored against a default target.
+          </div>
+        </div>
+        <div class="form-group"></div>
+        <div class="form-group"></div>
+      </div>
     </div>
     <div class="form-group" style="margin-top:16px;">
       <label>Reactor lifecycle controls</label>
