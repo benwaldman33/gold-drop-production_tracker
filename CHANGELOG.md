@@ -44,6 +44,18 @@
   - `Correct This Lot` links directly into the existing correction workflow
   - open reconciliation issues render in-context on the lot view
   - correction-forward history renders inline from correction transformations already recorded on the lot
+- The `By Run` view in `Material Journey Viewer` now includes `Run Reconciliation`, showing open genealogy issues tied to the run, source-allocation exceptions from the run journey, and direct drill links into affected derivative lots.
+- A managed `Genealogy Issue Queue` now exists at `/reports/material-genealogy/issues`:
+  - ownership / assignee support on reconciliation issues
+  - issue statuses for `open`, `investigating`, `needs_follow_up`, and `resolved`
+  - working notes on the issue itself
+  - recent issue history rendered from audit-log updates
+- The genealogy report and viewer now both link directly into that issue queue.
+- `Material Genealogy Report` now includes genealogy-based cost and yield reporting:
+  - source-lot input quantity plus rolled descendant cost basis
+  - run-level yield/cost review rows
+  - correction-impact reporting for replacement quantity and replacement cost basis
+  - expanded rework summary including rolled output cost basis
 - Correction-form navigation now supports a safe `return_to` path back into the viewer, so manager correction work can stay inside the genealogy workflow instead of bouncing back to the run or dashboard by default.
 - `Raw Detail` and `Raw Journey` were relabeled to `View JSON`, and report-side raw lineage links are now labeled `Ancestry JSON` / `Descendants JSON` for clarity.
 - New planning documents now define the target model and phased rollout for true end-to-end material genealogy:

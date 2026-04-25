@@ -4,6 +4,7 @@
 <div class="page-header">
   <h2>Material Genealogy Report</h2>
   <div class="btn-group">
+    <a href="{{ url_for('material_genealogy_issue_queue') }}" class="btn btn-secondary">Open Issue Queue</a>
     <a href="{{ url_for('material_genealogy_viewer') }}" class="btn btn-secondary">Open Journey Viewer</a>
     <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
     <a href="{{ url_for('downstream_queues') }}" class="btn btn-secondary">Open Downstream Queues</a>
@@ -113,12 +114,13 @@
         <div>
           <div style="font-weight:600;">{{ row.source_lot.tracking_id }} · {{ row.source_lot.strain_name_snapshot or "Unknown strain" }}</div>
           <div class="text-sm cell-muted" style="margin-top:4px;">{{ row.source_lot.supplier_name_snapshot or "Unknown supplier" }}</div>
-          <div class="text-sm cell-muted" style="margin-top:6px;">{{ row.descendant_lot_count }} descendant lot{% if row.descendant_lot_count != 1 %}s{% endif %}</div>
+          <div class="text-sm cell-muted" style="margin-top:6px;">{{ "{:,.2f}".format(row.source_quantity or 0) }} {{ row.source_lot.unit }} input · {{ row.descendant_lot_count }} descendant lot{% if row.descendant_lot_count != 1 %}s{% endif %}</div>
         </div>
         <div class="text-sm cell-muted">
           {% for lot_type, quantity in row.descendant_quantities_by_type.items() %}
           <div>{{ lot_type }}: {{ "{:,.2f}".format(quantity or 0) }}</div>
           {% endfor %}
+          <div style="margin-top:6px;">cost basis: ${{ "{:,.2f}".format(row.descendant_cost_basis_total or 0) }}</div>
         </div>
       </div>
       <div class="text-sm" style="margin-top:8px;">
@@ -131,6 +133,44 @@
   </div>
   {% else %}
   <p class="text-sm cell-muted">No biomass lots currently have descendant genealogy beyond the source layer.</p>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-bottom:18px;">
+  <div class="card-header">
+    <h3>Run Yield And Cost Review</h3>
+  </div>
+  {% if report.run_yield_rows %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Run</th>
+          <th>Input Lbs</th>
+          <th>Dry Outputs</th>
+          <th>Derivative Lots</th>
+          <th>Derivative Cost Basis</th>
+          <th>Corrections</th>
+          <th>Open Issues</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in report.run_yield_rows %}
+        <tr>
+          <td><a href="{{ row.viewer_url }}">Reactor {{ row.reactor_number }}{% if row.run_date %} · {{ row.run_date }}{% endif %}</a></td>
+          <td>{{ "{:,.1f}".format(row.input_lbs or 0) }}</td>
+          <td>{{ "{:,.0f}".format(row.dry_thca_g or 0) }} g THCA · {{ "{:,.0f}".format(row.dry_hte_g or 0) }} g HTE</td>
+          <td>{{ row.derivative_lot_count }}</td>
+          <td>${{ "{:,.2f}".format(row.derivative_cost_basis_total or 0) }}</td>
+          <td>{{ row.correction_count }}</td>
+          <td>{{ row.issue_count }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-sm cell-muted">No genealogy-backed run performance rows are currently available.</p>
   {% endif %}
 </div>
 
@@ -147,6 +187,7 @@
             <th>Transformation</th>
             <th>Count</th>
             <th>Output Qty</th>
+            <th>Output Cost Basis</th>
           </tr>
         </thead>
         <tbody>
@@ -155,6 +196,7 @@
             <td>{{ row.transformation_type }}</td>
             <td>{{ row.count }}</td>
             <td>{{ "{:,.2f}".format(row.quantity_total or 0) }}</td>
+            <td>${{ "{:,.2f}".format(row.cost_basis_total or 0) }}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -201,6 +243,40 @@
     <p class="text-sm cell-muted">No open material genealogy reconciliation issues.</p>
     {% endif %}
   </div>
+</div>
+
+<div class="card" style="margin-bottom:18px;">
+  <div class="card-header">
+    <h3>Correction Impact On Reported Yield</h3>
+  </div>
+  {% if report.correction_impact_rows %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Transformation</th>
+          <th>Run</th>
+          <th>Performed</th>
+          <th>Replacement Qty</th>
+          <th>Replacement Cost Basis</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in report.correction_impact_rows %}
+        <tr>
+          <td>{{ row.transformation_type }}</td>
+          <td>{% if row.run_view_url %}<a href="{{ row.run_view_url }}">Open Run View</a>{% else %}—{% endif %}</td>
+          <td>{{ row.performed_at or "—" }}</td>
+          <td>{{ "{:,.2f}".format(row.output_quantity_total or 0) }}</td>
+          <td>${{ "{:,.2f}".format(row.output_cost_basis_total or 0) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-sm cell-muted">No correction transformations currently affect reported genealogy yield.</p>
+  {% endif %}
 </div>
 
 <div class="card">

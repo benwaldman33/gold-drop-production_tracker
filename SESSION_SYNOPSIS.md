@@ -652,12 +652,72 @@ Practical meaning:
   - record the fix
   - return to the same genealogy surface without dropping out to unrelated admin screens
 
+## Genealogy phase 14 update
+
+Run reconciliation is now in the viewer:
+
+- `By Run` now includes a `Run Reconciliation` section
+- that section shows:
+  - open genealogy issues tied to the run
+  - source-allocation exceptions already present on the run journey
+  - direct links into affected derivative lots when an issue is lot-specific
+
+Practical meaning:
+
+- a manager can now investigate lineage problems from the run outward instead of starting only from a lot
+- the genealogy viewer now supports both:
+  - lot-level correction workflow
+  - run-level reconciliation review
+
+## Genealogy phase 15 update
+
+The genealogy issue queue is now in place:
+
+- the main app now has a dedicated `Genealogy Issue Queue` at `/reports/material-genealogy/issues`
+- issues now support:
+  - owner assignment
+  - statuses:
+    - `open`
+    - `investigating`
+    - `needs_follow_up`
+    - `resolved`
+  - working notes
+  - recent audit-history display
+- both `Genealogy Report` and `Material Journey Viewer` now link into the queue
+
+Practical meaning:
+
+- unresolved genealogy problems can now be managed as a work queue instead of only being discovered ad hoc
+- the reconciliation workflow now has:
+  - run-level investigation
+  - lot-level correction
+  - issue ownership and status tracking
+
+## Genealogy phase 16 update
+
+Genealogy-based cost and yield reporting is now in place:
+
+- `Material Genealogy Report` now includes:
+  - source-lot input quantity plus rolled descendant cost basis
+  - `Run Yield And Cost Review`
+  - `Correction Impact On Reported Yield`
+  - rework summary with output cost basis
+
+Practical meaning:
+
+- genealogy reporting now ties together:
+  - lineage
+  - reconciliation
+  - rolled-forward cost
+  - recent yield / correction impact
+- managers can now use one report surface to answer not just "where did this come from?" but also "what did it cost, and how much correction/rework affected the reported output?"
+
 ## Deployment note
 
 Current rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `36b679d`
+- commit: `7cf3cc6`
 
 Production deployment steps:
 

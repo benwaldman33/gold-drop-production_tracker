@@ -856,14 +856,21 @@ class MaterialReconciliationIssue(db.Model):
     status = db.Column(db.String(24), nullable=False, default="open")
     detected_at = db.Column(db.DateTime, default=utc_now, nullable=False)
     detected_by = db.Column(db.String(36), db.ForeignKey("users.id"))
+    assignee_user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
+    assigned_at = db.Column(db.DateTime)
+    assigned_by_user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
+    working_note = db.Column(db.Text)
     resolution_note = db.Column(db.Text)
     resolved_at = db.Column(db.DateTime)
     resolved_by_user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now, nullable=False)
 
     material_lot = db.relationship("MaterialLot", foreign_keys=[material_lot_id], backref=db.backref("reconciliation_issues", lazy="dynamic", cascade="all, delete-orphan"))
     transformation = db.relationship("MaterialTransformation", foreign_keys=[transformation_id], backref=db.backref("reconciliation_issues", lazy="dynamic", cascade="all, delete-orphan"))
     run = db.relationship("Run", foreign_keys=[run_id], backref=db.backref("material_reconciliation_issues", lazy="dynamic", cascade="all, delete-orphan"))
     detected_by_user = db.relationship("User", foreign_keys=[detected_by])
+    assignee_user = db.relationship("User", foreign_keys=[assignee_user_id])
+    assigned_by_user = db.relationship("User", foreign_keys=[assigned_by_user_id])
     resolved_by_user = db.relationship("User", foreign_keys=[resolved_by_user_id])
 
 

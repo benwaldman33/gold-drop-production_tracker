@@ -43,6 +43,8 @@ class AppFactorySmokeTest(unittest.TestCase):
         self.assertIn("/field", rules)
         self.assertIn("/biomass-purchasing", rules)
         self.assertIn("/reports/material-genealogy", rules)
+        self.assertIn("/reports/material-genealogy/issues", rules)
+        self.assertIn("/reports/material-genealogy/issues/<issue_id>/update", rules)
         self.assertIn("/journeys/material-genealogy", rules)
         self.assertIn("/journeys/material-genealogy/raw", rules)
         self.assertIn("/cross-site", rules)

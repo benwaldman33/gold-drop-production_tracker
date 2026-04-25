@@ -806,7 +806,9 @@ The page currently shows:
 - open derivative inventory by type
 - released derivative inventory by type
 - source-to-derivative yield rows by biomass lot
+- run-level yield and cost review rows
 - rework volume from correction-backed genealogy transformations
+- correction impact on reported yield
 - open genealogy reconciliation issues
 - recent derivative lots with direct viewer / raw lineage links
 
@@ -828,6 +830,36 @@ Use the viewer when you need a path-tracing answer instead of just a summary, fo
 - start from a run and see every accountable derivative lot created from it
 - move from a downstream queue card into the full lineage for a linked derivative lot
 - find a genealogy problem and move directly into correction from the same lot view
+
+In `By Run`, the `Run Reconciliation` section highlights:
+- open genealogy issues attached to the run
+- source-allocation exceptions already detected on that run journey
+- links into any affected derivative lots
+
+### Genealogy Issue Queue
+
+Use **Open Issue Queue** from the genealogy report or viewer when you want to manage unresolved lineage problems across runs and lots.
+
+The queue supports:
+- owner assignment
+- statuses:
+  - `open`
+  - `investigating`
+  - `needs follow-up`
+  - `resolved`
+- working notes on the issue
+- recent audit history for issue updates
+
+Use it when you need to:
+- assign a lineage problem to a specific person
+- mark an issue as actively being worked
+- keep investigation notes on the issue itself
+- review which issues are still unresolved
+
+Use the report’s cost/yield sections when you need to answer:
+- which source lots produced which derivative outputs and cost basis
+- which runs now look correction-heavy
+- where rolled-forward derivative cost is concentrated across recent runs
 
 Use this page for questions like:
 - what derivative inventory is still open by type

@@ -9,6 +9,7 @@ from services.material_genealogy import (
     build_material_lot_descendants_payload,
     build_material_lot_detail_payload,
     build_material_lot_journey_payload,
+    serialize_reconciliation_issue,
 )
 from services.purchases_journey import build_run_journey_payload
 from services.site_aggregation import build_aggregation_summary
@@ -76,6 +77,14 @@ def register_routes(app, root):
         return material_genealogy_raw_view(root)
 
     @root.login_required
+    def material_genealogy_issue_queue():
+        return material_genealogy_issue_queue_view(root)
+
+    @root.login_required
+    def material_genealogy_issue_update(issue_id):
+        return material_genealogy_issue_update_view(root, issue_id)
+
+    @root.login_required
     def cross_site_ops():
         return cross_site_ops_view(root)
 
@@ -115,6 +124,8 @@ def register_routes(app, root):
     app.add_url_rule("/reports/material-genealogy", endpoint="material_genealogy_report", view_func=material_genealogy_report)
     app.add_url_rule("/journeys/material-genealogy", endpoint="material_genealogy_viewer", view_func=material_genealogy_viewer)
     app.add_url_rule("/journeys/material-genealogy/raw", endpoint="material_genealogy_raw", view_func=material_genealogy_raw)
+    app.add_url_rule("/reports/material-genealogy/issues", endpoint="material_genealogy_issue_queue", view_func=material_genealogy_issue_queue)
+    app.add_url_rule("/reports/material-genealogy/issues/<issue_id>/update", endpoint="material_genealogy_issue_update", view_func=material_genealogy_issue_update, methods=["POST"])
     app.add_url_rule("/cross-site", endpoint="cross_site_ops", view_func=cross_site_ops)
     app.add_url_rule("/cross-site/suppliers", endpoint="cross_site_suppliers", view_func=cross_site_suppliers)
     app.add_url_rule("/cross-site/strains", endpoint="cross_site_strains", view_func=cross_site_strains)
@@ -269,6 +280,44 @@ def _material_genealogy_sidebar_runs(root, *, active_run_id: str | None):
             }
         )
     return rows
+
+
+def _material_issue_assignment_options(root):
+    users = (
+        root.User.query.filter_by(is_active_user=True)
+        .order_by(root.User.display_name.asc(), root.User.username.asc())
+        .all()
+    )
+    options = [{"value": "", "label": "Unassigned"}]
+    for user in users:
+        if getattr(user, "can_edit", False):
+            options.append({"value": user.id, "label": user.display_name})
+    return options
+
+
+def _material_issue_history(root, issue, *, limit: int = 5):
+    rows = (
+        root.AuditLog.query.filter_by(entity_type="material_reconciliation_issue", entity_id=issue.id)
+        .order_by(root.AuditLog.timestamp.desc())
+        .limit(limit)
+        .all()
+    )
+    history = []
+    for row in rows:
+        details = {}
+        try:
+            details = root.json.loads(row.details or "{}")
+        except Exception:
+            details = {}
+        history.append(
+            {
+                "timestamp": row.timestamp.isoformat() if row.timestamp else None,
+                "action": row.action,
+                "user_name": row.user.display_name if row.user else None,
+                "details": details,
+            }
+        )
+    return history
 
 
 def _supervisor_notifications_redirect(root):
@@ -691,12 +740,17 @@ def material_genealogy_viewer_view(root):
         }
     if selected_run is not None:
         run_journey = build_run_journey_payload(selected_run)
+        run_issues = [
+            issue
+            for issue in selected_run.material_reconciliation_issues.order_by(root.MaterialReconciliationIssue.detected_at.desc()).all()
+        ]
         run_view = {
             "journey": run_journey,
             "material_lot_urls": {
                 lot["material_lot_id"]: root.url_for("material_genealogy_viewer", mode="lot", material_lot_id=lot["material_lot_id"])
                 for lot in run_journey.get("material_lots", [])
             },
+            "issues": [serialize_reconciliation_issue(root, issue) for issue in run_issues],
         }
 
     return root.render_template(
@@ -744,6 +798,118 @@ def material_genealogy_raw_view(root):
         json.dumps(payload, indent=2, sort_keys=True),
         mimetype="application/json",
     )
+
+
+def material_genealogy_issue_queue_view(root):
+    if not getattr(root.current_user, "can_edit", False):
+        root.flash("Edit access is required for genealogy issue management.", "error")
+        return root.redirect(root.url_for("material_genealogy_report"))
+
+    status_filter = (root.request.args.get("status") or "active").strip().lower()
+    query = root.MaterialReconciliationIssue.query.order_by(
+        root.MaterialReconciliationIssue.detected_at.desc(),
+        root.MaterialReconciliationIssue.id.desc(),
+    )
+    if status_filter == "active":
+        query = query.filter(root.MaterialReconciliationIssue.status.in_(("open", "investigating", "needs_follow_up")))
+    elif status_filter == "resolved":
+        query = query.filter(root.MaterialReconciliationIssue.status == "resolved")
+
+    issues = query.limit(200).all()
+    status_counts = {
+        "open": root.MaterialReconciliationIssue.query.filter_by(status="open").count(),
+        "investigating": root.MaterialReconciliationIssue.query.filter_by(status="investigating").count(),
+        "needs_follow_up": root.MaterialReconciliationIssue.query.filter_by(status="needs_follow_up").count(),
+        "resolved": root.MaterialReconciliationIssue.query.filter_by(status="resolved").count(),
+    }
+    issue_rows = []
+    now = root.datetime.now(root.timezone.utc)
+    for issue in issues:
+        detected_at = issue.detected_at
+        age_days = None
+        if detected_at is not None:
+            if detected_at.tzinfo is None:
+                detected_at = detected_at.replace(tzinfo=root.timezone.utc)
+            age_days = max((now - detected_at).days, 0)
+        issue_rows.append(
+            {
+                "issue": serialize_reconciliation_issue(root, issue),
+                "run_view_url": root.url_for("material_genealogy_viewer", mode="run", run_id=issue.run_id) if issue.run_id else None,
+                "lot_view_url": root.url_for("material_genealogy_viewer", mode="lot", material_lot_id=issue.material_lot_id) if issue.material_lot_id else None,
+                "assignee_name": issue.assignee_user.display_name if issue.assignee_user else None,
+                "assigned_at": issue.assigned_at.isoformat() if issue.assigned_at else None,
+                "age_days": age_days,
+                "history": _material_issue_history(root, issue),
+            }
+        )
+
+    return root.render_template(
+        "material_genealogy_issue_queue.html",
+        issues=issue_rows,
+        status_filter=status_filter,
+        status_counts=status_counts,
+        assignment_options=_material_issue_assignment_options(root),
+    )
+
+
+def material_genealogy_issue_update_view(root, issue_id):
+    if not getattr(root.current_user, "can_edit", False):
+        root.flash("Edit access is required for genealogy issue management.", "error")
+        return root.redirect(root.url_for("material_genealogy_report"))
+
+    issue = root.db.session.get(root.MaterialReconciliationIssue, issue_id)
+    if issue is None:
+        root.abort(404)
+
+    next_status = (root.request.form.get("status") or issue.status or "open").strip().lower()
+    if next_status not in {"open", "investigating", "needs_follow_up", "resolved"}:
+        root.flash("Choose a valid issue status.", "error")
+        return root.redirect(root.url_for("material_genealogy_issue_queue"))
+
+    requested_assignee_id = (root.request.form.get("assignee_user_id") or "").strip()
+    working_note = (root.request.form.get("working_note") or "").strip() or None
+    assignee = root.db.session.get(root.User, requested_assignee_id) if requested_assignee_id else None
+    if requested_assignee_id and (assignee is None or not assignee.is_active_user or not getattr(assignee, "can_edit", False)):
+        root.flash("Choose a valid issue owner.", "error")
+        return root.redirect(root.url_for("material_genealogy_issue_queue"))
+
+    previous = {
+        "status": issue.status,
+        "assignee_user_id": issue.assignee_user_id,
+        "working_note": issue.working_note,
+    }
+    issue.status = next_status
+    issue.assignee_user_id = assignee.id if assignee is not None else None
+    issue.assigned_at = root.datetime.now(root.timezone.utc) if assignee is not None else None
+    issue.assigned_by_user_id = getattr(root.current_user, "id", None)
+    issue.working_note = working_note
+    if next_status == "resolved":
+        issue.resolved_at = root.datetime.now(root.timezone.utc)
+        issue.resolved_by_user_id = getattr(root.current_user, "id", None)
+        if working_note and not issue.resolution_note:
+            issue.resolution_note = working_note
+    else:
+        issue.resolved_at = None
+        issue.resolved_by_user_id = None
+
+    root.log_audit(
+        "update",
+        "material_reconciliation_issue",
+        issue.id,
+        details=root.json.dumps(
+            {
+                "previous": previous,
+                "current": {
+                    "status": issue.status,
+                    "assignee_user_id": issue.assignee_user_id,
+                    "working_note": issue.working_note,
+                },
+            }
+        ),
+    )
+    root.db.session.commit()
+    root.flash("Genealogy issue updated.", "success")
+    return root.redirect(root.url_for("material_genealogy_issue_queue", status=root.request.form.get("return_status") or "active"))
 
 
 def cross_site_ops_view(root):

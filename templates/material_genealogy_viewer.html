@@ -42,6 +42,7 @@
 <div class="page-header">
   <h2>Material Journey Viewer</h2>
   <div class="btn-group">
+    <a href="{{ url_for('material_genealogy_issue_queue') }}" class="btn btn-secondary">Open Issue Queue</a>
     <a href="{{ url_for('material_genealogy_report') }}" class="btn btn-secondary">Back to Genealogy Report</a>
     <a href="{{ url_for('downstream_queues') }}" class="btn btn-secondary">Open Downstream Queues</a>
   </div>
@@ -360,6 +361,55 @@
         </div>
         {% else %}
         <div class="journey-empty">No derivative lots have been created for this run yet.</div>
+        {% endif %}
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3>Run Reconciliation</h3>
+          <span class="text-sm cell-muted">Genealogy issues, source-allocation exceptions, and direct links to affected child lots.</span>
+        </div>
+        {% if run_view.issues %}
+        <div class="journey-chain" style="margin-bottom:14px;">
+          {% for issue in run_view.issues %}
+          <div class="journey-chain-row">
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;">
+              <strong>{{ issue.issue_type.replace('_', ' ').title() }}</strong>
+              <span class="badge status-{{ 'blocked' if issue.status == 'open' else 'done' }}">{{ issue.status.replace('_', ' ') }}</span>
+            </div>
+            <div class="text-sm cell-muted" style="margin-top:6px;">Severity: {{ issue.severity }} · Detected {{ issue.detected_at or "—" }}</div>
+            {% if issue.resolution_note %}
+            <div class="text-sm" style="margin-top:8px;"><strong>Detail:</strong> {{ issue.resolution_note }}</div>
+            {% endif %}
+            <div class="journey-link-row">
+              {% if issue.material_lot_id and run_view.material_lot_urls.get(issue.material_lot_id) %}
+              <a href="{{ run_view.material_lot_urls[issue.material_lot_id] }}" class="btn btn-secondary btn-sm">Open Affected Lot</a>
+              {% endif %}
+              {% if issue.run_url %}
+              <a href="{{ issue.run_url }}" class="btn btn-secondary btn-sm">Open Run</a>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="journey-section-note">No open genealogy issues are currently recorded on this run.</div>
+        {% endif %}
+
+        {% if run_view.journey.exceptions %}
+        <div class="journey-chain" style="margin-top:14px;">
+          {% for item in run_view.journey.exceptions %}
+          <div class="journey-chain-row">
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;">
+              <strong>{{ item.label }}</strong>
+              <span class="badge status-{{ 'blocked' if item.level == 'error' else 'warning' }}">{{ item.level }}</span>
+            </div>
+            <div class="text-sm" style="margin-top:8px;">{{ item.detail }}</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="journey-section-note" style="margin-top:14px;">No source-allocation exceptions are currently reported on this run.</div>
         {% endif %}
       </div>
     {% else %}

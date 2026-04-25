@@ -462,11 +462,28 @@ def ensure_sqlite_schema(root) -> None:
             "status VARCHAR(24) NOT NULL DEFAULT 'open', "
             "detected_at DATETIME NOT NULL, "
             "detected_by VARCHAR(36), "
+            "assignee_user_id VARCHAR(36), "
+            "assigned_at DATETIME, "
+            "assigned_by_user_id VARCHAR(36), "
+            "working_note TEXT, "
             "resolution_note TEXT, "
             "resolved_at DATETIME, "
-            "resolved_by_user_id VARCHAR(36)"
+            "resolved_by_user_id VARCHAR(36), "
+            "updated_at DATETIME"
             ")"
         ))
+    if has_table("material_reconciliation_issues"):
+        cols = column_names("material_reconciliation_issues")
+        if "assignee_user_id" not in cols:
+            root.db.session.execute(text("ALTER TABLE material_reconciliation_issues ADD COLUMN assignee_user_id VARCHAR(36)"))
+        if "assigned_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE material_reconciliation_issues ADD COLUMN assigned_at DATETIME"))
+        if "assigned_by_user_id" not in cols:
+            root.db.session.execute(text("ALTER TABLE material_reconciliation_issues ADD COLUMN assigned_by_user_id VARCHAR(36)"))
+        if "working_note" not in cols:
+            root.db.session.execute(text("ALTER TABLE material_reconciliation_issues ADD COLUMN working_note TEXT"))
+        if "updated_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE material_reconciliation_issues ADD COLUMN updated_at DATETIME"))
 
     if not has_table("lot_scan_events"):
         root.db.session.execute(text(
