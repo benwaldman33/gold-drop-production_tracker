@@ -68,6 +68,7 @@ class AppFactorySmokeTest(unittest.TestCase):
         self.assertIn("/api/v1/tools/journey-resolve", rules)
         self.assertIn("/api/v1/tools/reconciliation-overview", rules)
         self.assertIn("/api/v1/summary/dashboard", rules)
+        self.assertIn("/api/v1/summary/material-costs", rules)
         self.assertIn("/api/v1/departments", rules)
         self.assertIn("/api/v1/departments/<slug>", rules)
         self.assertIn("/api/v1/purchases", rules)

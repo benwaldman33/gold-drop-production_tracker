@@ -23,6 +23,7 @@
   - parent replacement creates a correction transformation plus a replacement material lot
   - mistaken derivative lots can be voided through a correction transformation with no replacement output
 - A minimal manager correction route is now available at `/material-lots/<lot_id>/correct` for logged-in editors.
+- Material genealogy cost visibility now includes `/api/v1/summary/material-costs`, which summarizes open derivative lots by lot type, quantity, and rolled-forward cost basis.
 - New planning documents now define the target model and phased rollout for true end-to-end material genealogy:
   - `DERIVATIVE_LOT_GENEALOGY_PLAN.md`
   - `DERIVATIVE_LOT_GENEALOGY_IMPLEMENTATION_PLAN.md`
@@ -34,6 +35,7 @@
 - Added regression coverage for biomass material-lot backfill, run source-material resolution, and first-pass genealogy reconciliation issue creation.
 - Added genealogy regression coverage for extraction transformation/output-lot creation, material-lot ancestry/descendant payloads, material-lot API endpoints, and the new route registration.
 - Added correction-workflow regression coverage for replacement-lot quantity corrections and the new correction route registration.
+- Added regression coverage for the material-cost summary endpoint and its route registration.
 
 ## 2026-04-24
 

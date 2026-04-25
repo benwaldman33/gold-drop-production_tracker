@@ -5,6 +5,7 @@ from datetime import date, datetime, timezone
 import app as app_module
 from models import ApiClient, ApiClientRequestLog, LotScanEvent, MaterialLot, MaterialReconciliationIssue, MaterialTransformation, Purchase, PurchaseLot, RemoteSite, Run, RunInput, SlackIngestedMessage, Supplier, SystemSetting, db, gen_uuid
 from services.api_auth import hash_api_token
+from services.material_genealogy import ensure_biomass_material_lot, ensure_extraction_output_genealogy
 
 
 def _make_api_headers(*scopes: str):
@@ -1204,14 +1205,14 @@ def test_api_v1_material_lot_endpoints_and_run_journey_include_derivatives():
         lot_id = lot.id
         run_id = run.id
 
-        app_module._backfill_biomass_material_genealogy_service(app_module)
-        app_module._backfill_extraction_output_material_genealogy_service(app_module)
+        ensure_biomass_material_lot(app_module, db.session.get(PurchaseLot, lot_id))
+        ensure_extraction_output_genealogy(app_module, db.session.get(Run, run_id))
         db.session.commit()
         derivative_lot = db.session.get(Run, run_id).material_lots.filter_by(lot_type="dry_hte").first()
         derivative_lot_id = derivative_lot.id
         source_material_lot_id = db.session.get(PurchaseLot, lot_id).material_lot_id
 
-    headers, client_id = _make_api_headers("read:journey", "read:tools")
+    headers, client_id = _make_api_headers("read:journey", "read:tools", "read:inventory")
     try:
         with app.test_client() as client:
             run_journey = client.get(f"/api/v1/runs/{run_id}/journey", headers=headers)
@@ -1253,6 +1254,13 @@ def test_api_v1_material_lot_endpoints_and_run_journey_include_derivatives():
             assert overview.status_code == 200
             overview_payload = overview.get_json()["data"]
             assert "material_genealogy" in overview_payload
+
+            cost_summary = client.get("/api/v1/summary/material-costs", headers=headers)
+            assert cost_summary.status_code == 200
+            cost_payload = cost_summary.get_json()["data"]
+            grouped = {item["lot_type"]: item for item in cost_payload["groups"]}
+            assert grouped["dry_hte"]["cost_basis_total"] >= 38.4
+            assert grouped["dry_thca"]["cost_basis_total"] >= 114.8
     finally:
         with app.app_context():
             api_client = db.session.get(ApiClient, client_id)

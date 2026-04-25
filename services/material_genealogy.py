@@ -294,11 +294,12 @@ def apply_material_lot_correction(
 def ensure_biomass_material_lot(root, purchase_lot):
     if purchase_lot is None:
         return None
-    tracking_id = purchase_lot.tracking_id
-    strain_name = purchase_lot.strain_name
-    supplier_name = purchase_lot.supplier_name
-    weight_lbs = float(purchase_lot.weight_lbs or 0)
-    inventory_status = _inventory_status_for_purchase_lot(purchase_lot)
+    with root.db.session.no_autoflush:
+        tracking_id = purchase_lot.tracking_id
+        strain_name = purchase_lot.strain_name
+        supplier_name = purchase_lot.supplier_name
+        weight_lbs = float(purchase_lot.weight_lbs or 0)
+        inventory_status = _inventory_status_for_purchase_lot(purchase_lot)
     existing = getattr(purchase_lot, "material_lot", None)
     if existing is not None:
         existing.tracking_id = tracking_id or existing.tracking_id
@@ -844,6 +845,41 @@ def build_material_lot_journey_payload(root, material_lot) -> dict:
             "quantity": float(material_lot.quantity or 0),
             "unit": material_lot.unit,
         },
+    }
+
+
+def build_material_cost_summary_payload(root) -> dict:
+    material_lots = (
+        root.MaterialLot.query.filter(root.MaterialLot.lot_type != "biomass")
+        .filter(root.MaterialLot.inventory_status == "open")
+        .order_by(root.MaterialLot.lot_type.asc(), root.MaterialLot.created_at.asc())
+        .all()
+    )
+    grouped: dict[str, dict] = {}
+    for material_lot in material_lots:
+        bucket = grouped.setdefault(
+            material_lot.lot_type,
+            {
+                "lot_type": material_lot.lot_type,
+                "lot_count": 0,
+                "quantity_total": 0.0,
+                "cost_basis_total": 0.0,
+                "unit": material_lot.unit,
+            },
+        )
+        bucket["lot_count"] += 1
+        bucket["quantity_total"] += float(material_lot.quantity or 0)
+        bucket["cost_basis_total"] += float(material_lot.cost_basis_total or 0)
+    for bucket in grouped.values():
+        quantity_total = float(bucket["quantity_total"] or 0)
+        bucket["cost_basis_per_unit_avg"] = (
+            float(bucket["cost_basis_total"]) / quantity_total if quantity_total > 0 else None
+        )
+    return {
+        "open_derivative_lot_count": len(material_lots),
+        "open_derivative_cost_basis_total": float(sum(float(item.cost_basis_total or 0) for item in material_lots)),
+        "groups": list(grouped.values()),
+        "lots": [serialize_material_lot(root, item) for item in material_lots],
     }
 
 

@@ -520,6 +520,24 @@ Practical meaning:
 - managers can now replace an incorrect parent link without hiding the original mistake
 - the genealogy layer now has the first real correction trail instead of being read-only
 
+## Genealogy phase 8 update
+
+Cost roll-forward visibility is now exposed directly:
+
+- extraction-created derivative lots already carried cost basis from run cost-per-gram fields
+- correction-created replacement lots now preserve cost-per-unit context from the corrected lot
+- the internal API now exposes `/api/v1/summary/material-costs`
+- that summary groups open derivative lots by `lot_type` and shows:
+  - lot count
+  - open quantity
+  - open cost basis total
+  - average cost basis per unit
+
+Practical meaning:
+
+- managers can now answer not just "what derivative lots exist?" but also "what open cost basis is sitting in derivative inventory by type?"
+- the genealogy layer now supports the first real cost-aware inventory summary without waiting for the broader reporting phase
+
 ## Deployment note
 
 Current rollout commit:

@@ -54,6 +54,7 @@ from services.api_serializers import (
 from services.api_site import get_site_identity
 from services.lot_allocation import choose_default_lot_allocation, rank_lot_candidates
 from services.material_genealogy import (
+    build_material_cost_summary_payload,
     build_material_lot_ancestry_payload,
     build_material_lot_descendants_payload,
     build_material_lot_detail_payload,
@@ -83,6 +84,7 @@ def register_routes(app, root):
     app.add_url_rule("/api/v1/tools/journey-resolve", endpoint="api_v1_tool_journey_resolve", view_func=api_v1_tool_journey_resolve)
     app.add_url_rule("/api/v1/tools/reconciliation-overview", endpoint="api_v1_tool_reconciliation_overview", view_func=api_v1_tool_reconciliation_overview)
     app.add_url_rule("/api/v1/summary/dashboard", endpoint="api_v1_dashboard_summary", view_func=api_v1_dashboard_summary)
+    app.add_url_rule("/api/v1/summary/material-costs", endpoint="api_v1_material_costs_summary", view_func=api_v1_material_costs_summary)
     app.add_url_rule("/api/v1/departments", endpoint="api_v1_departments", view_func=api_v1_departments)
     app.add_url_rule("/api/v1/departments/<slug>", endpoint="api_v1_department_detail", view_func=api_v1_department_detail)
     app.add_url_rule("/api/v1/purchases", endpoint="api_v1_purchases", view_func=api_v1_purchases)
@@ -213,6 +215,7 @@ def api_v1_capabilities():
             {"path": "/api/v1/tools/journey-resolve", "scope": "read:tools", "kind": "tool"},
             {"path": "/api/v1/tools/reconciliation-overview", "scope": "read:tools", "kind": "tool"},
             {"path": "/api/v1/summary/dashboard", "scope": "read:dashboard", "kind": "summary"},
+            {"path": "/api/v1/summary/material-costs", "scope": "read:inventory", "kind": "summary"},
             {"path": "/api/v1/departments", "scope": "read:dashboard", "kind": "list"},
             {"path": "/api/v1/departments/<slug>", "scope": "read:dashboard", "kind": "detail"},
             {"path": "/api/v1/purchases", "scope": "read:purchases", "kind": "list"},
@@ -786,6 +789,12 @@ def api_v1_dashboard_summary():
     if period not in {"today", "7", "30", "90", "all"}:
         return json_api_error("Invalid period", status_code=400, code="bad_request")
     return jsonify(envelope(_dashboard_summary_payload(root, period)))
+
+
+@require_api_scope("read:inventory")
+def api_v1_material_costs_summary():
+    root = _require_root()
+    return jsonify(envelope(build_material_cost_summary_payload(root)))
 
 
 @require_api_scope("read:aggregation")

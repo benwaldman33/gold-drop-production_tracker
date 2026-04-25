@@ -12,6 +12,7 @@ from services.material_genealogy import (
     build_material_lot_detail_payload,
     build_material_lot_journey_payload,
     derivative_material_lots_for_run,
+    ensure_biomass_material_lot,
     ensure_extraction_output_genealogy,
     reconcile_run_material_genealogy,
     source_material_lots_for_run,
@@ -227,7 +228,7 @@ def test_material_lot_payloads_include_ancestry_and_descendants():
         db.session.commit()
 
         try:
-            backfill_biomass_material_lots(app_module)
+            ensure_biomass_material_lot(app_module, db.session.get(PurchaseLot, lot.id))
             ensure_extraction_output_genealogy(app_module, run)
             db.session.commit()
 
