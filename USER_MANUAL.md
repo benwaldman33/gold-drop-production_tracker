@@ -8,7 +8,7 @@ This guide explains how to use the Gold Drop web app day-to-day. It intentionall
 
 **Operator-facing additions in the current release:** Purchases and Inventory are more status-first, the Journey page is richer, Slack imports now includes inbox buckets, lot labels now print with scannable barcodes, `Floor Ops` gives operators a recent activity surface, the standalone receiving app can now correct a confirmed receipt before downstream lot consumption, the standalone extraction app now mirrors the reactor workflow with touch-first controls, and the data model supports live smart-scale capture.
 
-**Manager-facing note for the current release:** the app now includes the first usable derivative-lot genealogy layer. Current day-to-day workflows still use Purchases, Inventory, Runs, and Downstream Queues the same way, but the system can now bridge biomass lots into first-class material genealogy records, auto-create dry HTE / dry THCA derivative lots from eligible extraction runs, extend genealogy into accountable downstream child lots like GoldDrop / wholesale THCA / terp strip / HP base oil / distillate, expose manager-facing ancestry / descendant journey endpoints through the internal API, record correction-forward genealogy fixes instead of silently overwriting bad lineage, summarize open derivative cost basis through the internal API, surface linked derivative lots directly on downstream queue cards, and provide a dedicated `Genealogy Report` page for manager reporting.
+**Manager-facing note for the current release:** the app now includes the first usable derivative-lot genealogy layer. Current day-to-day workflows still use Purchases, Inventory, Runs, and Downstream Queues the same way, but the system can now bridge biomass lots into first-class material genealogy records, auto-create dry HTE / dry THCA derivative lots from eligible extraction runs, extend genealogy into accountable downstream child lots like GoldDrop / wholesale THCA / terp strip / HP base oil / distillate, expose manager-facing ancestry / descendant journey endpoints through the internal API, record correction-forward genealogy fixes instead of silently overwriting bad lineage, summarize open derivative cost basis through the internal API, surface linked derivative lots directly on downstream queue cards, provide a dedicated `Genealogy Report` page for manager reporting, and open those lots or runs in a real HTML `Material Journey Viewer` with `By Lot` and `By Run` path tracing.
 
 ---
 
@@ -28,6 +28,7 @@ Use the left sidebar:
 - **Runs**: extraction runs log + cost/yield outputs
 - **Downstream Queues**: supervisor-facing post-extraction routing board for completed runs that now need a downstream destination or hold
 - **Genealogy Report**: manager-facing lineage and derivative-inventory reporting for accountable material lots
+- **Material Journey Viewer**: opened from the Genealogy Report or linked derivative lots; gives `By Lot` and `By Run` visual path tracing for genealogy-backed material
 - **Inventory**: on-hand lots + in-transit purchases, including lot tracking IDs and remaining pounds
 - **Purchases**: batch-level purchase records + batch IDs (same underlying rows as **Biomass Pipeline**); **Approve purchase** when your role allows; **Import spreadsheet** for bulk purchase upload; row **batch edit** on the list
 - **Costs**: operational cost entries (solvent/personnel/overhead)
@@ -807,7 +808,18 @@ The page currently shows:
 - source-to-derivative yield rows by biomass lot
 - rework volume from correction-backed genealogy transformations
 - open genealogy reconciliation issues
-- recent derivative lots with direct `Ancestry`, `Descendants`, and `Journey` links
+- recent derivative lots with direct viewer / raw lineage links
+
+From that report, use **Open Journey Viewer** or any linked derivative lot to open the HTML genealogy viewer.
+
+The **Material Journey Viewer** supports:
+- `By Lot`: start from a material lot and trace upstream inputs plus downstream child lots
+- `By Run`: start from an extraction run and trace source lots, allocations, and derivative outputs
+
+Use the viewer when you need a path-tracing answer instead of just a summary, for example:
+- start from a distillate or GoldDrop lot and trace it back to its biomass source lots
+- start from a run and see every accountable derivative lot created from it
+- move from a downstream queue card into the full lineage for a linked derivative lot
 
 Use this page for questions like:
 - what derivative inventory is still open by type

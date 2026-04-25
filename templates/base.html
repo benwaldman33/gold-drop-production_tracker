@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}Gold Drop{% endblock %} — Biomass Tracker</title>
+  <title>{% block title %}Gold Drop{% endblock %} â€” Biomass Tracker</title>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
@@ -16,19 +16,19 @@
       </div>
       <div class="sidebar-nav">
         <a href="{{ url_for('dashboard') }}" class="{% if request.endpoint == 'dashboard' %}active{% endif %}">
-          <span class="icon">📊</span><span>Extraction</span>
+          <span class="icon">ðŸ“Š</span><span>Extraction</span>
         </a>
         <a href="{{ url_for('biomass_purchasing_dashboard') }}" class="{% if request.endpoint == 'biomass_purchasing_dashboard' %}active{% endif %}">
-          <span class="icon">🛒</span><span>Biomass purchasing</span>
+          <span class="icon">ðŸ›’</span><span>Biomass purchasing</span>
         </a>
         <a href="{{ url_for('dept_index') }}" class="{% if request.endpoint in ('dept_index', 'dept_view') %}active{% endif %}">
-          <span class="icon">🏭</span><span>Departments</span>
+          <span class="icon">ðŸ­</span><span>Departments</span>
         </a>
         <a href="{{ url_for('runs_list') }}" class="{% if request.endpoint in ('runs_list', 'run_new', 'run_edit') %}active{% endif %}">
-          <span class="icon">⚗️</span><span>Runs</span>
+          <span class="icon">âš—ï¸</span><span>Runs</span>
         </a>
         <a href="{{ url_for('floor_ops') }}" class="{% if request.endpoint in ('floor_ops', 'scan_center', 'scan_lot') %}active{% endif %}">
-          <span class="icon">📱</span><span>Floor Ops</span>
+          <span class="icon">ðŸ“±</span><span>Floor Ops</span>
         </a>
         {% if current_user.is_authenticated and can_review_supervisor_notifications %}
         <a href="{{ url_for('dashboard') }}#supervisor-notifications">
@@ -36,54 +36,54 @@
         </a>
         {% endif %}
         <a href="{{ url_for('downstream_queues') }}" class="{% if request.endpoint == 'downstream_queues' %}active{% endif %}">
-          <span class="icon">🧭</span><span>Downstream Queues</span>
+          <span class="icon">ðŸ§­</span><span>Downstream Queues</span>
         </a>
         <a href="{{ url_for('material_genealogy_report') }}" class="{% if request.endpoint == 'material_genealogy_report' %}active{% endif %}">
-          <span class="icon">ðŸ§¬</span><span>Genealogy Report</span>
+          <span class="icon">GR</span><span>Genealogy Report</span>
         </a>
         {% if current_user.is_authenticated and cross_site_ops_enabled %}
         <a href="{{ url_for('cross_site_ops') }}" class="{% if request.endpoint == 'cross_site_ops' %}active{% endif %}">
-          <span class="icon">🌐</span><span>Cross-Site Ops</span>
+          <span class="icon">ðŸŒ</span><span>Cross-Site Ops</span>
         </a>
         {% endif %}
         <a href="{{ url_for('inventory') }}" class="{% if request.endpoint == 'inventory' %}active{% endif %}">
-          <span class="icon">📦</span><span>Inventory</span>
+          <span class="icon">ðŸ“¦</span><span>Inventory</span>
         </a>
         <a href="{{ url_for('purchases_list') }}" class="{% if request.endpoint in ('purchases_list', 'purchase_new', 'purchase_edit', 'purchase_import', 'purchase_import_preview') %}active{% endif %}">
-          <span class="icon">💰</span><span>Purchases</span>
+          <span class="icon">ðŸ’°</span><span>Purchases</span>
         </a>
         <a href="{{ url_for('costs_list') }}" class="{% if request.endpoint in ('costs_list', 'cost_new', 'cost_edit') %}active{% endif %}">
-          <span class="icon">🧾</span><span>Costs</span>
+          <span class="icon">ðŸ§¾</span><span>Costs</span>
         </a>
         <a href="{{ url_for('biomass_list') }}" class="{% if request.endpoint in ('biomass_list', 'biomass_new', 'biomass_edit') %}active{% endif %}">
-          <span class="icon">🌾</span><span>Biomass Pipeline</span>
+          <span class="icon">ðŸŒ¾</span><span>Biomass Pipeline</span>
         </a>
         <a href="{{ url_for('suppliers_list') }}" class="{% if request.endpoint in ('suppliers_list', 'supplier_new', 'supplier_edit') %}active{% endif %}">
-          <span class="icon">🌿</span><span>Suppliers</span>
+          <span class="icon">ðŸŒ¿</span><span>Suppliers</span>
         </a>
         <a href="{{ url_for('strains_list') }}" class="{% if request.endpoint == 'strains_list' %}active{% endif %}">
-          <span class="icon">🧬</span><span>Strains</span>
+          <span class="icon">ðŸ§¬</span><span>Strains</span>
         </a>
         <a href="{{ url_for('photos_library') }}" class="{% if request.endpoint == 'photos_library' %}active{% endif %}">
-          <span class="icon">🖼️</span><span>Photo Library</span>
+          <span class="icon">ðŸ–¼ï¸</span><span>Photo Library</span>
         </a>
         {% if current_user.is_authenticated and current_user.can_slack_import %}
         <a href="{{ url_for('settings_slack_imports') }}" class="{% if request.endpoint in ('settings_slack_imports', 'settings_slack_import_preview', 'settings_slack_import_apply_run') %}active{% endif %}">
-          <span class="icon">💬</span><span>Slack imports</span>
+          <span class="icon">ðŸ’¬</span><span>Slack imports</span>
         </a>
         {% endif %}
         {% if current_user.is_authenticated and current_user.is_super_buyer %}
         <a href="{{ url_for('field_approvals') }}" class="{% if request.endpoint == 'field_approvals' %}active{% endif %}">
-          <span class="icon">✅</span><span>Field approvals</span>
+          <span class="icon">âœ…</span><span>Field approvals</span>
         </a>
         {% endif %}
         {% if current_user.is_super_admin %}
         <a href="{{ url_for('settings') }}" class="{% if request.endpoint == 'settings' %}active{% endif %}">
-          <span class="icon">⚙️</span><span>Settings</span>
+          <span class="icon">âš™ï¸</span><span>Settings</span>
         </a>
         {% endif %}
         <a href="{{ url_for('import_csv') }}" class="{% if request.endpoint in ('import_csv', 'import_confirm') %}active{% endif %}">
-          <span class="icon">📥</span><span>Import</span>
+          <span class="icon">ðŸ“¥</span><span>Import</span>
         </a>
       </div>
       {% if current_user.is_authenticated %}
@@ -132,7 +132,7 @@
           <span class="text-mono">{{ "{:.1f}".format(biomass_purchase_week_avg_potency_pct) }}</span>
         </div>
         {% endif %}
-        <div class="text-sm" style="margin-top:8px;"><a href="{{ url_for('biomass_purchasing_dashboard') }}">Full dashboard →</a></div>
+        <div class="text-sm" style="margin-top:8px;"><a href="{{ url_for('biomass_purchasing_dashboard') }}">Full dashboard â†’</a></div>
       </div>
       {% endif %}
       <div class="sidebar-user">
@@ -151,7 +151,7 @@
         {% for category, message in messages %}
         <div class="flash flash-{{ category }} flash--dismissible">
           <div class="flash__body">{{ message }}</div>
-          <button type="button" class="flash__dismiss" aria-label="Dismiss notification">×</button>
+          <button type="button" class="flash__dismiss" aria-label="Dismiss notification">Ã—</button>
         </div>
         {% endfor %}
       </div>
@@ -168,7 +168,7 @@
       const savedY = sessionStorage.getItem(scrollKey);
       const hasFlash = document.querySelector(".flash-messages .flash");
       if (savedY !== null) {
-        // After POST (e.g. Slack sync), do not restore scroll — it hides flashed messages at the top.
+        // After POST (e.g. Slack sync), do not restore scroll â€” it hides flashed messages at the top.
         if (!hasFlash) {
           window.scrollTo(0, parseInt(savedY, 10) || 0);
         }

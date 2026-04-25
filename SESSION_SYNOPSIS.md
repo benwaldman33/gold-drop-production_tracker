@@ -596,12 +596,42 @@ Practical meaning:
 - the app can now answer both the lineage question and the “what is sitting open / released / problematic right now?” question from one reporting layer
 - the initial phased genealogy implementation is now functionally complete from schema through downstream reporting
 
+## Genealogy phase 12 update
+
+The HTML genealogy viewer is now in place:
+
+- the main app now has a dedicated `Material Journey Viewer` page at `/journeys/material-genealogy`
+- the viewer supports:
+  - `By Lot`
+  - `By Run`
+- `By Lot` now renders:
+  - material-lot summary
+  - journey timeline
+  - ancestry chain
+  - descendant transformations
+- `By Run` now renders:
+  - run summary
+  - run timeline
+  - source lots / allocations
+  - derivative-lot drill links
+- the `Genealogy Report` page now links into this viewer
+- downstream queue cards now open linked derivative lots in this viewer instead of landing only on raw API JSON
+- the left-sidebar `Genealogy Report` label was also normalized to remove the recurring malformed leading-character artifact for that item
+
+Practical meaning:
+
+- the earlier `lot-journey-v2.html` concept now exists as a real in-app surface instead of only a mockup
+- managers can start from a lot or a run and stay inside the app while tracing lineage
+- the genealogy stack now has both:
+  - reporting
+  - interactive HTML path tracing
+
 ## Deployment note
 
 Current rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `159dc65`
+- commit: `6f702f1`
 
 Production deployment steps:
 

@@ -4,6 +4,7 @@
 <div class="page-header">
   <h2>Material Genealogy Report</h2>
   <div class="btn-group">
+    <a href="{{ url_for('material_genealogy_viewer') }}" class="btn btn-secondary">Open Journey Viewer</a>
     <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
     <a href="{{ url_for('downstream_queues') }}" class="btn btn-secondary">Open Downstream Queues</a>
   </div>
@@ -122,7 +123,7 @@
       </div>
       <div class="text-sm" style="margin-top:8px;">
         {% for descendant in row.descendants %}
-        <a href="{{ descendant.links.material_lot_journey }}" target="_blank" rel="noopener">{{ descendant.tracking_id }}</a>{% if not loop.last %} · {% endif %}
+        <a href="{{ url_for('material_genealogy_viewer', mode='lot', material_lot_id=descendant.material_lot_id) }}">{{ descendant.tracking_id }}</a>{% if not loop.last %} · {% endif %}
         {% endfor %}
       </div>
     </div>
@@ -226,11 +227,11 @@
           <td>{{ lot.inventory_status }}</td>
           <td>{{ "{:,.2f}".format(lot.quantity or 0) }} {{ lot.unit }}</td>
           <td>
-            <a href="{{ lot.links.material_lot_ancestry }}" target="_blank" rel="noopener">Ancestry</a>
+            <a href="{{ url_for('material_genealogy_viewer', mode='lot', material_lot_id=lot.material_lot_id) }}">Viewer</a>
             ·
-            <a href="{{ lot.links.material_lot_descendants }}" target="_blank" rel="noopener">Descendants</a>
+            <a href="{{ lot.links.material_lot_ancestry }}" target="_blank" rel="noopener">Raw ancestry</a>
             ·
-            <a href="{{ lot.links.material_lot_journey }}" target="_blank" rel="noopener">Journey</a>
+            <a href="{{ lot.links.material_lot_descendants }}" target="_blank" rel="noopener">Raw descendants</a>
           </td>
         </tr>
         {% endfor %}
