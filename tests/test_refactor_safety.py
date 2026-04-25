@@ -564,6 +564,34 @@ def test_settings_route_renders_journey_revenue_assumptions():
     assert b"Journey Revenue Assumptions" in page.data
     assert b"material_revenue_price_golddrop" in page.data
     assert b"material_revenue_price_distillate" in page.data
+    assert b"#settings-journey-financials" in page.data
+    assert b"#settings-extraction" in page.data
+
+
+def test_sidebar_promotes_settings_group_in_requested_order():
+    app = app_module.app
+    client = app.test_client()
+    _login(client, "admin")
+    page = client.get("/settings")
+    assert page.status_code == 200
+    body = page.data.decode("utf-8", errors="replace")
+
+    labels = [
+        ">Purchasing<",
+        ">Inventory<",
+        ">Extraction<",
+        ">Downstream<",
+        ">Journey<",
+        ">Alerts<",
+        ">Settings<",
+        ">More<",
+    ]
+    positions = [body.index(label) for label in labels]
+    assert positions == sorted(positions)
+    assert "Operational Parameters" in body
+    assert "Journey Financials" in body
+    assert "Extraction Controls" in body
+    assert "Slack &amp; Notifications" in body
 
 
 def test_cross_site_ops_is_hidden_until_enabled():

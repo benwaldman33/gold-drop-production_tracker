@@ -337,6 +337,10 @@ def _role_home_endpoint():
 
 def _nav_section_key_for_endpoint(endpoint: str | None) -> str:
     endpoint = endpoint or ""
+    if endpoint == "settings" or endpoint.startswith("settings_") or endpoint.startswith("user_") or endpoint.startswith("api_client_") or endpoint.startswith("remote_site_") or endpoint.startswith("scale_device_") or endpoint.startswith("field_token_"):
+        if current_user.is_authenticated and current_user.is_super_admin:
+            return "settings"
+        return "more"
     if endpoint in {"dashboard", "runs_list", "run_new", "run_edit", "floor_ops", "scan_center", "scan_lot"}:
         return "extraction"
     if endpoint in {
@@ -397,6 +401,25 @@ def inject_role_navigation():
     supervisor_alert_suffix = f" ({supervisor_alert_count})" if supervisor_alert_count else ""
     nav_sections = [
         {
+            "key": "purchasing",
+            "label": "Purchasing",
+            "active": active_section == "purchasing",
+            "links": [
+                {"label": "Biomass Purchasing", "endpoint": "biomass_purchasing_dashboard", "active": request.endpoint == "biomass_purchasing_dashboard"},
+                {"label": "Purchases", "endpoint": "purchases_list", "active": request.endpoint in ("purchases_list", "purchase_new", "purchase_edit", "purchase_import", "purchase_import_preview")},
+                {"label": "Biomass Pipeline", "endpoint": "biomass_list", "active": request.endpoint in ("biomass_list", "biomass_new", "biomass_edit")},
+                {"label": "Field Approvals", "endpoint": "field_approvals", "active": request.endpoint == "field_approvals", "visible": current_user.is_authenticated and current_user.is_super_buyer},
+            ],
+        },
+        {
+            "key": "inventory",
+            "label": "Inventory",
+            "active": active_section == "inventory",
+            "links": [
+                {"label": "Inventory", "endpoint": "inventory", "active": request.endpoint == "inventory"},
+            ],
+        },
+        {
             "key": "extraction",
             "label": "Extraction",
             "active": active_section == "extraction",
@@ -420,22 +443,14 @@ def inject_role_navigation():
             ],
         },
         {
-            "key": "purchasing",
-            "label": "Purchasing",
-            "active": active_section == "purchasing",
+            "key": "journey",
+            "label": "Journey",
+            "active": active_section == "journey",
             "links": [
-                {"label": "Biomass Purchasing", "endpoint": "biomass_purchasing_dashboard", "active": request.endpoint == "biomass_purchasing_dashboard"},
-                {"label": "Purchases", "endpoint": "purchases_list", "active": request.endpoint in ("purchases_list", "purchase_new", "purchase_edit", "purchase_import", "purchase_import_preview")},
-                {"label": "Biomass Pipeline", "endpoint": "biomass_list", "active": request.endpoint in ("biomass_list", "biomass_new", "biomass_edit")},
-                {"label": "Field Approvals", "endpoint": "field_approvals", "active": request.endpoint == "field_approvals", "visible": current_user.is_authenticated and current_user.is_super_buyer},
-            ],
-        },
-        {
-            "key": "inventory",
-            "label": "Inventory",
-            "active": active_section == "inventory",
-            "links": [
-                {"label": "Inventory", "endpoint": "inventory", "active": request.endpoint == "inventory"},
+                {"label": "Journey Home", "endpoint": "journey_home", "active": request.endpoint == "journey_home"},
+                {"label": "Genealogy Report", "endpoint": "material_genealogy_report", "active": request.endpoint == "material_genealogy_report"},
+                {"label": "Journey Viewer", "endpoint": "material_genealogy_viewer", "active": request.endpoint == "material_genealogy_viewer"},
+                {"label": "Purchase Journey", "endpoint": "purchases_bp.purchase_journey", "active": (request.endpoint or "").startswith("purchases_bp.purchase_journey"), "href": url_for("purchases_list")},
             ],
         },
         {
@@ -454,15 +469,22 @@ def inject_role_navigation():
             ],
         },
         {
-            "key": "journey",
-            "label": "Journey",
-            "active": active_section == "journey",
+            "key": "settings",
+            "label": "Settings",
+            "active": active_section == "settings",
             "links": [
-                {"label": "Journey Home", "endpoint": "journey_home", "active": request.endpoint == "journey_home"},
-                {"label": "Genealogy Report", "endpoint": "material_genealogy_report", "active": request.endpoint == "material_genealogy_report"},
-                {"label": "Journey Viewer", "endpoint": "material_genealogy_viewer", "active": request.endpoint == "material_genealogy_viewer"},
-                {"label": "Purchase Journey", "endpoint": "purchases_bp.purchase_journey", "active": (request.endpoint or "").startswith("purchases_bp.purchase_journey"), "href": url_for("purchases_list")},
+                {"label": "Operational Parameters", "endpoint": "settings", "href": url_for("settings") + "#settings-operational", "active": request.endpoint == "settings"},
+                {"label": "Journey Financials", "endpoint": "settings", "href": url_for("settings") + "#settings-journey-financials", "active": False},
+                {"label": "Extraction Controls", "endpoint": "settings", "href": url_for("settings") + "#settings-extraction", "active": False},
+                {"label": "Slack & Notifications", "endpoint": "settings", "href": url_for("settings") + "#settings-slack", "active": request.endpoint in ("settings_slack_imports", "settings_slack_import_preview", "settings_slack_import_apply_run", "settings_slack_run_mappings")},
+                {"label": "Users & Access", "endpoint": "settings", "href": url_for("settings") + "#settings-users", "active": (request.endpoint or "").startswith("user_")},
+                {"label": "Field Intake", "endpoint": "settings", "href": url_for("settings") + "#settings-field-intake", "active": (request.endpoint or "").startswith("field_token_")},
+                {"label": "API Clients", "endpoint": "settings", "href": url_for("settings") + "#settings-api-clients", "active": (request.endpoint or "").startswith("api_client_")},
+                {"label": "Scales", "endpoint": "settings", "href": url_for("settings") + "#settings-scales", "active": (request.endpoint or "").startswith("scale_device_")},
+                {"label": "Remote Sites", "endpoint": "settings", "href": url_for("settings") + "#settings-remote-sites", "active": (request.endpoint or "").startswith("remote_site_")},
+                {"label": "Maintenance", "endpoint": "settings", "href": url_for("settings") + "#settings-maintenance", "active": request.endpoint in ("settings_backfill_photo_assets", "settings_recalculate_costs", "settings_pull_remote_sites")},
             ],
+            "visible": current_user.is_authenticated and current_user.is_super_admin,
         },
     ]
     more_links = [
@@ -475,19 +497,13 @@ def inject_role_navigation():
             "label": "Slack Imports",
             "endpoint": "settings_slack_imports",
             "active": request.endpoint in ("settings_slack_imports", "settings_slack_import_preview", "settings_slack_import_apply_run"),
-            "visible": current_user.is_authenticated and current_user.can_slack_import,
+            "visible": current_user.is_authenticated and current_user.can_slack_import and not current_user.is_super_admin,
         },
         {
             "label": "Cross-Site Ops",
             "endpoint": "cross_site_ops",
             "active": request.endpoint == "cross_site_ops",
             "visible": current_user.is_authenticated and (SystemSetting.get("cross_site_ops_enabled", "0") or "0").strip().lower() in ("1", "true", "yes", "on"),
-        },
-        {
-            "label": "Settings",
-            "endpoint": "settings",
-            "active": request.endpoint == "settings",
-            "visible": current_user.is_authenticated and current_user.is_super_admin,
         },
         {"label": "Scorecards (beta)", "endpoint": "dept_index", "active": request.endpoint in ("dept_index", "dept_view")},
     ]

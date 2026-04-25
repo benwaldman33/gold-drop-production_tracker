@@ -796,7 +796,7 @@ Implementation sequencing is now documented separately in `UX_ROLE_WORKFLOW_IMPL
 
 The implementation phases are now shipped:
 
-- the main app sidebar is grouped into `Extraction`, `Downstream`, `Purchasing`, `Inventory`, `Alerts`, `Journey`, and `More`
+- the main app sidebar is grouped into `Purchasing`, `Inventory`, `Extraction`, `Downstream`, `Journey`, `Alerts`, `Settings`, and `More`
 - users now land on a role-relevant workflow area, with last-section memory during the session
 - `Alerts Home` and `Journey Home` now exist as dedicated manager surfaces
 - extraction/downstream/journey copy now better distinguishes overview vs execution vs investigation
@@ -804,6 +804,7 @@ The implementation phases are now shipped:
 - Journey now acts as a daily manager visibility surface for lineage plus cost-basis review, not just a secondary reporting area
 - the grouped left sidebar is now collapsible by section, and `Departments` has been demoted to `Scorecards (beta)` inside `More`
 - Journey now includes assumption-backed financial projections: Settings stores per-output expected selling prices, and Journey/Genealogy Report show projected revenue and gross margin for derivative inventory, source-lot descendants, and run yield/cost rows
+- Settings is now a dedicated Super Admin-only sidebar group with section links into operational parameters, Journey financials, extraction controls, Slack/notifications, users/access, field intake, API clients, scales, remote sites, and maintenance
 
 ## Deployment note
 
@@ -822,7 +823,7 @@ Production deployment steps:
 3. sync the standalone purchasing app static files
 4. sync the standalone receiving app static files
 5. verify in production:
-   - the left sidebar is grouped into `Extraction`, `Downstream`, `Purchasing`, `Inventory`, `Alerts`, `Journey`, and `More`
+   - the left sidebar is grouped into `Purchasing`, `Inventory`, `Extraction`, `Downstream`, `Journey`, `Alerts`, `Settings`, and `More`
    - `Alerts Home` renders at `/alerts`
    - `Journey Home` renders at `/journey`
    - `Role Home` sends users into a relevant workflow area

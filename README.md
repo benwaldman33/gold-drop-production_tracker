@@ -65,7 +65,7 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 
 ## Features
 
-- **Role-based navigation cleanup** - the main app sidebar is now grouped by daily workflow areas instead of presenting every function as a flat first-level peer. The primary sections are `Extraction`, `Downstream`, `Purchasing`, `Inventory`, `Alerts`, `Journey`, and `More`.
+- **Role-based navigation cleanup** - the main app sidebar is now grouped by daily workflow areas instead of presenting every function as a flat first-level peer. The primary sections are ordered as `Purchasing`, `Inventory`, `Extraction`, `Downstream`, `Journey`, `Alerts`, `Settings`, and `More`; `Settings` is visible only to Super Admins.
 - **Alerts Home** - a new `/alerts` hub summarizes supervisor notifications and active genealogy issues as an action queue.
 - **Journey Home** - a new `/journey` hub consolidates genealogy reporting, tracing, issue management, open/released derivative cost basis, and recent run yield/cost context for managers.
 - **Journey financial projections** - `Settings -> Operational Parameters` now includes assumed selling prices by derivative output type, and Journey/Genealogy reporting uses those assumptions to project revenue and gross margin from open and released material genealogy lots.

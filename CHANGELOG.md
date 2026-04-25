@@ -3,6 +3,8 @@
 ## 2026-04-25
 
 ### Added
+- Settings is now its own Super Admin-only collapsible sidebar group, with section links for operational parameters, Journey financials, extraction controls, Slack/notifications, users, field intake, API clients, scales, remote sites, and maintenance.
+- The default sidebar group order now follows the operating workflow priority: `Purchasing`, `Inventory`, `Extraction`, `Downstream`, `Journey`, `Alerts`, `Settings`, and `More`.
 - Journey now has a configurable financial projection layer on top of material genealogy:
   - `Settings -> Operational Parameters` includes per-output assumed selling prices in dollars per gram
   - `Journey Home` and `Genealogy Report` now show projected revenue and projected gross margin for open inventory, released output, source-lot descendants, and run yield/cost rows
@@ -10,7 +12,7 @@
 - The grouped left sidebar is now collapsible by section, so users can expand only the workflow area they are using and keep other submenu items out of the way.
 - `Departments` has been demoted inside `More` and relabeled `Scorecards (beta)` to reflect that it is not currently a primary operating workflow.
 - The UX role/workflow restructuring phases are now implemented in the main app:
-  - grouped top-level sidebar navigation for `Extraction`, `Downstream`, `Purchasing`, `Inventory`, `Alerts`, `Journey`, and `More`
+  - grouped top-level sidebar navigation for `Purchasing`, `Inventory`, `Extraction`, `Downstream`, `Journey`, `Alerts`, `Settings`, and `More`
   - role-aware home routing with session memory for the last active top-level workflow area
   - dedicated `Alerts Home` and `Journey Home` manager hubs
   - clearer separation between extraction overview (`Extraction dashboard`), execution (`Floor Ops`), record management (`Runs`), downstream overview (`Downstream Queues`), and investigation (`Journey`)
