@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}Supervisor Console{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Supervisor Console</h2>
+  <div class="btn-group">
+    <a href="{{ url_for('downstream_queues') }}" class="btn btn-secondary">Open Queue Overview</a>
+    <a href="{{ url_for('floor_ops') }}" class="btn btn-secondary">Open Floor Ops</a>
+    <a href="{{ url_for('alerts_home') }}" class="btn btn-secondary">Open Alerts</a>
+    <a href="{{ url_for('journey_home') }}" class="btn btn-secondary">Open Journey</a>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:18px;">
+  <div class="card-header">
+    <h3>Launch Role Coverage</h3>
+    <span class="text-sm cell-muted">This is the fourth operational role surface: supervisor/downstream control.</span>
+  </div>
+  <div class="summary-row" style="margin-bottom:0;">
+    <div class="summary-stat">
+      <div class="label">Buyer</div>
+      <div class="value">Covered</div>
+      <div class="summary-footnote">Standalone purchasing + Biomass Purchasing</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Receiver</div>
+      <div class="value">Covered</div>
+      <div class="summary-footnote">Standalone receiving + Inventory handoff</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Extractor</div>
+      <div class="value">Covered</div>
+      <div class="summary-footnote">Standalone extraction + Floor Ops</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Supervisor</div>
+      <div class="value">Covered</div>
+      <div class="summary-footnote">This console + downstream work pages</div>
+    </div>
+  </div>
+</div>
+
+<div class="summary-row" style="margin-bottom:18px;">
+  <div class="summary-stat">
+    <div class="label">Supervisor Alerts</div>
+    <div class="value">{{ supervisor_notifications.open_count }}</div>
+    <div class="summary-footnote">{{ supervisor_notifications.critical_count }} critical / {{ supervisor_notifications.warning_count }} warning</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Active Queue Items</div>
+    <div class="value">{{ queues.reporting.active_count }}</div>
+    <div class="summary-footnote">{{ queues.reporting.blocked_count }} blocked / {{ queues.reporting.stale_count }} stale</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Unassigned</div>
+    <div class="value">{{ queues.reporting.unassigned_count }}</div>
+    <div class="summary-footnote">Downstream items needing an owner</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Reactors</div>
+    <div class="value">{{ reactor_board.cards|length }}</div>
+    <div class="summary-footnote">Active floor board cards</div>
+  </div>
+</div>
+
+<div class="summary-row" style="margin-bottom:18px;">
+  <div class="card" style="flex:1 1 480px;margin:0;">
+    <div class="card-header">
+      <h3>Queue Health</h3>
+      <a href="{{ url_for('downstream_queues') }}" class="btn btn-secondary btn-sm">Manage Queues</a>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr><th>Queue</th><th>Items</th><th>Unassigned</th><th>Stale</th><th>Blocked</th><th>Open</th></tr>
+        </thead>
+        <tbody>
+          {% for card in queues.summary_cards %}
+          <tr>
+            <td>{{ card.label }}</td>
+            <td>{{ card.count }}</td>
+            <td>{{ card.unassigned_count }}</td>
+            <td>{{ card.stale_count }}</td>
+            <td>{{ card.blocked_count }}</td>
+            <td>
+              {% if card.key == 'golddrop_queue' %}<a href="{{ url_for('golddrop_production_queue') }}">Open</a>
+              {% elif card.key == 'liquid_loud_hold' %}<a href="{{ url_for('liquid_loud_queue') }}">Open</a>
+              {% elif card.key == 'terp_strip_cage' %}<a href="{{ url_for('terp_strip_queue') }}">Open</a>
+              {% elif card.key == 'hold_hp_base_oil' %}<a href="{{ url_for('hp_base_oil_queue') }}">Open</a>
+              {% elif card.key == 'hold_distillate' %}<a href="{{ url_for('distillate_queue') }}">Open</a>
+              {% else %}<a href="{{ url_for('downstream_queues') }}">Open</a>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" style="flex:1 1 480px;margin:0;">
+    <div class="card-header">
+      <h3>Supervisor Alerts</h3>
+      <a href="{{ url_for('dashboard') }}#supervisor-notifications" class="btn btn-secondary btn-sm">Review Alerts</a>
+    </div>
+    {% if supervisor_notifications.rows %}
+    <div style="display:grid;gap:10px;">
+      {% for row in supervisor_notifications.rows %}
+      <div style="border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:12px;">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;">
+          <strong>{{ row.title }}</strong>
+          <span class="badge status-{{ row.severity }}">{{ row.severity }}</span>
+        </div>
+        <div class="text-sm cell-muted" style="margin-top:6px;">{{ row.message }}</div>
+        {% if row.run_edit_url %}
+        <div class="text-sm" style="margin-top:8px;"><a href="{{ row.run_edit_url }}">Open run</a></div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-sm cell-muted">No open supervisor alerts.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:18px;">
+  <div class="card-header">
+    <h3>Supervisor Attention Items</h3>
+    <span class="text-sm cell-muted">Blocked, stale, or unassigned downstream work requiring triage.</span>
+  </div>
+  {% if attention_items %}
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr><th>Run</th><th>Queue</th><th>Owner</th><th>Age</th><th>Status</th><th>Next Step</th></tr>
+      </thead>
+      <tbody>
+        {% for item in attention_items %}
+        <tr>
+          <td><a href="{{ url_for('run_edit', run_id=item.run_id, return_to=request.path) }}">Reactor {{ item.reactor_number }}{% if item.run_date_label %} · {{ item.run_date_label }}{% endif %}</a></td>
+          <td>{{ item.section_label }}</td>
+          <td>{{ item.assignment.assignee_name or "Unassigned" }}</td>
+          <td>{{ item.queue_age_label }}</td>
+          <td>{% if item.queue_is_blocked %}<span class="badge badge-red">Blocked</span>{% elif item.queue_is_stale %}<span class="badge badge-gold">Stale</span>{% else %}<span class="badge badge-gray">Needs owner</span>{% endif %}</td>
+          <td>{{ item.next_step }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-sm cell-muted">No blocked, stale, or unassigned downstream items need supervisor triage.</p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -306,7 +306,7 @@ def _section_home_endpoint(section: str | None) -> str:
     section = (section or "").strip().lower()
     mapping = {
         "extraction": "floor_ops",
-        "downstream": "downstream_queues",
+        "downstream": "supervisor_console",
         "purchasing": "biomass_purchasing_dashboard",
         "inventory": "inventory",
         "alerts": "alerts_home",
@@ -344,6 +344,7 @@ def _nav_section_key_for_endpoint(endpoint: str | None) -> str:
     if endpoint in {"dashboard", "runs_list", "run_new", "run_edit", "floor_ops", "scan_center", "scan_lot"}:
         return "extraction"
     if endpoint in {
+        "supervisor_console",
         "downstream_queues",
         "golddrop_production_queue",
         "liquid_loud_queue",
@@ -434,6 +435,7 @@ def inject_role_navigation():
             "label": "Downstream",
             "active": active_section == "downstream",
             "links": [
+                {"label": "Supervisor Console", "endpoint": "supervisor_console", "active": request.endpoint == "supervisor_console"},
                 {"label": "Queue Overview", "endpoint": "downstream_queues", "active": request.endpoint == "downstream_queues"},
                 {"label": "GoldDrop", "endpoint": "golddrop_production_queue", "active": request.endpoint == "golddrop_production_queue"},
                 {"label": "Liquid Loud", "endpoint": "liquid_loud_queue", "active": request.endpoint == "liquid_loud_queue"},

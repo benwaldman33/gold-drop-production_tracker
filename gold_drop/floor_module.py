@@ -17,6 +17,7 @@ from services.extraction_run import (
     THCA_DESTINATION_LABELS,
     display_local_timestamp,
 )
+from services.supervisor_notifications import manager_can_review, summarize_notifications
 
 BOARD_VIEW_OPTIONS = (
     ("all", "All reactors"),
@@ -482,6 +483,10 @@ def register_routes(app, root):
         return scan_center_view(root)
 
     @root.login_required
+    def supervisor_console():
+        return supervisor_console_view(root)
+
+    @root.login_required
     def downstream_queues():
         return downstream_queues_view(root)
 
@@ -539,6 +544,7 @@ def register_routes(app, root):
 
     app.add_url_rule("/floor-ops", endpoint="floor_ops", view_func=floor_ops)
     app.add_url_rule("/scan", endpoint="scan_center", view_func=scan_center)
+    app.add_url_rule("/supervisor-console", endpoint="supervisor_console", view_func=supervisor_console)
     app.add_url_rule("/downstream-queues", endpoint="downstream_queues", view_func=downstream_queues)
     app.add_url_rule("/downstream-queues/golddrop", endpoint="golddrop_production_queue", view_func=golddrop_production_queue)
     app.add_url_rule("/downstream-queues/liquid-loud", endpoint="liquid_loud_queue", view_func=liquid_loud_queue)
@@ -1251,6 +1257,40 @@ def downstream_queues_view(root):
     return root.render_template(
         "downstream_queues.html",
         downstream_queues=queues,
+    )
+
+
+def supervisor_console_view(root):
+    queues = _build_downstream_queues(root)
+    reactor_board = _build_active_reactor_board(root)
+    notifications = summarize_notifications(root, limit=8) if manager_can_review(root.current_user) else {
+        "open_count": 0,
+        "critical_count": 0,
+        "warning_count": 0,
+        "info_count": 0,
+        "rows": [],
+    }
+    attention_items = []
+    for section in queues["sections"]:
+        for item in section["items"]:
+            if item.get("queue_is_blocked") or item.get("queue_is_stale") or not (item.get("assignment") or {}).get("assignee_id"):
+                attention_items.append({
+                    **item,
+                    "section_label": section["label"],
+                })
+    attention_items.sort(
+        key=lambda item: (
+            not bool(item.get("queue_is_blocked")),
+            not bool(item.get("queue_is_stale")),
+            -int(item.get("queue_age_days") or 0),
+        )
+    )
+    return root.render_template(
+        "supervisor_console.html",
+        queues=queues,
+        reactor_board=reactor_board,
+        supervisor_notifications=notifications,
+        attention_items=attention_items[:12],
     )
 
 
