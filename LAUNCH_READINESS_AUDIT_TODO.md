@@ -18,6 +18,20 @@ These items are intentionally deferred until the feature set is closer to frozen
 - API clients and remote-site registrations that are active but unused or stale.
 - Import/export readiness checks once the final permission coverage audit is complete.
 
+## Deferred AI / MCP Access Hardening
+
+- Decide whether AI/MCP access remains local-only via stdio or becomes remotely reachable.
+- If remote MCP is allowed, define authentication, least-privilege scopes, rate limits, logging, and network exposure rules before deployment.
+- Align MCP access with the application permission model; the current MCP layer behaves like trusted internal read access and does not evaluate per-user access-control rules.
+- Add read-only MCP tools for newer manager surfaces where useful:
+  - finance/accounting summaries
+  - material genealogy details
+  - financial completeness flags
+  - audit-log lookup
+- Document production MCP startup, client connection, safe verification, and shutdown/restart procedures.
+- Keep AI write tools disabled until after launch/security hardening.
+- If write tools are ever added, ship them one at a time with explicit approval policy, least-privilege scope, audit logging, and rollback/review expectations.
+
 ## Later Implementation Shape
 
 - Keep the existing manual blocker register.
