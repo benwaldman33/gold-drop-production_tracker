@@ -812,13 +812,17 @@ The implementation phases are now shipped:
   - Material Journey Viewer lot pages include `Revenue Actuals` and `Record Revenue`
   - Journey Home and Genealogy Report roll actual revenue, actual margin, and projected-vs-actual variance into open/released inventory, source-lot descendant, and run-level views
   - Journey Home flags actuals below projection for manager review
+- The actual-revenue layer now has guardrails:
+  - editors can update revenue events when sale details are corrected
+  - editors can void revenue events with a required reason while preserving void history
+  - Journey surfaces financial completeness flags for missing cost basis, missing revenue assumptions, missing actual revenue on released lots, and open genealogy issues
 
 ## Deployment note
 
 Current rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `f488949`
+- commit: `TBD`
 
 Production deployment steps:
 
@@ -828,13 +832,15 @@ Production deployment steps:
    - `git pull --ff-only origin main`
    - `git merge --no-ff origin/Claude_Consolidation -m "Merge Claude_Consolidation into main"`
    - `git push origin main`
-2. restart the backend so the new material revenue-event schema, Journey Viewer revenue form, and actual-vs-projected reporting are live
+2. restart the backend so revenue-event correction/void controls and financial completeness flags are live
 3. verify in production:
    - the left sidebar is grouped into `Purchasing`, `Inventory`, `Extraction`, `Downstream`, `Journey`, `Alerts`, `Settings`, and `More`
    - `Alerts Home` renders at `/alerts`
    - `Journey Home` renders at `/journey`
    - a lot page in `Material Journey Viewer` shows `Revenue Actuals` and `Record Revenue`
+   - an existing revenue event can be updated or voided from that lot page
    - `Genealogy Report` shows `Actual Revenue` and `Variance`
+   - `Journey Home` and `Genealogy Report` show `Financial Flags`
    - `Journey Home` shows `Projected Vs Actual Revenue` and flags `Actuals Below Projection` when applicable
 
 ## Local note

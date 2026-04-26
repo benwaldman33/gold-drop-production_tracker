@@ -304,6 +304,47 @@ def test_material_genealogy_viewer_renders_lot_and_run_modes():
             assert actuals_resp.status_code == 200
             assert b"Retail test" in actuals_resp.data
             assert b"$55.00" in actuals_resp.data
+            assert b"Financial completeness flags" in actuals_resp.data
+            assert b"Missing revenue assumption" in actuals_resp.data
+            assert b"Update" in actuals_resp.data
+            assert b"Void" in actuals_resp.data
+
+            with app.app_context():
+                revenue_event = app_module.MaterialRevenueEvent.query.filter_by(material_lot_id=derivative_lot_id, voided_at=None).first()
+                revenue_event_id = revenue_event.id
+
+            update_revenue = client.post(
+                f"/material-lots/{derivative_lot_id}/revenue-events/{revenue_event_id}/update",
+                data={
+                    "event_date": "2026-04-27",
+                    "quantity": "6",
+                    "unit_price": "12",
+                    "buyer_channel": "Retail corrected",
+                    "reference": "INV-2",
+                    "notes": "Corrected sale",
+                    "return_to": f"/journeys/material-genealogy?mode=lot&material_lot_id={derivative_lot_id}",
+                },
+                follow_redirects=False,
+            )
+            assert update_revenue.status_code in (302, 303)
+            updated_actuals_resp = client.get(f"/journeys/material-genealogy?mode=lot&material_lot_id={derivative_lot_id}")
+            assert updated_actuals_resp.status_code == 200
+            assert b"Retail corrected" in updated_actuals_resp.data
+            assert b"$72.00" in updated_actuals_resp.data
+
+            void_revenue = client.post(
+                f"/material-lots/{derivative_lot_id}/revenue-events/{revenue_event_id}/void",
+                data={
+                    "void_reason": "Duplicate invoice",
+                    "return_to": f"/journeys/material-genealogy?mode=lot&material_lot_id={derivative_lot_id}",
+                },
+                follow_redirects=False,
+            )
+            assert void_revenue.status_code in (302, 303)
+            voided_actuals_resp = client.get(f"/journeys/material-genealogy?mode=lot&material_lot_id={derivative_lot_id}")
+            assert voided_actuals_resp.status_code == 200
+            assert b"Voided revenue history" in voided_actuals_resp.data
+            assert b"Duplicate invoice" in voided_actuals_resp.data
 
             run_resp = client.get(f"/journeys/material-genealogy?mode=run&run_id={run_id}")
             assert run_resp.status_code == 200

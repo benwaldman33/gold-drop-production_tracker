@@ -36,6 +36,11 @@
     <div class="value">{{ journey.manager_dashboard.attention.negative_variance_runs }}</div>
     <div class="summary-footnote">Runs with actual revenue below projection</div>
   </div>
+  <div class="summary-stat">
+    <div class="label">Financial Flags</div>
+    <div class="value">{{ journey.manager_dashboard.attention.financial_completeness_flags }}</div>
+    <div class="summary-footnote">Missing cost, assumption, revenue, or genealogy inputs</div>
+  </div>
 </div>
 
 <div class="card" style="margin-bottom:18px;">
@@ -267,6 +272,37 @@
           <td>${{ "{:,.2f}".format(row.actual_revenue_total or 0) }}</td>
           <td>${{ "{:,.2f}".format(row.revenue_variance_total or 0) }}</td>
           <td>${{ "{:,.2f}".format(row.actual_margin_total or 0) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% if journey.manager_dashboard.financial_completeness_rows %}
+<div class="card" style="margin-top:18px;">
+  <div class="card-header">
+    <h3>Financial Completeness Flags</h3>
+    <span class="text-sm cell-muted">Lots that need cost basis, revenue assumptions, actual revenue, or genealogy cleanup before financial reporting should be trusted.</span>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr><th>Lot</th><th>Type</th><th>Status</th><th>Flags</th><th>Review</th></tr>
+      </thead>
+      <tbody>
+        {% for row in journey.manager_dashboard.financial_completeness_rows %}
+        <tr>
+          <td>{{ row.material_lot.tracking_id }}</td>
+          <td>{{ row.material_lot.lot_type }}</td>
+          <td>{{ row.material_lot.inventory_status }}</td>
+          <td>
+            {% for flag in row.flags %}
+            <span class="badge {% if flag.severity == 'critical' %}badge-red{% else %}badge-gold{% endif %}" title="{{ flag.detail }}">{{ flag.label }}</span>
+            {% endfor %}
+          </td>
+          <td><a href="{{ row.viewer_url }}">Open lot</a></td>
         </tr>
         {% endfor %}
       </tbody>

@@ -222,6 +222,14 @@
           <span class="text-sm cell-muted">Record realized revenue against this material lot and compare it to Journey projections.</span>
         </div>
         {% set revenue = lot_view.detail.revenue_summary %}
+        {% if lot_view.detail.financial_completeness_flags %}
+        <div class="journey-section-note" style="margin-bottom:14px;">
+          <strong>Financial completeness flags:</strong>
+          {% for flag in lot_view.detail.financial_completeness_flags %}
+          <span class="badge {% if flag.severity == 'critical' %}badge-red{% else %}badge-gold{% endif %}" title="{{ flag.detail }}">{{ flag.label }}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
         <div class="journey-summary-grid" style="margin-bottom:16px;">
           <div class="journey-stat">
             <div class="label">Projected Revenue</div>
@@ -272,7 +280,7 @@
         <div class="table-wrap">
           <table class="data-table">
             <thead>
-              <tr><th>Date</th><th>Quantity</th><th>Unit Price</th><th>Total Revenue</th><th>Buyer / Reference</th></tr>
+              <tr><th>Date</th><th>Quantity</th><th>Unit Price</th><th>Total Revenue</th><th>Buyer / Reference</th><th>Correct</th><th>Void</th></tr>
             </thead>
             <tbody>
               {% for event in lot_view.detail.revenue_events %}
@@ -282,6 +290,25 @@
                 <td>${{ "{:,.2f}".format(event.unit_price or 0) }}</td>
                 <td>${{ "{:,.2f}".format(event.total_revenue or 0) }}</td>
                 <td>{{ event.buyer_channel or "—" }}{% if event.reference %}<div class="text-sm cell-muted">{{ event.reference }}</div>{% endif %}</td>
+                <td>
+                  <form method="POST" action="{{ url_for('material_lot_revenue_event_update', lot_id=material.material_lot_id, event_id=event.revenue_event_id) }}" style="display:grid;grid-template-columns:repeat(2,minmax(90px,1fr));gap:6px;min-width:320px;">
+                    <input type="hidden" name="return_to" value="{{ url_for('material_genealogy_viewer', mode='lot', material_lot_id=material.material_lot_id) }}">
+                    <input type="date" name="event_date" value="{{ event.event_date or '' }}" aria-label="Event date">
+                    <input type="number" name="quantity" step="0.01" min="0" value="{{ event.quantity or 0 }}" aria-label="Quantity" required>
+                    <input type="number" name="unit_price" step="0.01" min="0" value="{{ event.unit_price or 0 }}" aria-label="Unit price" required>
+                    <input type="text" name="buyer_channel" value="{{ event.buyer_channel or '' }}" placeholder="Buyer / channel">
+                    <input type="text" name="reference" value="{{ event.reference or '' }}" placeholder="Reference">
+                    <input type="text" name="notes" value="{{ event.notes or '' }}" placeholder="Notes">
+                    <button type="submit" class="btn btn-secondary btn-sm">Update</button>
+                  </form>
+                </td>
+                <td>
+                  <form method="POST" action="{{ url_for('material_lot_revenue_event_void', lot_id=material.material_lot_id, event_id=event.revenue_event_id) }}" style="display:flex;gap:6px;align-items:center;min-width:220px;">
+                    <input type="hidden" name="return_to" value="{{ url_for('material_genealogy_viewer', mode='lot', material_lot_id=material.material_lot_id) }}">
+                    <input type="text" name="void_reason" placeholder="Reason required" required>
+                    <button type="submit" class="btn btn-danger btn-sm">Void</button>
+                  </form>
+                </td>
               </tr>
               {% endfor %}
             </tbody>
@@ -289,6 +316,14 @@
         </div>
         {% else %}
         <div class="journey-section-note">No actual revenue events have been recorded for this lot yet.</div>
+        {% endif %}
+        {% if lot_view.detail.voided_revenue_events %}
+        <div class="journey-section-note" style="margin-top:14px;">
+          <strong>Voided revenue history:</strong>
+          {% for event in lot_view.detail.voided_revenue_events %}
+          <div class="text-sm">{{ event.event_date or "â€”" }} - ${{ "{:,.2f}".format(event.total_revenue or 0) }} - {{ event.void_reason or "No reason recorded" }}</div>
+          {% endfor %}
+        </div>
         {% endif %}
       </div>
 
