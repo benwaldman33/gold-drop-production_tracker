@@ -857,7 +857,7 @@ The implementation phases are now shipped:
 Current rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: pending API registry consolidation sprint
+- commit: `09f97f6`
 
 Production deployment steps:
 
