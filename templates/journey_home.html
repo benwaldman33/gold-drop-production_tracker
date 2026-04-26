@@ -10,6 +10,29 @@
   </div>
 </div>
 
+<div class="summary-row" style="margin-bottom:18px;">
+  <div class="summary-stat">
+    <div class="label">Blocked Work</div>
+    <div class="value">{{ journey.manager_dashboard.attention.blocked_downstream }}</div>
+    <div class="summary-footnote">{{ journey.manager_dashboard.attention.stale_downstream }} stale downstream items</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Critical Issues</div>
+    <div class="value">{{ journey.manager_dashboard.attention.critical_issues }}</div>
+    <div class="summary-footnote">{{ journey.manager_dashboard.attention.open_issues }} open genealogy issues</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Aging Lots</div>
+    <div class="value">{{ journey.manager_dashboard.attention.aging_lots }}</div>
+    <div class="summary-footnote">Open derivative lots older than 7 days</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Low-Margin Runs</div>
+    <div class="value">{{ journey.manager_dashboard.attention.underperforming_runs }}</div>
+    <div class="summary-footnote">Recent runs below 20% projected margin</div>
+  </div>
+</div>
+
 <div class="card" style="margin-bottom:18px;">
   <div class="card-header">
     <h3>Manager Journey Hub</h3>
@@ -44,6 +67,142 @@
       <div class="label">Downstream Blocked</div>
       <div class="value">{{ journey.queue_reporting.blocked_count or 0 }}</div>
     </div>
+  </div>
+</div>
+
+<div class="summary-row" style="margin-top:18px;">
+  <div class="card" style="flex:1 1 420px;margin:0;">
+    <div class="card-header">
+      <h3>Revenue Forecast</h3>
+      <span class="text-sm cell-muted">Evidence-based projection from recent genealogy-backed runs and configured price assumptions.</span>
+    </div>
+    <div class="summary-row" style="margin:0;">
+      <div class="summary-stat">
+        <div class="label">7 Day Revenue</div>
+        <div class="value">${{ "{:,.0f}".format(journey.manager_dashboard.forecast.projected_7d_revenue or 0) }}</div>
+      </div>
+      <div class="summary-stat">
+        <div class="label">30 Day Revenue</div>
+        <div class="value">${{ "{:,.0f}".format(journey.manager_dashboard.forecast.projected_30d_revenue or 0) }}</div>
+      </div>
+      <div class="summary-stat">
+        <div class="label">7 Day Margin</div>
+        <div class="value">${{ "{:,.0f}".format(journey.manager_dashboard.forecast.projected_7d_margin or 0) }}</div>
+      </div>
+      <div class="summary-stat">
+        <div class="label">Run Rate</div>
+        <div class="value">{{ "{:.1f}".format(journey.manager_dashboard.forecast.daily_run_rate or 0) }}</div>
+        <div class="summary-footnote">runs/day from recent evidence or Settings fallback</div>
+      </div>
+    </div>
+    <p class="text-sm cell-muted" style="margin:12px 0 0;">
+      Basis: {{ journey.manager_dashboard.forecast.basis_run_count }} recent genealogy-backed runs at
+      ${{ "{:,.0f}".format(journey.manager_dashboard.forecast.avg_projected_revenue_per_run or 0) }} projected revenue/run and
+      ${{ "{:,.0f}".format(journey.manager_dashboard.forecast.avg_projected_margin_per_run or 0) }} projected margin/run.
+    </p>
+  </div>
+
+  <div class="card" style="flex:1 1 420px;margin:0;">
+    <div class="card-header">
+      <h3>Inventory Value Leaders</h3>
+      <span class="text-sm cell-muted">Open output categories carrying the most projected revenue.</span>
+    </div>
+    {% if journey.manager_dashboard.inventory_position.top_open_groups %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Lot Type</th>
+            <th>Quantity</th>
+            <th>Projected Revenue</th>
+            <th>Projected Margin</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in journey.manager_dashboard.inventory_position.top_open_groups %}
+          <tr>
+            <td>{{ row.lot_type }}</td>
+            <td>{{ "{:,.2f}".format(row.quantity_total or 0) }} {{ row.unit }}</td>
+            <td>${{ "{:,.2f}".format(row.projected_revenue_total or 0) }}</td>
+            <td>${{ "{:,.2f}".format(row.projected_margin_total or 0) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-sm cell-muted">No open projected inventory value yet.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="summary-row" style="margin-top:18px;">
+  <div class="card" style="flex:1 1 520px;margin:0;">
+    <div class="card-header">
+      <h3>Aging Inventory</h3>
+      <span class="text-sm cell-muted">Open derivative lots older than 7 days, sorted by age and cost basis.</span>
+    </div>
+    {% if journey.manager_dashboard.aging_lots %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Lot</th>
+            <th>Type</th>
+            <th>Age</th>
+            <th>Quantity</th>
+            <th>Cost Basis</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for lot in journey.manager_dashboard.aging_lots %}
+          <tr>
+            <td><a href="{{ lot.viewer_url }}">{{ lot.tracking_id }}</a></td>
+            <td>{{ lot.lot_type }}</td>
+            <td>{{ lot.age_days }} days</td>
+            <td>{{ "{:,.2f}".format(lot.quantity or 0) }} {{ lot.unit }}</td>
+            <td>${{ "{:,.2f}".format(lot.cost_basis_total or 0) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-sm cell-muted">No open derivative lots are older than 7 days.</p>
+    {% endif %}
+  </div>
+
+  <div class="card" style="flex:1 1 520px;margin:0;">
+    <div class="card-header">
+      <h3>Underperforming Runs</h3>
+      <span class="text-sm cell-muted">Recent genealogy-backed runs with low or negative projected margin.</span>
+    </div>
+    {% if journey.manager_dashboard.underperforming_runs %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Run</th>
+            <th>Projected Revenue</th>
+            <th>Projected Margin</th>
+            <th>Margin %</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in journey.manager_dashboard.underperforming_runs %}
+          <tr>
+            <td><a href="{{ row.viewer_url }}">Reactor {{ row.reactor_number }}</a></td>
+            <td>${{ "{:,.2f}".format(row.projected_revenue_total or 0) }}</td>
+            <td>${{ "{:,.2f}".format(row.projected_margin_total or 0) }}</td>
+            <td>{% if row.projected_margin_pct is not none %}{{ "{:.1f}".format(row.projected_margin_pct) }}%{% else %}&mdash;{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-sm cell-muted">No recent genealogy-backed runs are below the projected margin threshold.</p>
+    {% endif %}
   </div>
 </div>
 

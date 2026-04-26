@@ -895,6 +895,9 @@ def test_alerts_and_journey_hubs_render():
     assert b"Journey Home" in journey.data
     assert b"Manager Journey Hub" in journey.data
     assert b"Open Projected Revenue" in journey.data
+    assert b"Revenue Forecast" in journey.data
+    assert b"Aging Inventory" in journey.data
+    assert b"Underperforming Runs" in journey.data
 
 
 def test_photos_library_renders_for_authenticated_user():

@@ -3,6 +3,8 @@
 ## 2026-04-25
 
 ### Added
+- Journey Home now acts as a stronger manager dashboard with an attention strip for blocked/stale work, critical genealogy issues, aging derivative lots, and low-margin runs.
+- Journey Home now includes an evidence-based revenue forecast using recent genealogy-backed run value, recent run rate or the configured run-rate fallback, and current Journey price assumptions.
 - Settings subgroups now have independent pages under `/settings/...` instead of all landing on one long System Settings page.
 - Slack channel history sync moved out of Maintenance and into `Settings -> Slack & Notifications`, next to the Slack channel, token, webhook, notification, and mapping controls it depends on.
 - Settings is now its own Super Admin-only collapsible sidebar group, with section links for operational parameters, Journey financials, extraction controls, Slack/notifications, users, field intake, API clients, scales, remote sites, and maintenance.

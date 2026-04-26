@@ -806,6 +806,7 @@ The implementation phases are now shipped:
 - Journey now includes assumption-backed financial projections: Settings stores per-output expected selling prices, and Journey/Genealogy Report show projected revenue and gross margin for derivative inventory, source-lot descendants, and run yield/cost rows
 - Settings is now a dedicated Super Admin-only sidebar group with section links into operational parameters, Journey financials, extraction controls, Slack/notifications, users/access, field intake, API clients, scales, remote sites, and maintenance
 - Settings section links now open independent `/settings/...` subpages instead of scrolling one monolithic page, and Slack channel history sync has moved from Maintenance into `Settings -> Slack & Notifications`
+- Journey Home now includes a manager dashboard layer for blocked/stale work, critical issues, aging derivative lots, low-margin runs, inventory value leaders, and 7/30 day projected revenue and margin based on recent genealogy-backed runs
 
 ## Deployment note
 
