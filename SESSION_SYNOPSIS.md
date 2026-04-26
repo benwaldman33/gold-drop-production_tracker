@@ -832,7 +832,7 @@ The implementation phases are now shipped:
 Current rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `TBD`
+- commit: `7e6b379`
 
 Production deployment steps:
 
