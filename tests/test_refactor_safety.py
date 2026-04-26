@@ -986,6 +986,13 @@ def test_alerts_and_journey_hubs_render():
     assert b"Aging Inventory" in journey.data
     assert b"Underperforming Runs" in journey.data
 
+    supervisor = _call_view_as_user("/supervisor-console", "supervisor_console", "admin")
+    assert supervisor.status_code == 200
+    assert b"Supervisor Console" in supervisor.data
+    assert b"Launch Role Coverage" in supervisor.data
+    assert b"Queue Health" in supervisor.data
+    assert b"Supervisor Attention Items" in supervisor.data
+
 
 def test_photos_library_renders_for_authenticated_user():
     page = _call_view_as_user("/photos", "photos_library", "viewer")

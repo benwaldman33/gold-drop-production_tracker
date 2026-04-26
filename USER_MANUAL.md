@@ -37,6 +37,7 @@ Use the left sidebar:
 - **Biomass purchasing**: buyer weekly snapshot, field submission queues, and reviewed history
 - **Scorecards (beta)**: the former Departments surface; a secondary management lens with quick links and thin rollups, not a primary daily operating workflow
 - **Runs**: extraction runs log + cost/yield outputs
+- **Supervisor Console**: supervisor/downstream launch surface for queue health, open alerts, blocked/stale work, reactor context, and handoffs into the focused work pages
 - **Downstream Queues**: supervisor-facing post-extraction routing board for completed runs that now need a downstream destination or hold
 - **Genealogy Report**: manager-facing lineage, derivative inventory, product summaries, cost, projected revenue, actual revenue, variance, financial-completeness reporting, and CSV export for accountable material lots
 - **Journey Home**: manager dashboard for blocked/stale work, critical genealogy issues, aging derivative lots, low-margin runs, product financial cards, inventory value leaders, 7/30 day projected revenue and margin, actuals below projection, and financial completeness flags
@@ -59,6 +60,7 @@ Related mobile workflows:
 - the standalone purchasing app is intended for buyer/intake users on phone or tablet
 - the standalone receiving app is intended for dock / receiving users on phone or tablet
 - the standalone extraction app is intended for extractors and assistant extractors on phone or tablet
+- supervisor/downstream users should start in **Downstream -> Supervisor Console** in the main app
 - all three workflows can be enabled or disabled independently by a Super Admin in **Settings -> Operational Parameters**
 - the standalone purchasing and receiving apps are intentionally focused tools; use their `Open Purchase Review` / `Open in Main App` handoff links when you need the full main-app review surface
 
@@ -655,6 +657,20 @@ The sequence is:
 The key difference is that the screen now works top-to-bottom, with numbered step cards and tap-first choice buttons for pathway and decision fields. The main app still keeps the full raw fields for supervisor editing.
 
 Use **Open in Main App** only when a supervisor needs the full admin run form.
+
+### Supervisor Console
+
+Use **Downstream -> Supervisor Console** as the supervisor's first page during daily operations.
+
+The console shows:
+- launch role coverage for buyer, receiver, extractor, and supervisor
+- supervisor alert counts and recent alert cards
+- active downstream queue counts
+- unassigned, stale, and blocked queue pressure
+- queue health by destination
+- supervisor attention items with direct run links
+
+Use this page to decide where to go next: Floor Ops for reactor/floor context, Alerts for notification work, Journey for tracing and finance, Queue Overview for routing, or a destination queue for focused downstream work.
 
 ### Downstream Queues in the main app
 

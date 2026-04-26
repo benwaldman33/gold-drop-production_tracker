@@ -820,13 +820,19 @@ The implementation phases are now shipped:
   - Material Genealogy Report includes `Export Financial CSV`
   - CSV export includes product summaries, inventory groups, source-to-derivative rows, run yield rows, and financial completeness flags
   - Journey Home and Genealogy Report show product-type financial summaries with cost basis, projected revenue, actual revenue, variance, margin, and flag counts
+- Four operational launch roles are now explicitly covered:
+  - buyer: standalone purchasing app plus `Purchasing -> Biomass Purchasing`
+  - receiver/inventory: standalone receiving app plus `Inventory`
+  - extractor: standalone extraction app plus `Floor Ops`
+  - supervisor/downstream: new `Downstream -> Supervisor Console`, queue overview, destination queues, Alerts, and Journey
+- `LAUNCH_ROLE_COVERAGE.md` records launch acceptance criteria for those four roles
 
 ## Deployment note
 
 Current rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `0c6f2be`
+- commit: `7e6b379`
 
 Production deployment steps:
 
@@ -836,10 +842,11 @@ Production deployment steps:
    - `git pull --ff-only origin main`
    - `git merge --no-ff origin/Claude_Consolidation -m "Merge Claude_Consolidation into main"`
    - `git push origin main`
-2. restart the backend so financial CSV export and product financial cards are live
+2. restart the backend so `Supervisor Console` and role coverage documentation are live
 3. verify in production:
    - the left sidebar is grouped into `Purchasing`, `Inventory`, `Extraction`, `Downstream`, `Journey`, `Alerts`, `Settings`, and `More`
    - `Alerts Home` renders at `/alerts`
+   - `Supervisor Console` renders at `/supervisor-console`
    - `Journey Home` renders at `/journey`
    - a lot page in `Material Journey Viewer` shows `Revenue Actuals` and `Record Revenue`
    - an existing revenue event can be updated or voided from that lot page
