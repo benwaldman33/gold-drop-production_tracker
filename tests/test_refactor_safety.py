@@ -145,6 +145,16 @@ def test_material_genealogy_report_renders_downstream_reporting():
             app_module._material_lot_for_purchase_lot(app_module, db.session.get(PurchaseLot, lot.id))
             app_module._ensure_extraction_output_genealogy(app_module, db.session.get(app_module.Run, run.id))
             app_module._ensure_downstream_output_genealogy(app_module, db.session.get(app_module.Run, run.id))
+            actual_lot = db.session.get(app_module.Run, run.id).material_lots.filter_by(lot_type="wholesale_thca").first()
+            db.session.add(app_module.MaterialRevenueEvent(
+                material_lot_id=actual_lot.id,
+                event_date=date(2026, 4, 26),
+                quantity=10,
+                unit=actual_lot.unit,
+                unit_price=9,
+                total_revenue=90,
+                buyer_channel="Test sale",
+            ))
             db.session.commit()
 
         with app.test_client() as client:
@@ -158,6 +168,8 @@ def test_material_genealogy_report_renders_downstream_reporting():
             assert b"Source-To-Derivative Yield" in resp.data
             assert b"Run Yield And Cost Review" in resp.data
             assert b"Projected Revenue" in resp.data
+            assert b"Actual Revenue" in resp.data
+            assert b"Variance" in resp.data
             assert b"Projected Margin" in resp.data
             assert b"Correction Impact On Reported Yield" in resp.data
             assert b"wholesale_thca" in resp.data
@@ -168,6 +180,8 @@ def test_material_genealogy_report_renders_downstream_reporting():
             _release_test_db_session()
             app_module.DownstreamQueueEvent.query.filter_by(run_id=run_id).delete(synchronize_session=False)
             app_module.MaterialReconciliationIssue.query.filter_by(run_id=run_id).delete(synchronize_session=False)
+            for material_lot in app_module.MaterialLot.query.filter(app_module.MaterialLot.parent_run_id == run_id).all():
+                app_module.MaterialRevenueEvent.query.filter_by(material_lot_id=material_lot.id).delete(synchronize_session=False)
             app_module.MaterialTransformation.query.filter_by(run_id=run_id).delete(synchronize_session=False)
             for material_lot in app_module.MaterialLot.query.filter(app_module.MaterialLot.parent_run_id == run_id).all():
                 db.session.delete(material_lot)
@@ -268,8 +282,28 @@ def test_material_genealogy_viewer_renders_lot_and_run_modes():
             assert b"Open Parent Run" in lot_resp.data
             assert b"Correct This Lot" in lot_resp.data
             assert b"Reconciliation And Corrections" in lot_resp.data
+            assert b"Revenue Actuals" in lot_resp.data
+            assert b"Record Revenue" in lot_resp.data
             assert b"Open Issue Queue" in lot_resp.data
             assert b"View JSON" in lot_resp.data
+
+            create_revenue = client.post(
+                f"/material-lots/{derivative_lot_id}/revenue-events/create",
+                data={
+                    "event_date": "2026-04-26",
+                    "quantity": "5",
+                    "unit_price": "11",
+                    "buyer_channel": "Retail test",
+                    "reference": "INV-1",
+                    "return_to": f"/journeys/material-genealogy?mode=lot&material_lot_id={derivative_lot_id}",
+                },
+                follow_redirects=False,
+            )
+            assert create_revenue.status_code in (302, 303)
+            actuals_resp = client.get(f"/journeys/material-genealogy?mode=lot&material_lot_id={derivative_lot_id}")
+            assert actuals_resp.status_code == 200
+            assert b"Retail test" in actuals_resp.data
+            assert b"$55.00" in actuals_resp.data
 
             run_resp = client.get(f"/journeys/material-genealogy?mode=run&run_id={run_id}")
             assert run_resp.status_code == 200
@@ -296,6 +330,8 @@ def test_material_genealogy_viewer_renders_lot_and_run_modes():
         with app.app_context():
             _release_test_db_session()
             app_module.MaterialReconciliationIssue.query.filter_by(run_id=run_id).delete(synchronize_session=False)
+            for material_lot in app_module.MaterialLot.query.filter(app_module.MaterialLot.parent_run_id == run_id).all():
+                app_module.MaterialRevenueEvent.query.filter_by(material_lot_id=material_lot.id).delete(synchronize_session=False)
             app_module.MaterialTransformation.query.filter_by(run_id=run_id).delete(synchronize_session=False)
             for material_lot in app_module.MaterialLot.query.filter(app_module.MaterialLot.parent_run_id == run_id).all():
                 db.session.delete(material_lot)

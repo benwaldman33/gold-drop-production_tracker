@@ -844,6 +844,30 @@ class MaterialTransformationOutput(db.Model):
     material_lot = db.relationship("MaterialLot", backref=db.backref("transformation_outputs", lazy="dynamic", cascade="all, delete-orphan"))
 
 
+class MaterialRevenueEvent(db.Model):
+    __tablename__ = "material_revenue_events"
+
+    id = db.Column(db.String(36), primary_key=True, default=gen_uuid)
+    material_lot_id = db.Column(db.String(36), db.ForeignKey("material_lots.id"), nullable=False, index=True)
+    event_date = db.Column(db.Date, nullable=False, default=date.today)
+    quantity = db.Column(db.Float, nullable=False, default=0.0)
+    unit = db.Column(db.String(16), nullable=False, default="g")
+    unit_price = db.Column(db.Float, nullable=False, default=0.0)
+    total_revenue = db.Column(db.Float, nullable=False, default=0.0)
+    buyer_channel = db.Column(db.String(120))
+    reference = db.Column(db.String(120))
+    notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=utc_now, nullable=False)
+    created_by_user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
+    voided_at = db.Column(db.DateTime)
+    voided_by_user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
+    void_reason = db.Column(db.Text)
+
+    material_lot = db.relationship("MaterialLot", backref=db.backref("revenue_events", lazy="dynamic", cascade="all, delete-orphan"))
+    created_by_user = db.relationship("User", foreign_keys=[created_by_user_id])
+    voided_by_user = db.relationship("User", foreign_keys=[voided_by_user_id])
+
+
 class MaterialReconciliationIssue(db.Model):
     __tablename__ = "material_reconciliation_issues"
 

@@ -8,7 +8,7 @@ This guide explains how to use the Gold Drop web app day-to-day. It intentionall
 
 **Operator-facing additions in the current release:** Purchases and Inventory are more status-first, the Journey page is richer, Slack imports now includes inbox buckets, lot labels now print with scannable barcodes, `Floor Ops` gives operators a recent activity surface, the standalone receiving app can now correct a confirmed receipt before downstream lot consumption, the standalone extraction app now mirrors the reactor workflow with touch-first controls, and the data model supports live smart-scale capture.
 
-**Manager-facing note for the current release:** the app now includes the first usable derivative-lot genealogy layer. Current day-to-day workflows still use Purchases, Inventory, Runs, and Downstream Queues the same way, but the system can now bridge biomass lots into first-class material genealogy records, auto-create dry HTE / dry THCA derivative lots from eligible extraction runs, extend genealogy into accountable downstream child lots like GoldDrop / wholesale THCA / terp strip / HP base oil / distillate, expose manager-facing ancestry / descendant journey endpoints through the internal API, record correction-forward genealogy fixes instead of silently overwriting bad lineage, summarize open derivative cost basis through the internal API, surface linked derivative lots directly on downstream queue cards, provide a dedicated `Genealogy Report` page for manager reporting, and open those lots or runs in a real HTML `Material Journey Viewer` with `By Lot` and `By Run` path tracing.
+**Manager-facing note for the current release:** the app now includes the first usable derivative-lot genealogy layer. Current day-to-day workflows still use Purchases, Inventory, Runs, and Downstream Queues the same way, but the system can now bridge biomass lots into first-class material genealogy records, auto-create dry HTE / dry THCA derivative lots from eligible extraction runs, extend genealogy into accountable downstream child lots like GoldDrop / wholesale THCA / terp strip / HP base oil / distillate, expose manager-facing ancestry / descendant journey endpoints through the internal API, record correction-forward genealogy fixes instead of silently overwriting bad lineage, summarize open derivative cost basis through the internal API, surface linked derivative lots directly on downstream queue cards, provide a dedicated `Genealogy Report` page for manager reporting, open those lots or runs in a real HTML `Material Journey Viewer` with `By Lot` and `By Run` path tracing, and record actual revenue events against material lots for actual-vs-projected margin review.
 
 ---
 
@@ -38,9 +38,9 @@ Use the left sidebar:
 - **Scorecards (beta)**: the former Departments surface; a secondary management lens with quick links and thin rollups, not a primary daily operating workflow
 - **Runs**: extraction runs log + cost/yield outputs
 - **Downstream Queues**: supervisor-facing post-extraction routing board for completed runs that now need a downstream destination or hold
-- **Genealogy Report**: manager-facing lineage and derivative-inventory reporting for accountable material lots
-- **Journey Home**: manager dashboard for blocked/stale work, critical genealogy issues, aging derivative lots, low-margin runs, inventory value leaders, and 7/30 day projected revenue and margin
-- **Material Journey Viewer**: opened from the Genealogy Report or linked derivative lots; gives `By Lot` and `By Run` visual path tracing for genealogy-backed material
+- **Genealogy Report**: manager-facing lineage, derivative inventory, cost, projected revenue, actual revenue, and variance reporting for accountable material lots
+- **Journey Home**: manager dashboard for blocked/stale work, critical genealogy issues, aging derivative lots, low-margin runs, inventory value leaders, 7/30 day projected revenue and margin, and actuals below projection
+- **Material Journey Viewer**: opened from the Genealogy Report or linked derivative lots; gives `By Lot` and `By Run` visual path tracing for genealogy-backed material and records actual revenue events on lot pages
 - **Inventory**: on-hand lots + in-transit purchases, including lot tracking IDs and remaining pounds
 - **Purchases**: batch-level purchase records + batch IDs (same underlying rows as **Biomass Pipeline**); **Approve purchase** when your role allows; **Import spreadsheet** for bulk purchase upload; row **batch edit** on the list
 - **Costs**: operational cost entries (solvent/personnel/overhead)
@@ -65,7 +65,7 @@ Related mobile workflows:
 Journey revenue projections:
 - Super Admins can enter assumed selling prices by derivative output type in **Settings -> Operational Parameters -> Journey Revenue Assumptions**.
 - Journey and Genealogy Report use those assumptions to show projected revenue and projected gross margin for open output, released output, source-lot descendants, and run yield/cost rows.
-- These are planning projections, not actual sales records.
+- These are planning projections. Actual sales are recorded separately as material-lot revenue events from the Material Journey Viewer, then rolled up into actual revenue, actual margin, and projected-vs-actual variance.
 
 ### Standalone Extraction Lab App
 
@@ -824,8 +824,10 @@ Use **Genealogy Report** from the left sidebar when you need a manager-facing su
 The page currently shows:
 - open derivative inventory by type
 - released derivative inventory by type
+- projected revenue, actual revenue, and variance for open and released material
 - source-to-derivative yield rows by biomass lot
 - run-level yield and cost review rows
+- actual revenue and projected-vs-actual variance for source descendants and run yield/cost rows when revenue events exist
 - rework volume from correction-backed genealogy transformations
 - correction impact on reported yield
 - open genealogy reconciliation issues
@@ -840,6 +842,16 @@ The **Material Journey Viewer** supports:
   - open reconciliation issues on that lot
   - correction history for that lot
   - a direct `Correct This Lot` action
+  - a `Revenue Actuals` panel with projected revenue, actual revenue, variance, actual margin, and the event history recorded for that lot
+
+To record actual revenue for a material lot, open the lot in **Material Journey Viewer**, use **Record Revenue**, and enter:
+- event date
+- sold quantity
+- unit price
+- buyer or channel
+- optional reference and notes
+
+The app stores the total actual revenue event against that material lot. Journey Home and Genealogy Report then use that actual revenue to compare real results against the configured Journey revenue assumptions.
 
 Use `View JSON` when you want the exact underlying payload for the current viewer page.
 On the report table, `Ancestry JSON` and `Descendants JSON` expose the raw lineage payloads for that lot.

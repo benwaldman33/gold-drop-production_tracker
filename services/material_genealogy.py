@@ -327,6 +327,92 @@ def serialize_material_lot(root, material_lot, *, include_links: bool = True) ->
     return payload
 
 
+def material_lot_projected_revenue(root, material_lot) -> float:
+    return _material_lot_projected_revenue(material_lot, material_revenue_assumptions(root))
+
+
+def material_lot_actual_revenue_total(root, material_lot) -> float:
+    if material_lot is None:
+        return 0.0
+    return float(
+        root.db.session.query(root.func.sum(root.MaterialRevenueEvent.total_revenue))
+        .filter(
+            root.MaterialRevenueEvent.material_lot_id == material_lot.id,
+            root.MaterialRevenueEvent.voided_at.is_(None),
+        )
+        .scalar()
+        or 0
+    )
+
+
+def material_lot_revenue_summary(root, material_lot) -> dict:
+    projected_revenue = material_lot_projected_revenue(root, material_lot)
+    actual_revenue = material_lot_actual_revenue_total(root, material_lot)
+    cost_basis = float(getattr(material_lot, "cost_basis_total", None) or 0)
+    projected_margin = projected_revenue - cost_basis
+    actual_margin = actual_revenue - cost_basis
+    return {
+        "projected_revenue_total": projected_revenue,
+        "actual_revenue_total": actual_revenue,
+        "revenue_variance_total": actual_revenue - projected_revenue,
+        "cost_basis_total": cost_basis,
+        "projected_margin_total": projected_margin,
+        "actual_margin_total": actual_margin,
+        "margin_variance_total": actual_margin - projected_margin,
+        "projected_margin_pct": (projected_margin / projected_revenue * 100.0) if projected_revenue > 0 else None,
+        "actual_margin_pct": (actual_margin / actual_revenue * 100.0) if actual_revenue > 0 else None,
+    }
+
+
+def serialize_material_revenue_event(root, event) -> dict:
+    return {
+        "revenue_event_id": event.id,
+        "material_lot_id": event.material_lot_id,
+        "event_date": event.event_date.isoformat() if event.event_date else None,
+        "quantity": float(event.quantity or 0),
+        "unit": event.unit,
+        "unit_price": float(event.unit_price or 0),
+        "total_revenue": float(event.total_revenue or 0),
+        "buyer_channel": event.buyer_channel,
+        "reference": event.reference,
+        "notes": event.notes,
+        "created_at": event.created_at.isoformat() if event.created_at else None,
+        "created_by_name": event.created_by_user.display_name if event.created_by_user else None,
+        "voided_at": event.voided_at.isoformat() if event.voided_at else None,
+        "void_reason": event.void_reason,
+    }
+
+
+def create_material_revenue_event(root, material_lot, *, event_date, quantity, unit_price, buyer_channel="", reference="", notes=""):
+    quantity = max(0.0, float(quantity or 0))
+    unit_price = max(0.0, float(unit_price or 0))
+    event = root.MaterialRevenueEvent(
+        material_lot_id=material_lot.id,
+        event_date=event_date or root.date.today(),
+        quantity=quantity,
+        unit=material_lot.unit or "g",
+        unit_price=unit_price,
+        total_revenue=quantity * unit_price,
+        buyer_channel=(buyer_channel or "").strip() or None,
+        reference=(reference or "").strip() or None,
+        notes=(notes or "").strip() or None,
+        created_by_user_id=getattr(root.current_user, "id", None),
+    )
+    root.db.session.add(event)
+    root.log_audit(
+        "material_revenue_event_create",
+        "material_lot",
+        material_lot.id,
+        details=root.json.dumps({
+            "revenue_event_id": event.id,
+            "quantity": quantity,
+            "unit_price": unit_price,
+            "total_revenue": event.total_revenue,
+        }),
+    )
+    return event
+
+
 def serialize_material_transformation(root, transformation) -> dict:
     return {
         "transformation_id": transformation.id,
@@ -1330,11 +1416,17 @@ def build_material_lot_detail_payload(root, material_lot) -> dict:
         for row in material_lot.transformation_inputs.order_by(root.MaterialTransformationInput.id.asc()).all()
         if row.transformation is not None
     ]
+    revenue_events = [
+        serialize_material_revenue_event(root, event)
+        for event in material_lot.revenue_events.order_by(root.MaterialRevenueEvent.event_date.desc(), root.MaterialRevenueEvent.created_at.desc()).all()
+    ]
     return {
         "material_lot": serialize_material_lot(root, material_lot),
         "upstream_transformations": upstream_transformations,
         "downstream_transformations": downstream_transformations,
         "reconciliation_issues": issues,
+        "revenue_summary": material_lot_revenue_summary(root, material_lot),
+        "revenue_events": revenue_events,
     }
 
 
@@ -1454,11 +1546,17 @@ def _annotate_financials(row: dict, assumptions: dict[str, dict]) -> dict:
     assumption = assumptions.get(lot_type, {"price_per_unit": 0.0, "unit": row.get("unit") or "g"})
     price_per_unit = float(assumption.get("price_per_unit") or 0)
     projected_revenue = quantity * price_per_unit
+    actual_revenue = float(row.get("actual_revenue_total") or 0)
     projected_margin = projected_revenue - cost_basis
+    actual_margin = actual_revenue - cost_basis
     row["assumed_price_per_unit"] = price_per_unit
     row["projected_revenue_total"] = projected_revenue
     row["projected_margin_total"] = projected_margin
     row["projected_margin_pct"] = (projected_margin / projected_revenue * 100.0) if projected_revenue > 0 else None
+    row["actual_revenue_total"] = actual_revenue
+    row["revenue_variance_total"] = actual_revenue - projected_revenue
+    row["actual_margin_total"] = actual_margin
+    row["actual_margin_pct"] = (actual_margin / actual_revenue * 100.0) if actual_revenue > 0 else None
     return row
 
 
@@ -1486,12 +1584,14 @@ def _material_inventory_groups(root, statuses: set[str], assumptions: dict[str, 
                 "lot_count": 0,
                 "quantity_total": 0.0,
                 "cost_basis_total": 0.0,
+                "actual_revenue_total": 0.0,
                 "unit": material_lot.unit,
             },
         )
         bucket["lot_count"] += 1
         bucket["quantity_total"] += float(material_lot.quantity or 0)
         bucket["cost_basis_total"] += float(material_lot.cost_basis_total or 0)
+        bucket["actual_revenue_total"] += material_lot_actual_revenue_total(root, material_lot)
     return [_annotate_financials(bucket, assumptions) for bucket in grouped.values()]
 
 
@@ -1542,18 +1642,21 @@ def build_material_reporting_payload(root) -> dict:
         quantities_by_type: dict[str, float] = {}
         for descendant in descendants:
             quantities_by_type[descendant.lot_type] = quantities_by_type.get(descendant.lot_type, 0.0) + float(descendant.quantity or 0)
+        descendant_actual_revenue_total = float(sum(material_lot_actual_revenue_total(root, row) for row in descendants))
+        descendant_cost_basis_total = float(sum(float(row.cost_basis_total or 0) for row in descendants))
+        descendant_projected_revenue_total = float(sum(_material_lot_projected_revenue(row, revenue_assumptions) for row in descendants))
         yield_rows.append(
             {
                 "source_lot": serialize_material_lot(root, source_lot),
                 "source_quantity": float(source_lot.quantity or 0),
                 "descendant_lot_count": len(descendants),
                 "descendant_quantities_by_type": quantities_by_type,
-                "descendant_cost_basis_total": float(sum(float(row.cost_basis_total or 0) for row in descendants)),
-                "descendant_projected_revenue_total": float(sum(_material_lot_projected_revenue(row, revenue_assumptions) for row in descendants)),
-                "descendant_projected_margin_total": float(
-                    sum(_material_lot_projected_revenue(row, revenue_assumptions) for row in descendants) -
-                    sum(float(row.cost_basis_total or 0) for row in descendants)
-                ),
+                "descendant_cost_basis_total": descendant_cost_basis_total,
+                "descendant_projected_revenue_total": descendant_projected_revenue_total,
+                "descendant_projected_margin_total": descendant_projected_revenue_total - descendant_cost_basis_total,
+                "descendant_actual_revenue_total": descendant_actual_revenue_total,
+                "descendant_actual_margin_total": descendant_actual_revenue_total - descendant_cost_basis_total,
+                "descendant_revenue_variance_total": descendant_actual_revenue_total - descendant_projected_revenue_total,
                 "descendants": [serialize_material_lot(root, row) for row in descendants[:8]],
             }
         )
@@ -1595,6 +1698,7 @@ def build_material_reporting_payload(root) -> dict:
         ).count()
         total_cost_basis = float(sum(float(row.cost_basis_total or 0) for row in material_lots))
         projected_revenue_total = float(sum(_material_lot_projected_revenue(row, revenue_assumptions) for row in material_lots))
+        actual_revenue_total = float(sum(material_lot_actual_revenue_total(root, row) for row in material_lots))
         run_rows.append(
             {
                 "run_id": run.id,
@@ -1608,6 +1712,10 @@ def build_material_reporting_payload(root) -> dict:
                 "projected_revenue_total": projected_revenue_total,
                 "projected_margin_total": projected_revenue_total - total_cost_basis,
                 "projected_margin_pct": ((projected_revenue_total - total_cost_basis) / projected_revenue_total * 100.0) if projected_revenue_total > 0 else None,
+                "actual_revenue_total": actual_revenue_total,
+                "actual_margin_total": actual_revenue_total - total_cost_basis,
+                "revenue_variance_total": actual_revenue_total - projected_revenue_total,
+                "actual_margin_pct": ((actual_revenue_total - total_cost_basis) / actual_revenue_total * 100.0) if actual_revenue_total > 0 else None,
                 "correction_count": correction_count,
                 "issue_count": run.material_reconciliation_issues.filter(
                     root.MaterialReconciliationIssue.status.in_(("open", "investigating", "needs_follow_up"))
@@ -1645,8 +1753,12 @@ def build_material_reporting_payload(root) -> dict:
     released_cost_basis_total = float(sum(float(group["cost_basis_total"] or 0) for group in released_groups))
     open_projected_revenue_total = float(sum(float(group["projected_revenue_total"] or 0) for group in open_groups))
     released_projected_revenue_total = float(sum(float(group["projected_revenue_total"] or 0) for group in released_groups))
+    open_actual_revenue_total = float(sum(float(group["actual_revenue_total"] or 0) for group in open_groups))
+    released_actual_revenue_total = float(sum(float(group["actual_revenue_total"] or 0) for group in released_groups))
     open_projected_margin_total = open_projected_revenue_total - open_cost_basis_total
     released_projected_margin_total = released_projected_revenue_total - released_cost_basis_total
+    open_actual_margin_total = open_actual_revenue_total - open_cost_basis_total
+    released_actual_margin_total = released_actual_revenue_total - released_cost_basis_total
 
     return {
         "summary": {
@@ -1658,8 +1770,16 @@ def build_material_reporting_payload(root) -> dict:
             "released_projected_revenue_total": released_projected_revenue_total,
             "open_projected_margin_total": open_projected_margin_total,
             "released_projected_margin_total": released_projected_margin_total,
+            "open_actual_revenue_total": open_actual_revenue_total,
+            "released_actual_revenue_total": released_actual_revenue_total,
+            "open_actual_margin_total": open_actual_margin_total,
+            "released_actual_margin_total": released_actual_margin_total,
+            "open_revenue_variance_total": open_actual_revenue_total - open_projected_revenue_total,
+            "released_revenue_variance_total": released_actual_revenue_total - released_projected_revenue_total,
             "open_projected_margin_pct": (open_projected_margin_total / open_projected_revenue_total * 100.0) if open_projected_revenue_total > 0 else None,
             "released_projected_margin_pct": (released_projected_margin_total / released_projected_revenue_total * 100.0) if released_projected_revenue_total > 0 else None,
+            "open_actual_margin_pct": (open_actual_margin_total / open_actual_revenue_total * 100.0) if open_actual_revenue_total > 0 else None,
+            "released_actual_margin_pct": (released_actual_margin_total / released_actual_revenue_total * 100.0) if released_actual_revenue_total > 0 else None,
             "open_issue_count": len(open_issues),
             "rework_event_count": sum(int(item["count"]) for item in rework_summary.values()),
         },

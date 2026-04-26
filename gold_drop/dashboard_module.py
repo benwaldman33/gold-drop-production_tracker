@@ -14,6 +14,7 @@ from services.material_genealogy import (
     build_material_lot_journey_payload,
     issue_reminder_snapshot,
     process_material_issue_reminders,
+    create_material_revenue_event,
     serialize_reconciliation_issue,
 )
 from services.purchases_journey import build_run_journey_payload
@@ -97,6 +98,10 @@ def register_routes(app, root):
     def material_genealogy_issue_update(issue_id):
         return material_genealogy_issue_update_view(root, issue_id)
 
+    @root.editor_required
+    def material_lot_revenue_event_create(lot_id):
+        return material_lot_revenue_event_create_view(root, lot_id)
+
     @root.login_required
     def cross_site_ops():
         return cross_site_ops_view(root)
@@ -141,6 +146,7 @@ def register_routes(app, root):
     app.add_url_rule("/journeys/material-genealogy/raw", endpoint="material_genealogy_raw", view_func=material_genealogy_raw)
     app.add_url_rule("/reports/material-genealogy/issues", endpoint="material_genealogy_issue_queue", view_func=material_genealogy_issue_queue)
     app.add_url_rule("/reports/material-genealogy/issues/<issue_id>/update", endpoint="material_genealogy_issue_update", view_func=material_genealogy_issue_update, methods=["POST"])
+    app.add_url_rule("/material-lots/<lot_id>/revenue-events/create", endpoint="material_lot_revenue_event_create", view_func=material_lot_revenue_event_create, methods=["POST"])
     app.add_url_rule("/cross-site", endpoint="cross_site_ops", view_func=cross_site_ops)
     app.add_url_rule("/cross-site/suppliers", endpoint="cross_site_suppliers", view_func=cross_site_suppliers)
     app.add_url_rule("/cross-site/strains", endpoint="cross_site_strains", view_func=cross_site_strains)
@@ -384,13 +390,19 @@ def _journey_manager_dashboard(root, report: dict, queue_reporting: dict) -> dic
     forecast_daily_run_rate = recent_daily_run_rate or fallback_daily_rate
 
     underperforming_runs = []
+    variance_rows = []
     for row in run_rows:
         margin_pct = row.get("projected_margin_pct")
         projected_revenue = float(row.get("projected_revenue_total") or 0)
         projected_margin = float(row.get("projected_margin_total") or 0)
         if projected_revenue > 0 and (margin_pct is None or margin_pct < 20 or projected_margin < 0):
             underperforming_runs.append(row)
+        actual_revenue = float(row.get("actual_revenue_total") or 0)
+        revenue_variance = float(row.get("revenue_variance_total") or 0)
+        if actual_revenue > 0 and projected_revenue > 0 and revenue_variance < 0:
+            variance_rows.append(row)
     underperforming_runs.sort(key=lambda row: (row.get("projected_margin_pct") is None, row.get("projected_margin_pct") or -999))
+    variance_rows.sort(key=lambda row: float(row.get("revenue_variance_total") or 0))
 
     now = root.datetime.now(root.timezone.utc)
     aging_lots = []
@@ -436,6 +448,7 @@ def _journey_manager_dashboard(root, report: dict, queue_reporting: dict) -> dic
             "critical_issues": int((report.get("issue_counts_by_severity") or {}).get("critical") or 0),
             "aging_lots": len(aging_lots),
             "underperforming_runs": len(underperforming_runs),
+            "negative_variance_runs": len(variance_rows),
         },
         "forecast": {
             "basis_run_count": run_count,
@@ -455,6 +468,7 @@ def _journey_manager_dashboard(root, report: dict, queue_reporting: dict) -> dic
         },
         "aging_lots": aging_lots[:8],
         "underperforming_runs": underperforming_runs[:8],
+        "negative_variance_runs": variance_rows[:8],
         "open_issues": issue_rows[:6],
     }
 
@@ -970,6 +984,43 @@ def material_genealogy_raw_view(root):
         json.dumps(payload, indent=2, sort_keys=True),
         mimetype="application/json",
     )
+
+
+def material_lot_revenue_event_create_view(root, lot_id):
+    material_lot = root.db.session.get(root.MaterialLot, lot_id)
+    if material_lot is None:
+        root.abort(404)
+    return_to = (root.request.form.get("return_to") or "").strip()
+    if not return_to.startswith("/"):
+        return_to = root.url_for("material_genealogy_viewer", mode="lot", material_lot_id=material_lot.id)
+    raw_date = (root.request.form.get("event_date") or "").strip()
+    try:
+        event_date = root.date.fromisoformat(raw_date) if raw_date else root.date.today()
+    except ValueError:
+        root.flash("Revenue event date must be a valid YYYY-MM-DD date.", "error")
+        return root.redirect(return_to)
+    try:
+        quantity = float((root.request.form.get("quantity") or "").strip() or 0)
+        unit_price = float((root.request.form.get("unit_price") or "").strip() or 0)
+    except ValueError:
+        root.flash("Revenue quantity and unit price must be numeric.", "error")
+        return root.redirect(return_to)
+    if quantity <= 0 or unit_price < 0:
+        root.flash("Revenue quantity must be positive and unit price cannot be negative.", "error")
+        return root.redirect(return_to)
+    create_material_revenue_event(
+        root,
+        material_lot,
+        event_date=event_date,
+        quantity=quantity,
+        unit_price=unit_price,
+        buyer_channel=root.request.form.get("buyer_channel") or "",
+        reference=root.request.form.get("reference") or "",
+        notes=root.request.form.get("notes") or "",
+    )
+    root.db.session.commit()
+    root.flash("Revenue event recorded.", "success")
+    return root.redirect(return_to)
 
 
 def material_genealogy_issue_queue_view(root):

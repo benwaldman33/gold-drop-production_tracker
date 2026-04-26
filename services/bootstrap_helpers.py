@@ -450,6 +450,27 @@ def ensure_sqlite_schema(root) -> None:
             ")"
         ))
 
+    if not has_table("material_revenue_events"):
+        root.db.session.execute(text(
+            "CREATE TABLE material_revenue_events ("
+            "id VARCHAR(36) PRIMARY KEY, "
+            "material_lot_id VARCHAR(36) NOT NULL, "
+            "event_date DATE NOT NULL, "
+            "quantity FLOAT NOT NULL DEFAULT 0, "
+            "unit VARCHAR(16) NOT NULL DEFAULT 'g', "
+            "unit_price FLOAT NOT NULL DEFAULT 0, "
+            "total_revenue FLOAT NOT NULL DEFAULT 0, "
+            "buyer_channel VARCHAR(120), "
+            "reference VARCHAR(120), "
+            "notes TEXT, "
+            "created_at DATETIME NOT NULL, "
+            "created_by_user_id VARCHAR(36), "
+            "voided_at DATETIME, "
+            "voided_by_user_id VARCHAR(36), "
+            "void_reason TEXT"
+            ")"
+        ))
+
     if not has_table("material_reconciliation_issues"):
         root.db.session.execute(text(
             "CREATE TABLE material_reconciliation_issues ("

@@ -31,6 +31,11 @@
     <div class="value">{{ journey.manager_dashboard.attention.underperforming_runs }}</div>
     <div class="summary-footnote">Recent runs below 20% projected margin</div>
   </div>
+  <div class="summary-stat">
+    <div class="label">Negative Variance</div>
+    <div class="value">{{ journey.manager_dashboard.attention.negative_variance_runs }}</div>
+    <div class="summary-footnote">Runs with actual revenue below projection</div>
+  </div>
 </div>
 
 <div class="card" style="margin-bottom:18px;">
@@ -64,8 +69,39 @@
       <div class="value">{{ journey.report.summary.open_issue_count }}</div>
     </div>
     <div class="summary-stat">
+      <div class="label">Actual Revenue</div>
+      <div class="value">${{ "{:,.0f}".format((journey.report.summary.open_actual_revenue_total or 0) + (journey.report.summary.released_actual_revenue_total or 0)) }}</div>
+    </div>
+    <div class="summary-stat">
       <div class="label">Downstream Blocked</div>
       <div class="value">{{ journey.queue_reporting.blocked_count or 0 }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:18px;">
+  <div class="card-header">
+    <h3>Projected Vs Actual Revenue</h3>
+    <span class="text-sm cell-muted">Actual revenue is recorded from material lot revenue events; projection comes from Settings price assumptions.</span>
+  </div>
+  <div class="summary-row" style="margin:0;">
+    <div class="summary-stat">
+      <div class="label">Open Actual Revenue</div>
+      <div class="value">${{ "{:,.0f}".format(journey.report.summary.open_actual_revenue_total or 0) }}</div>
+      <div class="summary-footnote">Variance ${{ "{:,.0f}".format(journey.report.summary.open_revenue_variance_total or 0) }}</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Released Actual Revenue</div>
+      <div class="value">${{ "{:,.0f}".format(journey.report.summary.released_actual_revenue_total or 0) }}</div>
+      <div class="summary-footnote">Variance ${{ "{:,.0f}".format(journey.report.summary.released_revenue_variance_total or 0) }}</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Open Actual Margin</div>
+      <div class="value">${{ "{:,.0f}".format(journey.report.summary.open_actual_margin_total or 0) }}</div>
+    </div>
+    <div class="summary-stat">
+      <div class="label">Released Actual Margin</div>
+      <div class="value">${{ "{:,.0f}".format(journey.report.summary.released_actual_margin_total or 0) }}</div>
     </div>
   </div>
 </div>
@@ -205,6 +241,39 @@
     {% endif %}
   </div>
 </div>
+
+{% if journey.manager_dashboard.negative_variance_runs %}
+<div class="card" style="margin-top:18px;">
+  <div class="card-header">
+    <h3>Actuals Below Projection</h3>
+    <span class="text-sm cell-muted">Runs where actual revenue has been recorded and is below the configured projection.</span>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Run</th>
+          <th>Projected Revenue</th>
+          <th>Actual Revenue</th>
+          <th>Variance</th>
+          <th>Actual Margin</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in journey.manager_dashboard.negative_variance_runs %}
+        <tr>
+          <td><a href="{{ row.viewer_url }}">Reactor {{ row.reactor_number }}</a></td>
+          <td>${{ "{:,.2f}".format(row.projected_revenue_total or 0) }}</td>
+          <td>${{ "{:,.2f}".format(row.actual_revenue_total or 0) }}</td>
+          <td>${{ "{:,.2f}".format(row.revenue_variance_total or 0) }}</td>
+          <td>${{ "{:,.2f}".format(row.actual_margin_total or 0) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
 
 <div class="summary-row">
   <div class="card" style="flex:1 1 420px;margin:0;">
