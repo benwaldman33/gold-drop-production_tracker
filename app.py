@@ -337,7 +337,7 @@ def _role_home_endpoint():
 
 def _nav_section_key_for_endpoint(endpoint: str | None) -> str:
     endpoint = endpoint or ""
-    if endpoint == "settings" or endpoint.startswith("settings_") or endpoint.startswith("user_") or endpoint.startswith("api_client_") or endpoint.startswith("remote_site_") or endpoint.startswith("scale_device_") or endpoint.startswith("field_token_"):
+    if endpoint == "launch_readiness" or endpoint == "settings" or endpoint.startswith("settings_") or endpoint.startswith("user_") or endpoint.startswith("api_client_") or endpoint.startswith("remote_site_") or endpoint.startswith("scale_device_") or endpoint.startswith("field_token_"):
         if current_user.is_authenticated and current_user.is_super_admin:
             return "settings"
         return "more"
@@ -485,6 +485,7 @@ def inject_role_navigation():
                 {"label": "Scales", "endpoint": "settings_scales", "active": request.endpoint == "settings_scales" or (request.endpoint or "").startswith("scale_device_")},
                 {"label": "Remote Sites", "endpoint": "settings_remote_sites", "active": request.endpoint == "settings_remote_sites" or (request.endpoint or "").startswith("remote_site_")},
                 {"label": "Maintenance", "endpoint": "settings_maintenance", "active": request.endpoint in ("settings_maintenance", "settings_backfill_photo_assets", "settings_recalculate_costs", "settings_pull_remote_sites")},
+                {"label": "Launch Readiness", "endpoint": "launch_readiness", "active": request.endpoint == "launch_readiness"},
             ],
             "visible": current_user.is_authenticated and current_user.is_super_admin,
         },
