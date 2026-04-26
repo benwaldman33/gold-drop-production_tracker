@@ -869,7 +869,7 @@ The implementation phases are now shipped:
 Current rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: pending AI/MCP synopsis and deferred todo update
+- commit: `c1d783c`
 
 Production deployment steps:
 
