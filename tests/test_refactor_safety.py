@@ -993,6 +993,55 @@ def test_alerts_and_journey_hubs_render():
     assert b"Queue Health" in supervisor.data
     assert b"Supervisor Attention Items" in supervisor.data
 
+    readiness = _call_view_as_user("/launch-readiness", "launch_readiness", "admin")
+    assert readiness.status_code == 200
+    assert b"Launch Readiness" in readiness.data
+    assert b"Blocker Register" in readiness.data
+    assert b"Buyer workflow accepted" in readiness.data
+    assert b"Security Handoff" in readiness.data
+
+
+def test_launch_readiness_register_persists_updates():
+    app = app_module.app
+    original = None
+    try:
+        with app.app_context():
+            original = SystemSetting.get("launch_readiness_register")
+        with app.test_client() as client:
+            _login(client, "admin")
+            add_resp = client.post(
+                "/launch-readiness",
+                data={
+                    "action": "add",
+                    "new_title": "Pilot printer labels checked",
+                    "new_category": "Pilot",
+                    "new_classification": "pilot_blocker",
+                    "new_status": "blocked",
+                    "new_owner": "Ops",
+                    "new_notes": "Need label printer confirmation.",
+                },
+                follow_redirects=False,
+            )
+            assert add_resp.status_code in (302, 303)
+            page = client.get("/launch-readiness")
+            assert page.status_code == 200
+            assert b"Pilot printer labels checked" in page.data
+            assert b"Need label printer confirmation" in page.data
+        with app.app_context():
+            saved = SystemSetting.get("launch_readiness_register")
+            assert saved
+            assert "Pilot printer labels checked" in saved
+            assert "pilot_blocker" in saved
+    finally:
+        with app.app_context():
+            setting = db.session.get(SystemSetting, "launch_readiness_register")
+            if setting is not None:
+                if original is None:
+                    db.session.delete(setting)
+                else:
+                    setting.value = original
+            db.session.commit()
+
 
 def test_photos_library_renders_for_authenticated_user():
     page = _call_view_as_user("/photos", "photos_library", "viewer")

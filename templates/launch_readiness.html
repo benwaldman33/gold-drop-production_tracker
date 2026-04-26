@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}Launch Readiness{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Launch Readiness</h2>
+  <div class="btn-group">
+    <a href="{{ url_for('supervisor_console') }}" class="btn btn-secondary">Supervisor Console</a>
+    <a href="{{ url_for('journey_home') }}" class="btn btn-secondary">Journey</a>
+    <a href="{{ url_for('settings_maintenance') }}" class="btn btn-secondary">Maintenance</a>
+  </div>
+</div>
+
+<div class="summary-row" style="margin-bottom:18px;">
+  <div class="summary-stat">
+    <div class="label">Launch Blockers Open</div>
+    <div class="value">{{ summary.launch_blockers_open }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Pilot Blockers Open</div>
+    <div class="value">{{ summary.pilot_blockers_open }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Blocked Items</div>
+    <div class="value">{{ summary.blocked }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Done</div>
+    <div class="value">{{ summary.done }} / {{ summary.total }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Security Handoff</div>
+    <div class="value">{% if summary.ready_for_security %}Ready{% else %}Not Ready{% endif %}</div>
+    <div class="summary-footnote">Clears when launch and pilot blockers are done or deferred</div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:18px;">
+  <div class="card-header">
+    <h3>Blocker Register</h3>
+    <span class="text-sm cell-muted">Classify remaining work so launch blockers are separated from post-launch polish.</span>
+  </div>
+  <form method="POST">
+    <input type="hidden" name="action" value="update">
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Classification</th>
+            <th>Status</th>
+            <th>Owner</th>
+            <th>Target</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+          <tr>
+            <td>
+              <strong>{{ item.title }}</strong>
+              <div class="text-sm cell-muted">{{ item.category }}{% if item.updated_by %} · updated by {{ item.updated_by }}{% endif %}</div>
+            </td>
+            <td>
+              <select name="classification_{{ item.key }}">
+                {% for value, label in classifications %}
+                <option value="{{ value }}" {% if item.classification == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td>
+              <select name="status_{{ item.key }}">
+                {% for value, label in statuses %}
+                <option value="{{ value }}" {% if item.status == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td><input type="text" name="owner_{{ item.key }}" value="{{ item.owner or '' }}" style="min-width:130px;"></td>
+            <td><input type="date" name="target_date_{{ item.key }}" value="{{ item.target_date or '' }}"></td>
+            <td><textarea name="notes_{{ item.key }}" rows="2" style="min-width:260px;">{{ item.notes or '' }}</textarea></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="form-actions" style="justify-content:flex-start;margin-top:14px;">
+      <button type="submit" class="btn btn-primary">Save Readiness Register</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h3>Add Readiness Item</h3>
+    <span class="text-sm cell-muted">Use this for concrete blockers discovered during acceptance testing.</span>
+  </div>
+  <form method="POST" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;align-items:end;">
+    <input type="hidden" name="action" value="add">
+    <div class="form-group" style="margin:0;">
+      <label>Title</label>
+      <input type="text" name="new_title" required>
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>Category</label>
+      <input type="text" name="new_category" placeholder="Workflow Acceptance">
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>Classification</label>
+      <select name="new_classification">
+        {% for value, label in classifications %}
+        <option value="{{ value }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>Status</label>
+      <select name="new_status">
+        {% for value, label in statuses %}
+        <option value="{{ value }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>Owner</label>
+      <input type="text" name="new_owner">
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>Target Date</label>
+      <input type="date" name="new_target_date">
+    </div>
+    <div class="form-group" style="grid-column:span 2;margin:0;">
+      <label>Notes</label>
+      <input type="text" name="new_notes">
+    </div>
+    <button type="submit" class="btn btn-secondary">Add Item</button>
+  </form>
+</div>
+{% endblock %}

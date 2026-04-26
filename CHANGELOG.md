@@ -24,6 +24,7 @@
 - Journey Home and Genealogy Report now include product-type financial summaries with quantity, cost basis, projected revenue, actual revenue, variance, actual margin, and flag counts.
 - `Downstream -> Supervisor Console` now gives supervisors one launch-ready control surface for role coverage, open alerts, queue health, blocked/stale/unassigned downstream work, and handoffs into Floor Ops, Alerts, Journey, and destination queues.
 - `LAUNCH_ROLE_COVERAGE.md` now documents the four operational launch roles: buyer, receiver/inventory, extractor, and supervisor/downstream.
+- `Settings -> Launch Readiness` now provides an in-app blocker register for acceptance testing, with default launch items, owner/target/notes fields, and classifications for launch blockers, pilot blockers, post-launch items, and wishlist items.
 - The grouped left sidebar is now collapsible by section, so users can expand only the workflow area they are using and keep other submenu items out of the way.
 - `Departments` has been demoted inside `More` and relabeled `Scorecards (beta)` to reflect that it is not currently a primary operating workflow.
 - The UX role/workflow restructuring phases are now implemented in the main app:
@@ -174,6 +175,7 @@
 - Added regression coverage for revenue-event update/void controls and financial completeness flag rendering.
 - Added regression coverage for the material genealogy financial CSV export and product financial summary surfaces.
 - Added regression coverage for the new Supervisor Console smoke path.
+- Added regression coverage for Launch Readiness rendering and persisted register updates.
 
 ## 2026-04-18
 

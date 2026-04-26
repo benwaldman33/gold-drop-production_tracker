@@ -826,13 +826,17 @@ The implementation phases are now shipped:
   - extractor: standalone extraction app plus `Floor Ops`
   - supervisor/downstream: new `Downstream -> Supervisor Console`, queue overview, destination queues, Alerts, and Journey
 - `LAUNCH_ROLE_COVERAGE.md` records launch acceptance criteria for those four roles
+- `Settings -> Launch Readiness` now tracks acceptance testing and blocker classification in-app:
+  - default checklist items cover workflow acceptance, Journey/finance validation, data readiness, backup/restore rehearsal, deployment rehearsal, and security handoff readiness
+  - each item can be classified as launch blocker, pilot blocker, post-launch, or wishlist
+  - Super Admins can update status, owner, target date, notes, and add discovered blockers
 
 ## Deployment note
 
 Current rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `7e6b379`
+- commit: `a050c75`
 
 Production deployment steps:
 
@@ -842,11 +846,12 @@ Production deployment steps:
    - `git pull --ff-only origin main`
    - `git merge --no-ff origin/Claude_Consolidation -m "Merge Claude_Consolidation into main"`
    - `git push origin main`
-2. restart the backend so `Supervisor Console` and role coverage documentation are live
+2. restart the backend so `Launch Readiness` and the blocker register are live
 3. verify in production:
    - the left sidebar is grouped into `Purchasing`, `Inventory`, `Extraction`, `Downstream`, `Journey`, `Alerts`, `Settings`, and `More`
    - `Alerts Home` renders at `/alerts`
    - `Supervisor Console` renders at `/supervisor-console`
+   - `Settings -> Launch Readiness` renders at `/launch-readiness`
    - `Journey Home` renders at `/journey`
    - a lot page in `Material Journey Viewer` shows `Revenue Actuals` and `Record Revenue`
    - an existing revenue event can be updated or voided from that lot page

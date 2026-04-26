@@ -51,7 +51,7 @@ Use the left sidebar:
 - **Photo Library**: searchable media across supplier/purchase/field contexts; editors can upload and remove certain attachment types here (see **Photo Library** section)
 - **Slack imports** (Slack Importer capability or Super Admin): triage synced Slack messages, preview mapped Run fields, review candidate source lots, optionally split a run across multiple lots, then **create run from Slack** (prefilled form)
 - **Settings** (Super Admin only): system parameters, Journey revenue assumptions, extraction controls, Slack/notification routing, users/access, integrations, and maintenance actions
-- Settings opens focused subpages from the left pane. Use **Slack & Notifications** for Slack credentials, outbound notification routing, channel history sync, Slack imports, and Slack field mappings; use **Maintenance** only for run-cost recalculation, photo backfill, and remote-site cache pulls.
+- Settings opens focused subpages from the left pane. Use **Slack & Notifications** for Slack credentials, outbound notification routing, channel history sync, Slack imports, and Slack field mappings; use **Launch Readiness** for acceptance testing and blocker tracking; use **Maintenance** only for run-cost recalculation, photo backfill, and remote-site cache pulls.
 - **Cross-Site Ops** (only when enabled by Super Admin): cached local + remote-site rollups for multi-site reporting
 - **Fresh operational reset** (server-side admin task): clears operational business data while keeping users, passwords, settings, KPI targets, Slack sync config, and cost entries
 - **Import**: CSV import for **historical runs** (run-style exports)—not the same as **Purchases → Import spreadsheet**
@@ -671,6 +671,23 @@ The console shows:
 - supervisor attention items with direct run links
 
 Use this page to decide where to go next: Floor Ops for reactor/floor context, Alerts for notification work, Journey for tracing and finance, Queue Overview for routing, or a destination queue for focused downstream work.
+
+### Launch Readiness
+
+Super Admins can use **Settings -> Launch Readiness** to manage the launch blocker register.
+
+The register starts with default acceptance items for:
+- buyer workflow
+- receiving and inventory workflow
+- extraction SOP workflow
+- supervisor/downstream workflow
+- Journey, cost, and revenue validation
+- production data readiness
+- backup/restore rehearsal
+- deployment rehearsal
+- final security handoff readiness
+
+Classify each item as `Launch blocker`, `Pilot blocker`, `Post-launch`, or `Wishlist`. Use the status, owner, target date, and notes fields to keep the launch path separate from future polish.
 
 ### Downstream Queues in the main app
 

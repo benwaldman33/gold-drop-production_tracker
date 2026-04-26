@@ -26,6 +26,107 @@ from services.site_aggregation import build_aggregation_summary
 from services.field_submissions import decorate_submission_rows
 from services.supervisor_notifications import manager_can_review, summarize_notifications
 
+LAUNCH_READINESS_SETTING_KEY = "launch_readiness_register"
+
+LAUNCH_READINESS_DEFAULT_ITEMS = (
+    {
+        "key": "buyer_workflow_acceptance",
+        "category": "Workflow Acceptance",
+        "title": "Buyer workflow accepted",
+        "classification": "launch_blocker",
+        "status": "not_started",
+        "owner": "Purchasing lead",
+        "notes": "Create opportunity, approve purchase, and confirm handoff to receiving.",
+    },
+    {
+        "key": "receiving_inventory_acceptance",
+        "category": "Workflow Acceptance",
+        "title": "Receiving and inventory workflow accepted",
+        "classification": "launch_blocker",
+        "status": "not_started",
+        "owner": "Inventory lead",
+        "notes": "Confirm receipt, photos, labels, scans, inventory review, and charge handoff.",
+    },
+    {
+        "key": "extraction_sop_acceptance",
+        "category": "Workflow Acceptance",
+        "title": "Extraction SOP workflow accepted",
+        "classification": "launch_blocker",
+        "status": "not_started",
+        "owner": "Extraction lead",
+        "notes": "Run a realistic charge through standalone extraction, booth SOP, exceptions, evidence, and completion.",
+    },
+    {
+        "key": "supervisor_downstream_acceptance",
+        "category": "Workflow Acceptance",
+        "title": "Supervisor/downstream workflow accepted",
+        "classification": "launch_blocker",
+        "status": "not_started",
+        "owner": "Operations supervisor",
+        "notes": "Use Supervisor Console, alerts, queue owner assignment, destination queue actions, and Journey handoffs.",
+    },
+    {
+        "key": "journey_finance_validation",
+        "category": "Financial Validation",
+        "title": "Journey, cost, and revenue reports validated",
+        "classification": "pilot_blocker",
+        "status": "not_started",
+        "owner": "Management",
+        "notes": "Compare genealogy, cost basis, actual revenue, variance, and CSV export against known examples.",
+    },
+    {
+        "key": "data_readiness",
+        "category": "Data Readiness",
+        "title": "Production data readiness reviewed",
+        "classification": "launch_blocker",
+        "status": "not_started",
+        "owner": "Admin",
+        "notes": "Suppliers, strains, users, roles, cost settings, revenue assumptions, and required historical imports are ready.",
+    },
+    {
+        "key": "backup_restore_rehearsal",
+        "category": "Reliability",
+        "title": "Backup and restore rehearsal completed",
+        "classification": "launch_blocker",
+        "status": "not_started",
+        "owner": "Admin",
+        "notes": "Confirm backup location, restore process, and rollback path before final launch.",
+    },
+    {
+        "key": "deployment_rehearsal",
+        "category": "Reliability",
+        "title": "Deployment rehearsal completed",
+        "classification": "pilot_blocker",
+        "status": "not_started",
+        "owner": "Admin",
+        "notes": "Practice fetch, merge, push, restart, status check, and rollback on the production host.",
+    },
+    {
+        "key": "security_handoff_ready",
+        "category": "Security Handoff",
+        "title": "Ready for final data/access security hardening",
+        "classification": "launch_blocker",
+        "status": "not_started",
+        "owner": "Admin",
+        "notes": "Only start after workflow, data, reliability, and deployment blockers are cleared.",
+    },
+)
+
+LAUNCH_READINESS_CLASSIFICATIONS = (
+    ("launch_blocker", "Launch blocker"),
+    ("pilot_blocker", "Pilot blocker"),
+    ("post_launch", "Post-launch"),
+    ("wishlist", "Wishlist"),
+)
+
+LAUNCH_READINESS_STATUSES = (
+    ("not_started", "Not started"),
+    ("in_progress", "In progress"),
+    ("blocked", "Blocked"),
+    ("done", "Done"),
+    ("deferred", "Deferred"),
+)
+
 
 DEPARTMENT_PAGES = {
     "operations": {
@@ -102,6 +203,10 @@ def register_routes(app, root):
     def material_genealogy_issue_update(issue_id):
         return material_genealogy_issue_update_view(root, issue_id)
 
+    @root.admin_required
+    def launch_readiness():
+        return launch_readiness_view(root)
+
     @root.editor_required
     def material_lot_revenue_event_create(lot_id):
         return material_lot_revenue_event_create_view(root, lot_id)
@@ -158,6 +263,7 @@ def register_routes(app, root):
     app.add_url_rule("/journeys/material-genealogy/raw", endpoint="material_genealogy_raw", view_func=material_genealogy_raw)
     app.add_url_rule("/reports/material-genealogy/issues", endpoint="material_genealogy_issue_queue", view_func=material_genealogy_issue_queue)
     app.add_url_rule("/reports/material-genealogy/issues/<issue_id>/update", endpoint="material_genealogy_issue_update", view_func=material_genealogy_issue_update, methods=["POST"])
+    app.add_url_rule("/launch-readiness", endpoint="launch_readiness", view_func=launch_readiness, methods=["GET", "POST"])
     app.add_url_rule("/material-lots/<lot_id>/revenue-events/create", endpoint="material_lot_revenue_event_create", view_func=material_lot_revenue_event_create, methods=["POST"])
     app.add_url_rule("/material-lots/<lot_id>/revenue-events/<event_id>/update", endpoint="material_lot_revenue_event_update", view_func=material_lot_revenue_event_update, methods=["POST"])
     app.add_url_rule("/material-lots/<lot_id>/revenue-events/<event_id>/void", endpoint="material_lot_revenue_event_void", view_func=material_lot_revenue_event_void, methods=["POST"])
@@ -880,6 +986,146 @@ def journey_home_view(root):
     return root.render_template(
         "journey_home.html",
         journey=payload,
+    )
+
+
+def _launch_readiness_default_item(item: dict) -> dict:
+    return {
+        "key": item["key"],
+        "category": item["category"],
+        "title": item["title"],
+        "classification": item.get("classification") or "pilot_blocker",
+        "status": item.get("status") or "not_started",
+        "owner": item.get("owner") or "",
+        "target_date": item.get("target_date") or "",
+        "notes": item.get("notes") or "",
+        "updated_at": item.get("updated_at") or "",
+        "updated_by": item.get("updated_by") or "",
+    }
+
+
+def _load_launch_readiness_items(root) -> list[dict]:
+    raw = root.SystemSetting.get(LAUNCH_READINESS_SETTING_KEY, "")
+    saved = {}
+    if raw:
+        try:
+            data = json.loads(raw)
+            if isinstance(data, list):
+                saved = {str(item.get("key")): item for item in data if isinstance(item, dict) and item.get("key")}
+        except (TypeError, ValueError):
+            saved = {}
+    items = []
+    for default in LAUNCH_READINESS_DEFAULT_ITEMS:
+        key = default["key"]
+        item = _launch_readiness_default_item({**default, **(saved.get(key) or {})})
+        items.append(item)
+    default_keys = {item["key"] for item in LAUNCH_READINESS_DEFAULT_ITEMS}
+    for key, saved_item in sorted(saved.items()):
+        if key in default_keys:
+            continue
+        items.append(_launch_readiness_default_item({
+            "key": key,
+            "category": saved_item.get("category") or "Custom",
+            "title": saved_item.get("title") or key.replace("_", " ").title(),
+            **saved_item,
+        }))
+    return items
+
+
+def _save_launch_readiness_items(root, items: list[dict]):
+    payload = json.dumps(items, sort_keys=True)
+    setting = root.db.session.get(root.SystemSetting, LAUNCH_READINESS_SETTING_KEY)
+    if setting is None:
+        setting = root.SystemSetting(
+            key=LAUNCH_READINESS_SETTING_KEY,
+            value=payload,
+            description="Launch readiness checklist and blocker register",
+        )
+        root.db.session.add(setting)
+    else:
+        setting.value = payload
+
+
+def _launch_readiness_summary(items: list[dict]) -> dict:
+    summary = {
+        "total": len(items),
+        "launch_blockers_open": 0,
+        "pilot_blockers_open": 0,
+        "done": 0,
+        "blocked": 0,
+        "post_launch": 0,
+        "wishlist": 0,
+    }
+    for item in items:
+        classification = item.get("classification")
+        status = item.get("status")
+        if status == "done":
+            summary["done"] += 1
+        if status == "blocked":
+            summary["blocked"] += 1
+        if classification == "post_launch":
+            summary["post_launch"] += 1
+        if classification == "wishlist":
+            summary["wishlist"] += 1
+        if classification == "launch_blocker" and status not in {"done", "deferred"}:
+            summary["launch_blockers_open"] += 1
+        if classification == "pilot_blocker" and status not in {"done", "deferred"}:
+            summary["pilot_blockers_open"] += 1
+    summary["ready_for_security"] = summary["launch_blockers_open"] == 0 and summary["pilot_blockers_open"] == 0
+    return summary
+
+
+def launch_readiness_view(root):
+    items = _load_launch_readiness_items(root)
+    if root.request.method == "POST":
+        action = (root.request.form.get("action") or "update").strip()
+        now_label = root.datetime.now(root.timezone.utc).isoformat()
+        user_label = getattr(root.current_user, "display_name", None) or getattr(root.current_user, "username", "")
+        if action == "add":
+            title = (root.request.form.get("new_title") or "").strip()
+            if not title:
+                root.flash("New readiness item title is required.", "error")
+                return root.redirect(root.url_for("launch_readiness"))
+            key = f"custom_{root.gen_uuid()[:8]}"
+            items.append({
+                "key": key,
+                "category": (root.request.form.get("new_category") or "Custom").strip() or "Custom",
+                "title": title,
+                "classification": (root.request.form.get("new_classification") or "pilot_blocker").strip(),
+                "status": (root.request.form.get("new_status") or "not_started").strip(),
+                "owner": (root.request.form.get("new_owner") or "").strip(),
+                "target_date": (root.request.form.get("new_target_date") or "").strip(),
+                "notes": (root.request.form.get("new_notes") or "").strip(),
+                "updated_at": now_label,
+                "updated_by": user_label,
+            })
+            root.flash("Launch readiness item added.", "success")
+        else:
+            by_key = {item["key"]: item for item in items}
+            for key, item in by_key.items():
+                item["classification"] = (root.request.form.get(f"classification_{key}") or item.get("classification") or "pilot_blocker").strip()
+                item["status"] = (root.request.form.get(f"status_{key}") or item.get("status") or "not_started").strip()
+                item["owner"] = (root.request.form.get(f"owner_{key}") or "").strip()
+                item["target_date"] = (root.request.form.get(f"target_date_{key}") or "").strip()
+                item["notes"] = (root.request.form.get(f"notes_{key}") or "").strip()
+                item["updated_at"] = now_label
+                item["updated_by"] = user_label
+            root.flash("Launch readiness register updated.", "success")
+        _save_launch_readiness_items(root, items)
+        root.log_audit(
+            "launch_readiness_update",
+            "system_setting",
+            LAUNCH_READINESS_SETTING_KEY,
+            details=json.dumps({"item_count": len(items), "action": action}),
+        )
+        root.db.session.commit()
+        return root.redirect(root.url_for("launch_readiness"))
+    return root.render_template(
+        "launch_readiness.html",
+        items=items,
+        summary=_launch_readiness_summary(items),
+        classifications=LAUNCH_READINESS_CLASSIFICATIONS,
+        statuses=LAUNCH_READINESS_STATUSES,
     )
 
 

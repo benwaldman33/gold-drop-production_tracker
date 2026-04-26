@@ -64,3 +64,11 @@ Before final data/access security work, run one real or realistic lot through:
 - financial actuals or financial flag review
 
 Any failure that prevents a role from completing its daily job is a launch blocker. Cosmetic improvements and lower-frequency reporting refinements should be marked post-launch unless they affect accuracy, auditability, or operator safety.
+
+Track launch readiness in the main app at `Settings -> Launch Readiness`.
+
+Use the in-app register to classify each remaining item as:
+- `Launch blocker`: must be resolved before live launch.
+- `Pilot blocker`: must be resolved before a controlled pilot.
+- `Post-launch`: useful but not required to start.
+- `Wishlist`: polish or future expansion.
