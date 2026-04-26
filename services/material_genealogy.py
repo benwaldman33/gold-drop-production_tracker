@@ -345,6 +345,60 @@ def material_lot_actual_revenue_total(root, material_lot) -> float:
     )
 
 
+def material_lot_active_revenue_event_count(root, material_lot) -> int:
+    if material_lot is None:
+        return 0
+    return int(
+        root.MaterialRevenueEvent.query.filter(
+            root.MaterialRevenueEvent.material_lot_id == material_lot.id,
+            root.MaterialRevenueEvent.voided_at.is_(None),
+        ).count()
+    )
+
+
+def material_lot_financial_completeness_flags(root, material_lot, assumptions: dict[str, dict] | None = None) -> list[dict]:
+    if material_lot is None or (material_lot.lot_type or "") == "biomass":
+        return []
+    assumptions = assumptions or material_revenue_assumptions(root)
+    flags = []
+    quantity = float(material_lot.quantity or 0)
+    cost_basis = float(material_lot.cost_basis_total or 0)
+    assumption = assumptions.get(material_lot.lot_type or "", {})
+    price_per_unit = float(assumption.get("price_per_unit") or 0)
+    active_issue_count = material_lot.reconciliation_issues.filter(
+        root.MaterialReconciliationIssue.status.in_(ACTIVE_MATERIAL_ISSUE_STATUSES)
+    ).count()
+    if quantity > 0 and cost_basis <= 0:
+        flags.append({
+            "code": "missing_cost_basis",
+            "label": "Missing cost basis",
+            "severity": "warning",
+            "detail": "This lot has quantity but no rolled cost basis.",
+        })
+    if quantity > 0 and price_per_unit <= 0:
+        flags.append({
+            "code": "missing_revenue_assumption",
+            "label": "Missing revenue assumption",
+            "severity": "warning",
+            "detail": "No assumed selling price is configured for this lot type.",
+        })
+    if (material_lot.inventory_status or "") == "released" and material_lot_active_revenue_event_count(root, material_lot) == 0:
+        flags.append({
+            "code": "missing_actual_revenue",
+            "label": "Missing actual revenue",
+            "severity": "warning",
+            "detail": "This released lot does not have a revenue event yet.",
+        })
+    if active_issue_count > 0:
+        flags.append({
+            "code": "open_genealogy_issues",
+            "label": "Open genealogy issue",
+            "severity": "critical",
+            "detail": f"{active_issue_count} open genealogy issue(s) may affect lineage or financial reporting.",
+        })
+    return flags
+
+
 def material_lot_revenue_summary(root, material_lot) -> dict:
     projected_revenue = material_lot_projected_revenue(root, material_lot)
     actual_revenue = material_lot_actual_revenue_total(root, material_lot)
@@ -408,6 +462,65 @@ def create_material_revenue_event(root, material_lot, *, event_date, quantity, u
             "quantity": quantity,
             "unit_price": unit_price,
             "total_revenue": event.total_revenue,
+        }),
+    )
+    return event
+
+
+def update_material_revenue_event(root, event, *, event_date, quantity, unit_price, buyer_channel="", reference="", notes=""):
+    quantity = max(0.0, float(quantity or 0))
+    unit_price = max(0.0, float(unit_price or 0))
+    before = {
+        "event_date": event.event_date.isoformat() if event.event_date else None,
+        "quantity": float(event.quantity or 0),
+        "unit_price": float(event.unit_price or 0),
+        "total_revenue": float(event.total_revenue or 0),
+        "buyer_channel": event.buyer_channel,
+        "reference": event.reference,
+        "notes": event.notes,
+    }
+    event.event_date = event_date or root.date.today()
+    event.quantity = quantity
+    event.unit_price = unit_price
+    event.total_revenue = quantity * unit_price
+    event.buyer_channel = (buyer_channel or "").strip() or None
+    event.reference = (reference or "").strip() or None
+    event.notes = (notes or "").strip() or None
+    root.log_audit(
+        "material_revenue_event_update",
+        "material_lot",
+        event.material_lot_id,
+        details=root.json.dumps({
+            "revenue_event_id": event.id,
+            "before": before,
+            "after": {
+                "event_date": event.event_date.isoformat() if event.event_date else None,
+                "quantity": quantity,
+                "unit_price": unit_price,
+                "total_revenue": event.total_revenue,
+                "buyer_channel": event.buyer_channel,
+                "reference": event.reference,
+                "notes": event.notes,
+            },
+        }),
+    )
+    return event
+
+
+def void_material_revenue_event(root, event, *, reason=""):
+    if event.voided_at is not None:
+        return event
+    event.voided_at = root.datetime.now(root.timezone.utc)
+    event.voided_by_user_id = getattr(root.current_user, "id", None)
+    event.void_reason = (reason or "").strip() or "Voided by editor"
+    root.log_audit(
+        "material_revenue_event_void",
+        "material_lot",
+        event.material_lot_id,
+        details=root.json.dumps({
+            "revenue_event_id": event.id,
+            "reason": event.void_reason,
+            "total_revenue": float(event.total_revenue or 0),
         }),
     )
     return event
@@ -1419,6 +1532,12 @@ def build_material_lot_detail_payload(root, material_lot) -> dict:
     revenue_events = [
         serialize_material_revenue_event(root, event)
         for event in material_lot.revenue_events.order_by(root.MaterialRevenueEvent.event_date.desc(), root.MaterialRevenueEvent.created_at.desc()).all()
+        if event.voided_at is None
+    ]
+    voided_revenue_events = [
+        serialize_material_revenue_event(root, event)
+        for event in material_lot.revenue_events.order_by(root.MaterialRevenueEvent.voided_at.desc(), root.MaterialRevenueEvent.created_at.desc()).all()
+        if event.voided_at is not None
     ]
     return {
         "material_lot": serialize_material_lot(root, material_lot),
@@ -1427,6 +1546,8 @@ def build_material_lot_detail_payload(root, material_lot) -> dict:
         "reconciliation_issues": issues,
         "revenue_summary": material_lot_revenue_summary(root, material_lot),
         "revenue_events": revenue_events,
+        "voided_revenue_events": voided_revenue_events,
+        "financial_completeness_flags": material_lot_financial_completeness_flags(root, material_lot),
     }
 
 
@@ -1557,6 +1678,8 @@ def _annotate_financials(row: dict, assumptions: dict[str, dict]) -> dict:
     row["revenue_variance_total"] = actual_revenue - projected_revenue
     row["actual_margin_total"] = actual_margin
     row["actual_margin_pct"] = (actual_margin / actual_revenue * 100.0) if actual_revenue > 0 else None
+    row["completeness_flags"] = row.get("completeness_flags") or []
+    row["completeness_flag_count"] = len(row["completeness_flags"])
     return row
 
 
@@ -1585,6 +1708,7 @@ def _material_inventory_groups(root, statuses: set[str], assumptions: dict[str, 
                 "quantity_total": 0.0,
                 "cost_basis_total": 0.0,
                 "actual_revenue_total": 0.0,
+                "completeness_flags": [],
                 "unit": material_lot.unit,
             },
         )
@@ -1592,6 +1716,12 @@ def _material_inventory_groups(root, statuses: set[str], assumptions: dict[str, 
         bucket["quantity_total"] += float(material_lot.quantity or 0)
         bucket["cost_basis_total"] += float(material_lot.cost_basis_total or 0)
         bucket["actual_revenue_total"] += material_lot_actual_revenue_total(root, material_lot)
+        for flag in material_lot_financial_completeness_flags(root, material_lot, assumptions):
+            bucket["completeness_flags"].append({
+                **flag,
+                "material_lot_id": material_lot.id,
+                "tracking_id": material_lot.tracking_id,
+            })
     return [_annotate_financials(bucket, assumptions) for bucket in grouped.values()]
 
 
@@ -1639,9 +1769,16 @@ def build_material_reporting_payload(root) -> dict:
         descendants = [row for row in _descendant_material_lots(root, source_lot) if row.lot_type != "biomass"]
         if not descendants:
             continue
+        descendant_completeness_flags = []
         quantities_by_type: dict[str, float] = {}
         for descendant in descendants:
             quantities_by_type[descendant.lot_type] = quantities_by_type.get(descendant.lot_type, 0.0) + float(descendant.quantity or 0)
+            for flag in material_lot_financial_completeness_flags(root, descendant, revenue_assumptions):
+                descendant_completeness_flags.append({
+                    **flag,
+                    "material_lot_id": descendant.id,
+                    "tracking_id": descendant.tracking_id,
+                })
         descendant_actual_revenue_total = float(sum(material_lot_actual_revenue_total(root, row) for row in descendants))
         descendant_cost_basis_total = float(sum(float(row.cost_basis_total or 0) for row in descendants))
         descendant_projected_revenue_total = float(sum(_material_lot_projected_revenue(row, revenue_assumptions) for row in descendants))
@@ -1657,6 +1794,8 @@ def build_material_reporting_payload(root) -> dict:
                 "descendant_actual_revenue_total": descendant_actual_revenue_total,
                 "descendant_actual_margin_total": descendant_actual_revenue_total - descendant_cost_basis_total,
                 "descendant_revenue_variance_total": descendant_actual_revenue_total - descendant_projected_revenue_total,
+                "completeness_flags": descendant_completeness_flags,
+                "completeness_flag_count": len(descendant_completeness_flags),
                 "descendants": [serialize_material_lot(root, row) for row in descendants[:8]],
             }
         )
@@ -1696,6 +1835,14 @@ def build_material_reporting_payload(root) -> dict:
         correction_count = run.material_transformations.filter(
             root.MaterialTransformation.transformation_type.like("correction_%")
         ).count()
+        completeness_flags = []
+        for material_lot in material_lots:
+            for flag in material_lot_financial_completeness_flags(root, material_lot, revenue_assumptions):
+                completeness_flags.append({
+                    **flag,
+                    "material_lot_id": material_lot.id,
+                    "tracking_id": material_lot.tracking_id,
+                })
         total_cost_basis = float(sum(float(row.cost_basis_total or 0) for row in material_lots))
         projected_revenue_total = float(sum(_material_lot_projected_revenue(row, revenue_assumptions) for row in material_lots))
         actual_revenue_total = float(sum(material_lot_actual_revenue_total(root, row) for row in material_lots))
@@ -1716,6 +1863,8 @@ def build_material_reporting_payload(root) -> dict:
                 "actual_margin_total": actual_revenue_total - total_cost_basis,
                 "revenue_variance_total": actual_revenue_total - projected_revenue_total,
                 "actual_margin_pct": ((actual_revenue_total - total_cost_basis) / actual_revenue_total * 100.0) if actual_revenue_total > 0 else None,
+                "completeness_flags": completeness_flags,
+                "completeness_flag_count": len(completeness_flags),
                 "correction_count": correction_count,
                 "issue_count": run.material_reconciliation_issues.filter(
                     root.MaterialReconciliationIssue.status.in_(("open", "investigating", "needs_follow_up"))
@@ -1759,6 +1908,17 @@ def build_material_reporting_payload(root) -> dict:
     released_projected_margin_total = released_projected_revenue_total - released_cost_basis_total
     open_actual_margin_total = open_actual_revenue_total - open_cost_basis_total
     released_actual_margin_total = released_actual_revenue_total - released_cost_basis_total
+    financial_completeness_rows = []
+    for material_lot in recent_lots:
+        flags = material_lot_financial_completeness_flags(root, material_lot, revenue_assumptions)
+        if not flags:
+            continue
+        financial_completeness_rows.append({
+            "material_lot": serialize_material_lot(root, material_lot),
+            "flags": flags,
+            "flag_count": len(flags),
+            "viewer_url": root.url_for("material_genealogy_viewer", mode="lot", material_lot_id=material_lot.id),
+        })
 
     return {
         "summary": {
@@ -1780,6 +1940,7 @@ def build_material_reporting_payload(root) -> dict:
             "released_projected_margin_pct": (released_projected_margin_total / released_projected_revenue_total * 100.0) if released_projected_revenue_total > 0 else None,
             "open_actual_margin_pct": (open_actual_margin_total / open_actual_revenue_total * 100.0) if open_actual_revenue_total > 0 else None,
             "released_actual_margin_pct": (released_actual_margin_total / released_actual_revenue_total * 100.0) if released_actual_revenue_total > 0 else None,
+            "financial_completeness_flag_count": sum(len(row.get("completeness_flags", [])) for row in open_groups + released_groups),
             "open_issue_count": len(open_issues),
             "rework_event_count": sum(int(item["count"]) for item in rework_summary.values()),
         },
@@ -1793,6 +1954,7 @@ def build_material_reporting_payload(root) -> dict:
         "open_reconciliation_issues": [serialize_reconciliation_issue(root, issue) for issue in open_issues],
         "issue_counts_by_severity": issue_counts_by_severity,
         "issue_counts_by_type": issue_counts_by_type,
+        "financial_completeness_rows": financial_completeness_rows[:20],
         "recent_derivative_lots": [serialize_material_lot(root, lot) for lot in recent_lots],
     }
 

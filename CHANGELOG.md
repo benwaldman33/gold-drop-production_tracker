@@ -18,6 +18,8 @@
   - the Material Journey Viewer lets editors record actual revenue directly from a lot's `Revenue Actuals` panel
   - Journey Home and Genealogy Report now roll actual revenue into open/released inventory, source-lot descendants, and run-level yield/cost rows
   - Journey Home now flags actuals below projected revenue in an `Actuals Below Projection` variance review table
+- Material revenue events can now be corrected or voided from the Material Journey Viewer without deleting audit history.
+- Journey now surfaces financial completeness flags for missing cost basis, missing revenue assumptions, missing actual revenue on released lots, and open genealogy issues that may compromise financial reporting.
 - The grouped left sidebar is now collapsible by section, so users can expand only the workflow area they are using and keep other submenu items out of the way.
 - `Departments` has been demoted inside `More` and relabeled `Scorecards (beta)` to reflect that it is not currently a primary operating workflow.
 - The UX role/workflow restructuring phases are now implemented in the main app:
@@ -63,6 +65,7 @@
   - `/api/v1/summary/material-genealogy` in the internal API
   - reporting now covers open/released derivative inventory by type, source-to-derivative yield, rework volume, open reconciliation issues, and recent derivative lots with lineage links
 - Material genealogy reporting now includes actual revenue, actual margin, and projected-vs-actual variance wherever revenue events have been recorded.
+- Material genealogy reporting now includes financial completeness flag counts and a review table for lots that need cost, revenue, or lineage cleanup before financial results should be trusted.
 - Material genealogy now has a real in-app journey viewer at `/journeys/material-genealogy` with `By Lot` and `By Run` modes. It turns the earlier `lot-journey-v2` mockup direction into a logged-in HTML surface backed by the existing genealogy payloads, so managers can path-trace from a derivative lot to its source biomass or from a run to its derivative lots without landing in raw JSON.
 - The `Genealogy Report` page and downstream queue cards now route managers into the HTML genealogy viewer instead of only offering raw API journey links.
 - The `Genealogy Report` sidebar label/icon rendering was normalized to avoid stray leading mojibake characters, and engineering guidance now explicitly requires checking new sidebar items for malformed icon text before final commit.
@@ -164,6 +167,7 @@
 - Added downstream queue reporting regression coverage for queue-age display plus stale/blocked/rework/completion reporting on the shared board.
 - Added staged hold regression coverage for `HP Base Oil Hold` and `Distillate Hold`, including gating release until the hold reaches release-ready state.
 - Added regression coverage for material revenue-event capture, Journey Viewer revenue actuals, Genealogy Report actual revenue, and projected-vs-actual variance display.
+- Added regression coverage for revenue-event update/void controls and financial completeness flag rendering.
 
 ## 2026-04-18
 

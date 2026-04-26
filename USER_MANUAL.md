@@ -38,9 +38,9 @@ Use the left sidebar:
 - **Scorecards (beta)**: the former Departments surface; a secondary management lens with quick links and thin rollups, not a primary daily operating workflow
 - **Runs**: extraction runs log + cost/yield outputs
 - **Downstream Queues**: supervisor-facing post-extraction routing board for completed runs that now need a downstream destination or hold
-- **Genealogy Report**: manager-facing lineage, derivative inventory, cost, projected revenue, actual revenue, and variance reporting for accountable material lots
-- **Journey Home**: manager dashboard for blocked/stale work, critical genealogy issues, aging derivative lots, low-margin runs, inventory value leaders, 7/30 day projected revenue and margin, and actuals below projection
-- **Material Journey Viewer**: opened from the Genealogy Report or linked derivative lots; gives `By Lot` and `By Run` visual path tracing for genealogy-backed material and records actual revenue events on lot pages
+- **Genealogy Report**: manager-facing lineage, derivative inventory, cost, projected revenue, actual revenue, variance, and financial-completeness reporting for accountable material lots
+- **Journey Home**: manager dashboard for blocked/stale work, critical genealogy issues, aging derivative lots, low-margin runs, inventory value leaders, 7/30 day projected revenue and margin, actuals below projection, and financial completeness flags
+- **Material Journey Viewer**: opened from the Genealogy Report or linked derivative lots; gives `By Lot` and `By Run` visual path tracing for genealogy-backed material and records/corrects/voids actual revenue events on lot pages
 - **Inventory**: on-hand lots + in-transit purchases, including lot tracking IDs and remaining pounds
 - **Purchases**: batch-level purchase records + batch IDs (same underlying rows as **Biomass Pipeline**); **Approve purchase** when your role allows; **Import spreadsheet** for bulk purchase upload; row **batch edit** on the list
 - **Costs**: operational cost entries (solvent/personnel/overhead)
@@ -66,6 +66,7 @@ Journey revenue projections:
 - Super Admins can enter assumed selling prices by derivative output type in **Settings -> Operational Parameters -> Journey Revenue Assumptions**.
 - Journey and Genealogy Report use those assumptions to show projected revenue and projected gross margin for open output, released output, source-lot descendants, and run yield/cost rows.
 - These are planning projections. Actual sales are recorded separately as material-lot revenue events from the Material Journey Viewer, then rolled up into actual revenue, actual margin, and projected-vs-actual variance.
+- Financial completeness flags warn managers when cost basis, revenue assumptions, released-lot actual revenue, or genealogy issue cleanup is still missing.
 
 ### Standalone Extraction Lab App
 
@@ -852,6 +853,14 @@ To record actual revenue for a material lot, open the lot in **Material Journey 
 - optional reference and notes
 
 The app stores the total actual revenue event against that material lot. Journey Home and Genealogy Report then use that actual revenue to compare real results against the configured Journey revenue assumptions.
+
+If a revenue entry is wrong, use the inline **Update** controls on that event row. If the entry should no longer count, enter a reason and use **Void**. Voided events stop contributing to actual revenue but remain visible in the voided history for audit purposes.
+
+Financial completeness flags:
+- **Missing cost basis** means the lot has quantity but no rolled cost basis.
+- **Missing revenue assumption** means Settings does not have an assumed selling price for that lot type.
+- **Missing actual revenue** means a released lot has no revenue event yet.
+- **Open genealogy issue** means lineage or reconciliation problems may affect financial reporting.
 
 Use `View JSON` when you want the exact underlying payload for the current viewer page.
 On the report table, `Ancestry JSON` and `Descendants JSON` expose the raw lineage payloads for that lot.
