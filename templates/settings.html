@@ -2,9 +2,192 @@
 {% block title %}Settings{% endblock %}
 {% block content %}
 <div class="page-header">
-  <h2>System Settings</h2>
+  <h2>{{ settings_page_title or 'System Settings' }}</h2>
 </div>
 
+{% if settings_page == 'journey_financials' %}
+<div class="card" id="settings-journey-financials">
+  <div class="card-header"><h3>Journey Financials</h3></div>
+  <form method="POST">
+    <input type="hidden" name="form_type" value="journey_financials">
+    <input type="hidden" name="return_to" value="#settings-journey-financials">
+    <div class="form-group" style="margin-top:12px;">
+      <label>Journey Revenue Assumptions ($/g)</label>
+      <div class="text-sm" style="color:var(--text-muted); margin-bottom:8px;">
+        Used by Journey and Genealogy Report to project revenue and gross margin from derivative lots. Leave a value at 0 when no reliable selling-price assumption exists yet.
+      </div>
+      <div class="form-row-3">
+        {% for lot_type, label in material_revenue_lot_types %}
+        {% set setting_key = 'material_revenue_price_' ~ lot_type %}
+        <div class="form-group" style="margin:0;">
+          <label>{{ label }}</label>
+          <input type="number" name="{{ setting_key }}" value="{{ system_settings.get(setting_key, '0') }}" step="0.01" min="0" placeholder="0.00">
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="form-group" style="margin-top:10px;">
+      <label>Cost Allocation Method (THCA vs HTE)</label>
+      {% set method = system_settings.get('cost_allocation_method', 'per_gram_uniform') %}
+      <select name="cost_allocation_method">
+        <option value="per_gram_uniform" {% if method == 'per_gram_uniform' %}selected{% endif %}>Uniform $/g across all dry grams (THCA and HTE match)</option>
+        <option value="split_50_50" {% if method == 'split_50_50' %}selected{% endif %}>Split total run cost 50/50 between THCA and HTE (lower yield -> higher $/g)</option>
+        <option value="custom_split" {% if method == 'custom_split' %}selected{% endif %}>Custom split of total run cost (set THCA % below)</option>
+      </select>
+      <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">
+        This impacts <strong>Cost/Gram THCA</strong> and <strong>Cost/Gram HTE</strong>. Combined $/g is always total cost divided by total dry grams.
+      </div>
+    </div>
+    <div class="form-row-3" style="margin-top:8px;">
+      <div class="form-group">
+        <label>Custom split - THCA % of total cost</label>
+        <input type="number" name="cost_allocation_thca_pct" value="{{ system_settings.get('cost_allocation_thca_pct', '50') }}" step="0.1" min="0" max="100">
+      </div>
+      <div class="form-group"></div>
+      <div class="form-group"></div>
+    </div>
+    <div class="form-actions" style="border:none;padding:0;margin:0;">
+      <button type="submit" class="btn btn-primary">Save Journey Financials</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+{% if settings_page == 'extraction_controls' %}
+<div class="card" id="settings-extraction">
+  <div class="card-header"><h3>Extraction Controls</h3></div>
+  <form method="POST">
+    <input type="hidden" name="form_type" value="extraction_controls">
+    <input type="hidden" name="return_to" value="#settings-extraction">
+    <div class="form-group" style="margin-top:16px;">
+      <label>Extraction run defaults</label>
+      <div class="text-sm" style="color:var(--text-muted); margin-bottom:8px;">
+        These values prepopulate the standalone extraction run screen so the iPad workflow starts from your most common operating assumptions.
+      </div>
+      <div class="form-row-3">
+        <div class="form-group">
+          <label>Default milled %</label>
+          <input type="number" name="extraction_default_biomass_blend_milled_pct" value="{{ system_settings.get('extraction_default_biomass_blend_milled_pct', '100') }}" step="1" min="0" max="100">
+        </div>
+        <div class="form-group">
+          <label>Default fill count</label>
+          <input type="number" name="extraction_default_fill_count" value="{{ system_settings.get('extraction_default_fill_count', '1') }}" step="1" min="0">
+        </div>
+        <div class="form-group">
+          <label>Default flush count</label>
+          <input type="number" name="extraction_default_flush_count" value="{{ system_settings.get('extraction_default_flush_count', '0') }}" step="1" min="0">
+        </div>
+      </div>
+      <div class="form-row-3" style="margin-top:8px;">
+        <div class="form-group">
+          <label>Default stringer basket count</label>
+          <input type="number" name="extraction_default_stringer_basket_count" value="{{ system_settings.get('extraction_default_stringer_basket_count', '0') }}" step="1" min="0">
+        </div>
+        <div class="form-group">
+          <label>Default total fill weight (lbs)</label>
+          <input type="number" name="extraction_default_fill_total_weight_lbs" value="{{ system_settings.get('extraction_default_fill_total_weight_lbs', '') }}" step="0.1" min="0" placeholder="Optional">
+        </div>
+        <div class="form-group">
+          <label>Default total flush weight (lbs)</label>
+          <input type="number" name="extraction_default_flush_total_weight_lbs" value="{{ system_settings.get('extraction_default_flush_total_weight_lbs', '') }}" step="0.1" min="0" placeholder="Optional">
+        </div>
+      </div>
+      <div class="form-row-3" style="margin-top:8px;">
+        <div class="form-group" style="grid-column: span 2;">
+          <label>Default CRC blend</label>
+          <input type="text" name="extraction_default_crc_blend" value="{{ system_settings.get('extraction_default_crc_blend', '') }}" maxlength="200" placeholder="Optional default CRC blend">
+        </div>
+        <div class="form-group"></div>
+      </div>
+      <div class="form-row-3" style="margin-top:8px;">
+        <div class="form-group">
+          <label>Primary soak target (min)</label>
+          <input type="number" name="extraction_target_primary_soak_minutes" value="{{ system_settings.get('extraction_target_primary_soak_minutes', '30') }}" step="1" min="0">
+        </div>
+        <div class="form-group">
+          <label>Mixer target (min)</label>
+          <input type="number" name="extraction_target_mixer_minutes" value="{{ system_settings.get('extraction_target_mixer_minutes', '5') }}" step="1" min="0">
+        </div>
+        <div class="form-group">
+          <label>Flush soak target (min)</label>
+          <input type="number" name="extraction_target_flush_minutes" value="{{ system_settings.get('extraction_target_flush_minutes', '10') }}" step="1" min="0">
+        </div>
+      </div>
+      <div class="form-row-3" style="margin-top:8px;">
+        <div class="form-group">
+          <label>Final purge target (min)</label>
+          <input type="number" name="extraction_target_final_purge_minutes" value="{{ system_settings.get('extraction_target_final_purge_minutes', '') }}" step="1" min="0" placeholder="Optional">
+        </div>
+        <div class="form-group"></div>
+        <div class="form-group"></div>
+      </div>
+      <div class="form-row-3" style="margin-top:8px;">
+        <div class="form-group">
+          <label>Primary soak policy</label>
+          <select name="extraction_policy_primary_soak">
+            {% for value, label in timing_policy_options %}
+            <option value="{{ value }}" {% if system_settings.get('extraction_policy_primary_soak', 'warning') == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Mixer policy</label>
+          <select name="extraction_policy_mixer">
+            {% for value, label in timing_policy_options %}
+            <option value="{{ value }}" {% if system_settings.get('extraction_policy_mixer', 'warning') == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Flush soak policy</label>
+          <select name="extraction_policy_flush">
+            {% for value, label in timing_policy_options %}
+            <option value="{{ value }}" {% if system_settings.get('extraction_policy_flush', 'warning') == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="form-row-3" style="margin-top:8px;">
+        <div class="form-group">
+          <label>Final purge policy</label>
+          <select name="extraction_policy_final_purge">
+            {% for value, label in timing_policy_options %}
+            <option value="{{ value }}" {% if system_settings.get('extraction_policy_final_purge', 'informational') == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group"></div>
+        <div class="form-group"></div>
+      </div>
+    </div>
+    <div class="form-group" style="margin-top:16px;">
+      <label>Reactor lifecycle controls</label>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>State</th><th>Show on Floor Ops</th><th>Require before later steps</th></tr></thead>
+          <tbody>
+            {% for state_key in ['in_reactor', 'running', 'completed', 'cancelled'] %}
+            {% set state_cfg = reactor_lifecycle.states[state_key] %}
+            <tr>
+              <td><strong>{{ state_cfg.label }}</strong></td>
+              <td><label style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:0.85rem;color:var(--text-secondary);"><input type="checkbox" name="reactor_state_{{ state_key }}_enabled" {% if state_cfg.enabled %}checked{% endif %}> Show this action/state</label></td>
+              <td><label style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:0.85rem;color:var(--text-secondary);"><input type="checkbox" name="reactor_state_{{ state_key }}_required" {% if state_cfg.required %}checked{% endif %}> Require before the next lifecycle step</label></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px; text-transform:none; letter-spacing:0; font-size:0.85rem; color:var(--text-secondary); margin-top:10px;"><input type="checkbox" name="reactor_running_requires_linked_run" {% if reactor_lifecycle.running_requires_linked_run %}checked{% endif %}> Mark Running requires a linked run</label>
+      <label style="display:flex;align-items:center;gap:8px; text-transform:none; letter-spacing:0; font-size:0.85rem; color:var(--text-secondary); margin-top:6px;"><input type="checkbox" name="reactor_show_state_history" {% if reactor_lifecycle.show_history %}checked{% endif %}> Show lifecycle history on the Active Reactor Board</label>
+    </div>
+    <div class="form-actions" style="border:none;padding:0;margin:0;">
+      <button type="submit" class="btn btn-primary">Save Extraction Controls</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+{% if settings_page == 'operational' %}
 <!-- System Settings -->
 <div class="card" id="settings-system">
   <span id="settings-operational"></span>
@@ -153,7 +336,7 @@
         When enabled, Dashboard/Supplier/Strain KPIs ignore runs that are unlinked or have any input lot without a Purchase price.
       </div>
     </div>
-    <div class="form-group" id="settings-journey-financials" style="margin-top:12px;">
+    <div class="form-group" id="settings-journey-financials" style="display:none;margin-top:12px;">
       <label>Journey Revenue Assumptions ($/g)</label>
       <div class="text-sm" style="color:var(--text-muted); margin-bottom:8px;">
         Used by Journey and Genealogy Report to project revenue and gross margin from derivative lots. Leave a value at 0 when no reliable selling-price assumption exists yet.
@@ -214,7 +397,7 @@
       <div class="form-group"></div>
       <div class="form-group"></div>
     </div>
-    <div class="form-group" id="settings-extraction" style="margin-top:16px;">
+    <div class="form-group" id="settings-extraction" style="display:none;margin-top:16px;">
       <label>Extraction run defaults</label>
       <div class="text-sm" style="color:var(--text-muted); margin-bottom:8px;">
         These values prepopulate the standalone extraction run screen so the iPad workflow starts from your most common operating assumptions.
@@ -374,7 +557,9 @@
     </div>
   </form>
 </div>
+{% endif %}
 
+{% if settings_page == 'operational' %}
 <!-- KPI Targets -->
 <div class="card" id="settings-kpis">
   <div class="card-header"><h3>KPI Targets</h3></div>
@@ -422,7 +607,9 @@
     </div>
   </form>
 </div>
+{% endif %}
 
+{% if settings_page == 'users' %}
 <!-- User Management -->
 <div class="card" id="settings-users">
   <div class="card-header"><h3>Users</h3></div>
@@ -595,6 +782,9 @@
   </div>
 </div>
 
+{% endif %}
+
+{% if settings_page == 'operational' %}
 <!-- Biomass purchasing (weekly targets) -->
 <div class="card" id="settings-biomass-budget">
   <div class="card-header"><h3>Biomass Purchasing (Weekly Targets)</h3></div>
@@ -622,7 +812,9 @@
     </form>
   </div>
 </div>
+{% endif %}
 
+{% if settings_page == 'field_intake' %}
 <!-- Field Intake -->
 <div class="card" id="settings-field-intake">
   <div class="card-header"><h3>Field Intake (Mobile Links + Submissions)</h3></div>
@@ -735,6 +927,9 @@
   </div>
 </div>
 
+{% endif %}
+
+{% if settings_page == 'slack' %}
 <!-- Slack Integration -->
 <div class="card" id="settings-slack">
   <div class="card-header"><h3>Slack Integration</h3></div>
@@ -852,8 +1047,28 @@
     </div>
     <button type="submit" class="btn btn-primary">Save Slack integration</button>
   </form>
+  <div style="background:var(--dark);border:1px solid var(--dark-border);border-radius:var(--radius);padding:16px;margin-top:12px;">
+    <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Sync Slack channel history</h4>
+    <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:12px;">
+      Fetches messages via Slack <code>conversations.history</code> for each configured channel above. Only new Slack timestamps are saved, and each channel stores its own last-sync cursor after a successful run.
+    </p>
+    <form method="POST" action="{{ url_for('settings_slack_sync_channel') }}" style="display:flex;flex-wrap:wrap;gap:10px;align-items:end;">
+      <input type="hidden" name="return_to" value="#settings-slack">
+      <div class="form-group" style="margin:0;">
+        <label>Days back</label>
+        <input type="number" name="sync_days" value="{{ slack_sync_days_pref }}" min="1" max="365" style="width:90px;">
+      </div>
+      <button type="submit" class="btn btn-secondary btn-sm">Sync Slack channels</button>
+    </form>
+    <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+      <a href="{{ url_for('settings_slack_imports') }}" class="btn btn-secondary btn-sm">View Slack imports</a>
+      <a href="{{ url_for('settings_slack_run_mappings') }}" class="btn btn-secondary btn-sm">Slack -> field mappings</a>
+    </div>
+  </div>
 </div>
+{% endif %}
 
+{% if settings_page == 'api_clients' %}
 <!-- Internal API -->
 <div class="card" id="settings-api-clients">
   <div class="card-header"><h3>Internal API Clients</h3></div>
@@ -1022,7 +1237,9 @@
     </div>
   </div>
 </div>
+{% endif %}
 
+{% if settings_page == 'scales' %}
 <!-- Smart Scales -->
 <div class="card" id="settings-scales">
   <div class="card-header"><h3>Smart Scales</h3></div>
@@ -1199,7 +1416,9 @@
     </div>
   </div>
 </div>
+{% endif %}
 
+{% if settings_page == 'remote_sites' %}
 <!-- Remote Sites -->
 <div class="card" id="settings-remote-sites">
   <div class="card-header"><h3>Remote Sites</h3></div>
@@ -1336,7 +1555,9 @@
     </div>
   </div>
 </div>
+{% endif %}
 
+{% if settings_page == 'maintenance' %}
 <!-- Maintenance -->
 <div class="card" id="settings-maintenance">
   <div class="card-header"><h3>Maintenance</h3></div>
@@ -1374,6 +1595,7 @@
       <button type="submit" class="btn btn-secondary btn-sm">Pull all remote sites</button>
     </form>
   </div>
+  {% if false %}
   <div style="background:var(--dark);border:1px solid var(--dark-border);border-radius:var(--radius);padding:16px;margin-top:12px;">
     <h4 style="color:var(--gold);font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Sync Slack channel history</h4>
     <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:12px;">
@@ -1397,7 +1619,9 @@
       <a href="{{ url_for('settings_slack_run_mappings') }}" class="btn btn-secondary btn-sm">Slack → field mappings</a>
     </div>
   </div>
-</div>
+  {% endif %}
+    </div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}

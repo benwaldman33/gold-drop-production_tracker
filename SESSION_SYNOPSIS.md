@@ -805,6 +805,7 @@ The implementation phases are now shipped:
 - the grouped left sidebar is now collapsible by section, and `Departments` has been demoted to `Scorecards (beta)` inside `More`
 - Journey now includes assumption-backed financial projections: Settings stores per-output expected selling prices, and Journey/Genealogy Report show projected revenue and gross margin for derivative inventory, source-lot descendants, and run yield/cost rows
 - Settings is now a dedicated Super Admin-only sidebar group with section links into operational parameters, Journey financials, extraction controls, Slack/notifications, users/access, field intake, API clients, scales, remote sites, and maintenance
+- Settings section links now open independent `/settings/...` subpages instead of scrolling one monolithic page, and Slack channel history sync has moved from Maintenance into `Settings -> Slack & Notifications`
 
 ## Deployment note
 

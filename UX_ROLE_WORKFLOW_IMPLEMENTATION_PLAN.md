@@ -92,6 +92,8 @@ Reduce sidebar overload without changing workflow logic.
 - add a first-level `Journey` area
 - promote `Settings` into its own Super Admin-only group with section links rather than burying it under `More`
 - use the default group order `Purchasing`, `Inventory`, `Extraction`, `Downstream`, `Journey`, `Alerts`, `Settings`, `More`
+- split Settings section links into real subpages so Super Admins do not have to work inside one long scrolling settings screen
+- keep Slack channel history sync with `Settings -> Slack & Notifications` rather than `Settings -> Maintenance`
 - preserve existing route endpoints
 - preserve existing page internals
 - preserve permissions and capability gating
