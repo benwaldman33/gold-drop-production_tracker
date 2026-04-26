@@ -174,6 +174,13 @@ Each **node** in the detailed journey should also expose a common material summa
 ### Capabilities (preferred model)
 Authorization should use **named capabilities per user** (flags or equivalent), not a separate database “role enum” for every combination of job duties. Examples: **`can_approve_purchase`**, existing **Slack Importer** (`is_slack_importer` / `can_slack_import`), and future narrow grants as needed. **Super-Buyer**, **COO**, and **Super Admin** are **business labels**; provisioning may default certain flags for those accounts, but enforcement is always via capabilities.
 
+### Access control implementation direction
+- User creation and access management are separate workflows. `Settings -> Users & Access` creates and manages user accounts; `Settings -> Access Control` governs what existing users can do.
+- Role templates provide sane defaults for Viewer, Super Buyer, User, and Super Admin, but per-user grants/revokes can change access without changing the user's base role.
+- Screen access, imports, exports, standalone-app writes, and finance-sensitive Journey actions are separate permissions. A user may be allowed to view a section without being allowed to import or export its data.
+- Standalone purchasing, receiving, and extraction apps must honor the same permission matrix as the main app rather than relying only on broad legacy role flags.
+- Permission coverage should receive a final audit once the feature set is close to frozen; until then, new screens/actions should be added to the matrix as they ship.
+
 ### Purchase approval
 - **Eligible approvers:** any account with **`can_approve_purchase`** (`User.is_super_admin` **or** **`is_purchase_approver`**). The business requires that **Super-Buyer**, **COO**, and **Super Admin** users be able to approve; it is **any one** of these (or any user with the flag)—**not** a multi-signature workflow.
 - **Effect on approve:** sets **`purchase_approved_at`** / **`purchase_approved_by_user_id`**. Until then, the product **must not** treat the batch as usable for **on-hand inventory**, **run consumption**, or **dashboard on-hand / days-of-supply** (lot pickers and inventory queries require approval). **Edit Purchase** cannot move into on-hand statuses (**delivered**, **in_testing**, **available**, **processing**) until approved. **Biomass Pipeline:** moving stage to **Committed** (purchase **`status = committed`**) requires the same approver capability and **stamps** approval as part of that transition.
@@ -233,6 +240,10 @@ The current first slice of the internal API includes:
 - `GET /api/v1/lots`
 - `GET /api/v1/lots/<lot_id>`
 - `GET /api/v1/lots/<lot_id>/journey`
+- `GET /api/v1/material-lots/<lot_id>`
+- `GET /api/v1/material-lots/<lot_id>/journey`
+- `GET /api/v1/material-lots/<lot_id>/ancestry`
+- `GET /api/v1/material-lots/<lot_id>/descendants`
 - `GET /api/v1/runs`
 - `GET /api/v1/runs/<run_id>`
 - `GET /api/v1/runs/<run_id>/journey`
@@ -247,6 +258,8 @@ The current first slice of the internal API includes:
 - `GET /api/v1/scan-events`
 - `GET /api/v1/lots/<lot_id>/scans`
 - `GET /api/v1/summary/inventory`
+- `GET /api/v1/summary/material-costs`
+- `GET /api/v1/summary/material-genealogy`
 - `GET /api/v1/summary/slack-imports`
 - `GET /api/v1/summary/exceptions`
 - `GET /api/v1/summary/scales`
@@ -260,6 +273,7 @@ These endpoints:
 - return explicit list/search contract metadata for paging and interpretation (`count`, `limit`, `offset`, `sort`, `filters`)
 - are intended for internal consumers only
 - expose a machine-readable discovery surface so internal tools and future MCP clients can discover scopes and supported endpoints
+- keep API-client scope selection aligned with the discovery surface through a shared API registry; future `/api/v1` routes must be registered for discovery instead of added as hidden one-offs
 - expose a site sync manifest so future aggregation services can identify the site, dataset counts, and basic freshness markers before pulling deeper data
 - expose a cached rollup layer for registered remote sites so one site can summarize other site deployments without live fan-out on every read
 - expose cached cross-site supplier and strain comparison reads so internal analytics and future AI tooling can compare site performance without direct access to every remote instance
@@ -279,6 +293,15 @@ These endpoints:
 - now include scanner-aware MCP tools so internal AI workflows can inspect lot scan history and scanner activity summaries without custom query stitching
 - now include scan-activity read surfaces so future scanner analytics and AI tooling can inspect lot scan history and scanner usage patterns
 - now include live scale-device and weight-capture read surfaces, plus scale-aware MCP tools, so future scale analytics and AI tooling can inspect configured devices, captured weights, and scale usage patterns
+- now include material-lot genealogy and material-cost summaries so managers and internal tools can trace biomass forward into derivative products and review cost basis without direct database access
+
+### Journey finance and auditability (current)
+- Journey is a daily manager surface, not just a forensic report. Managers should be able to see where material is, where it has been, what it cost, and what derivative value it created.
+- `Journey Home`, `Material Journey Viewer`, and `Genealogy Report` expose genealogy-backed projected revenue, actual revenue, cost basis, margin, and financial completeness flags.
+- `Journey -> Finance & Accounting` provides the accounting review layer: period actual revenue, estimated COGS, gross margin, product/channel summaries, projected inventory context, financial flag counts, revenue-event detail, and CSV export.
+- Revenue-event updates and voids must preserve audit history rather than deleting operational evidence.
+- `Settings -> Audit Log` gives managers/admins a searchable audit surface for user/action/entity/date/text review without direct database access.
+- `Settings -> Launch Readiness` is currently a manual blocker register with classifications for launch blockers, pilot blockers, post-launch items, and wishlist items. Automated evidence checks are deferred until the feature set is closer to frozen.
 
 ### Internal API future direction
 Future phases should expand the internal API with:

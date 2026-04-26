@@ -851,13 +851,25 @@ The implementation phases are now shipped:
   - `/api/v1/capabilities`, the Settings API-client scope picker, and API client scope validation now share the same source of truth
   - API regression tests compare the registry against registered `/api/v1` Flask routes so future route additions cannot drift out of client discovery silently
   - `README.md` and `API_REFERENCE.md` were refreshed for scanner, scale, material-cost, and material-genealogy API endpoints
+- `PRD.md` and `ENGINEERING.md` were brought back into alignment with this sprint and recent shipped product surfaces:
+  - PRD now covers access-control separation, import/export permissions, Journey finance/accounting, audit log, launch-readiness blocker register, material genealogy API endpoints, and the API registry requirement
+  - Engineering now documents `services/api_registry.py`, registry-backed capabilities, Settings API-client scope validation, API coverage tests, current API endpoints, and current Slack settings placement
+- AI agent / MCP access status:
+  - `/api/v1/*` is the stable bearer-token internal read API for trusted internal consumers, future site rollups, and AI/MCP consumers
+  - `scripts/mcp_server.py` is a working stdio JSON-RPC MCP server for local/internal AI tooling
+  - `services/mcp_tools.py` is the read-only MCP tool registry and execution layer
+  - current MCP tools include `site_identity`, `inventory_snapshot`, `open_lots`, `journey_resolve`, `purchase_journey`, `lot_journey`, `run_journey`, `reconciliation_overview`, `search_entities`, `dashboard_summary`, `supplier_performance`, `strain_performance`, `remote_sites`, `cross_site_summary`, `cross_site_supplier_compare`, `cross_site_strain_compare`, `scanner_summary`, `lot_scan_history`, `scale_devices`, and `weight_capture_summary`
+  - MCP currently runs inside the Flask app context and calls domain logic directly rather than going through HTTP
+  - MCP is intentionally read-only today; it cannot create purchases, edit lots, approve items, write Slack messages, change settings, or perform corrections
+  - it is not yet a production-secured remote agent platform because it does not provide remote MCP auth, rate limiting, per-user permission evaluation, or operational deployment wiring
+  - deferred MCP hardening work is now tracked in `LAUNCH_READINESS_AUDIT_TODO.md`
 
 ## Deployment note
 
 Current rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `09f97f6`
+- commit: `c1d783c`
 
 Production deployment steps:
 

@@ -70,6 +70,7 @@ This is a review checklist, not a rule to make no-op edits. Update only the docu
   - **`gold_drop/floor_module.py`** - operator floor activity page for recent scans, recent scale captures, floor-state rollups, extraction-readiness rollups, and reactor charge queues; the template now uses the same card treatment for top summaries and detail lists so the page scans consistently with the rest of the app
   - **`static/js/scan_camera.js`** - in-browser camera scanning client for `/scan`, with `BarcodeDetector` support plus manual/scanner fallback
   - **`services/api_auth.py`** - bearer-token generation, hashing, lookup, and scope enforcement
+  - **`services/api_registry.py`** - single source of truth for `/api/v1` endpoint discovery metadata and allowed API-client scopes; `/api/v1/capabilities`, Settings API-client scope validation, and API coverage tests all consume this registry
   - **`services/api_site.py`** - site identity + shared API response metadata
   - **`services/api_serializers.py`** - JSON serializers and response envelopes for API resources
   - **`services/api_queries.py`** - reusable filtered read queries for lots and on-hand inventory
@@ -95,7 +96,7 @@ This is a review checklist, not a rule to make no-op edits. Update only the docu
   - clears purchases/lots, runs/run inputs, Slack imports, field submissions/tokens, suppliers and related attachments/photos/tests, and audit/history rows
   - creates a SQLite backup automatically when a SQLite DB file is present
 - **API client creation:** `python scripts/create_api_client.py --name "internal-bi" --scopes read:site,read:lots,read:inventory`
-- **Settings UI:** Super Admin can also manage internal API clients in `Settings -> Internal API Clients`
+- **Settings UI:** Super Admin can also manage internal API clients in `Settings -> API Clients`
   - create client + scoped token
   - token displayed once at creation
   - revoke/reactivate
@@ -108,6 +109,12 @@ This is a review checklist, not a rule to make no-op edits. Update only the docu
 ## Internal API (`/api/v1`)
 
 Phase 1 internal API is read-only and site-local.
+
+Endpoint discovery is registry-backed:
+- `services/api_registry.py` owns `API_V1_ENDPOINTS`, `API_V1_SCOPES`, and the capabilities payload builder.
+- `gold_drop/api_v1_module.py` still owns route registration and endpoint implementations.
+- `gold_drop/settings_module.py` imports `API_V1_SCOPES` for API-client scope validation and passes that list into `templates/settings.html`.
+- `tests/test_api_v1_endpoints.py` compares the registry paths with the actual Flask `/api/v1/*` route map so new internal API routes fail tests when they are not added to client discovery.
 
 ### Auth
 
@@ -161,6 +168,10 @@ Phase 1 internal API is read-only and site-local.
 - `GET /api/v1/lots`
 - `GET /api/v1/lots/<lot_id>`
 - `GET /api/v1/lots/<lot_id>/journey`
+- `GET /api/v1/material-lots/<lot_id>`
+- `GET /api/v1/material-lots/<lot_id>/journey`
+- `GET /api/v1/material-lots/<lot_id>/ancestry`
+- `GET /api/v1/material-lots/<lot_id>/descendants`
 - `GET /api/v1/runs`
 - `GET /api/v1/runs/<run_id>`
 - `GET /api/v1/runs/<run_id>/journey`
@@ -175,6 +186,8 @@ Phase 1 internal API is read-only and site-local.
 - `GET /api/v1/scan-events`
 - `GET /api/v1/lots/<lot_id>/scans`
 - `GET /api/v1/summary/inventory`
+- `GET /api/v1/summary/material-costs`
+- `GET /api/v1/summary/material-genealogy`
 - `GET /api/v1/summary/slack-imports`
 - `GET /api/v1/summary/exceptions`
 - `GET /api/v1/summary/scales`
@@ -656,6 +669,7 @@ SQLite adds the sync config table in `_ensure_sqlite_schema()`; other engines re
 - **Run sync:** `POST /settings/slack_sync_channel` with `sync_days` (1–365). Resolves each non-empty hint via `conversations.list` (or passes through channel IDs), then pages `conversations.history` with helper `_slack_ingest_channel_history`.
 - **Imports / triage / apply:** `GET /settings/slack-imports` — filtered list (date range, channels, promotion, coverage). `GET /settings/slack-imports/<msg_id>/preview` — Run preview. `GET /settings/slack-imports/<msg_id>/apply-run` — session prefill + redirect to `run_new`; optional `confirm=1` after duplicate interstitial. All three use **`slack_importer_required`** (`User.can_slack_import`: Super Admin or `is_slack_importer`).
 - **User flag:** `POST /settings/users/<id>/toggle_slack_importer` (`@admin_required`), audit action `user_slack_importer`. Create-user form optional `new_slack_importer` (ignored for `super_admin` role).
+- **Current UI placement:** Slack token/webhook/channel settings, outbound notification routing, channel-history sync controls, Slack imports, and Slack field mappings live under `Settings -> Slack & Notifications`. The old Maintenance sync card is intentionally disabled.
 
 ### Sync semantics
 
@@ -665,9 +679,10 @@ SQLite adds the sync config table in `_ensure_sqlite_schema()`; other engines re
 
 ### Related code (indicative)
 
-- `app.py`: Slack sync routes and bootstrap glue still live here (`SLACK_SYNC_CHANNEL_SLOTS`, `_ensure_slack_sync_configs`, `_slack_ingest_channel_history`, `settings_slack_sync_channel`, settings `form_type=slack` handler).
+- `gold_drop/slack_integration_module.py`: active Slack settings, history sync, imports, apply flows, and `/api/slack/*` route surface.
+- `gold_drop/settings_module.py`: Settings subpage routing and Slack settings form handling.
 - `models.py`: `SlackChannelSyncConfig`, `SlackIngestedMessage`.
-- `templates/settings.html`: Slack card (sync channel form), Maintenance (sync button).
+- `templates/settings.html`: Slack card, channel-history sync controls, API-client scope picker, scales, remote sites, and maintenance cards.
 
 ### Slack apply / Run backlink (Phase 2)
 
