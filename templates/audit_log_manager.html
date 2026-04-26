@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Audit Log{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>Audit Log</h2>
+    <p class="text-sm cell-muted" style="margin:4px 0 0;">Search who changed what, when, and why across purchases, lots, runs, revenue, corrections, imports, access control, and mobile actions.</p>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <form method="GET" style="display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:10px;align-items:end;">
+    <div class="form-group" style="margin:0;">
+      <label>Start</label>
+      <input type="date" name="start_date" value="{{ audit.filters.start_date }}">
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>End</label>
+      <input type="date" name="end_date" value="{{ audit.filters.end_date }}">
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>User</label>
+      <select name="user_id">
+        <option value="all">All users</option>
+        {% for user in audit.users %}
+        <option value="{{ user.id }}" {% if audit.filters.user_id == user.id %}selected{% endif %}>{{ user.display_name or user.username }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>Action</label>
+      <select name="action">
+        <option value="all">All actions</option>
+        {% for action in audit.actions %}
+        <option value="{{ action }}" {% if audit.filters.action == action %}selected{% endif %}>{{ action }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>Entity</label>
+      <select name="entity_type">
+        <option value="all">All entities</option>
+        {% for entity_type in audit.entity_types %}
+        <option value="{{ entity_type }}" {% if audit.filters.entity_type == entity_type %}selected{% endif %}>{{ entity_type }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>Limit</label>
+      <input type="number" name="limit" value="{{ audit.filters.limit }}" min="25" max="1000" step="25">
+    </div>
+    <div class="form-group" style="margin:0;grid-column:span 5;">
+      <label>Search entity ID or details</label>
+      <input type="text" name="q" value="{{ audit.filters.q }}" placeholder="tracking ID, run ID, batch ID, reason, source...">
+    </div>
+    <div class="btn-group" style="align-self:end;">
+      <button type="submit" class="btn btn-primary">Filter</button>
+      <a href="{{ url_for('audit_log_manager') }}" class="btn btn-secondary">Reset</a>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-header"><h3>Recent Audit Events</h3></div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>When</th>
+          <th>User</th>
+          <th>Action</th>
+          <th>Entity</th>
+          <th>Entity ID</th>
+          <th>Details</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in audit.rows %}
+        {% set row = item.row %}
+        <tr>
+          <td class="text-mono">{{ row.timestamp.strftime('%Y-%m-%d %H:%M') if row.timestamp else '' }}</td>
+          <td>{{ row.user.display_name if row.user else 'System' }}</td>
+          <td><span class="badge badge-gray">{{ row.action }}</span></td>
+          <td>{{ row.entity_type }}</td>
+          <td class="text-mono">{{ row.entity_id }}</td>
+          <td>
+            {% if item.details %}
+            <details>
+              <summary>View details</summary>
+              <pre class="text-sm" style="white-space:pre-wrap;max-width:520px;">{{ item.details }}</pre>
+            </details>
+            {% else %}
+            <span class="cell-muted">None</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="cell-muted">No audit events match these filters.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

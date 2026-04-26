@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}Finance & Accounting{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>Finance & Accounting</h2>
+    <p class="text-sm cell-muted" style="margin:4px 0 0;">Period revenue, estimated COGS, gross margin, and forward-looking inventory value from Journey genealogy.</p>
+  </div>
+  <div class="btn-group">
+    <a href="{{ url_for('journey_home') }}" class="btn btn-secondary">Back to Journey</a>
+    {% if has_perm('finance.export') %}
+    <a href="{{ url_for('finance_accounting', start_date=finance.filters.start_date, end_date=finance.filters.end_date, lot_type=finance.filters.lot_type, channel=finance.filters.channel, format='csv') }}" class="btn btn-secondary">Export CSV</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <form method="GET" style="display:grid;grid-template-columns:repeat(5,minmax(140px,1fr));gap:10px;align-items:end;">
+    <div class="form-group" style="margin:0;">
+      <label>Start</label>
+      <input type="date" name="start_date" value="{{ finance.filters.start_date }}">
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>End</label>
+      <input type="date" name="end_date" value="{{ finance.filters.end_date }}">
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>Product</label>
+      <select name="lot_type">
+        <option value="all">All products</option>
+        {% for lot_type in finance.lot_types %}
+        <option value="{{ lot_type }}" {% if finance.filters.lot_type == lot_type %}selected{% endif %}>{{ lot_type.replace('_', ' ')|title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group" style="margin:0;">
+      <label>Channel</label>
+      <select name="channel">
+        <option value="all">All channels</option>
+        {% for channel in finance.channels %}
+        <option value="{{ channel }}" {% if finance.filters.channel == channel %}selected{% endif %}>{{ channel }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="btn-group" style="align-self:end;">
+      <button type="submit" class="btn btn-primary">Filter</button>
+      <a href="{{ url_for('finance_accounting') }}" class="btn btn-secondary">Reset</a>
+    </div>
+  </form>
+</div>
+
+<div class="summary-row">
+  <div class="summary-stat">
+    <div class="label">Actual Revenue</div>
+    <div class="value">${{ "{:,.0f}".format(finance.summary.actual_revenue) }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Estimated COGS</div>
+    <div class="value">${{ "{:,.0f}".format(finance.summary.estimated_cogs) }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Gross Margin</div>
+    <div class="value">${{ "{:,.0f}".format(finance.summary.gross_margin) }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Gross Margin %</div>
+    <div class="value">{% if finance.summary.gross_margin_pct is not none %}{{ "{:.1f}%".format(finance.summary.gross_margin_pct) }}{% else %}-{% endif %}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Revenue Events</div>
+    <div class="value">{{ finance.summary.event_count }}</div>
+  </div>
+</div>
+
+<div class="summary-row" style="margin-top:12px;">
+  <div class="summary-stat">
+    <div class="label">Open Projected Revenue</div>
+    <div class="value">${{ "{:,.0f}".format(finance.summary.open_projected_revenue) }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Released Projected Revenue</div>
+    <div class="value">${{ "{:,.0f}".format(finance.summary.released_projected_revenue) }}</div>
+  </div>
+  <div class="summary-stat">
+    <div class="label">Financial Flags</div>
+    <div class="value {% if finance.summary.financial_flag_count %}cell-red{% endif %}">{{ finance.summary.financial_flag_count }}</div>
+  </div>
+</div>
+
+<div class="summary-row" style="margin-top:16px;">
+  <div class="card" style="flex:1 1 480px;margin:0;">
+    <div class="card-header"><h3>Product Summary</h3></div>
+    <table>
+      <thead><tr><th>Product</th><th>Events</th><th>Revenue</th><th>COGS</th><th>Margin</th><th>Margin %</th></tr></thead>
+      <tbody>
+        {% for row in finance.product_summary %}
+        <tr>
+          <td>{{ row.key.replace('_', ' ')|title }}</td>
+          <td>{{ row.event_count }}</td>
+          <td>${{ "{:,.0f}".format(row.revenue) }}</td>
+          <td>${{ "{:,.0f}".format(row.estimated_cogs) }}</td>
+          <td>${{ "{:,.0f}".format(row.gross_margin) }}</td>
+          <td>{% if row.gross_margin_pct is not none %}{{ "{:.1f}%".format(row.gross_margin_pct) }}{% else %}-{% endif %}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="cell-muted">No revenue events in this period.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card" style="flex:1 1 380px;margin:0;">
+    <div class="card-header"><h3>Channel Summary</h3></div>
+    <table>
+      <thead><tr><th>Channel</th><th>Events</th><th>Revenue</th><th>Margin</th></tr></thead>
+      <tbody>
+        {% for row in finance.channel_summary %}
+        <tr>
+          <td>{{ row.key }}</td>
+          <td>{{ row.event_count }}</td>
+          <td>${{ "{:,.0f}".format(row.revenue) }}</td>
+          <td>${{ "{:,.0f}".format(row.gross_margin) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="cell-muted">No revenue channels in this period.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card" style="margin-top:16px;">
+  <div class="card-header"><h3>Revenue Event Detail</h3></div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Lot</th>
+          <th>Product</th>
+          <th>Qty</th>
+          <th>Revenue</th>
+          <th>Est. COGS</th>
+          <th>Gross Margin</th>
+          <th>Channel</th>
+          <th>Reference</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in finance.rows %}
+        <tr>
+          <td>{{ row.event_date.isoformat() if row.event_date else '' }}</td>
+          <td><a href="{{ row.viewer_url }}">{{ row.tracking_id }}</a></td>
+          <td>{{ row.lot_type.replace('_', ' ')|title }}</td>
+          <td>{{ "{:,.2f}".format(row.quantity) }} {{ row.unit }}</td>
+          <td>${{ "{:,.0f}".format(row.revenue) }}</td>
+          <td>${{ "{:,.0f}".format(row.estimated_cogs) }}</td>
+          <td>${{ "{:,.0f}".format(row.gross_margin) }}</td>
+          <td>{{ row.buyer_channel }}</td>
+          <td>{{ row.reference }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" class="cell-muted">No revenue events match these filters.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
