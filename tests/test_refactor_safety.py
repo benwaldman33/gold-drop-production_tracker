@@ -74,6 +74,46 @@ def test_settings_route_rejects_non_admin_user():
     assert page.headers["Location"].endswith("/")
 
 
+def test_settings_access_control_route_renders_permission_matrix():
+    page = _call_view_as_user("/settings/access-control", "settings_access_control", "admin")
+
+    assert page.status_code == 200
+    assert b"Access Control" in page.data
+    assert b"Role Templates" in page.data
+    assert b"Per-User Overrides" in page.data
+    assert b"purchasing.import" in page.data
+    assert b"finance.export" in page.data
+
+
+def test_export_route_honors_user_permission_revokes():
+    app = app_module.app
+    override_key = "access_control_user_overrides"
+    with app.app_context():
+        original = SystemSetting.get(override_key, "")
+        user = User.query.filter_by(username="ops").first()
+        assert user is not None
+        setting = db.session.get(SystemSetting, override_key)
+        if setting is None:
+            setting = SystemSetting(key=override_key, value="", description="Access-control per-user permission grants and revokes")
+            db.session.add(setting)
+        setting.value = json.dumps({user.id: {"grant": [], "revoke": ["runs.export"]}})
+        db.session.commit()
+    try:
+        denied = _call_view_as_user("/export/runs.csv", "export_csv", "ops", entity="runs")
+        assert denied.status_code in (302, 303)
+        assert denied.headers["Location"].endswith("/")
+
+        allowed = _call_view_as_user("/export/runs.csv", "export_csv", "admin", entity="runs")
+        assert allowed.status_code == 200
+        assert allowed.mimetype == "text/csv"
+    finally:
+        with app.app_context():
+            setting = db.session.get(SystemSetting, override_key)
+            if setting is not None:
+                setting.value = original
+            db.session.commit()
+
+
 def test_material_genealogy_report_renders_downstream_reporting():
     app = app_module.app
     run_id = None

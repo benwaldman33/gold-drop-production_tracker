@@ -6,6 +6,7 @@ from inventory_import import (
     inventory_import_rows_from_mapping,
     parse_inventory_spreadsheet_upload_for_mapping,
 )
+from services.access_control import has_permission
 
 
 def register_routes(app, root):
@@ -339,6 +340,9 @@ def inventory_import_commit_norm(root, norm: dict) -> None:
 
 
 def inventory_import_view(root):
+    denied = _require_inventory_import_access(root)
+    if denied is not None:
+        return denied
     if root.request.method == "GET":
         return root.render_template("inventory_import.html")
     f = root.request.files.get("spreadsheet")
@@ -378,6 +382,9 @@ def inventory_import_view(root):
 
 
 def inventory_import_preview_view(root):
+    denied = _require_inventory_import_access(root)
+    if denied is not None:
+        return denied
     token = (root.session.get("inventory_import_token") or "").strip()
     data = inventory_import_load_staging(root, token) if token else None
     if not data:
@@ -423,6 +430,9 @@ def inventory_import_preview_view(root):
 
 
 def inventory_import_commit_view(root):
+    denied = _require_inventory_import_access(root)
+    if denied is not None:
+        return denied
     token = (root.session.get("inventory_import_token") or "").strip()
     data = inventory_import_load_staging(root, token) if token else None
     if not data:
@@ -475,6 +485,9 @@ def inventory_import_commit_view(root):
 
 
 def inventory_import_sample_view(root):
+    denied = _require_inventory_import_access(root)
+    if denied is not None:
+        return denied
     lines = [
         "Tracking ID,Strain,Potency %,Location,Floor State,Milled,Notes",
         "LOT-ABC12345,Blue Dream BX1,31.2,Dock B,reactor_staging,yes,Ready for charge",
@@ -485,3 +498,10 @@ def inventory_import_sample_view(root):
         mimetype="text/csv; charset=utf-8",
         headers={"Content-Disposition": "attachment; filename=inventory_import_sample.csv"},
     )
+
+
+def _require_inventory_import_access(root):
+    if has_permission(root, root.current_user, "inventory.import"):
+        return None
+    root.flash("Inventory import access required.", "error")
+    return root.redirect(root.url_for("inventory"))

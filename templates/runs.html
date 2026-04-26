@@ -19,7 +19,9 @@
     </div>
     <a href="{{ url_for('run_new') }}" class="btn btn-primary">+ New Run</a>
     {% endif %}
+    {% if has_perm('runs.export') %}
     <a href="{{ url_for('export_csv', entity='runs', start_date=start_date, end_date=end_date, supplier_id=supplier_filter, min_potency=min_potency, max_potency=max_potency, hte_stage=hte_stage) }}" class="btn btn-secondary">Export CSV</a>
+    {% endif %}
   </div>
 </div>
 

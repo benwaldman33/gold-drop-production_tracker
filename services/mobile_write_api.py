@@ -6,6 +6,7 @@ from typing import Any
 from flask import current_app, jsonify, request
 
 from services.api_site import build_meta
+from services.access_control import has_permission
 
 
 WORKFLOW_SETTINGS = {
@@ -24,14 +25,13 @@ def workflow_enabled(root, workflow: str) -> bool:
 
 
 def workflow_permissions(root, user) -> dict[str, bool]:
-    can_write = bool(getattr(user, "can_edit_purchases", False))
     return {
-        "can_create_opportunity": can_write and workflow_enabled(root, "buying"),
-        "can_edit_preapproval_opportunity": can_write and workflow_enabled(root, "buying"),
-        "can_record_delivery": can_write and workflow_enabled(root, "buying"),
-        "can_receive_intake": can_write and workflow_enabled(root, "receiving"),
-        "can_create_supplier": can_write and workflow_enabled(root, "buying"),
-        "can_extract_lab": bool(getattr(user, "can_edit", False)) and workflow_enabled(root, "extraction"),
+        "can_create_opportunity": has_permission(root, user, "standalone.purchasing") and has_permission(root, user, "purchasing.create") and workflow_enabled(root, "buying"),
+        "can_edit_preapproval_opportunity": has_permission(root, user, "standalone.purchasing") and has_permission(root, user, "purchasing.create") and workflow_enabled(root, "buying"),
+        "can_record_delivery": has_permission(root, user, "standalone.purchasing") and has_permission(root, user, "receiving.confirm") and workflow_enabled(root, "buying"),
+        "can_receive_intake": has_permission(root, user, "standalone.receiving") and has_permission(root, user, "receiving.confirm") and workflow_enabled(root, "receiving"),
+        "can_create_supplier": has_permission(root, user, "standalone.purchasing") and has_permission(root, user, "purchasing.create") and workflow_enabled(root, "buying"),
+        "can_extract_lab": has_permission(root, user, "standalone.extraction") and has_permission(root, user, "extraction.execute_sop") and workflow_enabled(root, "extraction"),
     }
 
 

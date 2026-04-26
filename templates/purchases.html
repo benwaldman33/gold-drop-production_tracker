@@ -12,9 +12,13 @@
       <button type="button" class="btn btn-primary btn-sm" data-batch-edit disabled>Batch edit…</button>
     </div>
     <a href="{{ url_for('purchase_new') }}" class="btn btn-primary">+ New Purchase</a>
+    {% if has_perm('purchasing.import') %}
     <a href="{{ url_for('purchase_import') }}" class="btn btn-secondary">Import spreadsheet</a>
     {% endif %}
+    {% endif %}
+    {% if has_perm('purchasing.export') %}
     <a href="{{ url_for('export_csv', entity='purchases', status=status_filter, start_date=start_date, end_date=end_date, supplier_id=supplier_filter, min_potency=min_potency, max_potency=max_potency) }}{{ htq }}" class="btn btn-secondary">Export CSV</a>
+    {% endif %}
   </div>
 </div>
 

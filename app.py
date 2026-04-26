@@ -174,6 +174,7 @@ from services.supervisor_notifications import (
     notification_rows_for_run,
     summarize_notifications,
 )
+from services.access_control import has_permission
 from gold_drop.slack import (
     SLACK_IMPORT_KIND_FILTER_CHOICES,
     SLACK_IMPORT_TEXT_FILTER_OPS,
@@ -300,6 +301,14 @@ def inject_supervisor_notification_summary():
         "supervisor_notification_summary": summarize_notifications(sys.modules[__name__], limit=6),
         "can_review_supervisor_notifications": True,
     }
+
+
+@app.context_processor
+def inject_access_control_helpers():
+    def _has_perm(permission: str) -> bool:
+        return current_user.is_authenticated and has_permission(sys.modules[__name__], current_user, permission)
+
+    return {"has_perm": _has_perm}
 
 
 def _section_home_endpoint(section: str | None) -> str:
@@ -480,6 +489,7 @@ def inject_role_navigation():
                 {"label": "Extraction Controls", "endpoint": "settings_extraction_controls", "active": request.endpoint == "settings_extraction_controls"},
                 {"label": "Slack & Notifications", "endpoint": "settings_slack", "active": request.endpoint in ("settings_slack", "settings_slack_imports", "settings_slack_import_preview", "settings_slack_import_apply_run", "settings_slack_run_mappings")},
                 {"label": "Users & Access", "endpoint": "settings_users", "active": request.endpoint == "settings_users" or (request.endpoint or "").startswith("user_")},
+                {"label": "Access Control", "endpoint": "settings_access_control", "active": request.endpoint == "settings_access_control"},
                 {"label": "Field Intake", "endpoint": "settings_field_intake", "active": request.endpoint == "settings_field_intake" or (request.endpoint or "").startswith("field_token_")},
                 {"label": "API Clients", "endpoint": "settings_api_clients", "active": request.endpoint == "settings_api_clients" or (request.endpoint or "").startswith("api_client_")},
                 {"label": "Scales", "endpoint": "settings_scales", "active": request.endpoint == "settings_scales" or (request.endpoint or "").startswith("scale_device_")},
@@ -597,6 +607,22 @@ def import_confirm():
 @app.route("/export/<entity>.csv", endpoint="export_csv")
 @login_required
 def export_csv(entity: str):
+    export_permissions = {
+        "runs": "runs.export",
+        "purchases": "purchasing.export",
+        "biomass": "purchasing.export",
+        "inventory": "inventory.export",
+        "costs": "finance.export",
+        "suppliers": "purchasing.export",
+        "strains": "inventory.export",
+    }
+    required_permission = export_permissions.get(entity)
+    if required_permission is None:
+        abort(404)
+    if not has_permission(sys.modules[__name__], current_user, required_permission):
+        flash("Export access required.", "error")
+        return redirect(url_for("dashboard"))
+
     buf = io.StringIO()
     writer = csv.writer(buf)
 
@@ -1664,6 +1690,9 @@ def _register_extracted_routes(flask_app):
 @login_required
 @editor_required
 def material_lot_correct(lot_id):
+    if not has_permission(sys.modules[__name__], current_user, "journey.correct_genealogy"):
+        flash("Genealogy correction access required.", "error")
+        return redirect(url_for("material_genealogy_report"))
     material_lot = db.session.get(MaterialLot, lot_id)
     if material_lot is None:
         abort(404)

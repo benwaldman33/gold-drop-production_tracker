@@ -8,6 +8,7 @@ from gold_drop.uploads import json_paths, save_lab_files, save_photo_library_fil
 from services.photo_assets import create_photo_asset, normalize_photo_category
 from services.supplier_duplicates import supplier_duplicate_candidates
 from services.supplier_merge import execute_supplier_merge, supplier_merge_preview
+from services.access_control import has_permission
 from supplier_import import (
     SUPPLIER_IMPORT_FIELDS,
     parse_supplier_spreadsheet_upload_for_mapping,
@@ -253,6 +254,9 @@ def supplier_import_commit_norm(root, norm: dict, *, update_existing: bool) -> N
 
 
 def supplier_import_view(root):
+    denied = _require_supplier_import_access(root)
+    if denied is not None:
+        return denied
     if root.request.method == "GET":
         return root.render_template("supplier_import.html")
     f = root.request.files.get("spreadsheet")
@@ -292,6 +296,9 @@ def supplier_import_view(root):
 
 
 def supplier_import_preview_view(root):
+    denied = _require_supplier_import_access(root)
+    if denied is not None:
+        return denied
     token = (root.session.get("supplier_import_token") or "").strip()
     data = supplier_import_load_staging(root, token) if token else None
     if not data:
@@ -337,6 +344,9 @@ def supplier_import_preview_view(root):
 
 
 def supplier_import_commit_view(root):
+    denied = _require_supplier_import_access(root)
+    if denied is not None:
+        return denied
     token = (root.session.get("supplier_import_token") or "").strip()
     data = supplier_import_load_staging(root, token) if token else None
     if not data:
@@ -390,6 +400,9 @@ def supplier_import_commit_view(root):
 
 
 def supplier_import_sample_view(root):
+    denied = _require_supplier_import_access(root)
+    if denied is not None:
+        return denied
     lines = [
         "Supplier,Contact Name,Contact Phone,Contact Email,Location,Notes,Active",
         "Example Farm,Jamie Buyer,555-0101,jamie@example.com,Salinas,Main flower supplier,yes",
@@ -400,6 +413,13 @@ def supplier_import_sample_view(root):
         mimetype="text/csv; charset=utf-8",
         headers={"Content-Disposition": "attachment; filename=supplier_import_sample.csv"},
     )
+
+
+def _require_supplier_import_access(root):
+    if has_permission(root, root.current_user, "purchasing.import"):
+        return None
+    root.flash("Purchasing import access required.", "error")
+    return root.redirect(root.url_for("suppliers_list"))
 
 
 def supplier_incomplete_profile_fields(root, supplier):

@@ -4,10 +4,12 @@
 <div class="page-header">
   <h2>Inventory</h2>
   <div class="btn-group">
-    {% if current_user.can_edit_purchases %}
+    {% if current_user.can_edit_purchases and has_perm('inventory.import') %}
     <a href="{{ url_for('inventory_import') }}" class="btn btn-secondary">Import spreadsheet</a>
     {% endif %}
+    {% if has_perm('inventory.export') %}
     <a href="{{ url_for('export_csv', entity='inventory', supplier_id=supplier_filter, strain=strain_filter) }}" class="btn btn-secondary">Export CSV</a>
+    {% endif %}
   </div>
 </div>
 

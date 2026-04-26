@@ -7,6 +7,7 @@ from services.purchase_helpers import (
     maintain_purchase_inventory_lots,
     parse_sheet_date,
 )
+from services.access_control import has_permission
 
 PURCHASE_IMPORT_ALLOWED_STATUSES = frozenset({
     "declared", "committed", "ordered", "in_transit", "delivered",
@@ -525,6 +526,9 @@ def purchase_import_commit_norm(root, norm: dict, *, create_suppliers: bool) -> 
 
 
 def purchase_import_view(root):
+    denied = _require_purchase_import_access(root)
+    if denied is not None:
+        return denied
     if root.request.method == "GET":
         return root.render_template("purchase_import.html")
     f = root.request.files.get("spreadsheet")
@@ -564,6 +568,9 @@ def purchase_import_view(root):
 
 
 def purchase_import_preview_view(root):
+    denied = _require_purchase_import_access(root)
+    if denied is not None:
+        return denied
     token = (root.session.get("purchase_import_token") or "").strip()
     data = purchase_import_load_staging(root, token) if token else None
     if not data:
@@ -608,6 +615,9 @@ def purchase_import_preview_view(root):
 
 
 def purchase_import_commit_view(root):
+    denied = _require_purchase_import_access(root)
+    if denied is not None:
+        return denied
     token = (root.session.get("purchase_import_token") or "").strip()
     data = purchase_import_load_staging(root, token) if token else None
     if not data:
@@ -660,9 +670,19 @@ def purchase_import_commit_view(root):
 
 
 def purchase_import_sample_view(root):
+    denied = _require_purchase_import_access(root)
+    if denied is not None:
+        return denied
     lines = [
         "Week,Purchase Date,Paid Date,Vendor,Amount,Payment Method,Invoice Weight,Actual Weight,Manifest,Status,Strain,Testing Notes,Lot Location,Floor State",
         "2/9-2/15,1/21/2026,2/10/2026,Example Farm,$4911.30,ACH,297.90,297.70,10187853,Delivered,Blue Dream,COA pending,Dock B,inventory",
     ]
     body = "\n".join(lines) + "\n"
     return root.Response(body, mimetype="text/csv; charset=utf-8", headers={"Content-Disposition": "attachment; filename=purchase_import_sample.csv"})
+
+
+def _require_purchase_import_access(root):
+    if has_permission(root, root.current_user, "purchasing.import"):
+        return None
+    root.flash("Purchasing import access required.", "error")
+    return root.redirect(root.url_for("purchases_list"))

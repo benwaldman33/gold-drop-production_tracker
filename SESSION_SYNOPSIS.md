@@ -830,13 +830,19 @@ The implementation phases are now shipped:
   - default checklist items cover workflow acceptance, Journey/finance validation, data readiness, backup/restore rehearsal, deployment rehearsal, and security handoff readiness
   - each item can be classified as launch blocker, pilot blocker, post-launch, or wishlist
   - Super Admins can update status, owner, target date, notes, and add discovered blockers
+- `Settings -> Access Control` now separates access management from user creation:
+  - role templates define default permissions for Viewer, Super Buyer, User, and Super Admin
+  - per-user overrides can grant or revoke individual permissions without changing the user's base role
+  - imports and exports are separate action permissions from ordinary screen access
+  - standalone purchasing, receiving, and extraction write capabilities now use the same permission matrix
+  - Journey finance actions now have explicit permissions for financial CSV export, revenue recording, revenue voiding, and genealogy correction
 
 ## Deployment note
 
 Current rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `a050c75`
+- commit: `376d000`
 
 Production deployment steps:
 
@@ -852,6 +858,9 @@ Production deployment steps:
    - `Alerts Home` renders at `/alerts`
    - `Supervisor Console` renders at `/supervisor-console`
    - `Settings -> Launch Readiness` renders at `/launch-readiness`
+   - `Settings -> Access Control` renders at `/settings/access-control`
+   - a non-export user who can view a screen does not see the relevant export button
+   - purchase, inventory, supplier, and strain import links only appear for users with import permission
    - `Journey Home` renders at `/journey`
    - a lot page in `Material Journey Viewer` shows `Revenue Actuals` and `Record Revenue`
    - an existing revenue event can be updated or voided from that lot page

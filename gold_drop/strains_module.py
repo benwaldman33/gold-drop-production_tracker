@@ -6,6 +6,7 @@ from strain_import import (
     strain_import_field_choices,
     strain_import_rows_from_mapping,
 )
+from services.access_control import has_permission
 
 def register_routes(app, root):
     @root.login_required
@@ -209,6 +210,9 @@ def strain_import_commit_norm(root, norm: dict) -> None:
 
 
 def strain_import_view(root):
+    denied = _require_strain_import_access(root)
+    if denied is not None:
+        return denied
     if root.request.method == "GET":
         return root.render_template("strain_import.html")
     f = root.request.files.get("spreadsheet")
@@ -248,6 +252,9 @@ def strain_import_view(root):
 
 
 def strain_import_preview_view(root):
+    denied = _require_strain_import_access(root)
+    if denied is not None:
+        return denied
     token = (root.session.get("strain_import_token") or "").strip()
     data = strain_import_load_staging(root, token) if token else None
     if not data:
@@ -293,6 +300,9 @@ def strain_import_preview_view(root):
 
 
 def strain_import_commit_view(root):
+    denied = _require_strain_import_access(root)
+    if denied is not None:
+        return denied
     token = (root.session.get("strain_import_token") or "").strip()
     data = strain_import_load_staging(root, token) if token else None
     if not data:
@@ -345,6 +355,9 @@ def strain_import_commit_view(root):
 
 
 def strain_import_sample_view(root):
+    denied = _require_strain_import_access(root)
+    if denied is not None:
+        return denied
     lines = [
         "Supplier,Current Strain,New Strain,Notes",
         "Example Farm,Blue Dream,Blue Dream BX1,Standardize naming from vendor feed",
@@ -355,3 +368,10 @@ def strain_import_sample_view(root):
         mimetype="text/csv; charset=utf-8",
         headers={"Content-Disposition": "attachment; filename=strain_import_sample.csv"},
     )
+
+
+def _require_strain_import_access(root):
+    if has_permission(root, root.current_user, "inventory.import"):
+        return None
+    root.flash("Inventory import access required.", "error")
+    return root.redirect(root.url_for("strains_list"))
