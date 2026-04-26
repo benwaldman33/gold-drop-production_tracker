@@ -3,6 +3,10 @@
 ## 2026-04-25
 
 ### Added
+- `Settings -> Access Control` now provides a dedicated Super Admin screen for role permission templates and per-user grants/revokes, separate from user creation.
+- Import and export actions are now protected as separate permissions from ordinary screen access, so a user can view a section without automatically being able to bulk import or export its data.
+- Standalone purchasing, receiving, and extraction app write capabilities now use the same access-control permission matrix instead of only the broad legacy role flags.
+- Finance-sensitive Journey actions now have explicit permissions for financial CSV export, revenue recording, revenue voiding, and genealogy correction workflows.
 - Journey Home now acts as a stronger manager dashboard with an attention strip for blocked/stale work, critical genealogy issues, aging derivative lots, and low-margin runs.
 - Journey Home now includes an evidence-based revenue forecast using recent genealogy-backed run value, recent run rate or the configured run-rate fallback, and current Journey price assumptions.
 - Settings subgroups now have independent pages under `/settings/...` instead of all landing on one long System Settings page.

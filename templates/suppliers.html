@@ -14,10 +14,16 @@
       <button type="button" class="btn btn-primary btn-sm" data-batch-edit disabled>Batch edit…</button>
     </div>
     {% endif %}
+    {% if has_perm('purchasing.export') %}
     <a href="{{ url_for('export_csv', entity='suppliers') }}" class="btn btn-secondary">Export Suppliers CSV</a>
+    {% endif %}
+    {% if has_perm('inventory.export') %}
     <a href="{{ url_for('export_csv', entity='strains') }}" class="btn btn-secondary">Export Strains CSV</a>
-  {% if current_user.can_edit %}
+    {% endif %}
+  {% if current_user.can_edit and has_perm('purchasing.import') %}
   <a href="{{ url_for('supplier_import') }}" class="btn btn-secondary">Import spreadsheet</a>
+  {% endif %}
+  {% if current_user.can_edit %}
   <a href="{{ url_for('supplier_new') }}" class="btn btn-primary">+ Add Supplier</a>
   {% endif %}
   </div>

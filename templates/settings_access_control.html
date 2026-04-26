@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Access Control{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>Access Control</h2>
+    <p class="text-muted" style="margin:4px 0 0;">Grant and revoke screen, action, standalone app, import, and export permissions separately from user creation.</p>
+  </div>
+</div>
+
+<form method="POST">
+  <div class="card">
+    <div class="card-header">
+      <h3>Role Templates</h3>
+      <p class="text-sm" style="color:var(--text-muted); margin:4px 0 0;">Role templates are the defaults every user receives from their assigned role. User overrides below can add or remove individual permissions without changing the user record.</p>
+    </div>
+    <div style="overflow:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th style="min-width:220px;">Permission</th>
+            {% for role in role_templates.keys()|sort %}
+            <th style="text-align:center; min-width:120px;">{{ role.replace('_', ' ')|title }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for group_key, group_label, permissions in permission_groups %}
+          <tr>
+            <th colspan="{{ role_templates|length + 1 }}" style="background:rgba(255,255,255,0.04);">{{ group_label }}</th>
+          </tr>
+          {% for permission in permissions %}
+          <tr>
+            <td>
+              <strong>{{ permission_labels.get(permission, permission) }}</strong>
+              <div class="text-sm text-mono" style="color:var(--text-muted);">{{ permission }}</div>
+            </td>
+            {% for role, role_permissions in role_templates|dictsort %}
+            <td style="text-align:center;">
+              <input type="checkbox" name="role_{{ role }}_{{ permission }}" value="1" {% if permission in role_permissions %}checked{% endif %} aria-label="{{ role }} {{ permission }}">
+            </td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:18px;">
+    <div class="card-header">
+      <h3>Per-User Overrides</h3>
+      <p class="text-sm" style="color:var(--text-muted); margin:4px 0 0;">Use grants for temporary/additional access and revokes for tighter controls. Revokes win over role template defaults.</p>
+    </div>
+    {% for row in user_rows %}
+    <details class="card" style="margin:12px 0; padding:0;" {% if loop.first %}open{% endif %}>
+      <summary style="cursor:pointer; padding:14px 16px;">
+        <strong>{{ row.user.display_name or row.user.username }}</strong>
+        <span class="text-sm" style="color:var(--text-muted); margin-left:8px;">{{ row.user.username }} · {{ row.user.role.replace('_', ' ')|title }} · {{ row.permissions|length }} effective permissions</span>
+      </summary>
+      <div style="padding:0 16px 16px; overflow:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Permission</th>
+              <th style="width:110px; text-align:center;">Role/Eff.</th>
+              <th style="width:110px; text-align:center;">Grant</th>
+              <th style="width:110px; text-align:center;">Revoke</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for group_key, group_label, permissions in permission_groups %}
+            <tr>
+              <th colspan="4" style="background:rgba(255,255,255,0.04);">{{ group_label }}</th>
+            </tr>
+            {% for permission in permissions %}
+            <tr>
+              <td>
+                <strong>{{ permission_labels.get(permission, permission) }}</strong>
+                <div class="text-sm text-mono" style="color:var(--text-muted);">{{ permission }}</div>
+              </td>
+              <td style="text-align:center;">{% if permission in row.permissions %}Yes{% else %}No{% endif %}</td>
+              <td style="text-align:center;">
+                <input type="checkbox" name="user_{{ row.user.id }}_grant_{{ permission }}" value="1" {% if permission in row.overrides.grant %}checked{% endif %} aria-label="Grant {{ row.user.username }} {{ permission }}">
+              </td>
+              <td style="text-align:center;">
+                <input type="checkbox" name="user_{{ row.user.id }}_revoke_{{ permission }}" value="1" {% if permission in row.overrides.revoke %}checked{% endif %} aria-label="Revoke {{ row.user.username }} {{ permission }}">
+              </td>
+            </tr>
+            {% endfor %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+    {% endfor %}
+  </div>
+
+  <div class="form-actions" style="margin-top:18px;">
+    <button type="submit" name="action" value="save" class="btn btn-primary">Save Access Control</button>
+    <button type="submit" name="action" value="reset_defaults" class="btn btn-secondary" onclick="return confirm('Reset access control to default role templates and clear user overrides?');">Reset Defaults</button>
+  </div>
+</form>
+{% endblock %}

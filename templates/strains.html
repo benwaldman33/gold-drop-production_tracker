@@ -19,10 +19,12 @@
     {% if list_filters_active %}
     <a href="{{ clear_filters_url }}" class="btn btn-secondary btn-sm">Remove filters</a>
     {% endif %}
-    {% if current_user.can_edit %}
+    {% if current_user.can_edit and has_perm('inventory.import') %}
     <a href="{{ url_for('strain_import') }}" class="btn btn-secondary">Import spreadsheet</a>
     {% endif %}
+    {% if has_perm('inventory.export') %}
     <a href="{{ url_for('export_csv', entity='strains') }}" class="btn btn-secondary">Export CSV</a>
+    {% endif %}
   </div>
 </div>
 

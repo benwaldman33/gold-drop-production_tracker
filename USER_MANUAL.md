@@ -1322,6 +1322,14 @@ Set KPI targets and green/yellow thresholds to match operational goals.
 Admins can create users and assign roles. (This manual does not include any credentials.)
 - Disabled users can be reactivated.
 
+### Access Control
+Use **Settings -> Access Control** to grant or revoke access separately from creating a user.
+- Role templates define the default permissions for Viewer, Super Buyer, User, and Super Admin.
+- Per-user overrides can temporarily grant or revoke individual permissions without changing the user's base role.
+- Import and export are separate permissions, so someone may be allowed to view a screen without being allowed to bulk import or export data.
+- Standalone purchasing, receiving, and extraction access is controlled from the same screen.
+- Finance and Journey actions such as financial export, revenue recording, revenue voiding, and genealogy correction have their own permissions.
+
 ### Internal API Clients
 Super Admin can manage bearer-token clients for the internal read-only API under **Settings -> Internal API Clients**.
 - Create a named client and choose its read scopes.
@@ -1451,7 +1459,7 @@ Most list screens include **Export CSV**. Exports available include:
 
 Exports support criteria filters (depending on tab), including date range, supplier/status, strain text, potency range, on **Runs** the **HTE pipeline** stage filter, and on **Purchases** the **Hide complete & cancelled** option when it is active on the list.
 
-Use exports for reporting, reconciliation, or offline analysis.
+Use exports for reporting, reconciliation, or offline analysis. Export buttons only appear for users with the relevant export permission in **Settings -> Access Control**.
 
 ---
 

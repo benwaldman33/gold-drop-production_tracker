@@ -12,7 +12,9 @@
     </div>
     <a href="{{ url_for('biomass_new') }}" class="btn btn-primary">+ New Availability</a>
     {% endif %}
+    {% if has_perm('purchasing.export') %}
     <a href="{{ url_for('export_csv', entity='biomass', status=stage_filter, supplier_id=supplier_filter, start_date=start_date, end_date=end_date, strain=strain_filter, bucket=bucket_filter) }}" class="btn btn-secondary">Export CSV</a>
+    {% endif %}
   </div>
 </div>
 

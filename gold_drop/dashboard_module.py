@@ -25,6 +25,7 @@ from services.purchases_journey import build_run_journey_payload
 from services.site_aggregation import build_aggregation_summary
 from services.field_submissions import decorate_submission_rows
 from services.supervisor_notifications import manager_can_review, summarize_notifications
+from services.access_control import has_permission
 
 LAUNCH_READINESS_SETTING_KEY = "launch_readiness_register"
 
@@ -610,6 +611,13 @@ def _require_supervisor_notification_access(root):
     return None
 
 
+def _require_permission(root, permission: str, message: str, redirect_endpoint: str = "dashboard"):
+    if has_permission(root, root.current_user, permission):
+        return None
+    root.flash(message, "error")
+    return root.redirect(root.url_for(redirect_endpoint))
+
+
 def dashboard_view(root):
     period = root.request.args.get("period", "30")
     if period == "today":
@@ -803,6 +811,9 @@ def supervisor_notification_ack_view(root, notification_id):
     denied = _require_supervisor_notification_access(root)
     if denied is not None:
         return denied
+    denied = _require_permission(root, "alerts.resolve", "Alert resolution access required.")
+    if denied is not None:
+        return denied
     row = root.db.session.get(root.SupervisorNotification, notification_id)
     if row is None:
         root.flash("Supervisor notification not found.", "error")
@@ -817,6 +828,9 @@ def supervisor_notification_ack_view(root, notification_id):
 
 def supervisor_notification_resolve_view(root, notification_id):
     denied = _require_supervisor_notification_access(root)
+    if denied is not None:
+        return denied
+    denied = _require_permission(root, "alerts.resolve", "Alert resolution access required.")
     if denied is not None:
         return denied
     row = root.db.session.get(root.SupervisorNotification, notification_id)
@@ -834,6 +848,9 @@ def supervisor_notification_resolve_view(root, notification_id):
 
 def supervisor_notification_approve_view(root, notification_id):
     denied = _require_supervisor_notification_access(root)
+    if denied is not None:
+        return denied
+    denied = _require_permission(root, "alerts.supervisor_override", "Supervisor override access required.")
     if denied is not None:
         return denied
     row = root.db.session.get(root.SupervisorNotification, notification_id)
@@ -860,6 +877,9 @@ def supervisor_notification_approve_view(root, notification_id):
 
 def supervisor_notification_rework_view(root, notification_id):
     denied = _require_supervisor_notification_access(root)
+    if denied is not None:
+        return denied
+    denied = _require_permission(root, "alerts.supervisor_override", "Supervisor override access required.")
     if denied is not None:
         return denied
     row = root.db.session.get(root.SupervisorNotification, notification_id)
@@ -1131,8 +1151,11 @@ def launch_readiness_view(root):
 
 def material_genealogy_report_view(root):
     process_material_issue_reminders(root)
-    payload = root._build_material_reporting_payload(root)
     fmt = (root.request.args.get("format") or "html").strip().lower()
+    if fmt == "csv" and not has_permission(root, root.current_user, "finance.export"):
+        root.flash("Finance export access required.", "error")
+        return root.redirect(root.url_for("material_genealogy_report"))
+    payload = root._build_material_reporting_payload(root)
     if fmt == "csv":
         return _material_genealogy_financial_csv_response(root, payload)
     if fmt not in {"", "html"}:
@@ -1376,6 +1399,9 @@ def material_genealogy_raw_view(root):
 
 
 def material_lot_revenue_event_create_view(root, lot_id):
+    denied = _require_permission(root, "finance.record_revenue", "Revenue recording access required.", "material_genealogy_report")
+    if denied is not None:
+        return denied
     material_lot = root.db.session.get(root.MaterialLot, lot_id)
     if material_lot is None:
         root.abort(404)
@@ -1446,6 +1472,9 @@ def _parse_revenue_event_form(root, return_to):
 
 
 def material_lot_revenue_event_update_view(root, lot_id, event_id):
+    denied = _require_permission(root, "finance.record_revenue", "Revenue recording access required.", "material_genealogy_report")
+    if denied is not None:
+        return denied
     material_lot = root.db.session.get(root.MaterialLot, lot_id)
     if material_lot is None:
         root.abort(404)
@@ -1466,6 +1495,9 @@ def material_lot_revenue_event_update_view(root, lot_id, event_id):
 
 
 def material_lot_revenue_event_void_view(root, lot_id, event_id):
+    denied = _require_permission(root, "finance.void_revenue", "Revenue void access required.", "material_genealogy_report")
+    if denied is not None:
+        return denied
     material_lot = root.db.session.get(root.MaterialLot, lot_id)
     if material_lot is None:
         root.abort(404)
@@ -1487,6 +1519,9 @@ def material_genealogy_issue_queue_view(root):
     if not getattr(root.current_user, "can_edit", False):
         root.flash("Edit access is required for genealogy issue management.", "error")
         return root.redirect(root.url_for("material_genealogy_report"))
+    denied = _require_permission(root, "journey.correct_genealogy", "Genealogy correction access required.", "material_genealogy_report")
+    if denied is not None:
+        return denied
 
     process_material_issue_reminders(root)
     status_filter = (root.request.args.get("status") or "active").strip().lower()
@@ -1561,6 +1596,9 @@ def material_genealogy_issue_update_view(root, issue_id):
     if not getattr(root.current_user, "can_edit", False):
         root.flash("Edit access is required for genealogy issue management.", "error")
         return root.redirect(root.url_for("material_genealogy_report"))
+    denied = _require_permission(root, "journey.correct_genealogy", "Genealogy correction access required.", "material_genealogy_report")
+    if denied is not None:
+        return denied
 
     issue = root.db.session.get(root.MaterialReconciliationIssue, issue_id)
     if issue is None:

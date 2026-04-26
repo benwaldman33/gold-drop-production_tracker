@@ -12,7 +12,9 @@
     </div>
     <a href="{{ url_for('cost_new') }}" class="btn btn-primary">+ New Cost Entry</a>
     {% endif %}
+    {% if has_perm('finance.export') %}
     <a href="{{ url_for('export_csv', entity='costs', status=cost_type, start_date=start_date, end_date=end_date) }}" class="btn btn-secondary">Export CSV</a>
+    {% endif %}
   </div>
 </div>
 

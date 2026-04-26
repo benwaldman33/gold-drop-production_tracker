@@ -24,6 +24,16 @@ from services.extraction_run import EXTRACTION_RUN_DEFAULTS, TIMING_POLICY_OPTIO
 from services.material_genealogy import MATERIAL_REVENUE_LOT_TYPES, material_revenue_setting_key
 from services.site_aggregation import normalize_remote_base_url, pull_all_remote_sites, pull_remote_site
 from services.scale_ingest import SCALE_INTERFACE_TYPES, capture_weight_from_device_payload
+from services.access_control import (
+    ALL_PERMISSIONS,
+    PERMISSION_GROUPS,
+    PERMISSION_LABELS,
+    role_templates,
+    user_overrides,
+    effective_permissions,
+    has_permission,
+    save_access_control,
+)
 
 
 def register_routes(app, root):
@@ -50,6 +60,10 @@ def register_routes(app, root):
     @root.admin_required
     def settings_users():
         return settings_view(root, "users")
+
+    @root.admin_required
+    def settings_access_control():
+        return settings_access_control_view(root)
 
     @root.admin_required
     def settings_field_intake():
@@ -181,6 +195,7 @@ def register_routes(app, root):
     app.add_url_rule("/settings/extraction-controls", endpoint="settings_extraction_controls", view_func=settings_extraction_controls, methods=["GET", "POST"])
     app.add_url_rule("/settings/slack", endpoint="settings_slack", view_func=settings_slack, methods=["GET", "POST"])
     app.add_url_rule("/settings/users", endpoint="settings_users", view_func=settings_users, methods=["GET", "POST"])
+    app.add_url_rule("/settings/access-control", endpoint="settings_access_control", view_func=settings_access_control, methods=["GET", "POST"])
     app.add_url_rule("/settings/field-intake", endpoint="settings_field_intake", view_func=settings_field_intake, methods=["GET", "POST"])
     app.add_url_rule("/settings/api-clients", endpoint="settings_api_clients", view_func=settings_api_clients, methods=["GET", "POST"])
     app.add_url_rule("/settings/scales", endpoint="settings_scales", view_func=settings_scales, methods=["GET", "POST"])
@@ -227,6 +242,67 @@ def register_routes(app, root):
     app.add_url_rule("/settings/scale_devices/<device_id>/toggle_active", endpoint="scale_device_toggle_active", view_func=scale_device_toggle_active, methods=["POST"])
     app.add_url_rule("/settings/scale_devices/<device_id>/delete", endpoint="scale_device_delete", view_func=scale_device_delete, methods=["POST"])
     app.add_url_rule("/settings/scale_devices/<device_id>/test_capture", endpoint="scale_device_test_capture", view_func=scale_device_test_capture, methods=["POST"])
+
+
+def settings_access_control_view(root):
+    templates = role_templates(root)
+    overrides = user_overrides(root)
+    users = root.User.query.order_by(root.User.role.asc(), root.User.display_name.asc()).all()
+    if root.request.method == "POST":
+        action = (root.request.form.get("action") or "save").strip()
+        if action == "reset_defaults":
+            templates = {}
+            overrides = {}
+            root.flash("Access control reset to default role templates.", "success")
+        else:
+            for role in sorted(templates.keys()):
+                templates[role] = [
+                    permission
+                    for permission in ALL_PERMISSIONS
+                    if root.request.form.get(f"role_{role}_{permission}") == "1"
+                ]
+            new_overrides = {}
+            for user in users:
+                grants = [
+                    permission
+                    for permission in ALL_PERMISSIONS
+                    if root.request.form.get(f"user_{user.id}_grant_{permission}") == "1"
+                ]
+                revokes = [
+                    permission
+                    for permission in ALL_PERMISSIONS
+                    if root.request.form.get(f"user_{user.id}_revoke_{permission}") == "1"
+                ]
+                if grants or revokes:
+                    new_overrides[user.id] = {"grant": grants, "revoke": revokes}
+            overrides = new_overrides
+            root.flash("Access control settings updated.", "success")
+        save_access_control(root, templates, overrides)
+        root.log_audit(
+            "access_control_update",
+            "system_setting",
+            "access_control",
+            details=json.dumps({
+                "role_count": len(templates),
+                "user_override_count": len(overrides),
+            }),
+        )
+        root.db.session.commit()
+        return root.redirect(root.url_for("settings_access_control"))
+    rows = []
+    for user in users:
+        rows.append({
+            "user": user,
+            "permissions": effective_permissions(root, user),
+            "overrides": overrides.get(user.id, {"grant": [], "revoke": []}),
+        })
+    return root.render_template(
+        "settings_access_control.html",
+        permission_groups=PERMISSION_GROUPS,
+        permission_labels=PERMISSION_LABELS,
+        role_templates=templates,
+        user_rows=rows,
+    )
 
 
 def settings_redirect(root):

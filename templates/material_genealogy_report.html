@@ -5,7 +5,9 @@
   <h2>Material Genealogy Report</h2>
   <div class="btn-group">
     <a href="{{ url_for('journey_home') }}" class="btn btn-secondary">Back to Journey</a>
+    {% if has_perm('finance.export') %}
     <a href="{{ url_for('material_genealogy_report', format='csv') }}" class="btn btn-secondary">Export Financial CSV</a>
+    {% endif %}
     <a href="{{ url_for('material_genealogy_issue_queue') }}" class="btn btn-secondary">Open Issue Queue</a>
     <a href="{{ url_for('material_genealogy_viewer') }}" class="btn btn-secondary">Open Journey Viewer</a>
     <a href="{{ url_for('downstream_queues') }}" class="btn btn-secondary">Open Downstream Queues</a>
