@@ -851,13 +851,16 @@ The implementation phases are now shipped:
   - `/api/v1/capabilities`, the Settings API-client scope picker, and API client scope validation now share the same source of truth
   - API regression tests compare the registry against registered `/api/v1` Flask routes so future route additions cannot drift out of client discovery silently
   - `README.md` and `API_REFERENCE.md` were refreshed for scanner, scale, material-cost, and material-genealogy API endpoints
+- `PRD.md` and `ENGINEERING.md` were brought back into alignment with this sprint and recent shipped product surfaces:
+  - PRD now covers access-control separation, import/export permissions, Journey finance/accounting, audit log, launch-readiness blocker register, material genealogy API endpoints, and the API registry requirement
+  - Engineering now documents `services/api_registry.py`, registry-backed capabilities, Settings API-client scope validation, API coverage tests, current API endpoints, and current Slack settings placement
 
 ## Deployment note
 
 Current rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `09f97f6`
+- commit: pending PRD/Engineering documentation alignment sprint
 
 Production deployment steps:
 
