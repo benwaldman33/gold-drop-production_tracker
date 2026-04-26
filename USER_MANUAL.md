@@ -38,8 +38,8 @@ Use the left sidebar:
 - **Scorecards (beta)**: the former Departments surface; a secondary management lens with quick links and thin rollups, not a primary daily operating workflow
 - **Runs**: extraction runs log + cost/yield outputs
 - **Downstream Queues**: supervisor-facing post-extraction routing board for completed runs that now need a downstream destination or hold
-- **Genealogy Report**: manager-facing lineage, derivative inventory, cost, projected revenue, actual revenue, variance, and financial-completeness reporting for accountable material lots
-- **Journey Home**: manager dashboard for blocked/stale work, critical genealogy issues, aging derivative lots, low-margin runs, inventory value leaders, 7/30 day projected revenue and margin, actuals below projection, and financial completeness flags
+- **Genealogy Report**: manager-facing lineage, derivative inventory, product summaries, cost, projected revenue, actual revenue, variance, financial-completeness reporting, and CSV export for accountable material lots
+- **Journey Home**: manager dashboard for blocked/stale work, critical genealogy issues, aging derivative lots, low-margin runs, product financial cards, inventory value leaders, 7/30 day projected revenue and margin, actuals below projection, and financial completeness flags
 - **Material Journey Viewer**: opened from the Genealogy Report or linked derivative lots; gives `By Lot` and `By Run` visual path tracing for genealogy-backed material and records/corrects/voids actual revenue events on lot pages
 - **Inventory**: on-hand lots + in-transit purchases, including lot tracking IDs and remaining pounds
 - **Purchases**: batch-level purchase records + batch IDs (same underlying rows as **Biomass Pipeline**); **Approve purchase** when your role allows; **Import spreadsheet** for bulk purchase upload; row **batch edit** on the list
@@ -67,6 +67,7 @@ Journey revenue projections:
 - Journey and Genealogy Report use those assumptions to show projected revenue and projected gross margin for open output, released output, source-lot descendants, and run yield/cost rows.
 - These are planning projections. Actual sales are recorded separately as material-lot revenue events from the Material Journey Viewer, then rolled up into actual revenue, actual margin, and projected-vs-actual variance.
 - Financial completeness flags warn managers when cost basis, revenue assumptions, released-lot actual revenue, or genealogy issue cleanup is still missing.
+- Use **Export Financial CSV** on Genealogy Report when you need product summaries, inventory groups, source-to-derivative rows, run yield rows, and financial flags in Excel.
 
 ### Standalone Extraction Lab App
 
@@ -823,6 +824,7 @@ Use **Confirm Movement** to record a standard movement action:
 Use **Genealogy Report** from the left sidebar when you need a manager-facing summary of material lineage instead of a single run or queue card.
 
 The page currently shows:
+- product financial summary rows by material type
 - open derivative inventory by type
 - released derivative inventory by type
 - projected revenue, actual revenue, and variance for open and released material
@@ -835,6 +837,7 @@ The page currently shows:
 - recent derivative lots with direct viewer / raw lineage links
 
 From that report, use **Open Journey Viewer** or any linked derivative lot to open the HTML genealogy viewer.
+Use **Export Financial CSV** to download the financial reporting rows for spreadsheet review.
 
 The **Material Journey Viewer** supports:
 - `By Lot`: start from a material lot and trace upstream inputs plus downstream child lots

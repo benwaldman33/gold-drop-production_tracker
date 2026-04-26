@@ -84,6 +84,27 @@
   </div>
 </div>
 
+{% if journey.report.product_financial_rows %}
+<div class="card" style="margin-top:18px;">
+  <div class="card-header">
+    <h3>Product Financial Cards</h3>
+    <span class="text-sm cell-muted">Cost, projected revenue, actual revenue, margin, and completeness by output type.</span>
+  </div>
+  <div class="journey-summary-grid">
+    {% for row in journey.report.product_financial_rows[:6] %}
+    <div class="journey-stat">
+      <div class="label">{{ row.lot_type }}</div>
+      <div class="value">${{ "{:,.0f}".format(row.actual_revenue_total or 0) }}</div>
+      <div class="summary-footnote">
+        {{ "{:,.1f}".format(row.quantity_total or 0) }} {{ row.unit }} · cost ${{ "{:,.0f}".format(row.cost_basis_total or 0) }} · margin ${{ "{:,.0f}".format(row.actual_margin_total or 0) }}
+      </div>
+      <div class="summary-footnote">Projected ${{ "{:,.0f}".format(row.projected_revenue_total or 0) }} · variance ${{ "{:,.0f}".format(row.revenue_variance_total or 0) }} · flags {{ row.completeness_flag_count or 0 }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 <div class="card" style="margin-top:18px;">
   <div class="card-header">
     <h3>Projected Vs Actual Revenue</h3>

@@ -1919,6 +1919,41 @@ def build_material_reporting_payload(root) -> dict:
             "flag_count": len(flags),
             "viewer_url": root.url_for("material_genealogy_viewer", mode="lot", material_lot_id=material_lot.id),
         })
+    product_financial_rows = []
+    grouped_by_status = {
+        ("open", row["lot_type"]): row for row in open_groups
+    }
+    grouped_by_status.update({("released", row["lot_type"]): row for row in released_groups})
+    for lot_type in sorted({row["lot_type"] for row in open_groups + released_groups}):
+        open_row = grouped_by_status.get(("open", lot_type), {})
+        released_row = grouped_by_status.get(("released", lot_type), {})
+        quantity_total = float(open_row.get("quantity_total") or 0) + float(released_row.get("quantity_total") or 0)
+        lot_count = int(open_row.get("lot_count") or 0) + int(released_row.get("lot_count") or 0)
+        cost_basis_total = float(open_row.get("cost_basis_total") or 0) + float(released_row.get("cost_basis_total") or 0)
+        projected_revenue_total = float(open_row.get("projected_revenue_total") or 0) + float(released_row.get("projected_revenue_total") or 0)
+        actual_revenue_total = float(open_row.get("actual_revenue_total") or 0) + float(released_row.get("actual_revenue_total") or 0)
+        projected_margin_total = projected_revenue_total - cost_basis_total
+        actual_margin_total = actual_revenue_total - cost_basis_total
+        completeness_flag_count = int(open_row.get("completeness_flag_count") or 0) + int(released_row.get("completeness_flag_count") or 0)
+        product_financial_rows.append({
+            "lot_type": lot_type,
+            "unit": open_row.get("unit") or released_row.get("unit") or "g",
+            "lot_count": lot_count,
+            "open_lot_count": int(open_row.get("lot_count") or 0),
+            "released_lot_count": int(released_row.get("lot_count") or 0),
+            "quantity_total": quantity_total,
+            "open_quantity_total": float(open_row.get("quantity_total") or 0),
+            "released_quantity_total": float(released_row.get("quantity_total") or 0),
+            "cost_basis_total": cost_basis_total,
+            "projected_revenue_total": projected_revenue_total,
+            "actual_revenue_total": actual_revenue_total,
+            "revenue_variance_total": actual_revenue_total - projected_revenue_total,
+            "projected_margin_total": projected_margin_total,
+            "actual_margin_total": actual_margin_total,
+            "actual_margin_pct": (actual_margin_total / actual_revenue_total * 100.0) if actual_revenue_total > 0 else None,
+            "completeness_flag_count": completeness_flag_count,
+        })
+    product_financial_rows.sort(key=lambda row: float(row.get("projected_revenue_total") or 0), reverse=True)
 
     return {
         "summary": {
@@ -1955,6 +1990,7 @@ def build_material_reporting_payload(root) -> dict:
         "issue_counts_by_severity": issue_counts_by_severity,
         "issue_counts_by_type": issue_counts_by_type,
         "financial_completeness_rows": financial_completeness_rows[:20],
+        "product_financial_rows": product_financial_rows,
         "recent_derivative_lots": [serialize_material_lot(root, lot) for lot in recent_lots],
     }
 

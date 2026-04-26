@@ -5,6 +5,7 @@
   <h2>Material Genealogy Report</h2>
   <div class="btn-group">
     <a href="{{ url_for('journey_home') }}" class="btn btn-secondary">Back to Journey</a>
+    <a href="{{ url_for('material_genealogy_report', format='csv') }}" class="btn btn-secondary">Export Financial CSV</a>
     <a href="{{ url_for('material_genealogy_issue_queue') }}" class="btn btn-secondary">Open Issue Queue</a>
     <a href="{{ url_for('material_genealogy_viewer') }}" class="btn btn-secondary">Open Journey Viewer</a>
     <a href="{{ url_for('downstream_queues') }}" class="btn btn-secondary">Open Downstream Queues</a>
@@ -58,6 +59,47 @@
   </div>
 </div>
 
+{% if report.product_financial_rows %}
+<div class="card" style="margin-bottom:18px;">
+  <div class="card-header">
+    <h3>Product Financial Summary</h3>
+    <span class="text-sm cell-muted">Open plus released material grouped by product type for management review.</span>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Product</th>
+          <th>Lots</th>
+          <th>Quantity</th>
+          <th>Cost Basis</th>
+          <th>Projected Revenue</th>
+          <th>Actual Revenue</th>
+          <th>Variance</th>
+          <th>Actual Margin</th>
+          <th>Flags</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in report.product_financial_rows %}
+        <tr>
+          <td>{{ row.lot_type }}</td>
+          <td>{{ row.lot_count }} <span class="text-sm cell-muted">({{ row.open_lot_count }} open / {{ row.released_lot_count }} released)</span></td>
+          <td>{{ "{:,.2f}".format(row.quantity_total or 0) }} {{ row.unit }}</td>
+          <td>${{ "{:,.2f}".format(row.cost_basis_total or 0) }}</td>
+          <td>${{ "{:,.2f}".format(row.projected_revenue_total or 0) }}</td>
+          <td>${{ "{:,.2f}".format(row.actual_revenue_total or 0) }}</td>
+          <td>${{ "{:,.2f}".format(row.revenue_variance_total or 0) }}</td>
+          <td>${{ "{:,.2f}".format(row.actual_margin_total or 0) }}</td>
+          <td>{{ row.completeness_flag_count or 0 }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
 {% if report.financial_completeness_rows %}
 <div class="card" style="margin-bottom:18px;">
   <div class="card-header">
@@ -107,7 +149,6 @@
           <th>Actual Revenue</th>
           <th>Projected Margin</th>
           <th>Flags</th>
-          <th>Flags</th>
         </tr>
       </thead>
       <tbody>
@@ -121,7 +162,6 @@
           <td>${{ "{:,.2f}".format(row.projected_revenue_total or 0) }}</td>
           <td>${{ "{:,.2f}".format(row.actual_revenue_total or 0) }}</td>
           <td>${{ "{:,.2f}".format(row.projected_margin_total or 0) }}</td>
-          <td>{{ row.completeness_flag_count or 0 }}</td>
           <td>{{ row.completeness_flag_count or 0 }}</td>
         </tr>
         {% endfor %}

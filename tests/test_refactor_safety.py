@@ -163,6 +163,8 @@ def test_material_genealogy_report_renders_downstream_reporting():
             assert resp.status_code == 200
             assert b"Material Genealogy Report" in resp.data
             assert b"Open Journey Viewer" in resp.data
+            assert b"Export Financial CSV" in resp.data
+            assert b"Product Financial Summary" in resp.data
             assert b"Open Derivative Inventory By Type" in resp.data
             assert b"Released Derivative Inventory By Type" in resp.data
             assert b"Source-To-Derivative Yield" in resp.data
@@ -175,6 +177,13 @@ def test_material_genealogy_report_renders_downstream_reporting():
             assert b"wholesale_thca" in resp.data
             assert b"golddrop" in resp.data
             assert b"/journeys/material-genealogy?mode=lot" in resp.data
+            csv_resp = client.get("/reports/material-genealogy?format=csv")
+            assert csv_resp.status_code == 200
+            assert csv_resp.mimetype.startswith("text/csv")
+            csv_text = csv_resp.get_data(as_text=True)
+            assert "section,record_type,identifier,lot_type,status" in csv_text
+            assert "product_summary,product" in csv_text
+            assert "run_yield,run" in csv_text
     finally:
         with app.app_context():
             _release_test_db_session()
@@ -972,6 +981,7 @@ def test_alerts_and_journey_hubs_render():
     assert b"Journey Home" in journey.data
     assert b"Manager Journey Hub" in journey.data
     assert b"Open Projected Revenue" in journey.data
+    assert b"Product Financial Cards" in journey.data
     assert b"Revenue Forecast" in journey.data
     assert b"Aging Inventory" in journey.data
     assert b"Underperforming Runs" in journey.data
