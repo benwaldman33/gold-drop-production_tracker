@@ -346,7 +346,7 @@ def _role_home_endpoint():
 
 def _nav_section_key_for_endpoint(endpoint: str | None) -> str:
     endpoint = endpoint or ""
-    if endpoint == "launch_readiness" or endpoint == "settings" or endpoint.startswith("settings_") or endpoint.startswith("user_") or endpoint.startswith("api_client_") or endpoint.startswith("remote_site_") or endpoint.startswith("scale_device_") or endpoint.startswith("field_token_"):
+    if endpoint == "launch_readiness" or endpoint == "audit_log_manager" or endpoint == "settings" or endpoint.startswith("settings_") or endpoint.startswith("user_") or endpoint.startswith("api_client_") or endpoint.startswith("remote_site_") or endpoint.startswith("scale_device_") or endpoint.startswith("field_token_"):
         if current_user.is_authenticated and current_user.is_super_admin:
             return "settings"
         return "more"
@@ -381,6 +381,7 @@ def _nav_section_key_for_endpoint(endpoint: str | None) -> str:
         return "alerts"
     if endpoint in {
         "journey_home",
+        "finance_accounting",
         "material_genealogy_report",
         "material_genealogy_viewer",
         "material_genealogy_raw",
@@ -459,6 +460,7 @@ def inject_role_navigation():
             "active": active_section == "journey",
             "links": [
                 {"label": "Journey Home", "endpoint": "journey_home", "active": request.endpoint == "journey_home"},
+                {"label": "Finance & Accounting", "endpoint": "finance_accounting", "active": request.endpoint == "finance_accounting", "visible": current_user.is_authenticated and has_permission(sys.modules[__name__], current_user, "finance.view")},
                 {"label": "Genealogy Report", "endpoint": "material_genealogy_report", "active": request.endpoint == "material_genealogy_report"},
                 {"label": "Journey Viewer", "endpoint": "material_genealogy_viewer", "active": request.endpoint == "material_genealogy_viewer"},
                 {"label": "Purchase Journey", "endpoint": "purchases_bp.purchase_journey", "active": (request.endpoint or "").startswith("purchases_bp.purchase_journey"), "href": url_for("purchases_list")},
@@ -496,6 +498,7 @@ def inject_role_navigation():
                 {"label": "Remote Sites", "endpoint": "settings_remote_sites", "active": request.endpoint == "settings_remote_sites" or (request.endpoint or "").startswith("remote_site_")},
                 {"label": "Maintenance", "endpoint": "settings_maintenance", "active": request.endpoint in ("settings_maintenance", "settings_backfill_photo_assets", "settings_recalculate_costs", "settings_pull_remote_sites")},
                 {"label": "Launch Readiness", "endpoint": "launch_readiness", "active": request.endpoint == "launch_readiness"},
+                {"label": "Audit Log", "endpoint": "audit_log_manager", "active": request.endpoint == "audit_log_manager"},
             ],
             "visible": current_user.is_authenticated and current_user.is_super_admin,
         },

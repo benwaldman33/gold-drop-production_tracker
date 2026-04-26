@@ -836,13 +836,23 @@ The implementation phases are now shipped:
   - imports and exports are separate action permissions from ordinary screen access
   - standalone purchasing, receiving, and extraction write capabilities now use the same permission matrix
   - Journey finance actions now have explicit permissions for financial CSV export, revenue recording, revenue voiding, and genealogy correction
+- `Settings -> Audit Log` now provides a manager/admin audit surface:
+  - filter by date, user, action, entity type, text/details, and result limit
+  - inspect structured audit details inline without raw database access
+- `Journey -> Finance & Accounting` now provides the next finance layer:
+  - period actual revenue from material revenue events
+  - estimated COGS from genealogy cost basis
+  - gross margin and margin percentage
+  - product and channel summaries
+  - open/released projected revenue and financial flag context
+  - CSV export for accounting review
 
 ## Deployment note
 
 Current rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `376d000`
+- commit: `TBD`
 
 Production deployment steps:
 
@@ -859,6 +869,9 @@ Production deployment steps:
    - `Supervisor Console` renders at `/supervisor-console`
    - `Settings -> Launch Readiness` renders at `/launch-readiness`
    - `Settings -> Access Control` renders at `/settings/access-control`
+   - `Settings -> Audit Log` renders at `/audit-log`
+   - `Journey -> Finance & Accounting` renders at `/finance/accounting`
+   - `Finance & Accounting -> Export CSV` downloads `finance_accounting_report.csv`
    - a non-export user who can view a screen does not see the relevant export button
    - purchase, inventory, supplier, and strain import links only appear for users with import permission
    - `Journey Home` renders at `/journey`

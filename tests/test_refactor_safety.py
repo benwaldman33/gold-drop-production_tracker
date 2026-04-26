@@ -114,6 +114,29 @@ def test_export_route_honors_user_permission_revokes():
             db.session.commit()
 
 
+def test_audit_log_manager_renders_for_admin():
+    page = _call_view_as_user("/audit-log", "audit_log_manager", "admin")
+
+    assert page.status_code == 200
+    assert b"Audit Log" in page.data
+    assert b"Recent Audit Events" in page.data
+    assert b"Search entity ID or details" in page.data
+
+
+def test_finance_accounting_renders_and_exports_for_finance_user():
+    page = _call_view_as_user("/finance/accounting", "finance_accounting", "ops")
+
+    assert page.status_code == 200
+    assert b"Finance &amp; Accounting" in page.data
+    assert b"Actual Revenue" in page.data
+    assert b"Estimated COGS" in page.data
+
+    csv_page = _call_view_as_user("/finance/accounting?format=csv", "finance_accounting", "admin")
+    assert csv_page.status_code == 200
+    assert csv_page.mimetype == "text/csv"
+    assert b"event_date,tracking_id,lot_type" in csv_page.data
+
+
 def test_material_genealogy_report_renders_downstream_reporting():
     app = app_module.app
     run_id = None

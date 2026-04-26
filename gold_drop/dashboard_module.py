@@ -185,6 +185,14 @@ def register_routes(app, root):
         return journey_home_view(root)
 
     @root.login_required
+    def finance_accounting():
+        return finance_accounting_view(root)
+
+    @root.login_required
+    def audit_log_manager():
+        return audit_log_manager_view(root)
+
+    @root.login_required
     def material_genealogy_report():
         return material_genealogy_report_view(root)
 
@@ -259,6 +267,8 @@ def register_routes(app, root):
     app.add_url_rule("/biomass-purchasing", endpoint="biomass_purchasing_dashboard", view_func=biomass_purchasing_dashboard)
     app.add_url_rule("/alerts", endpoint="alerts_home", view_func=alerts_home)
     app.add_url_rule("/journey", endpoint="journey_home", view_func=journey_home)
+    app.add_url_rule("/finance/accounting", endpoint="finance_accounting", view_func=finance_accounting)
+    app.add_url_rule("/audit-log", endpoint="audit_log_manager", view_func=audit_log_manager)
     app.add_url_rule("/reports/material-genealogy", endpoint="material_genealogy_report", view_func=material_genealogy_report)
     app.add_url_rule("/journeys/material-genealogy", endpoint="material_genealogy_viewer", view_func=material_genealogy_viewer)
     app.add_url_rule("/journeys/material-genealogy/raw", endpoint="material_genealogy_raw", view_func=material_genealogy_raw)
@@ -616,6 +626,209 @@ def _require_permission(root, permission: str, message: str, redirect_endpoint: 
         return None
     root.flash(message, "error")
     return root.redirect(root.url_for(redirect_endpoint))
+
+
+def _parse_filter_date(root, value: str | None):
+    value = (value or "").strip()
+    if not value:
+        return None
+    try:
+        return root.date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _material_lot_estimated_cogs_for_sale(material_lot, quantity: float) -> float:
+    if material_lot is None:
+        return 0.0
+    quantity = float(quantity or 0)
+    per_unit = getattr(material_lot, "cost_basis_per_unit", None)
+    if per_unit is not None:
+        return quantity * float(per_unit or 0)
+    lot_qty = float(getattr(material_lot, "quantity", 0) or 0)
+    if lot_qty > 0:
+        return float(getattr(material_lot, "cost_basis_total", 0) or 0) * (quantity / lot_qty)
+    return 0.0
+
+
+def _finance_accounting_payload(root):
+    today = root.date.today()
+    default_start = today.replace(day=1)
+    start_date = _parse_filter_date(root, root.request.args.get("start_date")) or default_start
+    end_date = _parse_filter_date(root, root.request.args.get("end_date")) or today
+    lot_type_filter = (root.request.args.get("lot_type") or "all").strip()
+    channel_filter = (root.request.args.get("channel") or "all").strip()
+
+    query = root.MaterialRevenueEvent.query.join(root.MaterialLot).filter(
+        root.MaterialRevenueEvent.voided_at.is_(None),
+        root.MaterialRevenueEvent.event_date >= start_date,
+        root.MaterialRevenueEvent.event_date <= end_date,
+    )
+    if lot_type_filter != "all":
+        query = query.filter(root.MaterialLot.lot_type == lot_type_filter)
+    if channel_filter != "all":
+        query = query.filter(root.MaterialRevenueEvent.buyer_channel == channel_filter)
+    events = query.order_by(root.MaterialRevenueEvent.event_date.desc(), root.MaterialRevenueEvent.created_at.desc()).all()
+
+    rows = []
+    product_summary = {}
+    channel_summary = {}
+    total_revenue = 0.0
+    total_cogs = 0.0
+    for event in events:
+        material_lot = event.material_lot
+        revenue = float(event.total_revenue or 0)
+        cogs = _material_lot_estimated_cogs_for_sale(material_lot, float(event.quantity or 0))
+        margin = revenue - cogs
+        lot_type = getattr(material_lot, "lot_type", "") or "unknown"
+        channel = (event.buyer_channel or "Unspecified").strip() or "Unspecified"
+        row = {
+            "event": event,
+            "material_lot": material_lot,
+            "lot_type": lot_type,
+            "tracking_id": getattr(material_lot, "tracking_id", "") or "",
+            "event_date": event.event_date,
+            "quantity": float(event.quantity or 0),
+            "unit": event.unit or getattr(material_lot, "unit", "") or "",
+            "unit_price": float(event.unit_price or 0),
+            "revenue": revenue,
+            "estimated_cogs": cogs,
+            "gross_margin": margin,
+            "gross_margin_pct": (margin / revenue * 100.0) if revenue > 0 else None,
+            "buyer_channel": channel,
+            "reference": event.reference or "",
+            "viewer_url": root.url_for("material_genealogy_viewer", mode="lot", material_lot_id=material_lot.id) if material_lot is not None else "",
+        }
+        rows.append(row)
+        total_revenue += revenue
+        total_cogs += cogs
+        for summary, key in ((product_summary, lot_type), (channel_summary, channel)):
+            bucket = summary.setdefault(key, {"key": key, "event_count": 0, "quantity": 0.0, "revenue": 0.0, "estimated_cogs": 0.0, "gross_margin": 0.0})
+            bucket["event_count"] += 1
+            bucket["quantity"] += row["quantity"]
+            bucket["revenue"] += revenue
+            bucket["estimated_cogs"] += cogs
+            bucket["gross_margin"] += margin
+
+    for bucket in list(product_summary.values()) + list(channel_summary.values()):
+        revenue = float(bucket["revenue"] or 0)
+        bucket["gross_margin_pct"] = (float(bucket["gross_margin"] or 0) / revenue * 100.0) if revenue > 0 else None
+
+    material_report = root._build_material_reporting_payload(root)
+    summary = {
+        "start_date": start_date,
+        "end_date": end_date,
+        "event_count": len(rows),
+        "actual_revenue": total_revenue,
+        "estimated_cogs": total_cogs,
+        "gross_margin": total_revenue - total_cogs,
+        "gross_margin_pct": ((total_revenue - total_cogs) / total_revenue * 100.0) if total_revenue > 0 else None,
+        "open_projected_revenue": float((material_report.get("summary") or {}).get("open_projected_revenue_total") or 0),
+        "released_projected_revenue": float((material_report.get("summary") or {}).get("released_projected_revenue_total") or 0),
+        "financial_flag_count": int((material_report.get("summary") or {}).get("financial_completeness_flag_count") or 0),
+    }
+    lot_types = sorted({row.lot_type for row in root.MaterialLot.query.filter(root.MaterialLot.lot_type != "biomass").all() if row.lot_type})
+    channels = sorted({(row[0] or "Unspecified") for row in root.db.session.query(root.MaterialRevenueEvent.buyer_channel).filter(root.MaterialRevenueEvent.voided_at.is_(None)).distinct().all()})
+    return {
+        "summary": summary,
+        "rows": rows,
+        "product_summary": sorted(product_summary.values(), key=lambda item: float(item["revenue"] or 0), reverse=True),
+        "channel_summary": sorted(channel_summary.values(), key=lambda item: float(item["revenue"] or 0), reverse=True),
+        "filters": {
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "lot_type": lot_type_filter,
+            "channel": channel_filter,
+        },
+        "lot_types": lot_types,
+        "channels": channels,
+        "material_report": material_report,
+    }
+
+
+def _finance_accounting_csv_response(root, payload: dict):
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["event_date", "tracking_id", "lot_type", "quantity", "unit", "unit_price", "revenue", "estimated_cogs", "gross_margin", "gross_margin_pct", "buyer_channel", "reference"])
+    for row in payload["rows"]:
+        writer.writerow([
+            row["event_date"].isoformat() if row["event_date"] else "",
+            row["tracking_id"],
+            row["lot_type"],
+            row["quantity"],
+            row["unit"],
+            row["unit_price"],
+            row["revenue"],
+            row["estimated_cogs"],
+            row["gross_margin"],
+            row["gross_margin_pct"] if row["gross_margin_pct"] is not None else "",
+            row["buyer_channel"],
+            row["reference"],
+        ])
+    return root.Response(
+        buf.getvalue(),
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=finance_accounting_report.csv"},
+    )
+
+
+def _audit_log_payload(root):
+    start_date = _parse_filter_date(root, root.request.args.get("start_date"))
+    end_date = _parse_filter_date(root, root.request.args.get("end_date"))
+    user_id = (root.request.args.get("user_id") or "all").strip()
+    action = (root.request.args.get("action") or "all").strip()
+    entity_type = (root.request.args.get("entity_type") or "all").strip()
+    search = (root.request.args.get("q") or "").strip()
+    try:
+        limit = max(25, min(int(root.request.args.get("limit") or 200), 1000))
+    except ValueError:
+        limit = 200
+
+    query = root.AuditLog.query
+    if start_date:
+        query = query.filter(root.AuditLog.timestamp >= root.datetime.combine(start_date, root.datetime.min.time()))
+    if end_date:
+        query = query.filter(root.AuditLog.timestamp < root.datetime.combine(end_date + root.timedelta(days=1), root.datetime.min.time()))
+    if user_id != "all":
+        query = query.filter(root.AuditLog.user_id == user_id)
+    if action != "all":
+        query = query.filter(root.AuditLog.action == action)
+    if entity_type != "all":
+        query = query.filter(root.AuditLog.entity_type == entity_type)
+    if search:
+        like = f"%{search}%"
+        query = query.filter(root.or_(root.AuditLog.entity_id.ilike(like), root.AuditLog.details.ilike(like)))
+    rows = query.order_by(root.AuditLog.timestamp.desc(), root.AuditLog.id.desc()).limit(limit).all()
+
+    decorated = []
+    for row in rows:
+        details = row.details or ""
+        parsed_details = None
+        if details:
+            try:
+                parsed_details = json.dumps(json.loads(details), indent=2, sort_keys=True)
+            except (TypeError, ValueError):
+                parsed_details = details
+        decorated.append({"row": row, "details": parsed_details})
+
+    users = root.User.query.order_by(root.User.display_name.asc(), root.User.username.asc()).all()
+    actions = [row[0] for row in root.db.session.query(root.AuditLog.action).distinct().order_by(root.AuditLog.action.asc()).all() if row[0]]
+    entity_types = [row[0] for row in root.db.session.query(root.AuditLog.entity_type).distinct().order_by(root.AuditLog.entity_type.asc()).all() if row[0]]
+    return {
+        "rows": decorated,
+        "users": users,
+        "actions": actions,
+        "entity_types": entity_types,
+        "filters": {
+            "start_date": start_date.isoformat() if start_date else "",
+            "end_date": end_date.isoformat() if end_date else "",
+            "user_id": user_id,
+            "action": action,
+            "entity_type": entity_type,
+            "q": search,
+            "limit": limit,
+        },
+    }
 
 
 def dashboard_view(root):
@@ -1007,6 +1220,30 @@ def journey_home_view(root):
         "journey_home.html",
         journey=payload,
     )
+
+
+def finance_accounting_view(root):
+    denied = _require_permission(root, "finance.view", "Finance reporting access required.", "journey_home")
+    if denied is not None:
+        return denied
+    payload = _finance_accounting_payload(root)
+    fmt = (root.request.args.get("format") or "html").strip().lower()
+    if fmt == "csv":
+        denied = _require_permission(root, "finance.export", "Finance export access required.", "finance_accounting")
+        if denied is not None:
+            return denied
+        return _finance_accounting_csv_response(root, payload)
+    if fmt not in {"", "html"}:
+        return root.jsonify({"error": "Unsupported export format", "supported_formats": ["csv", "html"]}), 400
+    return root.render_template("finance_accounting.html", finance=payload)
+
+
+def audit_log_manager_view(root):
+    denied = _require_permission(root, "admin.audit", "Audit log access required.", "dashboard")
+    if denied is not None:
+        return denied
+    payload = _audit_log_payload(root)
+    return root.render_template("audit_log_manager.html", audit=payload)
 
 
 def _launch_readiness_default_item(item: dict) -> dict:

@@ -3,6 +3,8 @@
 ## 2026-04-25
 
 ### Added
+- `Settings -> Audit Log` now provides a searchable manager/admin surface for audit history with filters for date, user, action, entity type, text/details, and result limit.
+- `Journey -> Finance & Accounting` now provides period revenue, estimated COGS, gross margin, product summaries, channel summaries, projected inventory value, financial flag counts, revenue-event detail, and CSV export.
 - `Settings -> Access Control` now provides a dedicated Super Admin screen for role permission templates and per-user grants/revokes, separate from user creation.
 - Import and export actions are now protected as separate permissions from ordinary screen access, so a user can view a section without automatically being able to bulk import or export its data.
 - Standalone purchasing, receiving, and extraction app write capabilities now use the same access-control permission matrix instead of only the broad legacy role flags.

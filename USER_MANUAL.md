@@ -70,6 +70,7 @@ Journey revenue projections:
 - These are planning projections. Actual sales are recorded separately as material-lot revenue events from the Material Journey Viewer, then rolled up into actual revenue, actual margin, and projected-vs-actual variance.
 - Financial completeness flags warn managers when cost basis, revenue assumptions, released-lot actual revenue, or genealogy issue cleanup is still missing.
 - Use **Export Financial CSV** on Genealogy Report when you need product summaries, inventory groups, source-to-derivative rows, run yield rows, and financial flags in Excel.
+- Use **Journey -> Finance & Accounting** when you need a period view of actual revenue, estimated COGS, gross margin, revenue by product, revenue by channel, and the revenue-event detail behind the totals.
 
 ### Standalone Extraction Lab App
 
@@ -1329,6 +1330,12 @@ Use **Settings -> Access Control** to grant or revoke access separately from cre
 - Import and export are separate permissions, so someone may be allowed to view a screen without being allowed to bulk import or export data.
 - Standalone purchasing, receiving, and extraction access is controlled from the same screen.
 - Finance and Journey actions such as financial export, revenue recording, revenue voiding, and genealogy correction have their own permissions.
+
+### Audit Log
+Use **Settings -> Audit Log** to investigate operating history.
+- Filter by date range, user, action, entity type, and text/details.
+- Open details to review structured JSON audit payloads such as import source, mobile workflow, revenue edits, correction notes, and access-control updates.
+- This is intended for transparency, troubleshooting, and management review; it does not replace final security hardening.
 
 ### Internal API Clients
 Super Admin can manage bearer-token clients for the internal read-only API under **Settings -> Internal API Clients**.
