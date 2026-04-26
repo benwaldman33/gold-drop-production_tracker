@@ -860,7 +860,7 @@ The implementation phases are now shipped:
 Current rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: pending PRD/Engineering documentation alignment sprint
+- commit: `945e3ad`
 
 Production deployment steps:
 
