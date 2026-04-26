@@ -3,6 +3,8 @@
 ## 2026-04-25
 
 ### Added
+- Settings subgroups now have independent pages under `/settings/...` instead of all landing on one long System Settings page.
+- Slack channel history sync moved out of Maintenance and into `Settings -> Slack & Notifications`, next to the Slack channel, token, webhook, notification, and mapping controls it depends on.
 - Settings is now its own Super Admin-only collapsible sidebar group, with section links for operational parameters, Journey financials, extraction controls, Slack/notifications, users, field intake, API clients, scales, remote sites, and maintenance.
 - The default sidebar group order now follows the operating workflow priority: `Purchasing`, `Inventory`, `Extraction`, `Downstream`, `Journey`, `Alerts`, `Settings`, and `More`.
 - Journey now has a configurable financial projection layer on top of material genealogy:

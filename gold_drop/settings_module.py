@@ -29,7 +29,47 @@ from services.scale_ingest import SCALE_INTERFACE_TYPES, capture_weight_from_dev
 def register_routes(app, root):
     @root.admin_required
     def settings():
-        return settings_view(root)
+        return settings_view(root, "operational")
+
+    @root.admin_required
+    def settings_operational():
+        return settings_view(root, "operational")
+
+    @root.admin_required
+    def settings_journey_financials():
+        return settings_view(root, "journey_financials")
+
+    @root.admin_required
+    def settings_extraction_controls():
+        return settings_view(root, "extraction_controls")
+
+    @root.admin_required
+    def settings_slack():
+        return settings_view(root, "slack")
+
+    @root.admin_required
+    def settings_users():
+        return settings_view(root, "users")
+
+    @root.admin_required
+    def settings_field_intake():
+        return settings_view(root, "field_intake")
+
+    @root.admin_required
+    def settings_api_clients():
+        return settings_view(root, "api_clients")
+
+    @root.admin_required
+    def settings_scales():
+        return settings_view(root, "scales")
+
+    @root.admin_required
+    def settings_remote_sites():
+        return settings_view(root, "remote_sites")
+
+    @root.admin_required
+    def settings_maintenance():
+        return settings_view(root, "maintenance")
 
     @root.login_required
     def field_approvals():
@@ -136,6 +176,16 @@ def register_routes(app, root):
         return scale_device_test_capture_view(root, device_id)
 
     app.add_url_rule("/settings", endpoint="settings", view_func=settings, methods=["GET", "POST"])
+    app.add_url_rule("/settings/operational", endpoint="settings_operational", view_func=settings_operational, methods=["GET", "POST"])
+    app.add_url_rule("/settings/journey-financials", endpoint="settings_journey_financials", view_func=settings_journey_financials, methods=["GET", "POST"])
+    app.add_url_rule("/settings/extraction-controls", endpoint="settings_extraction_controls", view_func=settings_extraction_controls, methods=["GET", "POST"])
+    app.add_url_rule("/settings/slack", endpoint="settings_slack", view_func=settings_slack, methods=["GET", "POST"])
+    app.add_url_rule("/settings/users", endpoint="settings_users", view_func=settings_users, methods=["GET", "POST"])
+    app.add_url_rule("/settings/field-intake", endpoint="settings_field_intake", view_func=settings_field_intake, methods=["GET", "POST"])
+    app.add_url_rule("/settings/api-clients", endpoint="settings_api_clients", view_func=settings_api_clients, methods=["GET", "POST"])
+    app.add_url_rule("/settings/scales", endpoint="settings_scales", view_func=settings_scales, methods=["GET", "POST"])
+    app.add_url_rule("/settings/remote-sites", endpoint="settings_remote_sites", view_func=settings_remote_sites, methods=["GET", "POST"])
+    app.add_url_rule("/settings/maintenance", endpoint="settings_maintenance", view_func=settings_maintenance, methods=["GET", "POST"])
     app.add_url_rule("/field-approvals", endpoint="field_approvals", view_func=field_approvals)
     app.add_url_rule(
         "/settings/field_submissions/<submission_id>/approve",
@@ -183,9 +233,28 @@ def settings_redirect(root):
     anchor = (root.request.form.get("return_to") or root.request.args.get("return_to") or "").strip()
     target = root.url_for("settings")
     if anchor:
+        if anchor.startswith("/"):
+            return root.redirect(anchor)
         if not anchor.startswith("#"):
             anchor = f"#{anchor.lstrip('#')}"
-        target = f"{target}{anchor}"
+        page_by_anchor = {
+            "#settings-system": "settings_operational",
+            "#settings-operational": "settings_operational",
+            "#settings-kpis": "settings_operational",
+            "#settings-biomass-budget": "settings_operational",
+            "#settings-journey-financials": "settings_journey_financials",
+            "#settings-extraction": "settings_extraction_controls",
+            "#settings-slack": "settings_slack",
+            "#settings-users": "settings_users",
+            "#settings-passwords": "settings_users",
+            "#settings-field-intake": "settings_field_intake",
+            "#settings-api-clients": "settings_api_clients",
+            "#settings-scales": "settings_scales",
+            "#settings-remote-sites": "settings_remote_sites",
+            "#settings-maintenance": "settings_maintenance",
+        }
+        endpoint = page_by_anchor.get(anchor)
+        target = root.url_for(endpoint) if endpoint else f"{target}{anchor}"
     return root.redirect(target)
 
 
@@ -226,11 +295,176 @@ def _parse_api_client_scopes(form) -> list[str]:
     return sorted(set(selected))
 
 
-def settings_view(root):
+def settings_view(root, page="operational"):
+    valid_pages = {
+        "operational": "Operational Parameters",
+        "journey_financials": "Journey Financials",
+        "extraction_controls": "Extraction Controls",
+        "slack": "Slack & Notifications",
+        "users": "Users & Access",
+        "field_intake": "Field Intake",
+        "api_clients": "API Clients",
+        "scales": "Scales",
+        "remote_sites": "Remote Sites",
+        "maintenance": "Maintenance",
+    }
+    if page not in valid_pages:
+        page = "operational"
     if root.request.method == "POST":
         form_type = root.request.form.get("form_type")
 
-        if form_type == "system":
+        if form_type == "journey_financials":
+            method = (root.request.form.get("cost_allocation_method") or "per_gram_uniform").strip()
+            if method not in ("per_gram_uniform", "split_50_50", "custom_split"):
+                method = "per_gram_uniform"
+            existing = root.db.session.get(root.SystemSetting, "cost_allocation_method")
+            if existing:
+                existing.value = method
+            else:
+                root.db.session.add(root.SystemSetting(
+                    key="cost_allocation_method",
+                    value=method,
+                    description="Cost allocation method for THCA vs HTE cost/gram",
+                ))
+
+            pct_raw = (root.request.form.get("cost_allocation_thca_pct") or "").strip()
+            try:
+                pct = float(pct_raw) if pct_raw else 50.0
+            except ValueError:
+                pct = 50.0
+            pct = max(0.0, min(100.0, pct))
+            existing = root.db.session.get(root.SystemSetting, "cost_allocation_thca_pct")
+            if existing:
+                existing.value = str(pct)
+            else:
+                root.db.session.add(root.SystemSetting(
+                    key="cost_allocation_thca_pct",
+                    value=str(pct),
+                    description="Custom cost allocation: percent of total run cost allocated to THCA",
+                ))
+
+            for lot_type, label in MATERIAL_REVENUE_LOT_TYPES:
+                key = material_revenue_setting_key(lot_type)
+                raw = (root.request.form.get(key) or "").strip()
+                try:
+                    price = float(raw) if raw else 0.0
+                except ValueError:
+                    price = 0.0
+                if price < 0:
+                    price = 0.0
+                existing = root.db.session.get(root.SystemSetting, key)
+                if existing:
+                    existing.value = str(price)
+                else:
+                    root.db.session.add(root.SystemSetting(
+                        key=key,
+                        value=str(price),
+                        description=f"Assumed selling price per gram for {label} material genealogy revenue projections",
+                    ))
+            root.db.session.commit()
+            root.flash("Journey financial assumptions updated.", "success")
+
+        elif form_type == "extraction_controls":
+            for state_key, defaults in REACTOR_LIFECYCLE_DEFAULTS.items():
+                enabled_val = "1" if root.request.form.get(f"reactor_state_{state_key}_enabled") else "0"
+                required_val = "1" if root.request.form.get(f"reactor_state_{state_key}_required") else "0"
+                for key, val, desc in (
+                    (
+                        f"reactor_state_{state_key}_enabled",
+                        enabled_val,
+                        f"Show {state_key.replace('_', ' ')} lifecycle action on Floor Ops",
+                    ),
+                    (
+                        f"reactor_state_{state_key}_required",
+                        required_val,
+                        f"Require {state_key.replace('_', ' ')} before later lifecycle transitions",
+                    ),
+                ):
+                    existing = root.db.session.get(root.SystemSetting, key)
+                    if existing:
+                        existing.value = val
+                    else:
+                        root.db.session.add(root.SystemSetting(key=key, value=val, description=desc))
+
+            extraction_default_specs = (
+                ("extraction_default_biomass_blend_milled_pct", 100.0, 0.0, 100.0),
+                ("extraction_default_fill_count", 1.0, 0.0, None),
+                ("extraction_default_fill_total_weight_lbs", None, 0.0, None),
+                ("extraction_default_flush_count", 0.0, 0.0, None),
+                ("extraction_default_flush_total_weight_lbs", None, 0.0, None),
+                ("extraction_default_stringer_basket_count", 0.0, 0.0, None),
+                ("extraction_target_primary_soak_minutes", 30.0, 0.0, None),
+                ("extraction_target_mixer_minutes", 5.0, 0.0, None),
+                ("extraction_target_flush_minutes", 10.0, 0.0, None),
+                ("extraction_target_final_purge_minutes", None, 0.0, None),
+            )
+            for key, fallback, min_value, max_value in extraction_default_specs:
+                raw = (root.request.form.get(key) or "").strip()
+                parsed = fallback
+                if raw:
+                    try:
+                        parsed = float(raw)
+                    except ValueError:
+                        parsed = fallback
+                if parsed is not None:
+                    if parsed < min_value:
+                        parsed = min_value
+                    if max_value is not None and parsed > max_value:
+                        parsed = max_value
+                    if key in {
+                        "extraction_default_fill_count",
+                        "extraction_default_flush_count",
+                        "extraction_default_stringer_basket_count",
+                        "extraction_target_primary_soak_minutes",
+                        "extraction_target_mixer_minutes",
+                        "extraction_target_flush_minutes",
+                        "extraction_target_final_purge_minutes",
+                    }:
+                        parsed = int(parsed)
+                desc = EXTRACTION_RUN_DEFAULTS[key][1]
+                existing = root.db.session.get(root.SystemSetting, key)
+                value = "" if parsed is None else str(parsed)
+                if existing:
+                    existing.value = value
+                else:
+                    root.db.session.add(root.SystemSetting(key=key, value=value, description=desc))
+
+            crc_default = (root.request.form.get("extraction_default_crc_blend") or "").strip()
+            crc_existing = root.db.session.get(root.SystemSetting, "extraction_default_crc_blend")
+            if crc_existing:
+                crc_existing.value = crc_default
+            else:
+                root.db.session.add(
+                    root.SystemSetting(
+                        key="extraction_default_crc_blend",
+                        value=crc_default,
+                        description=EXTRACTION_RUN_DEFAULTS["extraction_default_crc_blend"][1],
+                    )
+                )
+            allowed_timing_policies = {value for value, _label in TIMING_POLICY_OPTIONS}
+            for key, (default_value, description) in TIMING_POLICY_DEFAULTS.items():
+                raw_policy = (root.request.form.get(key) or default_value).strip().lower()
+                policy_value = raw_policy if raw_policy in allowed_timing_policies else default_value
+                existing = root.db.session.get(root.SystemSetting, key)
+                if existing:
+                    existing.value = policy_value
+                else:
+                    root.db.session.add(root.SystemSetting(key=key, value=policy_value, description=description))
+            running_linked_val = "1" if root.request.form.get("reactor_running_requires_linked_run") else "0"
+            show_history_val = "1" if root.request.form.get("reactor_show_state_history") else "0"
+            for key, val, desc in (
+                ("reactor_running_requires_linked_run", running_linked_val, "Require a linked run before Mark Running"),
+                ("reactor_show_state_history", show_history_val, "Show extraction charge lifecycle history on Floor Ops"),
+            ):
+                existing = root.db.session.get(root.SystemSetting, key)
+                if existing:
+                    existing.value = val
+                else:
+                    root.db.session.add(root.SystemSetting(key=key, value=val, description=desc))
+            root.db.session.commit()
+            root.flash("Extraction controls updated.", "success")
+
+        elif form_type == "system":
             settings_map = {
                 "potency_rate": "Potency Rate ($/lb/%pt)",
                 "num_reactors": "Number of Reactors",
@@ -699,6 +933,8 @@ def settings_view(root):
     tz_choice_vals = [c[0] for c in root.APP_DISPLAY_TIMEZONE_CHOICES]
     return root.render_template(
         "settings.html",
+        settings_page=page,
+        settings_page_title=valid_pages[page],
         system_settings=system_settings,
         reactor_lifecycle=reactor_lifecycle,
         app_timezone_choices=root.APP_DISPLAY_TIMEZONE_CHOICES,

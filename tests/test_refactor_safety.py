@@ -523,7 +523,7 @@ def test_settings_route_renders_with_legacy_naive_field_token_expiry():
         token_id = token.id
 
     try:
-        page = _call_view_as_user("/settings", "settings", "admin")
+        page = _call_view_as_user("/settings/field-intake", "settings_field_intake", "admin")
         assert page.status_code == 200
         assert b"Legacy token" in page.data
         assert b"Expired" in page.data
@@ -536,7 +536,7 @@ def test_settings_route_renders_with_legacy_naive_field_token_expiry():
 
 
 def test_settings_route_renders_api_clients_section():
-    page = _call_view_as_user("/settings", "settings", "admin")
+    page = _call_view_as_user("/settings/api-clients", "settings_api_clients", "admin")
     assert page.status_code == 200
     assert b"Internal API Clients" in page.data
     assert b"Create API Client" in page.data
@@ -544,14 +544,14 @@ def test_settings_route_renders_api_clients_section():
 
 
 def test_settings_route_renders_remote_sites_section():
-    page = _call_view_as_user("/settings", "settings", "admin")
+    page = _call_view_as_user("/settings/remote-sites", "settings_remote_sites", "admin")
     assert page.status_code == 200
     assert b"Remote Sites" in page.data
     assert b"Add Remote Site" in page.data
 
 
 def test_settings_route_renders_smart_scales_section():
-    page = _call_view_as_user("/settings", "settings", "admin")
+    page = _call_view_as_user("/settings/scales", "settings_scales", "admin")
     assert page.status_code == 200
     assert b"Smart Scales" in page.data
     assert b"Add Scale Device" in page.data
@@ -559,13 +559,25 @@ def test_settings_route_renders_smart_scales_section():
 
 
 def test_settings_route_renders_journey_revenue_assumptions():
-    page = _call_view_as_user("/settings", "settings", "admin")
+    page = _call_view_as_user("/settings/journey-financials", "settings_journey_financials", "admin")
     assert page.status_code == 200
     assert b"Journey Revenue Assumptions" in page.data
     assert b"material_revenue_price_golddrop" in page.data
     assert b"material_revenue_price_distillate" in page.data
-    assert b"#settings-journey-financials" in page.data
-    assert b"#settings-extraction" in page.data
+    assert b"form_type\" value=\"journey_financials" in page.data
+
+
+def test_settings_slack_page_owns_history_sync_controls():
+    slack_page = _call_view_as_user("/settings/slack", "settings_slack", "admin")
+    assert slack_page.status_code == 200
+    assert b"Slack Integration" in slack_page.data
+    assert b"Sync Slack channel history" in slack_page.data
+    assert b"/settings/slack_sync_channel" in slack_page.data
+
+    maintenance_page = _call_view_as_user("/settings/maintenance", "settings_maintenance", "admin")
+    assert maintenance_page.status_code == 200
+    assert b"Recalculate Run Costs" in maintenance_page.data
+    assert b"Sync Slack channel history" not in maintenance_page.data
 
 
 def test_sidebar_promotes_settings_group_in_requested_order():
@@ -648,7 +660,7 @@ def test_admin_can_create_and_revoke_api_client_from_settings():
         },
     )
     assert create.status_code in (302, 303)
-    assert "#settings-api-clients" in create.headers["Location"]
+    assert create.headers["Location"].endswith("/settings/api-clients")
 
     app = app_module.app
     with app.app_context():
@@ -692,7 +704,7 @@ def test_admin_can_create_and_pull_remote_site_from_settings():
         },
     )
     assert create.status_code in (302, 303)
-    assert "#settings-remote-sites" in create.headers["Location"]
+    assert create.headers["Location"].endswith("/settings/remote-sites")
 
     app = app_module.app
     with app.app_context():
@@ -741,7 +753,7 @@ def test_admin_can_create_scale_device_and_test_capture_from_settings():
         },
     )
     assert create.status_code in (302, 303)
-    assert "#settings-scales" in create.headers["Location"]
+    assert create.headers["Location"].endswith("/settings/scales")
 
     app = app_module.app
     with app.app_context():
@@ -815,7 +827,7 @@ def test_pull_remote_sites_route_redirects_cleanly():
             data={"return_to": "#settings-maintenance"},
         )
     assert page.status_code in (302, 303)
-    assert "#settings-maintenance" in page.headers["Location"]
+    assert page.headers["Location"].endswith("/settings/maintenance")
 
 
 def test_slack_run_mappings_save_json_persists_rules():
