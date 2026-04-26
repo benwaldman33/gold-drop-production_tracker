@@ -847,13 +847,17 @@ The implementation phases are now shipped:
   - open/released projected revenue and financial flag context
   - CSV export for accounting review
 - Deferred todo: `LAUNCH_READINESS_AUDIT_TODO.md` records later enhancements to turn the Launch Readiness blocker register from a manual checklist into a hybrid audit surface with automated checks for genealogy issues, revenue assumptions, backup age, Slack configuration, stale alerts, role/access anomalies, and deployment/restore rehearsal evidence.
+- Internal API client discovery has been consolidated into `services/api_registry.py`:
+  - `/api/v1/capabilities`, the Settings API-client scope picker, and API client scope validation now share the same source of truth
+  - API regression tests compare the registry against registered `/api/v1` Flask routes so future route additions cannot drift out of client discovery silently
+  - `README.md` and `API_REFERENCE.md` were refreshed for scanner, scale, material-cost, and material-genealogy API endpoints
 
 ## Deployment note
 
 Current rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `69144f3`
+- commit: pending API registry consolidation sprint
 
 Production deployment steps:
 
@@ -873,6 +877,8 @@ Production deployment steps:
    - `Settings -> Audit Log` renders at `/audit-log`
    - `Journey -> Finance & Accounting` renders at `/finance/accounting`
    - `Finance & Accounting -> Export CSV` downloads `finance_accounting_report.csv`
+   - `Settings -> API Clients` shows the current Internal API scope list including `read:scanner` and `read:scales`
+   - `/api/v1/capabilities` returns scanner, scales, material-cost, and material-genealogy endpoint entries
    - a non-export user who can view a screen does not see the relevant export button
    - purchase, inventory, supplier, and strain import links only appear for users with import permission
    - `Journey Home` renders at `/journey`

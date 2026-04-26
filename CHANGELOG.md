@@ -3,6 +3,8 @@
 ## 2026-04-25
 
 ### Added
+- Internal API client discovery now uses a shared `services/api_registry.py` source of truth for API scopes and endpoint metadata, with regression coverage that compares the registry against registered `/api/v1` routes.
+- API documentation now reflects the scanner, scale, material-cost, and material-genealogy endpoints that had drifted behind the implemented Internal API surface.
 - `Settings -> Audit Log` now provides a searchable manager/admin surface for audit history with filters for date, user, action, entity type, text/details, and result limit.
 - `Journey -> Finance & Accounting` now provides period revenue, estimated COGS, gross margin, product summaries, channel summaries, projected inventory value, financial flag counts, revenue-event detail, and CSV export.
 - `Settings -> Access Control` now provides a dedicated Super Admin screen for role permission templates and per-user grants/revokes, separate from user creation.

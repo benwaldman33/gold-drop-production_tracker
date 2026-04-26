@@ -1337,8 +1337,9 @@ Use **Settings -> Audit Log** to investigate operating history.
 - Open details to review structured JSON audit payloads such as import source, mobile workflow, revenue edits, correction notes, and access-control updates.
 - This is intended for transparency, troubleshooting, and management review; it does not replace final security hardening.
 
-### Internal API Clients
-Super Admin can manage bearer-token clients for the internal read-only API under **Settings -> Internal API Clients**.
+### API Clients
+Super Admin can manage bearer-token clients for the internal read-only API under **Settings -> API Clients**.
+The available scopes are populated from the same API registry used by `/api/v1/capabilities`, so the client setup screen stays aligned with the implemented Internal API endpoints.
 - Create a named client and choose its read scopes.
 - The raw bearer token is shown only once when the client is created.
 - Clients can be revoked, reactivated, and deleted later from the same table.
@@ -1517,7 +1518,7 @@ Use exports for reporting, reconciliation, or offline analysis. Export buttons o
 - Once downstream processing starts, the receiving record becomes read-only and the main purchase screen shows the locked reason.
 - Delivery photos and receiving metadata are visible from the main purchase review screen.
 - `Settings -> Operational Parameters` can enable or disable the standalone purchasing, receiving, and extraction workflows independently.
-- `Settings -> Internal API Clients` now also shows recent mobile workflow activity for audit visibility.
+- `Settings -> API Clients` now also shows recent mobile workflow activity for audit visibility.
 
 ### Typical receiving flow
 

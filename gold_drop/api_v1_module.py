@@ -24,6 +24,7 @@ from gold_drop.slack import (
 )
 from models import LotScanEvent, MaterialLot, Purchase, PurchaseLot, RemoteSite, Run, RunInput, ScaleDevice, SlackIngestedMessage, Supplier, WeightCapture, db
 from services.api_auth import json_api_error, require_api_scope
+from services.api_registry import api_v1_capabilities_payload
 from services.api_queries import (
     build_inventory_on_hand_query,
     build_lots_query,
@@ -179,80 +180,7 @@ def api_v1_sync_manifest():
 
 @require_api_scope("read:site")
 def api_v1_capabilities():
-    payload = {
-        "authentication": {
-            "scheme": "bearer",
-            "scope_model": "read_only_v1",
-        },
-        "scopes": [
-            "read:site",
-            "read:purchases",
-            "read:journey",
-            "read:lots",
-            "read:runs",
-            "read:inventory",
-            "read:dashboard",
-            "read:aggregation",
-            "read:search",
-            "read:tools",
-            "read:slack_imports",
-            "read:exceptions",
-            "read:scanner",
-            "read:scales",
-            "read:suppliers",
-            "read:strains",
-        ],
-        "endpoints": [
-            {"path": "/api/v1/site", "scope": "read:site", "kind": "identity"},
-            {"path": "/api/v1/capabilities", "scope": "read:site", "kind": "discovery"},
-            {"path": "/api/v1/sync/manifest", "scope": "read:site", "kind": "manifest"},
-            {"path": "/api/v1/aggregation/sites", "scope": "read:aggregation", "kind": "list"},
-            {"path": "/api/v1/aggregation/sites/<site_id>", "scope": "read:aggregation", "kind": "detail"},
-            {"path": "/api/v1/aggregation/summary", "scope": "read:aggregation", "kind": "summary"},
-            {"path": "/api/v1/aggregation/suppliers", "scope": "read:aggregation", "kind": "list"},
-            {"path": "/api/v1/aggregation/strains", "scope": "read:aggregation", "kind": "list"},
-            {"path": "/api/v1/search", "scope": "read:search", "kind": "search"},
-            {"path": "/api/v1/tools/inventory-snapshot", "scope": "read:tools", "kind": "tool"},
-            {"path": "/api/v1/tools/open-lots", "scope": "read:tools", "kind": "tool"},
-            {"path": "/api/v1/tools/journey-resolve", "scope": "read:tools", "kind": "tool"},
-            {"path": "/api/v1/tools/reconciliation-overview", "scope": "read:tools", "kind": "tool"},
-            {"path": "/api/v1/summary/dashboard", "scope": "read:dashboard", "kind": "summary"},
-            {"path": "/api/v1/summary/material-costs", "scope": "read:inventory", "kind": "summary"},
-            {"path": "/api/v1/summary/material-genealogy", "scope": "read:inventory", "kind": "summary"},
-            {"path": "/api/v1/departments", "scope": "read:dashboard", "kind": "list"},
-            {"path": "/api/v1/departments/<slug>", "scope": "read:dashboard", "kind": "detail"},
-            {"path": "/api/v1/purchases", "scope": "read:purchases", "kind": "list"},
-            {"path": "/api/v1/purchases/<purchase_id>", "scope": "read:purchases", "kind": "detail"},
-            {"path": "/api/v1/purchases/<purchase_id>/journey", "scope": "read:journey", "kind": "detail"},
-            {"path": "/api/v1/lots", "scope": "read:lots", "kind": "list"},
-            {"path": "/api/v1/lots/<lot_id>", "scope": "read:lots", "kind": "detail"},
-            {"path": "/api/v1/lots/<lot_id>/journey", "scope": "read:journey", "kind": "detail"},
-            {"path": "/api/v1/material-lots/<lot_id>", "scope": "read:journey", "kind": "detail"},
-            {"path": "/api/v1/material-lots/<lot_id>/journey", "scope": "read:journey", "kind": "detail"},
-            {"path": "/api/v1/material-lots/<lot_id>/ancestry", "scope": "read:journey", "kind": "detail"},
-            {"path": "/api/v1/material-lots/<lot_id>/descendants", "scope": "read:journey", "kind": "detail"},
-            {"path": "/api/v1/inventory/on-hand", "scope": "read:inventory", "kind": "list"},
-            {"path": "/api/v1/summary/inventory", "scope": "read:inventory", "kind": "summary"},
-            {"path": "/api/v1/runs", "scope": "read:runs", "kind": "list"},
-            {"path": "/api/v1/runs/<run_id>", "scope": "read:runs", "kind": "detail"},
-            {"path": "/api/v1/runs/<run_id>/journey", "scope": "read:journey", "kind": "detail"},
-            {"path": "/api/v1/suppliers", "scope": "read:suppliers", "kind": "list"},
-            {"path": "/api/v1/suppliers/<supplier_id>", "scope": "read:suppliers", "kind": "detail"},
-            {"path": "/api/v1/strains", "scope": "read:strains", "kind": "list"},
-            {"path": "/api/v1/slack-imports", "scope": "read:slack_imports", "kind": "list"},
-            {"path": "/api/v1/slack-imports/<msg_id>", "scope": "read:slack_imports", "kind": "detail"},
-            {"path": "/api/v1/summary/slack-imports", "scope": "read:slack_imports", "kind": "summary"},
-            {"path": "/api/v1/exceptions", "scope": "read:exceptions", "kind": "list"},
-            {"path": "/api/v1/summary/exceptions", "scope": "read:exceptions", "kind": "summary"},
-            {"path": "/api/v1/scale-devices", "scope": "read:scales", "kind": "list"},
-            {"path": "/api/v1/weight-captures", "scope": "read:scales", "kind": "list"},
-            {"path": "/api/v1/summary/scales", "scope": "read:scales", "kind": "summary"},
-            {"path": "/api/v1/scan-events", "scope": "read:scanner", "kind": "list"},
-            {"path": "/api/v1/lots/<lot_id>/scans", "scope": "read:scanner", "kind": "list"},
-            {"path": "/api/v1/summary/scanner", "scope": "read:scanner", "kind": "summary"},
-        ],
-    }
-    return jsonify(envelope(payload))
+    return jsonify(envelope(api_v1_capabilities_payload()))
 
 
 @require_api_scope("read:aggregation")

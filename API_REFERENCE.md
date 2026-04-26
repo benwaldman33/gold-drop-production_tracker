@@ -152,7 +152,7 @@ Authorization: Bearer <token>
 Tokens are managed as internal API clients.
 
 Token creation options:
-- `Settings -> Internal API Clients`
+- `Settings -> API Clients`
 - CLI script:
 
 ```bash
@@ -251,6 +251,10 @@ Purpose:
 - Machine-readable discovery of supported scopes and endpoints.
 
 Recommended first call for new integrations.
+
+Implementation note:
+- The discovery payload, Settings API-client scope picker, and API coverage tests share the endpoint registry in `services/api_registry.py`.
+- When a new `/api/v1` route is added, it must be added to that registry or the API coverage test will fail.
 
 ### `GET /api/v1/sync/manifest`
 Scope:
@@ -367,6 +371,42 @@ Returns:
 - downstream runs
 - exception signals
 
+### Material Lots and Genealogy
+
+#### `GET /api/v1/material-lots/<lot_id>`
+Scope:
+- `read:journey`
+
+Purpose:
+- Material-lot detail for biomass and derivative output lots.
+
+#### `GET /api/v1/material-lots/<lot_id>/journey`
+Scope:
+- `read:journey`
+
+Purpose:
+- Full material journey payload for one material lot.
+
+Returns:
+- material lot detail
+- upstream ancestry
+- downstream descendants
+- financial and reconciliation context where available
+
+#### `GET /api/v1/material-lots/<lot_id>/ancestry`
+Scope:
+- `read:journey`
+
+Purpose:
+- Trace source materials that contributed to a material lot.
+
+#### `GET /api/v1/material-lots/<lot_id>/descendants`
+Scope:
+- `read:journey`
+
+Purpose:
+- Trace derivative materials produced from a source material lot.
+
 ### Runs
 
 #### `GET /api/v1/runs`
@@ -438,6 +478,20 @@ Includes:
 - low remaining count
 - missing tracking count
 - approval required count
+
+#### `GET /api/v1/summary/material-costs`
+Scope:
+- `read:inventory`
+
+Purpose:
+- Manager-facing material cost summary backed by genealogy cost basis.
+
+#### `GET /api/v1/summary/material-genealogy`
+Scope:
+- `read:inventory`
+
+Purpose:
+- Material genealogy summary for high-level audit and reconciliation review.
 
 ## Supplier and Strain Analytics
 
