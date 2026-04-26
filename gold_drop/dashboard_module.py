@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+import io
 import json
 
 from gold_drop.purchases import budget_week_purchase_metrics, purchase_week_start
@@ -884,7 +886,133 @@ def journey_home_view(root):
 def material_genealogy_report_view(root):
     process_material_issue_reminders(root)
     payload = root._build_material_reporting_payload(root)
+    fmt = (root.request.args.get("format") or "html").strip().lower()
+    if fmt == "csv":
+        return _material_genealogy_financial_csv_response(root, payload)
+    if fmt not in {"", "html"}:
+        return root.jsonify({"error": "Unsupported export format", "supported_formats": ["csv", "html"]}), 400
     return root.render_template("material_genealogy_report.html", report=payload)
+
+
+def _material_genealogy_financial_csv_response(root, payload: dict):
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([
+        "section",
+        "record_type",
+        "identifier",
+        "lot_type",
+        "status",
+        "quantity",
+        "unit",
+        "cost_basis",
+        "projected_revenue",
+        "actual_revenue",
+        "revenue_variance",
+        "projected_margin",
+        "actual_margin",
+        "financial_flags",
+        "viewer_url",
+    ])
+    for row in payload.get("product_financial_rows") or []:
+        writer.writerow([
+            "product_summary",
+            "product",
+            row.get("lot_type"),
+            row.get("lot_type"),
+            "all",
+            row.get("quantity_total") or 0,
+            row.get("unit") or "g",
+            row.get("cost_basis_total") or 0,
+            row.get("projected_revenue_total") or 0,
+            row.get("actual_revenue_total") or 0,
+            row.get("revenue_variance_total") or 0,
+            row.get("projected_margin_total") or 0,
+            row.get("actual_margin_total") or 0,
+            row.get("completeness_flag_count") or 0,
+            "",
+        ])
+    for status, groups in (("open", payload.get("open_inventory_groups") or []), ("released", payload.get("released_inventory_groups") or [])):
+        for row in groups:
+            writer.writerow([
+                "inventory_by_type",
+                "lot_type_group",
+                row.get("lot_type"),
+                row.get("lot_type"),
+                status,
+                row.get("quantity_total") or 0,
+                row.get("unit") or "g",
+                row.get("cost_basis_total") or 0,
+                row.get("projected_revenue_total") or 0,
+                row.get("actual_revenue_total") or 0,
+                row.get("revenue_variance_total") or 0,
+                row.get("projected_margin_total") or 0,
+                row.get("actual_margin_total") or 0,
+                row.get("completeness_flag_count") or 0,
+                "",
+            ])
+    for row in payload.get("source_yield_rows") or []:
+        source = row.get("source_lot") or {}
+        writer.writerow([
+            "source_to_derivative",
+            "source_lot",
+            source.get("tracking_id") or source.get("material_lot_id"),
+            "biomass",
+            source.get("inventory_status") or "",
+            row.get("source_quantity") or 0,
+            source.get("unit") or "lb",
+            row.get("descendant_cost_basis_total") or 0,
+            row.get("descendant_projected_revenue_total") or 0,
+            row.get("descendant_actual_revenue_total") or 0,
+            row.get("descendant_revenue_variance_total") or 0,
+            row.get("descendant_projected_margin_total") or 0,
+            row.get("descendant_actual_margin_total") or 0,
+            row.get("completeness_flag_count") or 0,
+            "",
+        ])
+    for row in payload.get("run_yield_rows") or []:
+        writer.writerow([
+            "run_yield",
+            "run",
+            row.get("run_id"),
+            "mixed",
+            "",
+            row.get("derivative_lot_count") or 0,
+            "lots",
+            row.get("derivative_cost_basis_total") or 0,
+            row.get("projected_revenue_total") or 0,
+            row.get("actual_revenue_total") or 0,
+            row.get("revenue_variance_total") or 0,
+            row.get("projected_margin_total") or 0,
+            row.get("actual_margin_total") or 0,
+            row.get("completeness_flag_count") or 0,
+            row.get("viewer_url") or "",
+        ])
+    for row in payload.get("financial_completeness_rows") or []:
+        material_lot = row.get("material_lot") or {}
+        flag_labels = "; ".join(flag.get("label") or flag.get("code") or "" for flag in row.get("flags") or [])
+        writer.writerow([
+            "financial_flags",
+            "material_lot",
+            material_lot.get("tracking_id") or material_lot.get("material_lot_id"),
+            material_lot.get("lot_type") or "",
+            material_lot.get("inventory_status") or "",
+            material_lot.get("quantity") or 0,
+            material_lot.get("unit") or "g",
+            material_lot.get("cost_basis_total") or 0,
+            material_lot.get("projected_revenue_total") or "",
+            "",
+            "",
+            "",
+            "",
+            flag_labels,
+            row.get("viewer_url") or "",
+        ])
+    return root.Response(
+        buf.getvalue(),
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=material_genealogy_financial_report.csv"},
+    )
 
 
 def material_genealogy_viewer_view(root):

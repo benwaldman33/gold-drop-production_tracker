@@ -20,6 +20,8 @@
   - Journey Home now flags actuals below projected revenue in an `Actuals Below Projection` variance review table
 - Material revenue events can now be corrected or voided from the Material Journey Viewer without deleting audit history.
 - Journey now surfaces financial completeness flags for missing cost basis, missing revenue assumptions, missing actual revenue on released lots, and open genealogy issues that may compromise financial reporting.
+- Material Genealogy Report now has an `Export Financial CSV` action for product summaries, inventory groups, source-to-derivative rows, run yield rows, and financial completeness flags.
+- Journey Home and Genealogy Report now include product-type financial summaries with quantity, cost basis, projected revenue, actual revenue, variance, actual margin, and flag counts.
 - The grouped left sidebar is now collapsible by section, so users can expand only the workflow area they are using and keep other submenu items out of the way.
 - `Departments` has been demoted inside `More` and relabeled `Scorecards (beta)` to reflect that it is not currently a primary operating workflow.
 - The UX role/workflow restructuring phases are now implemented in the main app:
@@ -168,6 +170,7 @@
 - Added staged hold regression coverage for `HP Base Oil Hold` and `Distillate Hold`, including gating release until the hold reaches release-ready state.
 - Added regression coverage for material revenue-event capture, Journey Viewer revenue actuals, Genealogy Report actual revenue, and projected-vs-actual variance display.
 - Added regression coverage for revenue-event update/void controls and financial completeness flag rendering.
+- Added regression coverage for the material genealogy financial CSV export and product financial summary surfaces.
 
 ## 2026-04-18
 

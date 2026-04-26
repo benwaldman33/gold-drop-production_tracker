@@ -816,13 +816,17 @@ The implementation phases are now shipped:
   - editors can update revenue events when sale details are corrected
   - editors can void revenue events with a required reason while preserving void history
   - Journey surfaces financial completeness flags for missing cost basis, missing revenue assumptions, missing actual revenue on released lots, and open genealogy issues
+- Journey financial reporting now has export and product-summary surfaces:
+  - Material Genealogy Report includes `Export Financial CSV`
+  - CSV export includes product summaries, inventory groups, source-to-derivative rows, run yield rows, and financial completeness flags
+  - Journey Home and Genealogy Report show product-type financial summaries with cost basis, projected revenue, actual revenue, variance, margin, and flag counts
 
 ## Deployment note
 
 Current rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `9659efa`
+- commit: `TBD`
 
 Production deployment steps:
 
@@ -832,7 +836,7 @@ Production deployment steps:
    - `git pull --ff-only origin main`
    - `git merge --no-ff origin/Claude_Consolidation -m "Merge Claude_Consolidation into main"`
    - `git push origin main`
-2. restart the backend so revenue-event correction/void controls and financial completeness flags are live
+2. restart the backend so financial CSV export and product financial cards are live
 3. verify in production:
    - the left sidebar is grouped into `Purchasing`, `Inventory`, `Extraction`, `Downstream`, `Journey`, `Alerts`, `Settings`, and `More`
    - `Alerts Home` renders at `/alerts`
@@ -841,6 +845,8 @@ Production deployment steps:
    - an existing revenue event can be updated or voided from that lot page
    - `Genealogy Report` shows `Actual Revenue` and `Variance`
    - `Journey Home` and `Genealogy Report` show `Financial Flags`
+   - `Genealogy Report -> Export Financial CSV` downloads a CSV file
+   - `Journey Home` shows `Product Financial Cards`
    - `Journey Home` shows `Projected Vs Actual Revenue` and flags `Actuals Below Projection` when applicable
 
 ## Local note
