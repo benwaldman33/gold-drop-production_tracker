@@ -72,3 +72,5 @@ Use the in-app register to classify each remaining item as:
 - `Pilot blocker`: must be resolved before a controlled pilot.
 - `Post-launch`: useful but not required to start.
 - `Wishlist`: polish or future expansion.
+
+Deferred future work: `LAUNCH_READINESS_AUDIT_TODO.md` tracks the later hybrid audit-engine enhancements for automated readiness checks. The current blocker register remains a manual launch checklist with audit logging for updates.

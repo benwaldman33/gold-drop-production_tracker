@@ -846,6 +846,7 @@ The implementation phases are now shipped:
   - product and channel summaries
   - open/released projected revenue and financial flag context
   - CSV export for accounting review
+- Deferred todo: `LAUNCH_READINESS_AUDIT_TODO.md` records later enhancements to turn the Launch Readiness blocker register from a manual checklist into a hybrid audit surface with automated checks for genealogy issues, revenue assumptions, backup age, Slack configuration, stale alerts, role/access anomalies, and deployment/restore rehearsal evidence.
 
 ## Deployment note
 
