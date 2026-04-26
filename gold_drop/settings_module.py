@@ -19,6 +19,7 @@ from services.field_submissions import (
     submission_total_weight,
 )
 from services.api_auth import generate_api_token, hash_api_token
+from services.api_registry import API_V1_SCOPES
 from services.extraction_charge import REACTOR_LIFECYCLE_DEFAULTS, reactor_lifecycle_settings
 from services.extraction_run import EXTRACTION_RUN_DEFAULTS, TIMING_POLICY_OPTIONS, TIMING_POLICY_DEFAULTS
 from services.material_genealogy import MATERIAL_REVENUE_LOT_TYPES, material_revenue_setting_key
@@ -349,24 +350,7 @@ def _token_share_texts(link: str) -> tuple[str, str, str]:
 
 
 def _parse_api_client_scopes(form) -> list[str]:
-    allowed_scopes = {
-        "read:site",
-        "read:purchases",
-        "read:journey",
-        "read:lots",
-        "read:runs",
-        "read:inventory",
-        "read:dashboard",
-        "read:aggregation",
-        "read:search",
-        "read:tools",
-        "read:slack_imports",
-        "read:exceptions",
-        "read:scanner",
-        "read:scales",
-        "read:suppliers",
-        "read:strains",
-    }
+    allowed_scopes = set(API_V1_SCOPES)
     selected = [scope.strip() for scope in form.getlist("scopes") if scope.strip() in allowed_scopes]
     return sorted(set(selected))
 
@@ -1042,6 +1026,7 @@ def settings_view(root, page="operational"):
         last_api_client_token=last_api_client_token,
         last_api_client_name=last_api_client_name,
         last_api_client_scopes=last_api_client_scopes,
+        api_v1_scopes=API_V1_SCOPES,
         timing_policy_options=TIMING_POLICY_OPTIONS,
         material_revenue_lot_types=MATERIAL_REVENUE_LOT_TYPES,
     )

@@ -5,6 +5,7 @@ from datetime import date, datetime, timezone
 import app as app_module
 from models import ApiClient, ApiClientRequestLog, LotScanEvent, MaterialLot, MaterialReconciliationIssue, MaterialTransformation, Purchase, PurchaseLot, RemoteSite, Run, RunInput, SlackIngestedMessage, Supplier, SystemSetting, db, gen_uuid
 from services.api_auth import hash_api_token
+from services.api_registry import API_V1_ENDPOINTS, API_V1_SCOPES
 from services.material_genealogy import ensure_biomass_material_lot, ensure_extraction_output_genealogy
 
 
@@ -42,6 +43,8 @@ def test_api_v1_capabilities_requires_site_scope_and_returns_discovery_payload()
             assert response.status_code == 200
             payload = response.get_json()["data"]
             assert payload["authentication"]["scheme"] == "bearer"
+            assert payload["scopes"] == API_V1_SCOPES
+            assert payload["endpoints"] == API_V1_ENDPOINTS
             assert "read:dashboard" in payload["scopes"]
             assert "read:aggregation" in payload["scopes"]
             assert "read:scanner" in payload["scopes"]
@@ -64,6 +67,19 @@ def test_api_v1_capabilities_requires_site_scope_and_returns_discovery_payload()
                 if api_client:
                     db.session.delete(api_client)
             db.session.commit()
+
+
+def test_api_v1_registry_covers_registered_routes():
+    app = app_module.app
+    with app.app_context():
+        registered_paths = {
+            rule.rule
+            for rule in app.url_map.iter_rules()
+            if rule.rule.startswith("/api/v1/")
+        }
+    registry_paths = {endpoint["path"] for endpoint in API_V1_ENDPOINTS}
+    assert registered_paths == registry_paths
+    assert sorted({endpoint["scope"] for endpoint in API_V1_ENDPOINTS}) == sorted(API_V1_SCOPES)
 
 
 def test_api_v1_dashboard_summary_requires_scope_and_returns_payload():

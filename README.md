@@ -441,6 +441,8 @@ Current endpoints:
 - `/api/v1/tools/journey-resolve`
 - `/api/v1/tools/reconciliation-overview`
 - `/api/v1/summary/dashboard`
+- `/api/v1/summary/material-costs`
+- `/api/v1/summary/material-genealogy`
 - `/api/v1/departments`
 - `/api/v1/departments/<slug>`
 - `/api/v1/purchases`
@@ -462,9 +464,15 @@ Current endpoints:
 - `/api/v1/slack-imports`
 - `/api/v1/slack-imports/<msg_id>`
 - `/api/v1/exceptions`
+- `/api/v1/scale-devices`
+- `/api/v1/weight-captures`
+- `/api/v1/scan-events`
+- `/api/v1/lots/<lot_id>/scans`
 - `/api/v1/summary/inventory`
 - `/api/v1/summary/slack-imports`
 - `/api/v1/summary/exceptions`
+- `/api/v1/summary/scanner`
+- `/api/v1/summary/scales`
 - `/api/v1/inventory/on-hand`
 
 Authentication:
@@ -482,7 +490,7 @@ python scripts/create_api_client.py --name "internal-bi" --scopes read:site,read
 
 Super Admins can also create, revoke, reactivate, and delete internal API clients directly in:
 
-- `Settings -> Internal API Clients`
+- `Settings -> API Clients`
 - `Settings -> Remote Sites`
 
 New bearer tokens are shown only once at creation time.
@@ -500,8 +508,12 @@ Useful read scopes now include:
 - `read:tools`
 - `read:slack_imports`
 - `read:exceptions`
+- `read:scanner`
+- `read:scales`
 - `read:suppliers`
 - `read:strains`
+
+API discovery and the Settings API-client scope picker now use the shared registry in `services/api_registry.py`. Regression tests compare that registry against the Flask route map so new `/api/v1` routes cannot be added silently without client-discovery coverage.
 
 Example request:
 
