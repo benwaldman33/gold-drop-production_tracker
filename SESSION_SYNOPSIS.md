@@ -806,30 +806,36 @@ The implementation phases are now shipped:
 - Journey now includes assumption-backed financial projections: Settings stores per-output expected selling prices, and Journey/Genealogy Report show projected revenue and gross margin for derivative inventory, source-lot descendants, and run yield/cost rows
 - Settings is now a dedicated Super Admin-only sidebar group with section links into operational parameters, Journey financials, extraction controls, Slack/notifications, users/access, field intake, API clients, scales, remote sites, and maintenance
 - Settings section links now open independent `/settings/...` subpages instead of scrolling one monolithic page, and Slack channel history sync has moved from Maintenance into `Settings -> Slack & Notifications`
+- Journey Home now includes a manager dashboard layer for blocked/stale work, critical issues, aging derivative lots, low-margin runs, inventory value leaders, and 7/30 day projected revenue and margin based on recent genealogy-backed runs
+- Journey now includes the first actual-revenue layer:
+  - material lots can store revenue events with sold quantity, unit price, buyer/channel, reference, and notes
+  - Material Journey Viewer lot pages include `Revenue Actuals` and `Record Revenue`
+  - Journey Home and Genealogy Report roll actual revenue, actual margin, and projected-vs-actual variance into open/released inventory, source-lot descendant, and run-level views
+  - Journey Home flags actuals below projection for manager review
 
 ## Deployment note
 
 Current rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `56b7d88`
+- commit: `f488949`
 
 Production deployment steps:
 
 1. update the production checkout:
    - `git fetch origin`
-   - `git checkout Claude_Consolidation`
-   - `git pull --ff-only origin Claude_Consolidation`
-2. restart the backend so the new grouped navigation, role-home routing, alerts/journey hubs, and mobile purchase-review handoff URLs are live
-3. sync the standalone purchasing app static files
-4. sync the standalone receiving app static files
-5. verify in production:
+   - `git checkout main`
+   - `git pull --ff-only origin main`
+   - `git merge --no-ff origin/Claude_Consolidation -m "Merge Claude_Consolidation into main"`
+   - `git push origin main`
+2. restart the backend so the new material revenue-event schema, Journey Viewer revenue form, and actual-vs-projected reporting are live
+3. verify in production:
    - the left sidebar is grouped into `Purchasing`, `Inventory`, `Extraction`, `Downstream`, `Journey`, `Alerts`, `Settings`, and `More`
    - `Alerts Home` renders at `/alerts`
    - `Journey Home` renders at `/journey`
-   - `Role Home` sends users into a relevant workflow area
-   - the standalone purchasing app shows `Open Purchase Review` on an opportunity detail
-   - the standalone receiving app shows `Open Purchase Review` on a receiving detail
+   - a lot page in `Material Journey Viewer` shows `Revenue Actuals` and `Record Revenue`
+   - `Genealogy Report` shows `Actual Revenue` and `Variance`
+   - `Journey Home` shows `Projected Vs Actual Revenue` and flags `Actuals Below Projection` when applicable
 
 ## Local note
 

@@ -41,6 +41,10 @@
     <div class="value">${{ "{:,.0f}".format(report.summary.released_projected_revenue_total or 0) }}</div>
   </div>
   <div class="summary-stat">
+    <div class="label">Actual Revenue</div>
+    <div class="value">${{ "{:,.0f}".format((report.summary.open_actual_revenue_total or 0) + (report.summary.released_actual_revenue_total or 0)) }}</div>
+  </div>
+  <div class="summary-stat">
     <div class="label">Open Issues</div>
     <div class="value">{{ report.summary.open_issue_count }}</div>
   </div>
@@ -65,6 +69,7 @@
           <th>Cost Basis</th>
           <th>Assumed $/g</th>
           <th>Projected Revenue</th>
+          <th>Actual Revenue</th>
           <th>Projected Margin</th>
         </tr>
       </thead>
@@ -77,6 +82,7 @@
           <td>${{ "{:,.2f}".format(row.cost_basis_total or 0) }}</td>
           <td>${{ "{:,.2f}".format(row.assumed_price_per_unit or 0) }}</td>
           <td>${{ "{:,.2f}".format(row.projected_revenue_total or 0) }}</td>
+          <td>${{ "{:,.2f}".format(row.actual_revenue_total or 0) }}</td>
           <td>${{ "{:,.2f}".format(row.projected_margin_total or 0) }}</td>
         </tr>
         {% endfor %}
@@ -103,6 +109,7 @@
           <th>Cost Basis</th>
           <th>Assumed $/g</th>
           <th>Projected Revenue</th>
+          <th>Actual Revenue</th>
           <th>Projected Margin</th>
         </tr>
       </thead>
@@ -115,6 +122,7 @@
           <td>${{ "{:,.2f}".format(row.cost_basis_total or 0) }}</td>
           <td>${{ "{:,.2f}".format(row.assumed_price_per_unit or 0) }}</td>
           <td>${{ "{:,.2f}".format(row.projected_revenue_total or 0) }}</td>
+          <td>${{ "{:,.2f}".format(row.actual_revenue_total or 0) }}</td>
           <td>${{ "{:,.2f}".format(row.projected_margin_total or 0) }}</td>
         </tr>
         {% endfor %}
@@ -146,6 +154,7 @@
           {% endfor %}
           <div style="margin-top:6px;">cost basis: ${{ "{:,.2f}".format(row.descendant_cost_basis_total or 0) }}</div>
           <div>projected revenue: ${{ "{:,.2f}".format(row.descendant_projected_revenue_total or 0) }}</div>
+          <div>actual revenue: ${{ "{:,.2f}".format(row.descendant_actual_revenue_total or 0) }}</div>
           <div>projected margin: ${{ "{:,.2f}".format(row.descendant_projected_margin_total or 0) }}</div>
         </div>
       </div>
@@ -177,6 +186,8 @@
           <th>Derivative Lots</th>
           <th>Derivative Cost Basis</th>
           <th>Projected Revenue</th>
+          <th>Actual Revenue</th>
+          <th>Variance</th>
           <th>Projected Margin</th>
           <th>Corrections</th>
           <th>Open Issues</th>
@@ -191,6 +202,8 @@
           <td>{{ row.derivative_lot_count }}</td>
           <td>${{ "{:,.2f}".format(row.derivative_cost_basis_total or 0) }}</td>
           <td>${{ "{:,.2f}".format(row.projected_revenue_total or 0) }}</td>
+          <td>${{ "{:,.2f}".format(row.actual_revenue_total or 0) }}</td>
+          <td>${{ "{:,.2f}".format(row.revenue_variance_total or 0) }}</td>
           <td>${{ "{:,.2f}".format(row.projected_margin_total or 0) }}</td>
           <td>{{ row.correction_count }}</td>
           <td>{{ row.issue_count }}</td>

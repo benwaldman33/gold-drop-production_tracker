@@ -218,6 +218,82 @@
 
       <div class="card">
         <div class="card-header">
+          <h3>Revenue Actuals</h3>
+          <span class="text-sm cell-muted">Record realized revenue against this material lot and compare it to Journey projections.</span>
+        </div>
+        {% set revenue = lot_view.detail.revenue_summary %}
+        <div class="journey-summary-grid" style="margin-bottom:16px;">
+          <div class="journey-stat">
+            <div class="label">Projected Revenue</div>
+            <div class="value">${{ "{:,.2f}".format(revenue.projected_revenue_total or 0) }}</div>
+          </div>
+          <div class="journey-stat">
+            <div class="label">Actual Revenue</div>
+            <div class="value">${{ "{:,.2f}".format(revenue.actual_revenue_total or 0) }}</div>
+          </div>
+          <div class="journey-stat">
+            <div class="label">Revenue Variance</div>
+            <div class="value">${{ "{:,.2f}".format(revenue.revenue_variance_total or 0) }}</div>
+          </div>
+          <div class="journey-stat">
+            <div class="label">Actual Margin</div>
+            <div class="value">${{ "{:,.2f}".format(revenue.actual_margin_total or 0) }}</div>
+          </div>
+        </div>
+        <form method="POST" action="{{ url_for('material_lot_revenue_event_create', lot_id=material.material_lot_id) }}" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;align-items:end;margin-bottom:16px;">
+          <input type="hidden" name="return_to" value="{{ url_for('material_genealogy_viewer', mode='lot', material_lot_id=material.material_lot_id) }}">
+          <div class="form-group" style="margin:0;">
+            <label>Date</label>
+            <input type="date" name="event_date">
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label>Quantity ({{ material.unit }})</label>
+            <input type="number" name="quantity" step="0.01" min="0" max="{{ material.quantity or 0 }}" required>
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label>Unit Price</label>
+            <input type="number" name="unit_price" step="0.01" min="0" required>
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label>Buyer / Channel</label>
+            <input type="text" name="buyer_channel" placeholder="Optional">
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label>Reference</label>
+            <input type="text" name="reference" placeholder="Invoice / order #">
+          </div>
+          <div class="form-group" style="grid-column:span 2;margin:0;">
+            <label>Notes</label>
+            <input type="text" name="notes" placeholder="Optional context">
+          </div>
+          <button type="submit" class="btn btn-primary">Record Revenue</button>
+        </form>
+        {% if lot_view.detail.revenue_events %}
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr><th>Date</th><th>Quantity</th><th>Unit Price</th><th>Total Revenue</th><th>Buyer / Reference</th></tr>
+            </thead>
+            <tbody>
+              {% for event in lot_view.detail.revenue_events %}
+              <tr>
+                <td>{{ event.event_date or "—" }}</td>
+                <td>{{ "{:,.2f}".format(event.quantity or 0) }} {{ event.unit }}</td>
+                <td>${{ "{:,.2f}".format(event.unit_price or 0) }}</td>
+                <td>${{ "{:,.2f}".format(event.total_revenue or 0) }}</td>
+                <td>{{ event.buyer_channel or "—" }}{% if event.reference %}<div class="text-sm cell-muted">{{ event.reference }}</div>{% endif %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="journey-section-note">No actual revenue events have been recorded for this lot yet.</div>
+        {% endif %}
+      </div>
+
+      <div class="card">
+        <div class="card-header">
           <h3>Reconciliation And Corrections</h3>
           <span class="text-sm cell-muted">Open genealogy issues and any correction-forward audit history for this lot.</span>
         </div>
