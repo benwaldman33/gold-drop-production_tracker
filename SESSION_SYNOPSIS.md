@@ -878,7 +878,7 @@ The implementation phases are now shipped:
 Current rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `78796f9`
+- commit: `a828b31`
 
 Production deployment steps:
 
@@ -910,6 +910,8 @@ Production deployment steps:
    - `Genealogy Report -> Export Financial CSV` downloads a CSV file
    - `Journey Home` shows `Product Financial Cards`
    - `Journey Home` shows `Projected Vs Actual Revenue` and flags `Actuals Below Projection` when applicable
+   - a purchase journey shows `Barcode Only` beside `Print Labels`
+   - `Barcode Only` opens a compact barcode-only print sheet without the QR/detail label page
 
 ## Local note
 
