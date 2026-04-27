@@ -867,6 +867,11 @@ The implementation phases are now shipped:
   - the graphic maps supplier/source biomass through extraction or transformation into derivative product lots
   - it is driven by the existing genealogy payloads and sits above the detailed timeline, ancestry/descendant chains, revenue actuals, correction history, and reconciliation panels
   - the graphic degrades to empty-state cards when source biomass or derivative outputs are not linked yet
+- Barcode-only lot label printing is now available:
+  - purchase-level label routes support compact barcode-only sheets with `mode=barcode`
+  - single-lot label routes support the same compact mode
+  - Purchase Journey, Purchases, Inventory, and scanned-lot pages expose explicit `Barcode`, `Barcodes`, or `Barcode Only` actions for hardware label printers
+  - the existing full lot label with lot details, QR code, and scan path remains unchanged
 
 ## Deployment note
 

@@ -13,7 +13,10 @@
       <div class="text-mono floor-scan-id">{{ lot.tracking_id or lot.id[:8] }}</div>
       <div class="floor-scan-subtitle">{{ lot.strain_name }} &middot; {{ lot.supplier_name }} &middot; {{ purchase.batch_id or purchase.id[:8] }}</div>
     </div>
-    <a href="{{ url_for('lot_label', lot_id=lot.id) }}" class="btn btn-secondary">Print Label</a>
+    <div class="btn-group">
+      <a href="{{ url_for('lot_label', lot_id=lot.id) }}" class="btn btn-secondary">Print Label</a>
+      <a href="{{ url_for('lot_label', lot_id=lot.id, mode='barcode') }}" class="btn btn-secondary">Barcode Only</a>
+    </div>
   </div>
 
   <div class="floor-scan-metrics">

@@ -3,6 +3,7 @@
 ## 2026-04-25
 
 ### Added
+- Purchase, Inventory, Journey, and scanned-lot surfaces now expose compact barcode-only label printing alongside the existing full lot label sheet, so a label printer can print just the Code 39 barcode/tracking payload without the QR code and lot-detail page.
 - `Material Journey Viewer` now includes a live Journey Graphic in both `By Lot` and `By Run` modes, visually mapping supplier/source biomass through extraction or transformation into derivative product lots before the detailed timeline, revenue, correction, and reconciliation panels.
 - Internal API client discovery now uses a shared `services/api_registry.py` source of truth for API scopes and endpoint metadata, with regression coverage that compares the registry against registered `/api/v1` routes.
 - API documentation now reflects the scanner, scale, material-cost, and material-genealogy endpoints that had drifted behind the implemented Internal API surface.

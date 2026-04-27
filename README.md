@@ -192,7 +192,7 @@ Tip: to quickly find a `purchase_id`, open DevTools on the Purchases page and co
 
 - Purchases and Inventory now emphasize allocation state, exceptions, remaining pounds, tracking readiness, and next actions.
 - Slack imports now behaves more like an inbox, with triage buckets that distinguish auto-ready rows from rows needing confirmation, manual matching, or exception handling.
-- Printable lot label pages now render both a scannable barcode and QR code and route into `/scan/lot/<tracking_id>` for direct floor execution.
+- Printable lot label pages now render both a scannable barcode and QR code and route into `/scan/lot/<tracking_id>` for direct floor execution; compact barcode-only sheets are also available for label printers.
 - The scanned-lot page now records richer operator activity context, including guided run-start mode, planned partial weight, movement action, and location/testing confirmations.
 - Tablet/mobile operators can also open `/scan` to use the browser camera and route directly into `/scan/lot/<tracking_id>` when barcode detection is supported.
 - The data model now includes `ScaleDevice` and `WeightCapture` for future smart-scale integration work.

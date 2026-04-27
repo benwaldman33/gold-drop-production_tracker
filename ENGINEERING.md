@@ -44,6 +44,7 @@ This is a review checklist, not a rule to make no-op edits. Update only the docu
   - purchase routes now include lot splitting from the main purchase form (`POST /lots/<lot_id>/split`) for confirmed inventory adjustments
   - purchase routes now also include a dedicated lot editor (`GET|POST /lots/<lot_id>/edit`) so Inventory can edit lot-level fields without reopening the purchase form and reprocessing purchase-level status logic
   - single-lot label routes preserve caller context through `return_to`, so Inventory and Purchase surfaces can send operators back to the right page after printing
+  - label routes accept `mode=barcode` / `barcode_only=1` to render compact barcode-only sheets for label printers while reusing the same lot-label payload generation
   - **`gold_drop/biomass_module.py`** - biomass pipeline list/form/archive route logic delegated from `app.py`
   - **`gold_drop/runs_module.py`** - run list/form/delete route logic delegated from `app.py`
   - **`gold_drop/dashboard_module.py`** - dashboard, department, biomass purchasing dashboard, and supervisor-notification acknowledgement/override/resolve routes delegated from `app.py`
@@ -479,9 +480,9 @@ This keeps each deployed facility self-identifying for future aggregation withou
 - **Rule now enforced**
   - Run save fails unless selected lot allocations equal `bio_in_reactor_lbs` exactly.
 - **Label / scan surfaces**
-  - `GET /lots/<lot_id>/label`
+  - `GET /lots/<lot_id>/label` (`mode=barcode` renders compact barcode-only labels)
   - `GET|POST /lots/<lot_id>/charge`
-  - `GET /purchases/<purchase_id>/labels`
+  - `GET /purchases/<purchase_id>/labels` (`mode=barcode` renders compact barcode-only labels for all active lots on the purchase)
   - `GET /scan/lot/<tracking_id>` -> dedicated scanned-lot workflow page
   - `GET|POST /scan/lot/<tracking_id>/charge` -> records an extraction charge from the scanned lot and then redirects into `runs/new`
   - `POST /scan/lot/<tracking_id>/start-run` -> validates guided mode choices and redirects into the scanned-lot charge form

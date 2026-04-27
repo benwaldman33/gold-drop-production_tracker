@@ -288,6 +288,7 @@ Each on-hand row now also gives direct action buttons:
 - `Charge` opens the extraction-charge workflow
 - `Scan` opens the scanned-lot execution page
 - `Label` opens the printable lot label
+- `Barcode` opens the compact barcode-only print sheet for label printers
 - `Journey` opens the purchase journey filtered to that lot
 
 Use **Inventory -> Import spreadsheet** when you need to update many existing lots at once from Excel or CSV.
@@ -313,6 +314,7 @@ It does **not** create lots or change:
 Lots may also show a **tracking ID**. This is the permanent machine-readable identity for that physical lot and now drives the printed barcode and scan route for that lot.
 
 Where available, use the **Label** action from Inventory, Purchases, or Journey to print a lot-facing label page. The label now renders a printable **Code 39 barcode**, a **QR code**, and the scan route for that exact lot.
+Use **Barcode**, **Barcodes**, or **Barcode Only** when you are printing to a label printer and only need the Code 39 barcode/tracking payload.
 If you open **Label** from Inventory, the label page now returns you to Inventory instead of defaulting back to Purchases.
 
 ### Floor Ops

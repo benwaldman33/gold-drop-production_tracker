@@ -1233,12 +1233,21 @@ def test_purchase_label_routes_and_scan_route_render_and_resolve():
             assert b"<svg" in multi.data
             assert b"api.qrserver.com" in multi.data
 
+            barcode_only = client.get(f"/purchases/{purchase_id}/labels?mode=barcode")
+            assert barcode_only.status_code == 200
+            assert b"Barcode labels" in barcode_only.data
+            assert b"floor-label-card--barcode-only" in barcode_only.data
+            assert tracking_id.encode() in barcode_only.data
+            assert b"<svg" in barcode_only.data
+            assert b"api.qrserver.com" not in barcode_only.data
+
             scan = client.get(f"/scan/lot/{tracking_id}")
             assert scan.status_code == 200
             assert b"Scanned Lot" in scan.data
             assert tracking_id.encode() in scan.data
             assert b"Open Charge Form" in scan.data
             assert b"Print Label" in scan.data
+            assert b"Barcode Only" in scan.data
             assert b"Trace Journey" in scan.data
             assert b"Recent Scan Activity" in scan.data
 

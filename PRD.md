@@ -989,6 +989,7 @@ Some **potential** purchase / pipeline lines will never be approved. The product
 - **Batch Journey upgrade:** evolve the current purchase timeline into a true graph/timeline view with lot nodes, allocation edges, physical descriptors, and exception states.
 - **Slack inbox redesign:** move from raw import review to confidence buckets, candidate-lot resolution, and simple manual allocation/split workflows.
 - **Lot identity + labels:** generate `tracking_id`, barcode, and QR for each lot at purchase authorization / lot creation; support printable labels with live barcode + QR rendering and `/scan/lot/<tracking_id>` execution.
+- **Barcode-only label printing:** purchase, inventory, journey, and scan surfaces must support compact barcode-only print sheets for hardware label printers in addition to the full lot-detail label page.
 - **Operator floor UX:** expose a dedicated floor surface for recent scan activity, recent scale captures, floor-state rollups, extraction-readiness counts, and quick handoff back into lot execution workflows.
 - **Tablet scan center:** provide an in-browser `/scan` workflow for supported tablet/phone cameras, with manual and hardware-scanner fallback when camera barcode detection is unavailable.
 - **Extractor-first surfaces:** build the future standalone extractor app and Slack-assisted extraction intake on top of the now-shipped extraction-charge workflow rather than inventing separate business rules per surface.

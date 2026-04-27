@@ -648,7 +648,15 @@ def lot_label_view(root, lot_id):
         return_label = "Back to purchases"
     else:
         return_label = "Back to purchase"
-    return root.render_template("lot_label_print.html", labels=[label], purchase=lot.purchase, return_to=return_to, return_label=return_label)
+    barcode_only = _is_barcode_only_label_request(root)
+    return root.render_template(
+        "lot_label_print.html",
+        labels=[label],
+        purchase=lot.purchase,
+        return_to=return_to,
+        return_label=return_label,
+        barcode_only=barcode_only,
+    )
 
 
 def lot_edit_view(root, lot_id):
@@ -714,7 +722,21 @@ def purchase_labels_view(root, purchase_id):
         return_label = "Back to purchase"
     elif return_to == root.url_for("purchases_list") or return_to.startswith(f"{root.url_for('purchases_list')}?"):
         return_label = "Back to purchases"
-    return root.render_template("lot_label_print.html", labels=labels, purchase=purchase, return_to=return_to, return_label=return_label)
+    barcode_only = _is_barcode_only_label_request(root)
+    return root.render_template(
+        "lot_label_print.html",
+        labels=labels,
+        purchase=purchase,
+        return_to=return_to,
+        return_label=return_label,
+        barcode_only=barcode_only,
+    )
+
+
+def _is_barcode_only_label_request(root) -> bool:
+    mode = (root.request.args.get("mode") or "").strip().lower()
+    barcode_only = (root.request.args.get("barcode_only") or "").strip().lower()
+    return mode in {"barcode", "barcodes", "barcode_only"} or barcode_only in {"1", "true", "yes", "on"}
 
 
 def _get_scannable_lot(root, tracking_id):
