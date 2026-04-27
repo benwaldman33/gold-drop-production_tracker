@@ -1,14 +1,15 @@
 {% extends "base.html" %}
-{% block title %}Lot labels{% endblock %}
+{% block title %}{% if barcode_only %}Barcode labels{% else %}Lot labels{% endif %}{% endblock %}
 {% block content %}
-<div class="page-header">
-  <h2>Lot labels{% if purchase %} - {{ purchase.batch_id or purchase.id }}{% endif %}</h2>
+<div class="page-header{% if barcode_only %} barcode-only-print-header{% endif %}">
+  <h2>{% if barcode_only %}Barcode labels{% else %}Lot labels{% endif %}{% if purchase %} - {{ purchase.batch_id or purchase.id }}{% endif %}</h2>
   {% if purchase %}
   <a href="{{ return_to or url_for('purchase_edit', purchase_id=purchase.id) }}" class="btn btn-secondary">{{ return_label or 'Back to purchase' }}</a>
   {% endif %}
   <button type="button" class="btn btn-primary" onclick="window.print()">Print</button>
 </div>
 
+{% if not barcode_only %}
 <div class="summary-row" style="margin-bottom:16px;">
   <div class="summary-card">
     <div class="summary-label">Labels</div>
@@ -21,10 +22,16 @@
     <div class="summary-footnote">{{ purchase.supplier.name if purchase and purchase.supplier else 'Inventory tracking' }}</div>
   </div>
 </div>
+{% endif %}
 
-<div class="floor-label-grid">
+<div class="floor-label-grid{% if barcode_only %} floor-label-grid--barcode-only{% endif %}">
   {% for label in labels %}
-  <div class="card floor-label-card">
+  <div class="card floor-label-card{% if barcode_only %} floor-label-card--barcode-only{% endif %}">
+    {% if barcode_only %}
+    <div class="text-mono floor-label-id">{{ label.tracking_id }}</div>
+    <div class="floor-barcode-svg">{{ label.barcode_svg|safe }}</div>
+    <div class="text-mono floor-payload-copy">{{ label.barcode_value }}</div>
+    {% else %}
     <div class="floor-label-head">
       <div>
         <div class="text-sm cell-muted">Tracking ID</div>
@@ -69,6 +76,7 @@
       <div class="text-mono floor-payload-copy">{{ label.scan_url or label.qr_value }}</div>
       <div class="floor-scan-instruction">Use the QR on tablets or phones, or the barcode on hardware scanners, to open this lot's floor execution page.</div>
     </div>
+    {% endif %}
   </div>
   {% endfor %}
 </div>

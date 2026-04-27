@@ -32,6 +32,35 @@
   .journey-section-note { color:var(--text-muted); margin-top:6px; }
   .journey-empty { border:1px dashed rgba(255,255,255,0.12); border-radius:12px; padding:28px; text-align:center; color:var(--text-muted); }
   .journey-link-row { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  .journey-graphic-card { overflow:hidden; border-color:rgba(228,180,82,0.22); background:
+    radial-gradient(circle at 68% 50%, rgba(228,180,82,0.12), transparent 28%),
+    linear-gradient(135deg, rgba(8,10,22,0.96), rgba(13,15,28,0.92)); }
+  .journey-graphic-wrap { position:relative; min-height:270px; padding:22px; border-radius:14px; overflow:auto; }
+  .journey-graphic-wrap::before { content:""; position:absolute; inset:0; background:
+    radial-gradient(circle at 28% 30%, rgba(255,255,255,0.04), transparent 2px),
+    radial-gradient(circle at 78% 70%, rgba(255,255,255,0.035), transparent 2px);
+    background-size: 110px 90px, 140px 120px; opacity:0.55; pointer-events:none; }
+  .journey-graph { position:relative; z-index:1; display:grid; grid-template-columns:minmax(150px,1fr) 44px minmax(170px,1fr) 44px minmax(180px,1fr) 56px minmax(190px,1.2fr); gap:0; align-items:center; min-width:840px; }
+  .journey-graph-col { display:grid; gap:12px; align-content:center; }
+  .journey-graph-col.products { gap:14px; }
+  .journey-graph-node { position:relative; border:1px solid rgba(228,180,82,0.72); border-radius:8px; padding:12px 14px; color:#f8efd4; background:linear-gradient(145deg, rgba(32,36,54,0.96), rgba(14,17,29,0.96)); box-shadow:0 0 0 1px rgba(0,0,0,0.35), 0 0 18px rgba(228,180,82,0.08); }
+  .journey-graph-node.primary { border-color:rgba(255,203,87,0.96); box-shadow:0 0 0 1px rgba(0,0,0,0.45), 0 0 22px rgba(228,180,82,0.18); }
+  .journey-graph-node.product { min-height:70px; }
+  .journey-graph-title { font-weight:800; letter-spacing:0.01em; margin-bottom:7px; }
+  .journey-graph-line { display:block; font-size:0.78rem; color:rgba(248,239,212,0.72); margin-top:4px; }
+  .journey-graph-line::before { content:"•"; color:var(--gold); margin-right:6px; }
+  .journey-graph-connector { height:4px; border-radius:999px; background:linear-gradient(90deg, transparent, rgba(255,195,56,0.96), transparent); box-shadow:0 0 10px rgba(255,195,56,0.95), 0 0 22px rgba(255,195,56,0.44); }
+  .journey-graph-branch { position:relative; height:190px; }
+  .journey-graph-branch::before { content:""; position:absolute; left:0; right:0; top:50%; height:4px; transform:translateY(-50%); border-radius:999px; background:linear-gradient(90deg, rgba(255,195,56,0.95), rgba(255,195,56,0.2)); box-shadow:0 0 12px rgba(255,195,56,0.9); }
+  .journey-graph-branch span { position:absolute; left:14%; width:88%; height:4px; border-radius:999px; transform-origin:left center; background:linear-gradient(90deg, rgba(255,195,56,0.95), rgba(255,195,56,0.2)); box-shadow:0 0 12px rgba(255,195,56,0.9); }
+  .journey-graph-branch .top { top:26%; transform:rotate(-27deg); }
+  .journey-graph-branch .mid { top:50%; transform:translateY(-50%); }
+  .journey-graph-branch .bottom { top:74%; transform:rotate(27deg); }
+  .journey-graph-empty-products { border:1px dashed rgba(228,180,82,0.35); border-radius:8px; padding:14px; color:rgba(248,239,212,0.62); background:rgba(255,255,255,0.03); }
+  @media (max-width: 980px) {
+    .journey-graph { min-width:0; grid-template-columns:1fr; gap:12px; }
+    .journey-graph-connector, .journey-graph-branch { display:none; }
+  }
   @media (max-width: 980px) {
     .journey-shell { grid-template-columns: 1fr; }
     .journey-sidebar { position:static; }
@@ -121,6 +150,71 @@
           <div class="journey-stat">
             <div class="label">Descendant Steps</div>
             <div class="value">{{ lot_view.journey.summary.descendant_transformation_count }}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card journey-graphic-card">
+        <div class="card-header">
+          <h3>Journey Graphic</h3>
+          <span class="text-sm cell-muted">Live source-to-product map for the selected material lot.</span>
+        </div>
+        {% set ancestry_node = lot_view.journey.ancestry[0] if lot_view.journey.ancestry else none %}
+        {% set source_input = ancestry_node.inputs[0] if ancestry_node and ancestry_node.inputs else none %}
+        <div class="journey-graphic-wrap">
+          <div class="journey-graph">
+            <div class="journey-graph-col">
+              <div class="journey-graph-node">
+                <div class="journey-graph-title">Supplier</div>
+                <div class="journey-graph-line">{{ material.supplier_name_snapshot or (source_input.material_lot.supplier_name_snapshot if source_input else "Unknown source") }}</div>
+                <div class="journey-graph-line">Origin lot lineage</div>
+              </div>
+            </div>
+            <div class="journey-graph-connector"></div>
+            <div class="journey-graph-col">
+              {% if ancestry_node and ancestry_node.inputs %}
+                {% for input in ancestry_node.inputs %}
+                <a href="{{ url_for('material_genealogy_viewer', mode='lot', material_lot_id=input.material_lot.material_lot_id) }}" class="journey-graph-node">
+                  <div class="journey-graph-title">Biomass Lot</div>
+                  <div class="journey-graph-line">{{ input.material_lot.tracking_id }}</div>
+                  <div class="journey-graph-line">{{ "{:,.2f}".format(input.quantity or input.material_lot.quantity or 0) }} {{ input.unit or input.material_lot.unit }}</div>
+                </a>
+                {% endfor %}
+              {% elif material.lot_type == 'biomass' %}
+                <div class="journey-graph-node primary">
+                  <div class="journey-graph-title">Biomass Lot</div>
+                  <div class="journey-graph-line">{{ material.tracking_id }}</div>
+                  <div class="journey-graph-line">{{ "{:,.2f}".format(material.quantity or 0) }} {{ material.unit }}</div>
+                </div>
+              {% else %}
+                <div class="journey-graph-empty-products">No source biomass is linked yet.</div>
+              {% endif %}
+            </div>
+            <div class="journey-graph-connector"></div>
+            <div class="journey-graph-col">
+              <div class="journey-graph-node primary">
+                <div class="journey-graph-title">{{ ancestry_node.transformation.transformation_type.replace('_', ' ').title() if ancestry_node else "Current Lot" }}</div>
+                <div class="journey-graph-line">{% if ancestry_node and ancestry_node.transformation.run_id %}Run {{ ancestry_node.transformation.run_id[:8] }}{% elif material.parent_run_id %}Run {{ material.parent_run_id[:8] }}{% else %}No run linked{% endif %}</div>
+                <div class="journey-graph-line">{{ ancestry_node.transformation.performed_at or material.created_at or "Date pending" if ancestry_node else material.created_at or "Date pending" }}</div>
+              </div>
+            </div>
+            <div class="journey-graph-branch"><span class="top"></span><span class="mid"></span><span class="bottom"></span></div>
+            <div class="journey-graph-col products">
+              <a href="{{ url_for('material_genealogy_viewer', mode='lot', material_lot_id=material.material_lot_id) }}" class="journey-graph-node product primary">
+                <div class="journey-graph-title">{{ material.lot_type.replace('_', ' ').title() }}</div>
+                <div class="journey-graph-line">{{ material.tracking_id }}</div>
+                <div class="journey-graph-line">{{ "{:,.2f}".format(material.quantity or 0) }} {{ material.unit }}</div>
+              </a>
+              {% for node in lot_view.journey.descendants %}
+                {% for output in node.outputs %}
+                <a href="{{ url_for('material_genealogy_viewer', mode='lot', material_lot_id=output.material_lot.material_lot_id) }}" class="journey-graph-node product">
+                  <div class="journey-graph-title">{{ output.material_lot.lot_type.replace('_', ' ').title() }}</div>
+                  <div class="journey-graph-line">{{ output.material_lot.tracking_id }}</div>
+                  <div class="journey-graph-line">{{ "{:,.2f}".format(output.quantity or output.material_lot.quantity or 0) }} {{ output.unit or output.material_lot.unit }}</div>
+                </a>
+                {% endfor %}
+              {% endfor %}
+            </div>
           </div>
         </div>
       </div>
@@ -410,6 +504,56 @@
           <div class="journey-stat">
             <div class="label">Dry Outputs</div>
             <div class="value">{{ "{:,.0f}".format(run.dry_thca_g or 0) }} g THCA · {{ "{:,.0f}".format(run.dry_hte_g or 0) }} g HTE</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card journey-graphic-card">
+        <div class="card-header">
+          <h3>Journey Graphic</h3>
+          <span class="text-sm cell-muted">Live source-to-product map for this extraction run.</span>
+        </div>
+        <div class="journey-graphic-wrap">
+          <div class="journey-graph">
+            <div class="journey-graph-col">
+              <div class="journey-graph-node">
+                <div class="journey-graph-title">Supplier</div>
+                <div class="journey-graph-line">{{ run_view.journey.purchases[0].supplier_name if run_view.journey.purchases else "Mixed or unknown" }}</div>
+                <div class="journey-graph-line">{{ run_view.journey.summary.purchase_count }} source purchase{{ '' if run_view.journey.summary.purchase_count == 1 else 's' }}</div>
+              </div>
+            </div>
+            <div class="journey-graph-connector"></div>
+            <div class="journey-graph-col">
+              {% for lot in run_view.journey.lots %}
+              <div class="journey-graph-node">
+                <div class="journey-graph-title">Biomass Lot</div>
+                <div class="journey-graph-line">{{ lot.tracking_id or lot.lot_id[:8] }}</div>
+                <div class="journey-graph-line">{{ "{:,.1f}".format(lot.remaining_weight_lbs or 0) }} lbs remaining</div>
+              </div>
+              {% else %}
+              <div class="journey-graph-empty-products">No source lots are linked yet.</div>
+              {% endfor %}
+            </div>
+            <div class="journey-graph-connector"></div>
+            <div class="journey-graph-col">
+              <div class="journey-graph-node primary">
+                <div class="journey-graph-title">Extraction Run</div>
+                <div class="journey-graph-line">Reactor {{ run.reactor_number }}</div>
+                <div class="journey-graph-line">{{ run.run_date or "Date pending" }}</div>
+              </div>
+            </div>
+            <div class="journey-graph-branch"><span class="top"></span><span class="mid"></span><span class="bottom"></span></div>
+            <div class="journey-graph-col products">
+              {% for lot in run_view.journey.material_lots %}
+              <a href="{{ run_view.material_lot_urls[lot.material_lot_id] }}" class="journey-graph-node product{% if loop.first %} primary{% endif %}">
+                <div class="journey-graph-title">{{ lot.lot_type.replace('_', ' ').title() }}</div>
+                <div class="journey-graph-line">{{ lot.tracking_id }}</div>
+                <div class="journey-graph-line">{{ "{:,.2f}".format(lot.quantity or 0) }} {{ lot.unit }}</div>
+              </a>
+              {% else %}
+              <div class="journey-graph-empty-products">No derivative product lots have been created yet.</div>
+              {% endfor %}
+            </div>
           </div>
         </div>
       </div>

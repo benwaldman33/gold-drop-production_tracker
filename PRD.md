@@ -298,6 +298,7 @@ These endpoints:
 ### Journey finance and auditability (current)
 - Journey is a daily manager surface, not just a forensic report. Managers should be able to see where material is, where it has been, what it cost, and what derivative value it created.
 - `Journey Home`, `Material Journey Viewer`, and `Genealogy Report` expose genealogy-backed projected revenue, actual revenue, cost basis, margin, and financial completeness flags.
+- `Material Journey Viewer` must provide a graphical source-to-product journey map in addition to detailed tables/cards, so managers can quickly see supplier/source biomass -> extraction/transformation -> derivative product lots before drilling into audit, revenue, and reconciliation detail.
 - `Journey -> Finance & Accounting` provides the accounting review layer: period actual revenue, estimated COGS, gross margin, product/channel summaries, projected inventory context, financial flag counts, revenue-event detail, and CSV export.
 - Revenue-event updates and voids must preserve audit history rather than deleting operational evidence.
 - `Settings -> Audit Log` gives managers/admins a searchable audit surface for user/action/entity/date/text review without direct database access.
@@ -988,6 +989,7 @@ Some **potential** purchase / pipeline lines will never be approved. The product
 - **Batch Journey upgrade:** evolve the current purchase timeline into a true graph/timeline view with lot nodes, allocation edges, physical descriptors, and exception states.
 - **Slack inbox redesign:** move from raw import review to confidence buckets, candidate-lot resolution, and simple manual allocation/split workflows.
 - **Lot identity + labels:** generate `tracking_id`, barcode, and QR for each lot at purchase authorization / lot creation; support printable labels with live barcode + QR rendering and `/scan/lot/<tracking_id>` execution.
+- **Barcode-only label printing:** purchase, inventory, journey, and scan surfaces must support compact barcode-only print sheets for hardware label printers in addition to the full lot-detail label page.
 - **Operator floor UX:** expose a dedicated floor surface for recent scan activity, recent scale captures, floor-state rollups, extraction-readiness counts, and quick handoff back into lot execution workflows.
 - **Tablet scan center:** provide an in-browser `/scan` workflow for supported tablet/phone cameras, with manual and hardware-scanner fallback when camera barcode detection is unavailable.
 - **Extractor-first surfaces:** build the future standalone extractor app and Slack-assisted extraction intake on top of the now-shipped extraction-charge workflow rather than inventing separate business rules per surface.

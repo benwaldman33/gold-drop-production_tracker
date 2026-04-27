@@ -136,6 +136,7 @@
             <a href="{{ url_for('scan_lot', tracking_id=lot.tracking_id) }}" class="btn btn-secondary btn-sm">Scan</a>
             {% endif %}
             <a href="{{ url_for('lot_label', lot_id=lot.id, return_to=request.full_path.rstrip('?')) }}" class="btn btn-secondary btn-sm">Label</a>
+            <a href="{{ url_for('lot_label', lot_id=lot.id, mode='barcode', return_to=request.full_path.rstrip('?')) }}" class="btn btn-secondary btn-sm">Barcode</a>
             <a href="{{ url_for('purchases_bp.purchase_journey', purchase_id=lot.purchase_id, lot=lot.tracking_id or '') }}" class="btn btn-secondary btn-sm">Journey</a>
           </td>
         </tr>

@@ -190,6 +190,7 @@
           <a href="{{ url_for('purchases_bp.purchase_journey', purchase_id=p.id) }}" class="btn btn-secondary btn-sm">Journey</a>
           {% if p._lot_count %}
           <a href="{{ url_for('purchase_labels', purchase_id=p.id, return_to=request.full_path) }}" class="btn btn-secondary btn-sm">Labels</a>
+          <a href="{{ url_for('purchase_labels', purchase_id=p.id, mode='barcode', return_to=request.full_path) }}" class="btn btn-secondary btn-sm">Barcodes</a>
           {% endif %}
           {% if not p.is_approved and current_user.can_approve_purchase %}
           <form method="POST" action="{{ url_for('purchase_approve', purchase_id=p.id) }}" style="display:inline;" onsubmit="return confirm('Approve this purchase? This allows its material to be used in extraction runs.');">

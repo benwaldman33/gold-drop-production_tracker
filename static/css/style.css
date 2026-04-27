@@ -979,10 +979,33 @@ body.supplier-incomplete-banner-on .main-content {
   gap: 16px;
 }
 
+.floor-label-grid--barcode-only {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 360px));
+  align-items: start;
+}
+
 .floor-label-card {
   border: 2px solid var(--dark-border);
   break-inside: avoid;
   page-break-inside: avoid;
+}
+
+.floor-label-card--barcode-only {
+  padding: 12px;
+  text-align: center;
+}
+
+.floor-label-card--barcode-only .floor-label-id {
+  font-size: 0.95rem;
+}
+
+.floor-label-card--barcode-only .floor-barcode-svg {
+  margin-top: 8px;
+  padding: 8px;
+}
+
+.floor-label-card--barcode-only .floor-payload-copy {
+  font-size: 0.78rem;
 }
 
 .floor-label-head {
@@ -1266,6 +1289,10 @@ body.supplier-incomplete-banner-on .main-content {
     display: none !important;
   }
 
+  .barcode-only-print-header {
+    display: none !important;
+  }
+
   .main-content {
     margin-left: 0;
     max-width: none;
@@ -1276,10 +1303,39 @@ body.supplier-incomplete-banner-on .main-content {
     grid-template-columns: 1fr 1fr;
   }
 
+  .floor-label-grid--barcode-only {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
   .floor-label-card {
     background: #ffffff;
     color: #111111;
     border-color: #111111;
+  }
+
+  .floor-label-card--barcode-only {
+    width: 3.5in;
+    min-height: 1.15in;
+    margin: 0;
+    padding: 0.08in;
+    border: 0;
+    box-shadow: none;
+    page-break-after: always;
+  }
+
+  .floor-label-card--barcode-only .floor-barcode-svg {
+    padding: 0;
+    margin-top: 0.04in;
+  }
+
+  .floor-label-card--barcode-only .floor-barcode-svg svg {
+    max-height: 0.72in;
+  }
+
+  .floor-label-card--barcode-only .floor-payload-copy {
+    margin-top: 0.02in;
+    font-size: 8pt;
   }
 
   .floor-label-card .cell-muted,

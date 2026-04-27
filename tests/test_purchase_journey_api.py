@@ -173,6 +173,8 @@ def test_purchase_journey_page_renders_for_logged_in_user():
             assert "Edit Purchase" in html
             assert "Export JSON" in html
             assert "Export CSV" in html
+            assert "Print Labels" in html
+            assert "Barcode Only" in html
 
             json_export = client.get(f"/purchases/{purchase_id}/journey/export?format=json")
             assert json_export.status_code == 200

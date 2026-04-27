@@ -349,6 +349,8 @@ def test_material_genealogy_viewer_renders_lot_and_run_modes():
             lot_resp = client.get(f"/journeys/material-genealogy?mode=lot&material_lot_id={derivative_lot_id}")
             assert lot_resp.status_code == 200
             assert b"Material Journey Viewer" in lot_resp.data
+            assert b"Journey Graphic" in lot_resp.data
+            assert b"Live source-to-product map" in lot_resp.data
             assert b"Ancestry Chain" in lot_resp.data
             assert b"Descendant Transformations" in lot_resp.data
             assert b"Open Parent Run" in lot_resp.data
@@ -420,6 +422,7 @@ def test_material_genealogy_viewer_renders_lot_and_run_modes():
 
             run_resp = client.get(f"/journeys/material-genealogy?mode=run&run_id={run_id}")
             assert run_resp.status_code == 200
+            assert b"Journey Graphic" in run_resp.data
             assert b"Run Timeline" in run_resp.data
             assert b"Source Material" in run_resp.data
             assert b"Derivative Lots" in run_resp.data
@@ -1230,12 +1233,21 @@ def test_purchase_label_routes_and_scan_route_render_and_resolve():
             assert b"<svg" in multi.data
             assert b"api.qrserver.com" in multi.data
 
+            barcode_only = client.get(f"/purchases/{purchase_id}/labels?mode=barcode")
+            assert barcode_only.status_code == 200
+            assert b"Barcode labels" in barcode_only.data
+            assert b"floor-label-card--barcode-only" in barcode_only.data
+            assert tracking_id.encode() in barcode_only.data
+            assert b"<svg" in barcode_only.data
+            assert b"api.qrserver.com" not in barcode_only.data
+
             scan = client.get(f"/scan/lot/{tracking_id}")
             assert scan.status_code == 200
             assert b"Scanned Lot" in scan.data
             assert tracking_id.encode() in scan.data
             assert b"Open Charge Form" in scan.data
             assert b"Print Label" in scan.data
+            assert b"Barcode Only" in scan.data
             assert b"Trace Journey" in scan.data
             assert b"Recent Scan Activity" in scan.data
 

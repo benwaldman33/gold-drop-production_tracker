@@ -211,6 +211,9 @@ It is the permanent machine-readable identity for that physical lot. The app now
 **Can I print a lot label already?**  
 Yes. Label pages are available from Purchases, Inventory, and Journey surfaces. They now render a printable **Code 39 barcode**, a **QR code**, the tracking ID, and the scan path for that lot.
 
+**Can I print only the barcode for a label printer?**
+Yes. Use **Barcode**, **Barcodes**, or **Barcode Only** from Inventory, Purchases, Purchase Journey, or the scanned-lot page. That opens the same label route in compact barcode-only mode instead of the full lot-detail label sheet.
+
 **What are the new `/api/v1/tools/*` endpoints for?**
 They are read-only semantic endpoints for internal automation and future MCP / AI tooling. They provide higher-level answers like inventory snapshots, open-lot lookup, canonical journey resolution, and reconciliation overview without stitching together several low-level API calls first.
 
@@ -219,6 +222,9 @@ There is now a read-only stdio MCP server in `scripts/mcp_server.py`. It exposes
 
 **Does the MCP server write data or bypass permissions?**
 No. The current MCP layer is read-only. It is meant for internal intelligence and automation workflows, not record creation or mutation.
+
+**What is the Journey Graphic in Material Journey Viewer?**
+It is a live visual map, not a static image. It shows source supplier/biomass, the extraction or transformation step, and the derivative product lots so managers can see the material path before reviewing the detailed audit, revenue, and reconciliation panels below it.
 
 **How do I refresh remote-site cache data?**
 Super Admin can do it in **Settings -> Maintenance -> Pull all remote sites**, or from the server shell with `python scripts/pull_remote_sites.py`.

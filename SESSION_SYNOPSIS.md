@@ -863,13 +863,22 @@ The implementation phases are now shipped:
   - MCP is intentionally read-only today; it cannot create purchases, edit lots, approve items, write Slack messages, change settings, or perform corrections
   - it is not yet a production-secured remote agent platform because it does not provide remote MCP auth, rate limiting, per-user permission evaluation, or operational deployment wiring
   - deferred MCP hardening work is now tracked in `LAUNCH_READINESS_AUDIT_TODO.md`
+- `Material Journey Viewer` now includes a live Journey Graphic in both `By Lot` and `By Run` modes:
+  - the graphic maps supplier/source biomass through extraction or transformation into derivative product lots
+  - it is driven by the existing genealogy payloads and sits above the detailed timeline, ancestry/descendant chains, revenue actuals, correction history, and reconciliation panels
+  - the graphic degrades to empty-state cards when source biomass or derivative outputs are not linked yet
+- Barcode-only lot label printing is now available:
+  - purchase-level label routes support compact barcode-only sheets with `mode=barcode`
+  - single-lot label routes support the same compact mode
+  - Purchase Journey, Purchases, Inventory, and scanned-lot pages expose explicit `Barcode`, `Barcodes`, or `Barcode Only` actions for hardware label printers
+  - the existing full lot label with lot details, QR code, and scan path remains unchanged
 
 ## Deployment note
 
 Current rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `c1d783c`
+- commit: `a828b31`
 
 Production deployment steps:
 
@@ -901,6 +910,8 @@ Production deployment steps:
    - `Genealogy Report -> Export Financial CSV` downloads a CSV file
    - `Journey Home` shows `Product Financial Cards`
    - `Journey Home` shows `Projected Vs Actual Revenue` and flags `Actuals Below Projection` when applicable
+   - a purchase journey shows `Barcode Only` beside `Print Labels`
+   - `Barcode Only` opens a compact barcode-only print sheet without the QR/detail label page
 
 ## Local note
 
