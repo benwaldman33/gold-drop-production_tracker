@@ -3,6 +3,7 @@
 ## 2026-04-25
 
 ### Added
+- `Material Journey Viewer` now includes a live Journey Graphic in both `By Lot` and `By Run` modes, visually mapping supplier/source biomass through extraction or transformation into derivative product lots before the detailed timeline, revenue, correction, and reconciliation panels.
 - Internal API client discovery now uses a shared `services/api_registry.py` source of truth for API scopes and endpoint metadata, with regression coverage that compares the registry against registered `/api/v1` routes.
 - API documentation now reflects the scanner, scale, material-cost, and material-genealogy endpoints that had drifted behind the implemented Internal API surface.
 - `Settings -> Audit Log` now provides a searchable manager/admin surface for audit history with filters for date, user, action, entity type, text/details, and result limit.

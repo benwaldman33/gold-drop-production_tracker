@@ -863,13 +863,17 @@ The implementation phases are now shipped:
   - MCP is intentionally read-only today; it cannot create purchases, edit lots, approve items, write Slack messages, change settings, or perform corrections
   - it is not yet a production-secured remote agent platform because it does not provide remote MCP auth, rate limiting, per-user permission evaluation, or operational deployment wiring
   - deferred MCP hardening work is now tracked in `LAUNCH_READINESS_AUDIT_TODO.md`
+- `Material Journey Viewer` now includes a live Journey Graphic in both `By Lot` and `By Run` modes:
+  - the graphic maps supplier/source biomass through extraction or transformation into derivative product lots
+  - it is driven by the existing genealogy payloads and sits above the detailed timeline, ancestry/descendant chains, revenue actuals, correction history, and reconciliation panels
+  - the graphic degrades to empty-state cards when source biomass or derivative outputs are not linked yet
 
 ## Deployment note
 
 Current rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: `c1d783c`
+- commit: pending Journey Graphic sprint
 
 Production deployment steps:
 

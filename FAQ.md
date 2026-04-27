@@ -220,6 +220,9 @@ There is now a read-only stdio MCP server in `scripts/mcp_server.py`. It exposes
 **Does the MCP server write data or bypass permissions?**
 No. The current MCP layer is read-only. It is meant for internal intelligence and automation workflows, not record creation or mutation.
 
+**What is the Journey Graphic in Material Journey Viewer?**
+It is a live visual map, not a static image. It shows source supplier/biomass, the extraction or transformation step, and the derivative product lots so managers can see the material path before reviewing the detailed audit, revenue, and reconciliation panels below it.
+
 **How do I refresh remote-site cache data?**
 Super Admin can do it in **Settings -> Maintenance -> Pull all remote sites**, or from the server shell with `python scripts/pull_remote_sites.py`.
 

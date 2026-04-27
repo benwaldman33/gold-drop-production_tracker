@@ -876,6 +876,7 @@ Use **Export Financial CSV** to download the financial reporting rows for spread
 The **Material Journey Viewer** supports:
 - `By Lot`: start from a material lot and trace upstream inputs plus downstream child lots
 - `By Run`: start from an extraction run and trace source lots, allocations, and derivative outputs
+- **Journey Graphic**: a live source-to-product map that shows supplier/source biomass, the extraction or transformation step, and derivative product lots such as THCA, HTE, GoldDrop, HP base oil, distillate, or terp strip outputs
 - in `By Lot`, the viewer now also shows:
   - open reconciliation issues on that lot
   - correction history for that lot

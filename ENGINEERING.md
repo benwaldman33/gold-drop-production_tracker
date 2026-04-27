@@ -827,6 +827,15 @@ Implemented baseline: clickable journey page + JSON API + JSON/CSV export for a 
 - Include direct **Export JSON** / **Export CSV** actions on the journey page.
 - `templates/purchase_journey.html` now includes dedicated **Inventory Lots** and **Run Allocations** sections rather than only stage summaries.
 
+## Material Journey Graphic
+
+- `templates/material_genealogy_viewer.html` renders a live **Journey Graphic** above the existing detail panels in both `By Lot` and `By Run` modes.
+- The graphic is intentionally template/CSS-driven and uses the existing genealogy payloads:
+  - lot mode reads `lot_view.journey.ancestry`, selected `material_lot`, and `lot_view.journey.descendants`
+  - run mode reads `run_view.journey.purchases`, `run_view.journey.lots`, and `run_view.journey.material_lots`
+- It is a visual layer only. The source of truth remains `services/material_genealogy.py` and `services/purchases_journey.py`; audit, revenue, correction, and reconciliation controls stay in the existing panels below the graphic.
+- The graph degrades to empty-state cards when source biomass or derivative lots are not linked yet.
+
 ## Purchase form parity + lot splitting
 
 - `templates/purchase_form.html` now surfaces `availability_date` and `testing_notes` on the main purchase form so mobile opportunity edits round-trip through the same `Purchase` row.

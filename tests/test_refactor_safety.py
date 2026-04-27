@@ -349,6 +349,8 @@ def test_material_genealogy_viewer_renders_lot_and_run_modes():
             lot_resp = client.get(f"/journeys/material-genealogy?mode=lot&material_lot_id={derivative_lot_id}")
             assert lot_resp.status_code == 200
             assert b"Material Journey Viewer" in lot_resp.data
+            assert b"Journey Graphic" in lot_resp.data
+            assert b"Live source-to-product map" in lot_resp.data
             assert b"Ancestry Chain" in lot_resp.data
             assert b"Descendant Transformations" in lot_resp.data
             assert b"Open Parent Run" in lot_resp.data
@@ -420,6 +422,7 @@ def test_material_genealogy_viewer_renders_lot_and_run_modes():
 
             run_resp = client.get(f"/journeys/material-genealogy?mode=run&run_id={run_id}")
             assert run_resp.status_code == 200
+            assert b"Journey Graphic" in run_resp.data
             assert b"Run Timeline" in run_resp.data
             assert b"Source Material" in run_resp.data
             assert b"Derivative Lots" in run_resp.data

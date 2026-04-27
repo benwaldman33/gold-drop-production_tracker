@@ -298,6 +298,7 @@ These endpoints:
 ### Journey finance and auditability (current)
 - Journey is a daily manager surface, not just a forensic report. Managers should be able to see where material is, where it has been, what it cost, and what derivative value it created.
 - `Journey Home`, `Material Journey Viewer`, and `Genealogy Report` expose genealogy-backed projected revenue, actual revenue, cost basis, margin, and financial completeness flags.
+- `Material Journey Viewer` must provide a graphical source-to-product journey map in addition to detailed tables/cards, so managers can quickly see supplier/source biomass -> extraction/transformation -> derivative product lots before drilling into audit, revenue, and reconciliation detail.
 - `Journey -> Finance & Accounting` provides the accounting review layer: period actual revenue, estimated COGS, gross margin, product/channel summaries, projected inventory context, financial flag counts, revenue-event detail, and CSV export.
 - Revenue-event updates and voids must preserve audit history rather than deleting operational evidence.
 - `Settings -> Audit Log` gives managers/admins a searchable audit surface for user/action/entity/date/text review without direct database access.
