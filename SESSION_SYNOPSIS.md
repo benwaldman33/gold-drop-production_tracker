@@ -873,7 +873,7 @@ The implementation phases are now shipped:
 Current rollout commit:
 
 - branch: `Claude_Consolidation`
-- commit: pending Journey Graphic sprint
+- commit: `78796f9`
 
 Production deployment steps:
 
