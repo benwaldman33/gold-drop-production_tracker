@@ -5968,3 +5968,119 @@ def test_unapproved_opportunity_purchase_displays_pending_labels():
             if supplier is not None:
                 db.session.delete(supplier)
             db.session.commit()
+
+
+def test_operational_lists_hide_non_operational_rows_by_default():
+    app = app_module.app
+    ids: dict[str, str] = {}
+    try:
+        with app.app_context():
+            supplier = Supplier(name=f"Operational Filter Supplier {gen_uuid()[:6]}", is_active=True)
+            db.session.add(supplier)
+            db.session.flush()
+            ids["supplier"] = supplier.id
+
+            active_purchase = Purchase(
+                supplier_id=supplier.id,
+                purchase_date=date(2026, 4, 20),
+                availability_date=date(2026, 4, 20),
+                status="ordered",
+                stated_weight_lbs=40,
+                batch_id=f"OP-ACT-{gen_uuid()[:6]}",
+            )
+            cancelled_purchase = Purchase(
+                supplier_id=supplier.id,
+                purchase_date=date(2026, 4, 20),
+                availability_date=date(2026, 4, 20),
+                status="cancelled",
+                stated_weight_lbs=35,
+                batch_id=f"OP-CAN-{gen_uuid()[:6]}",
+            )
+            db.session.add_all([active_purchase, cancelled_purchase])
+            db.session.flush()
+            ids["active_purchase"] = active_purchase.id
+            ids["cancelled_purchase"] = cancelled_purchase.id
+            active_lot = PurchaseLot(
+                purchase_id=active_purchase.id,
+                strain_name="Active Operational Filter Strain",
+                weight_lbs=40,
+                remaining_weight_lbs=40,
+            )
+            completed_lot = PurchaseLot(
+                purchase_id=active_purchase.id,
+                strain_name="Completed Operational Filter Strain",
+                weight_lbs=35,
+                remaining_weight_lbs=35,
+            )
+            db.session.add_all([active_lot, completed_lot])
+            db.session.flush()
+            ids["active_lot"] = active_lot.id
+            ids["completed_lot"] = completed_lot.id
+
+            active_run = app_module.Run(
+                run_date=date(2026, 4, 20),
+                reactor_number=1,
+                bio_in_reactor_lbs=40,
+                notes="Active operational filter run",
+            )
+            completed_run = app_module.Run(
+                run_date=date(2026, 4, 20),
+                reactor_number=2,
+                bio_in_reactor_lbs=35,
+                run_completed_at=datetime(2026, 4, 20, 18, 0, tzinfo=timezone.utc),
+                notes="Completed operational filter run",
+            )
+            db.session.add_all([active_run, completed_run])
+            db.session.flush()
+            active_input = app_module.RunInput(run_id=active_run.id, lot_id=active_lot.id, weight_lbs=10)
+            completed_input = app_module.RunInput(run_id=completed_run.id, lot_id=completed_lot.id, weight_lbs=10)
+            db.session.add_all([active_input, completed_input])
+            db.session.commit()
+            ids["active_run"] = active_run.id
+            ids["completed_run"] = completed_run.id
+            ids["active_input"] = active_input.id
+            ids["completed_input"] = completed_input.id
+            active_batch = active_purchase.batch_id.encode()
+            cancelled_batch = cancelled_purchase.batch_id.encode()
+
+        purchase_listing = _call_view_as_user("/purchases?clear_filters=1", "purchases_list", "admin")
+        assert purchase_listing.status_code in (302, 303)
+        purchase_listing = _call_view_as_user("/purchases", "purchases_list", "admin")
+        assert active_batch in purchase_listing.data
+        assert cancelled_batch not in purchase_listing.data
+        purchase_listing_all = _call_view_as_user("/purchases?hide_terminal=0", "purchases_list", "admin")
+        assert cancelled_batch in purchase_listing_all.data
+
+        runs_listing = _call_view_as_user("/runs?clear_filters=1", "runs_list", "admin")
+        assert runs_listing.status_code in (302, 303)
+        runs_listing = _call_view_as_user("/runs", "runs_list", "admin")
+        assert b"Active Operational Filter Strain" in runs_listing.data
+        assert b"Completed Operational Filter Strain" not in runs_listing.data
+        runs_listing_all = _call_view_as_user("/runs?hide_non_operational=0", "runs_list", "admin")
+        assert b"Completed Operational Filter Strain" in runs_listing_all.data
+
+        biomass_listing = _call_view_as_user("/biomass?clear_filters=1", "biomass_list", "admin")
+        assert biomass_listing.status_code in (302, 303)
+        biomass_listing = _call_view_as_user("/biomass", "biomass_list", "admin")
+        assert active_batch in biomass_listing.data
+        assert cancelled_batch not in biomass_listing.data
+        biomass_listing_all = _call_view_as_user("/biomass?hide_non_operational=0", "biomass_list", "admin")
+        assert cancelled_batch in biomass_listing_all.data
+    finally:
+        with app.app_context():
+            for model, key in (
+                (app_module.RunInput, "completed_input"),
+                (app_module.RunInput, "active_input"),
+                (app_module.Run, "completed_run"),
+                (app_module.Run, "active_run"),
+                (PurchaseLot, "completed_lot"),
+                (PurchaseLot, "active_lot"),
+                (Purchase, "cancelled_purchase"),
+                (Purchase, "active_purchase"),
+                (Supplier, "supplier"),
+            ):
+                obj_id = ids.get(key)
+                obj = db.session.get(model, obj_id) if obj_id else None
+                if obj is not None:
+                    db.session.delete(obj)
+            db.session.commit()

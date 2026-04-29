@@ -754,6 +754,7 @@ def _mobile_supplier_payload(supplier: Supplier) -> dict[str, Any]:
         Purchase.supplier_id == supplier.id,
         Purchase.created_by_user_id == current_user.id,
         Purchase.purchase_approved_at.is_not(None),
+        Purchase.status.notin_(root.NON_OPERATIONAL_PURCHASE_STATUSES),
         Purchase.status != "delivered",
     ).count()
     return {
@@ -842,6 +843,7 @@ def mobile_opportunities_mine_view(root):
     if not current_user.is_authenticated:
         return _json_error("Authentication required.", status_code=401, code="unauthorized")
     status_filter = (request.args.get("status") or "").strip()
+    include_non_operational = _truthy(request.args.get("include_non_operational"))
     try:
         limit = max(1, min(int(request.args.get("limit") or 25), 100))
     except ValueError:
@@ -856,6 +858,8 @@ def mobile_opportunities_mine_view(root):
     )
     if status_filter:
         query = query.filter(root.Purchase.status == status_filter)
+    elif not include_non_operational:
+        query = root._filter_operational_purchases(query)
     total = query.count()
     rows = query.order_by(root.Purchase.updated_at.desc().nullslast(), root.Purchase.created_at.desc().nullslast()).offset(offset).limit(limit).all()
     return jsonify({
@@ -883,11 +887,15 @@ def mobile_receiving_queue_view(root):
     if supplier_id:
         query = query.filter(root.Purchase.supplier_id == supplier_id)
     if status_filter == "ready":
-        query = query.filter(root.Purchase.status != "delivered")
+        query = query.filter(
+            root.Purchase.status != "delivered",
+            root.Purchase.status.notin_(root.NON_OPERATIONAL_PURCHASE_STATUSES),
+        )
     elif status_filter:
         if status_filter == "approved":
             query = query.filter(
                 root.Purchase.purchase_approved_at.is_not(None),
+                root.Purchase.status.notin_(root.NON_OPERATIONAL_PURCHASE_STATUSES),
                 root.Purchase.status != "delivered",
             )
         else:

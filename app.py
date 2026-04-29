@@ -94,13 +94,16 @@ from gold_drop.list_state import (
 )
 from gold_drop.purchases import (
     INVENTORY_ON_HAND_PURCHASE_STATUSES,
+    NON_OPERATIONAL_PURCHASE_STATUSES,
     biomass_budget_snapshot_for_purchase as _biomass_budget_snapshot_for_purchase,
     budget_week_purchase_metrics as _budget_week_purchase_metrics,
     enforce_weekly_biomass_purchase_limits as _enforce_weekly_biomass_purchase_limits,
+    filter_operational_purchases as _filter_operational_purchases,
     purchase_biomass_budget_lbs as _purchase_biomass_budget_lbs,
     purchase_biomass_budget_potency as _purchase_biomass_budget_potency,
     purchase_budget_spend as _purchase_budget_spend,
     purchase_counts_toward_biomass_budget as _purchase_counts_toward_biomass_budget,
+    purchase_is_operational as _purchase_is_operational,
     purchase_week_start as _purchase_week_start,
 )
 from gold_drop.uploads import (
@@ -1778,5 +1781,4 @@ if __name__ == "__main__":
     _port = int(os.environ.get("PORT", "5050"))
     print(f" * Open http://127.0.0.1:{_port}/  (set PORT=5000 if you prefer and nothing else is using it)")
     app.run(debug=True, host="0.0.0.0", port=_port)
-
 

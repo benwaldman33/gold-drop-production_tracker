@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set hnq = '&hide_non_operational=1' if hide_non_operational else '&hide_non_operational=0' %}
 {% block title %}Runs{% endblock %}
 {% block content %}
 <div class="page-header">
@@ -7,6 +8,7 @@
     <form method="GET" style="display:flex;gap:8px;">
       <input type="hidden" name="page" value="1">
       <input type="hidden" name="hte_stage" value="{{ hte_stage or '' }}">
+      <input type="hidden" name="hide_non_operational" value="{{ '1' if hide_non_operational else '0' }}">
       <input type="text" name="search" value="{{ search }}" placeholder="Search strain..." 
              style="padding:8px 12px;background:var(--dark);border:1px solid var(--dark-border);border-radius:var(--radius);color:var(--text-primary);font-size:0.85rem;width:200px;">
       <button type="submit" class="btn btn-secondary">Search</button>
@@ -33,9 +35,10 @@
 </div>
 
 <div class="card" style="margin-bottom:12px;">
-  <form method="GET" style="display:grid;grid-template-columns:160px 160px minmax(160px,1fr) minmax(200px,1.2fr) 120px 120px auto;gap:8px;align-items:end;">
+  <form method="GET" style="display:grid;grid-template-columns:160px 160px minmax(160px,1fr) minmax(200px,1.2fr) 120px 120px minmax(150px,auto) auto;gap:8px;align-items:end;">
     <div class="form-group" style="margin:0;">
       <input type="hidden" name="page" value="1">
+      <input type="hidden" name="filter_form" value="1">
       <label>Start Date</label>
       <input type="date" name="start_date" value="{{ start_date }}">
     </div>
@@ -72,6 +75,10 @@
     <input type="hidden" name="sort" value="{{ sort }}">
     <input type="hidden" name="order" value="{{ order }}">
     <input type="hidden" name="search" value="{{ search }}">
+    <label class="text-sm" style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0 0 9px 0;color:var(--text-secondary);">
+      <input type="checkbox" name="hide_non_operational" value="1" {% if hide_non_operational %}checked{% endif %}>
+      Hide completed
+    </label>
     <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;">
       <button type="submit" class="btn btn-secondary">Apply Filters</button>
       {% if list_filters_active %}
@@ -86,7 +93,7 @@
     <thead>
       <tr>
         {% if current_user.can_edit %}<th class="text-center" style="width:36px;"></th>{% endif %}
-        <th><a href="?page=1&sort=run_date&order={% if sort=='run_date' and order=='desc' %}asc{% else %}desc{% endif %}&search={{ search|urlencode }}&start_date={{ start_date }}&end_date={{ end_date }}&supplier_id={{ supplier_filter }}&min_potency={{ min_potency }}&max_potency={{ max_potency }}&hte_stage={{ hte_stage|urlencode }}">Date</a></th>
+        <th><a href="?page=1&sort=run_date&order={% if sort=='run_date' and order=='desc' %}asc{% else %}desc{% endif %}&search={{ search|urlencode }}&start_date={{ start_date }}&end_date={{ end_date }}&supplier_id={{ supplier_filter }}&min_potency={{ min_potency }}&max_potency={{ max_potency }}&hte_stage={{ hte_stage|urlencode }}{{ hnq }}">Date</a></th>
         <th>Rx</th>
         <th>Load</th>
         <th>Source</th>
@@ -158,17 +165,17 @@
 {% if pagination.pages > 1 %}
 <div class="pagination">
   {% if pagination.has_prev %}
-  <a href="?page={{ pagination.prev_num }}&sort={{ sort }}&order={{ order }}&search={{ search|urlencode }}&start_date={{ start_date }}&end_date={{ end_date }}&supplier_id={{ supplier_filter }}&min_potency={{ min_potency }}&max_potency={{ max_potency }}&hte_stage={{ hte_stage|urlencode }}">← Prev</a>
+  <a href="?page={{ pagination.prev_num }}&sort={{ sort }}&order={{ order }}&search={{ search|urlencode }}&start_date={{ start_date }}&end_date={{ end_date }}&supplier_id={{ supplier_filter }}&min_potency={{ min_potency }}&max_potency={{ max_potency }}&hte_stage={{ hte_stage|urlencode }}{{ hnq }}">← Prev</a>
   {% endif %}
   {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
     {% if p %}
-      <a href="?page={{ p }}&sort={{ sort }}&order={{ order }}&search={{ search|urlencode }}&start_date={{ start_date }}&end_date={{ end_date }}&supplier_id={{ supplier_filter }}&min_potency={{ min_potency }}&max_potency={{ max_potency }}&hte_stage={{ hte_stage|urlencode }}" class="{% if p == pagination.page %}active{% endif %}">{{ p }}</a>
+      <a href="?page={{ p }}&sort={{ sort }}&order={{ order }}&search={{ search|urlencode }}&start_date={{ start_date }}&end_date={{ end_date }}&supplier_id={{ supplier_filter }}&min_potency={{ min_potency }}&max_potency={{ max_potency }}&hte_stage={{ hte_stage|urlencode }}{{ hnq }}" class="{% if p == pagination.page %}active{% endif %}">{{ p }}</a>
     {% else %}
       <span>…</span>
     {% endif %}
   {% endfor %}
   {% if pagination.has_next %}
-  <a href="?page={{ pagination.next_num }}&sort={{ sort }}&order={{ order }}&search={{ search|urlencode }}&start_date={{ start_date }}&end_date={{ end_date }}&supplier_id={{ supplier_filter }}&min_potency={{ min_potency }}&max_potency={{ max_potency }}&hte_stage={{ hte_stage|urlencode }}">Next →</a>
+  <a href="?page={{ pagination.next_num }}&sort={{ sort }}&order={{ order }}&search={{ search|urlencode }}&start_date={{ start_date }}&end_date={{ end_date }}&supplier_id={{ supplier_filter }}&min_potency={{ min_potency }}&max_potency={{ max_potency }}&hte_stage={{ hte_stage|urlencode }}{{ hnq }}">Next →</a>
   {% endif %}
 </div>
 {% endif %}

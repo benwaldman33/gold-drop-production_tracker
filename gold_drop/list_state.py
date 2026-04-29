@@ -109,4 +109,6 @@ def runs_list_filters_active(m: dict[str, str]) -> bool:
     for k in ("search", "start_date", "end_date", "supplier_id", "min_potency", "max_potency", "hte_stage"):
         if (m.get(k) or "").strip():
             return True
+    if (m.get("hide_non_operational") or "1") != "1":
+        return True
     return False

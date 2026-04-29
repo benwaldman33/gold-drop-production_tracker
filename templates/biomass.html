@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set hnq = '&hide_non_operational=1' if hide_non_operational else '&hide_non_operational=0' %}
 {% block title %}Biomass Pipeline{% endblock %}
 {% block content %}
 <div class="page-header">
@@ -19,7 +20,7 @@
 </div>
 
 <div class="card" style="margin-bottom:12px;">
-  <form method="GET" style="display:grid;grid-template-columns:180px 160px 160px 1fr auto;gap:8px;align-items:end;">
+  <form method="GET" style="display:grid;grid-template-columns:180px 160px 160px 1fr minmax(170px,auto) auto;gap:8px;align-items:end;">
     <div class="form-group" style="margin:0;">
       <label>Supplier</label>
       <select name="supplier_id">
@@ -41,8 +42,13 @@
       <label>Strain Contains</label>
       <input type="text" name="strain" value="{{ strain_filter }}">
     </div>
+    <input type="hidden" name="filter_form" value="1">
     <input type="hidden" name="stage" value="{{ stage_filter }}">
     <input type="hidden" name="bucket" value="{{ bucket_filter }}">
+    <label class="text-sm" style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0 0 9px 0;color:var(--text-secondary);">
+      <input type="checkbox" name="hide_non_operational" value="1" {% if hide_non_operational %}checked{% endif %}>
+      Hide non-operational
+    </label>
     <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;">
       <button type="submit" class="btn btn-secondary">Apply Filters</button>
       {% if list_filters_active %}
@@ -54,23 +60,23 @@
 
 <div class="view-toggle">
   <div class="btn-group">
-    <a href="?bucket=current&stage={{ stage_filter }}&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&strain={{ strain_filter }}" class="btn {% if bucket_filter == 'current' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">Current</a>
-    <a href="?bucket=old&stage={{ stage_filter }}&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&strain={{ strain_filter }}" class="btn {% if bucket_filter == 'old' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">Old Lots</a>
-    <a href="?bucket=all&stage={{ stage_filter }}&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&strain={{ strain_filter }}" class="btn {% if bucket_filter == 'all' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">All (no age filter)</a>
+    <a href="?bucket=current&stage={{ stage_filter }}&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&strain={{ strain_filter }}{{ hnq }}" class="btn {% if bucket_filter == 'current' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">Current</a>
+    <a href="?bucket=old&stage={{ stage_filter }}&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&strain={{ strain_filter }}{{ hnq }}" class="btn {% if bucket_filter == 'old' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">Old Lots</a>
+    <a href="?bucket=all&stage={{ stage_filter }}&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&strain={{ strain_filter }}{{ hnq }}" class="btn {% if bucket_filter == 'all' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">All (no age filter)</a>
     {% if current_user.is_super_admin %}
-    <a href="?bucket=deleted&stage={{ stage_filter }}&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&strain={{ strain_filter }}" class="btn {% if bucket_filter == 'deleted' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">Archived</a>
+    <a href="?bucket=deleted&stage={{ stage_filter }}&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&strain={{ strain_filter }}{{ hnq }}" class="btn {% if bucket_filter == 'deleted' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">Archived</a>
     {% endif %}
   </div>
   <div class="text-sm" style="color:var(--text-muted); margin-top:8px;">
-    Potential rows (declared/testing) use <strong>created_at</strong>: default list shows rows newer than <strong>{{ potential_days_to_old }}</strong> days; <strong>Old Lots</strong> holds the next window until day <strong>{{ potential_days_to_soft_delete }}</strong> soft-archives them. Committed/delivered/cancelled rows always appear on <strong>Current</strong>.
+    Potential rows (declared/testing) use <strong>created_at</strong>: default list shows rows newer than <strong>{{ potential_days_to_old }}</strong> days; <strong>Old Lots</strong> holds the next window until day <strong>{{ potential_days_to_soft_delete }}</strong> soft-archives them.
   </div>
 </div>
 
 <div class="view-toggle">
   <div class="btn-group">
-    <a href="?bucket={{ bucket_filter }}&stage=&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&strain={{ strain_filter }}" class="btn {% if not stage_filter %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">All stages</a>
+    <a href="?bucket={{ bucket_filter }}&stage=&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&strain={{ strain_filter }}{{ hnq }}" class="btn {% if not stage_filter %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">All stages</a>
     {% for s in ['declared','testing','committed','delivered','cancelled'] %}
-      <a href="?bucket={{ bucket_filter }}&stage={{ s }}&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&strain={{ strain_filter }}" class="btn {% if stage_filter == s %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">{{ s.replace('_',' ').title() }}</a>
+      <a href="?bucket={{ bucket_filter }}&stage={{ s }}&supplier_id={{ supplier_filter }}&start_date={{ start_date }}&end_date={{ end_date }}&strain={{ strain_filter }}{{ '&hide_non_operational=0' if s == 'cancelled' else hnq }}" class="btn {% if stage_filter == s %}btn-primary{% else %}btn-secondary{% endif %} btn-sm">{{ s.replace('_',' ').title() }}</a>
     {% endfor %}
   </div>
 </div>

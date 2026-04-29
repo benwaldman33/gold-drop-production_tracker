@@ -55,8 +55,12 @@ def runs_list_view(root):
         return redir
     merged = root._list_filters_merge(
         "runs_list",
-        ("page", "sort", "order", "search", "start_date", "end_date", "supplier_id", "min_potency", "max_potency", "hte_stage"),
+        ("page", "sort", "order", "search", "start_date", "end_date", "supplier_id", "min_potency", "max_potency", "hte_stage", "hide_non_operational"),
     )
+    if root.request.args.get("filter_form") == "1":
+        merged["hide_non_operational"] = "1" if root.request.args.get("hide_non_operational") == "1" else "0"
+        root.session[root.LIST_FILTERS_SESSION_KEY]["runs_list"]["hide_non_operational"] = merged["hide_non_operational"]
+        root.session.modified = True
     try:
         page = int(merged.get("page") or 1)
     except ValueError:
@@ -70,6 +74,7 @@ def runs_list_view(root):
     min_pot_raw = (merged.get("min_potency") or "").strip()
     max_pot_raw = (merged.get("max_potency") or "").strip()
     hte_stage = (merged.get("hte_stage") or "").strip()
+    hide_non_operational = (merged.get("hide_non_operational") or "1") != "0"
     try:
         start_date = root.datetime.strptime(start_raw, "%Y-%m-%d").date() if start_raw else None
         end_date = root.datetime.strptime(end_raw, "%Y-%m-%d").date() if end_raw else None
@@ -84,6 +89,8 @@ def runs_list_view(root):
         max_potency = None
 
     query = root.Run.query.filter(root.Run.deleted_at.is_(None))
+    if hide_non_operational:
+        query = query.filter(root.Run.run_completed_at.is_(None))
     if search:
         query = query.join(root.RunInput, isouter=True).join(root.PurchaseLot, isouter=True).filter(
             root.db.or_(
@@ -138,6 +145,7 @@ def runs_list_view(root):
         min_potency=min_pot_raw,
         max_potency=max_pot_raw,
         hte_stage=hte_stage,
+        hide_non_operational=hide_non_operational,
         hte_label_map=hte_label_map,
         hte_pipeline_options=root._hte_pipeline_options(),
         list_filters_active=root._runs_list_filters_active(merged),

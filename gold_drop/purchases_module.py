@@ -277,7 +277,7 @@ def purchases_list_view(root):
     keys = ("page", "status", "start_date", "end_date", "supplier_id", "min_potency", "max_potency", "hide_terminal")
     m = list_filters_merge("purchases_list", keys)
     if root.request.args.get("filter_form") == "1":
-        m["hide_terminal"] = "1" if root.request.args.get("hide_terminal") == "1" else ""
+        m["hide_terminal"] = "1" if root.request.args.get("hide_terminal") == "1" else "0"
         root.session[LIST_FILTERS_SESSION_KEY]["purchases_list"]["hide_terminal"] = m["hide_terminal"]
         root.session.modified = True
     try:
@@ -290,7 +290,7 @@ def purchases_list_view(root):
     supplier_filter = (m.get("supplier_id") or "").strip()
     min_pot_raw = (m.get("min_potency") or "").strip()
     max_pot_raw = (m.get("max_potency") or "").strip()
-    hide_terminal = m.get("hide_terminal") == "1"
+    hide_terminal = m.get("hide_terminal") != "0"
     try:
         start_date = datetime.strptime(start_raw, "%Y-%m-%d").date() if start_raw else None
         end_date = datetime.strptime(end_raw, "%Y-%m-%d").date() if end_raw else None
@@ -306,8 +306,8 @@ def purchases_list_view(root):
     query = root.Purchase.query.filter(root.Purchase.deleted_at.is_(None))
     if status_filter:
         query = query.filter_by(status=status_filter)
-    if hide_terminal:
-        query = query.filter(root.Purchase.status.notin_(("complete", "cancelled")))
+    elif hide_terminal:
+        query = root._filter_operational_purchases(query)
     if start_date:
         query = query.filter(root.Purchase.purchase_date >= start_date)
     if end_date:
@@ -333,7 +333,7 @@ def purchases_list_view(root):
         page > 1
         or bool(status_filter)
         or bool(start_raw or end_raw or supplier_filter or min_pot_raw or max_pot_raw)
-        or hide_terminal
+        or not hide_terminal
     )
     summary_counts = {
         "visible": len(summary_pool),

@@ -9,6 +9,27 @@ BIOMASS_BUDGET_COUNT_STATUSES = frozenset({
     "delivered", "processing", "complete",
 })
 INVENTORY_ON_HAND_PURCHASE_STATUSES = ("delivered", "in_testing", "available", "processing")
+NON_OPERATIONAL_PURCHASE_STATUSES = frozenset({"complete", "cancelled"})
+OPERATIONAL_PURCHASE_STATUSES = frozenset({
+    "declared",
+    "ordered",
+    "committed",
+    "in_transit",
+    "in_testing",
+    "available",
+    "delivered",
+    "processing",
+})
+
+
+def purchase_is_operational(p: Purchase | None) -> bool:
+    if not p or p.deleted_at is not None:
+        return False
+    return (p.status or "").strip().lower() not in NON_OPERATIONAL_PURCHASE_STATUSES
+
+
+def filter_operational_purchases(query):
+    return query.filter(Purchase.status.notin_(NON_OPERATIONAL_PURCHASE_STATUSES))
 
 
 def purchase_counts_toward_biomass_budget(p: Purchase | None) -> bool:

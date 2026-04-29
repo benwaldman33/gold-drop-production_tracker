@@ -609,6 +609,8 @@ def _build_floor_rollups(root):
         root.PurchaseLot.query.join(root.Purchase)
         .filter(
             root.PurchaseLot.deleted_at.is_(None),
+            root.Purchase.deleted_at.is_(None),
+            root.Purchase.status.notin_(root.NON_OPERATIONAL_PURCHASE_STATUSES),
             root.PurchaseLot.remaining_weight_lbs > 0,
         )
         .all()
@@ -1215,6 +1217,12 @@ def floor_ops_view(root):
     recent_captures = root.WeightCapture.query.order_by(root.WeightCapture.created_at.desc()).limit(12).all()
     active_scales = root.ScaleDevice.query.filter_by(is_active=True).count()
     open_lot_count = root.PurchaseLot.query.filter(
+        root.PurchaseLot.purchase.has(
+            root.db.and_(
+                root.Purchase.deleted_at.is_(None),
+                root.Purchase.status.notin_(root.NON_OPERATIONAL_PURCHASE_STATUSES),
+            )
+        ),
         root.PurchaseLot.deleted_at.is_(None),
         root.PurchaseLot.remaining_weight_lbs > 0,
     ).count()

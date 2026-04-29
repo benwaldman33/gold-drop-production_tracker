@@ -121,8 +121,12 @@ def biomass_list_view(root):
         return redir
     m = root._list_filters_merge(
         "biomass_list",
-        ("bucket", "stage", "start_date", "end_date", "supplier_id", "strain"),
+        ("bucket", "stage", "start_date", "end_date", "supplier_id", "strain", "hide_non_operational"),
     )
+    if root.request.args.get("filter_form") == "1":
+        m["hide_non_operational"] = "1" if root.request.args.get("hide_non_operational") == "1" else "0"
+        root.session[root.LIST_FILTERS_SESSION_KEY]["biomass_list"]["hide_non_operational"] = m["hide_non_operational"]
+        root.session.modified = True
     days_to_old, days_to_soft_delete = _potential_lot_age_days(root)
     bucket = (m.get("bucket") or "current").strip().lower()
     if bucket == "deleted" and not root.current_user.is_super_admin:
@@ -133,6 +137,7 @@ def biomass_list_view(root):
     end_raw = (m.get("end_date") or "").strip()
     supplier_filter = (m.get("supplier_id") or "").strip()
     strain_filter = (m.get("strain") or "").strip()
+    hide_non_operational = (m.get("hide_non_operational") or "1") != "0"
     try:
         start_date = datetime.strptime(start_raw, "%Y-%m-%d").date() if start_raw else None
         end_date = datetime.strptime(end_raw, "%Y-%m-%d").date() if end_raw else None
@@ -141,6 +146,8 @@ def biomass_list_view(root):
         end_date = None
     query = root.Purchase.query.join(root.Supplier)
     query = _biomass_bucket_filter(root, query, bucket, days_to_old, days_to_soft_delete)
+    if not stage and hide_non_operational:
+        query = root._filter_operational_purchases(query)
     if stage:
         mapped_status = STAGE_TO_STATUS.get(stage, stage)
         query = query.filter(root.Purchase.status == mapped_status)
@@ -168,6 +175,7 @@ def biomass_list_view(root):
     biomass_filters_active = (
         bucket != "current"
         or bool(stage or start_raw or end_raw or supplier_filter or strain_filter)
+        or not hide_non_operational
     )
     return root.render_template(
         "biomass.html",
@@ -181,6 +189,7 @@ def biomass_list_view(root):
         start_date=start_raw,
         end_date=end_raw,
         strain_filter=strain_filter,
+        hide_non_operational=hide_non_operational,
         list_filters_active=biomass_filters_active,
         clear_filters_url=root.url_for("biomass_list", clear_filters=1),
     )

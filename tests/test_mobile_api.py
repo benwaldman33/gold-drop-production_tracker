@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from io import BytesIO
 
-from models import AuditLog, ExtractionCharge, PhotoAsset, Purchase, Supplier, SystemSetting, db, gen_uuid
+from models import AuditLog, ExtractionCharge, PhotoAsset, Purchase, Supplier, SystemSetting, User, db, gen_uuid
 import app as app_module
 
 
@@ -722,6 +722,66 @@ def test_mobile_receiving_queue_and_receive_flow():
             supplier = db.session.get(Supplier, supplier_id)
             if supplier:
                 db.session.delete(supplier)
+            db.session.commit()
+
+
+def test_mobile_receiving_queue_hides_non_operational_purchases_by_default():
+    app = app_module.create_app()
+    _set_mobile_workflows(app)
+    supplier_id = _create_supplier(app, f"Receiving Hidden Supplier {gen_uuid()[:6]}")
+    receiver_username = f"receiver_hidden_{gen_uuid()[:6]}"
+    purchase_ids: list[str] = []
+    try:
+        with app.app_context():
+            receiver = app_module.User(
+                username=receiver_username,
+                display_name="Receiving Hidden User",
+                role="user",
+            )
+            receiver.set_password("receiver-pass")
+            db.session.add(receiver)
+            db.session.flush()
+            for status in ("ordered", "cancelled", "complete"):
+                purchase = Purchase(
+                    supplier_id=supplier_id,
+                    purchase_date=app_module.date(2026, 4, 18),
+                    availability_date=app_module.date(2026, 4, 18),
+                    status=status,
+                    stated_weight_lbs=50,
+                    purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+                )
+                db.session.add(purchase)
+                db.session.flush()
+                purchase_ids.append(purchase.id)
+            db.session.commit()
+
+        with app.test_client() as client:
+            login = client.post("/api/mobile/v1/auth/login", json={"username": receiver_username, "password": "receiver-pass"})
+            assert login.status_code == 200
+
+            listing = client.get("/api/mobile/v1/receiving/queue")
+            assert listing.status_code == 200
+            ids = {row["id"] for row in listing.get_json()["data"]}
+            assert purchase_ids[0] in ids
+            assert purchase_ids[1] not in ids
+            assert purchase_ids[2] not in ids
+
+            cancelled_listing = client.get("/api/mobile/v1/receiving/queue?status=cancelled")
+            assert cancelled_listing.status_code == 200
+            cancelled_ids = {row["id"] for row in cancelled_listing.get_json()["data"]}
+            assert purchase_ids[1] in cancelled_ids
+    finally:
+        with app.app_context():
+            for purchase_id in purchase_ids:
+                purchase = db.session.get(Purchase, purchase_id)
+                if purchase:
+                    db.session.delete(purchase)
+            supplier = db.session.get(Supplier, supplier_id)
+            if supplier:
+                db.session.delete(supplier)
+            user = User.query.filter_by(username=receiver_username).first()
+            if user:
+                db.session.delete(user)
             db.session.commit()
 
 
