@@ -598,6 +598,75 @@ def test_mobile_opportunity_create_enriches_existing_supplier_blank_fields():
             db.session.commit()
 
 
+def test_mobile_opportunity_create_accepts_unit_formatted_numeric_fields():
+    app = app_module.create_app()
+    _set_mobile_workflows(app)
+    supplier_id = _create_supplier(app, f"Formatted Number Supplier {gen_uuid()[:6]}")
+    purchase_id = None
+    try:
+        with app.test_client() as client:
+            _login_mobile(client)
+            create_res = client.post(
+                "/api/mobile/v1/opportunities",
+                json={
+                    "supplier_id": supplier_id,
+                    "strain_name": "Blue Dream",
+                    "expected_weight_lbs": "2,500lbs",
+                    "expected_potency_pct": "23.5%",
+                    "offered_price_per_lb": "$280/lb",
+                    "availability_date": "2026-04-15",
+                },
+            )
+            assert create_res.status_code == 201
+            payload = create_res.get_json()["data"]["opportunity"]
+            purchase_id = payload["id"]
+            assert payload["expected_weight_lbs"] == 2500
+
+        with app.app_context():
+            purchase = db.session.get(Purchase, purchase_id)
+            assert purchase is not None
+            assert float(purchase.stated_weight_lbs or 0) == 2500
+            assert float(purchase.price_per_lb or 0) == 280
+            assert float(purchase.stated_potency_pct or 0) == 23.5
+    finally:
+        with app.app_context():
+            purchase = db.session.get(Purchase, purchase_id) if purchase_id else None
+            if purchase:
+                db.session.delete(purchase)
+            supplier = db.session.get(Supplier, supplier_id)
+            if supplier:
+                db.session.delete(supplier)
+            db.session.commit()
+
+
+def test_mobile_opportunity_create_returns_400_for_bad_numeric_fields():
+    app = app_module.create_app()
+    _set_mobile_workflows(app)
+    supplier_id = _create_supplier(app, f"Bad Number Supplier {gen_uuid()[:6]}")
+    try:
+        with app.test_client() as client:
+            _login_mobile(client)
+            create_res = client.post(
+                "/api/mobile/v1/opportunities",
+                json={
+                    "supplier_id": supplier_id,
+                    "strain_name": "Blue Dream",
+                    "expected_weight_lbs": "two thousand",
+                    "availability_date": "2026-04-15",
+                },
+            )
+            assert create_res.status_code == 400
+            body = create_res.get_json()
+            assert body["error"]["code"] == "bad_request"
+            assert "Expected weight lbs" in body["error"]["message"]
+    finally:
+        with app.app_context():
+            supplier = db.session.get(Supplier, supplier_id)
+            if supplier:
+                db.session.delete(supplier)
+            db.session.commit()
+
+
 def test_mobile_endpoints_require_auth():
     app = app_module.create_app()
     with app.test_client() as client:

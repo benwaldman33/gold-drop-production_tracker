@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import date, datetime
 from typing import Any
 
@@ -97,6 +98,15 @@ def _parse_float(value: Any, field: str, *, allow_none: bool = True) -> float | 
         if allow_none:
             return None
         raise ValueError(f"{field} is required.")
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            if allow_none:
+                return None
+            raise ValueError(f"{field} is required.")
+        match = re.fullmatch(r"\$?\s*([+-]?(?:\d+(?:,\d{3})*|\d+)(?:\.\d+)?)\s*[%a-zA-Z/$ ]*", text)
+        if match:
+            value = match.group(1).replace(",", "")
     try:
         return float(value)
     except (TypeError, ValueError):
@@ -1041,13 +1051,16 @@ def mobile_opportunity_create_view(root):
     strain_name = (payload.get("strain_name") or "").strip()
     if not strain_name:
         return _json_error("Strain name is required.", status_code=400, code="bad_request")
-    expected_weight = _parse_float(payload.get("expected_weight_lbs"), "Expected weight lbs", allow_none=False)
-    if expected_weight is None or expected_weight <= 0:
-        return _json_error("Expected weight lbs must be greater than 0.", status_code=400, code="bad_request")
+    try:
+        expected_weight = _parse_float(payload.get("expected_weight_lbs"), "Expected weight lbs", allow_none=False)
+        if expected_weight is None or expected_weight <= 0:
+            return _json_error("Expected weight lbs must be greater than 0.", status_code=400, code="bad_request")
 
-    availability_date = _parse_date(payload.get("availability_date"), "Availability date", default_today=True)
-    expected_potency = _parse_float(payload.get("expected_potency_pct"), "Expected potency pct")
-    offered_price = _parse_float(payload.get("offered_price_per_lb"), "Offered price per lb")
+        availability_date = _parse_date(payload.get("availability_date"), "Availability date", default_today=True)
+        expected_potency = _parse_float(payload.get("expected_potency_pct"), "Expected potency pct")
+        offered_price = _parse_float(payload.get("offered_price_per_lb"), "Offered price per lb")
+    except ValueError as exc:
+        return _json_error(str(exc), status_code=400, code="bad_request")
 
     purchase = root.Purchase(
         supplier_id=supplier.id,
@@ -1127,30 +1140,33 @@ def mobile_opportunity_update_view(root, opportunity_id: str):
         if supplier is not None:
             purchase.supplier_id = supplier.id
 
-    if "availability_date" in payload:
-        purchase.availability_date = _parse_date(payload.get("availability_date"), "Availability date", default_today=False)
-    if "strain_name" in payload or "expected_weight_lbs" in payload or "expected_potency_pct" in payload or "offered_price_per_lb" in payload:
-        lot = _mobile_purchase_lot(purchase)
-        if lot is None:
-            lot = root.PurchaseLot(purchase_id=purchase.id, strain_name=(payload.get("strain_name") or "").strip() or "Opportunity total", weight_lbs=0, remaining_weight_lbs=0)
-            root.db.session.add(lot)
-            root.db.session.flush()
-        if "strain_name" in payload and (payload.get("strain_name") or "").strip():
-            lot.strain_name = (payload.get("strain_name") or "").strip()
-        if "expected_weight_lbs" in payload:
-            expected_weight = _parse_float(payload.get("expected_weight_lbs"), "Expected weight lbs", allow_none=False)
-            lot.weight_lbs = float(expected_weight or 0)
-            lot.remaining_weight_lbs = float(expected_weight or 0)
-            purchase.declared_weight_lbs = float(expected_weight or 0)
-            purchase.stated_weight_lbs = float(expected_weight or 0)
-        if "expected_potency_pct" in payload:
-            expected_potency = _parse_float(payload.get("expected_potency_pct"), "Expected potency pct")
-            purchase.stated_potency_pct = expected_potency
-            lot.potency_pct = expected_potency
-        if "offered_price_per_lb" in payload:
-            purchase.declared_price_per_lb = _parse_float(payload.get("offered_price_per_lb"), "Offered price per lb")
-            purchase.price_per_lb = purchase.declared_price_per_lb
-        ensure_purchase_lot_tracking(purchase)
+    try:
+        if "availability_date" in payload:
+            purchase.availability_date = _parse_date(payload.get("availability_date"), "Availability date", default_today=False)
+        if "strain_name" in payload or "expected_weight_lbs" in payload or "expected_potency_pct" in payload or "offered_price_per_lb" in payload:
+            lot = _mobile_purchase_lot(purchase)
+            if lot is None:
+                lot = root.PurchaseLot(purchase_id=purchase.id, strain_name=(payload.get("strain_name") or "").strip() or "Opportunity total", weight_lbs=0, remaining_weight_lbs=0)
+                root.db.session.add(lot)
+                root.db.session.flush()
+            if "strain_name" in payload and (payload.get("strain_name") or "").strip():
+                lot.strain_name = (payload.get("strain_name") or "").strip()
+            if "expected_weight_lbs" in payload:
+                expected_weight = _parse_float(payload.get("expected_weight_lbs"), "Expected weight lbs", allow_none=False)
+                lot.weight_lbs = float(expected_weight or 0)
+                lot.remaining_weight_lbs = float(expected_weight or 0)
+                purchase.declared_weight_lbs = float(expected_weight or 0)
+                purchase.stated_weight_lbs = float(expected_weight or 0)
+            if "expected_potency_pct" in payload:
+                expected_potency = _parse_float(payload.get("expected_potency_pct"), "Expected potency pct")
+                purchase.stated_potency_pct = expected_potency
+                lot.potency_pct = expected_potency
+            if "offered_price_per_lb" in payload:
+                purchase.declared_price_per_lb = _parse_float(payload.get("offered_price_per_lb"), "Offered price per lb")
+                purchase.price_per_lb = purchase.declared_price_per_lb
+            ensure_purchase_lot_tracking(purchase)
+    except ValueError as exc:
+        return _json_error(str(exc), status_code=400, code="bad_request")
 
     if "clean_or_dirty" in payload:
         purchase.clean_or_dirty = (payload.get("clean_or_dirty") or "").strip() or None
