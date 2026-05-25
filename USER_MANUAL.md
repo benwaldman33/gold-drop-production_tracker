@@ -83,8 +83,8 @@ Journey revenue projections:
 - It mirrors the same charge and lifecycle workflow the main app uses on `Floor Ops`.
 - After recording a charge, it can now open a dedicated standalone run-execution screen for the extractor workflow, and it can still open the main run form when deeper admin editing is needed.
 - On the `Reactors` board, use the large `Open Run` button on the reactor card before `Mark Running` when the current policy requires a linked run.
-- Inside the standalone run screen, use the guided progression buttons to move through the booth procedure with minimal typing: confirm vacuum, record solvent charge, start soak, run the mixer, confirm filter clear, start pressurization, begin recovery, move into flush, verify temperatures, record flush solvent charge, confirm flow resumed, run final purge, confirm final clarity, complete shutdown, then mark the run complete.
-- The same screen now stores booth-specific proof fields such as primary solvent charge, flush chiller temperature, plate temperature, flush solvent charge, final purge timing, flow-resumed / clarity decisions, and the shutdown checklist.
+- Inside the standalone run screen, use the guided progression buttons to move through the booth procedure with minimal typing: confirm vacuum, record solvent charge, start soak, run the mixer, confirm filter clear, start pressurization, begin recovery, move into flush, verify temperatures, record flush solvent charge, confirm flow resumed, run final purge, confirm final clarity, complete shutdown, then mark the run complete. The screen now shows only the current checkpoint inputs and the next allowed action; later booth steps remain hidden/locked until the current step is satisfied.
+- The same screen now stores booth-specific proof fields such as primary solvent charge, flush chiller temperature, plate temperature, flush solvent charge, final purge timing, flow-resumed / clarity decisions, and the shutdown checklist. Future-step values submitted early are ignored by the operator API until that checkpoint is active.
 - Use the `Booth evidence` section on the run screen to upload the required solvent chiller and plate temperature photos when your SOP calls for photo proof.
 - The `Booth timing controls` section shows the live or recorded duration for primary soak, mixer, flush soak, and final purge, along with the configured target for each step.
 - If flow has not resumed yet, choose `Still adjusting` and use the returned `Re-check Flow` step when recovery is ready to be checked again.
@@ -423,7 +423,7 @@ The timer-heavy fields use touch-first buttons instead of keyboard entry:
 - `Start / Now`
 - `Stop / Now`
 
-The top of the run screen now shows the current stage and the next action buttons. The normal booth sequence is:
+The top of the run screen now shows the current stage and the next action buttons. The operator screen is intentionally lockstep: it only renders the active checkpoint inputs plus a compact summary of prior booth proof. The normal booth sequence is:
 
 - **Confirm Vacuum Down**
 - **Record Solvent Charge**
@@ -445,8 +445,15 @@ The top of the run screen now shows the current stage and the next action button
 - **Complete Shutdown**
 - **Mark Run Complete**
 
-Those actions write the matching timestamps and booth checkpoints automatically. When the run is marked complete, the run stores a completed timestamp and the linked extraction charge moves to completed as well when that charge is still the active reactor event.
+Those actions write the matching timestamps and booth checkpoints automatically. Operators cannot jump ahead to later booth actions from the tablet or by submitting future-step API fields; the current step must be completed, looped, or bypassed with manager approval first. At the final clarity checkpoint, choose `Clear enough` or `Not yet` before tapping `Confirm Final Clarity`; `Not yet` keeps the run in the final-purge loop and should include the reason/context in the reason field. When the run is marked complete, the run stores a completed timestamp and the linked extraction charge moves to completed as well when that charge is still the active reactor event.
 
+### Manager-approved booth bypass
+
+If a booth step cannot be completed because an instrument, sensor, or physical condition is not functioning properly, the operator can use `Request Manager Bypass` from the current checkpoint card.
+
+A bypass request requires a reason and creates a supervisor notification tied to the run and booth session. Until a supervisor approves it, the operator remains on the same booth step. After approval, the tablet shows `Use Approved Bypass`, which advances only one stage and writes a booth event showing the skipped stage and linked notification.
+
+Use bypass for exception handling only. It is not a shortcut around normal SOP predicates.
 ### Supervisor booth review
 
 On the main app `Run` edit screen, supervisors now have a `Booth Review` block above the editable extraction fields.
@@ -472,6 +479,7 @@ Use it to review:
 - booth timing misses that finished short of target
 - booth exceptions such as `Flow adjustment required`
 - booth exceptions such as `Final clarity still out of scope`
+- booth-stage bypass requests that need manager approval
 - reminder notifications when warning or critical booth alerts have stayed unresolved past the configured delay
 
 Each notification shows:
@@ -484,7 +492,7 @@ Each notification shows:
 
 Supervisors can:
 - `Acknowledge` a notification when they have reviewed it
-- `Approve Deviation` when the run may proceed or be accepted off-target
+- `Approve Deviation` when the run may proceed, be accepted off-target, or use a requested one-step booth bypass
 - `Require Rework` when the operator must correct the booth condition before the alert can be cleared
 - `Resolve` a notification when the issue is fully closed
 

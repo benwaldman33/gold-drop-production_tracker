@@ -51,7 +51,12 @@
 - biomass blend slider updates milled / unmilled percentages to total `100`
 - saved extraction defaults from `Settings -> Operational Parameters` prepopulate the standalone run screen for new charge-linked runs, including aggregate fill / flush weights when configured
 - fill, flush, and stringer basket counters respond to `- / +`
-- the run screen shows the current stage and advances correctly through `Start Run`, `Start Mixer`, `Stop Mixer`, `Start Flush`, `Stop Flush`, and `Mark Run Complete`
+- the run screen shows only the current checkpoint inputs and advances correctly through the booth progression from `Confirm Vacuum Down` through `Mark Run Complete`
+- future booth-step fields are not visible before their checkpoint is active
+- final clarity requires choosing `Clear enough` or `Not yet`, keeps the selected choice visibly active, and submits that choice with `Confirm Final Clarity`
+- attempting to jump ahead through a future progression action is rejected by the API
+- `Request Manager Bypass` requires a reason and leaves the run on the same checkpoint until approval
+- after a manager approves the supervisor notification, `Use Approved Bypass` advances exactly one checkpoint
 - after `Mark Run Complete`, the run shows a completed state and the linked charge is no longer treated as active on the board
 - saving the run keeps the reactor-linked workflow intact and leaves `Open in Main App` available
 

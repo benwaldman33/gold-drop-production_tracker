@@ -43,6 +43,7 @@ from services.extraction_run import (
     ensure_booth_session,
     ensure_run_for_charge,
     mobile_run_payload,
+    operator_allowed_execution_fields,
 )
 from gold_drop.floor_module import (
     BOARD_VIEW_OPTIONS,
@@ -1476,7 +1477,8 @@ def mobile_extraction_run_view(root, charge_id: str):
     try:
         had_run_before = bool(charge.run_id)
         run = ensure_run_for_charge(root, charge)
-        apply_execution_payload(run, payload)
+        allowed_fields = operator_allowed_execution_fields(root, run, payload)
+        apply_execution_payload(run, payload, allowed_fields=allowed_fields)
         apply_progression_action(root, run, payload.get("progression_action"), payload)
         apply_post_extraction_action(run, payload.get("post_extraction_action"))
         if (payload.get("progression_action") or "").strip() == "mark_complete" and (charge.status or "").strip() != "completed":

@@ -920,3 +920,105 @@ There is still a local screenshot file in the repo root that was intentionally n
 - `screenshot Start Extraction Charge.png`
 
 That file should remain out of Git unless explicitly requested.
+
+## Extraction lab workflow documentation checkpoint - 2026-05-06
+
+The production team reviewed the extraction lab app and reported that the process is not easy to follow. A workflow-document review and documentation pass was completed to bridge the gap between the implemented app checkpoints and the physical booth workflow operators experience.
+
+New `/docs` outputs created during this pass:
+
+- `extraction_lab_biomass_flow.html`
+- `extraction_lab_biomass_flow.pdf`
+- `extraction_lab_biomass_flowchart.html`
+- `extraction_lab_biomass_flowchart.pdf`
+- `extraction_lab_decision_tree.html`
+- `extraction_lab_decision_tree.pdf`
+- `extraction_lab_workflow_integration_guidance.md`
+- `extraction_lab_workflow_session_resume.md`
+
+Additional user-provided workflow assets now in `/docs`:
+
+- `extraction_lab high level overview.pdf`
+- `extraction_lab phase1.pdf`
+- `extraction_lab phase2.pdf`
+- `extraction_lab phase3.pdf`
+- `extraction_lab phase4.pdf`
+- `extraction_lab phase5.pdf`
+- `extraction_lab phase6.pdf`
+- `extraction_lab phase7_gaps_improvements.pdf`
+- `extraction_lab_infographic.pdf`
+- `extraction flow chart original.png`
+
+Current review conclusion:
+
+- the phase PDFs and newer charts mostly comport with the current code and SOP alignment docs
+- the best operator-facing structure is a four-phase model:
+  - `Charge / Setup`
+  - `Primary Extraction`
+  - `Flush / Purge`
+  - `Pour / Handoff`
+- the code-backed app progression remains:
+  - `Confirm Vacuum Down`
+  - `Record Solvent Charge`
+  - `Start Primary Soak`
+  - `Start Mixer`
+  - `Stop Mixer`
+  - `Confirm Filter Clear`
+  - `Start Pressurization`
+  - `Begin Recovery`
+  - `Begin Flush Cycle`
+  - `Verify Flush Temps`
+  - `Record Flush Solvent Charge`
+  - `Start Flush`
+  - `Stop Flush`
+  - `Confirm Flow Resumed`
+  - `Start Final Purge`
+  - `Stop Final Purge`
+  - `Confirm Final Clarity`
+  - `Complete Shutdown`
+  - `Mark Run Complete`
+  - `Start Post-Extraction`
+  - `Confirm Initial Outputs`
+- the process should use `4 decision gates` consistently:
+  - `Lot Ready To Charge?`
+  - `Flush Temps Acceptable?`
+  - `Flow Resumed?`
+  - `Final Clarity Confirmed?`
+- `Flush Temps Acceptable?` should be treated as a hard stop in the app because the current code blocks progression if solvent chiller temperature is above `-40F`
+- `Select Post-Extraction Pathway` should be described as ready-for-handoff, not ownership transfer; the handoff starts at `Start Post-Extraction` and is confirmed only after both wet HTE and wet THCA are recorded
+- `extraction flow chart original.png` is useful as equipment-level SOP detail, but it is not the app workflow source of truth because it starts at vacuum down and ends at booth shutdown
+
+Recommended next implementation step:
+
+1. add visible phase grouping / progress rail to the standalone extraction app
+2. add non-blocking prep and cleaning checklist visibility for reactor readiness, solvent path readiness, receiving containers, and post-run reset
+3. tighten labels around hard stops and branch loops
+4. clarify downstream handoff wording in the tablet UI
+
+Resume from `docs/extraction_lab_workflow_session_resume.md` before implementing.
+
+## 2026-05-25 - Extraction booth lockstep progression and manager bypass
+
+The standalone extraction app and mobile extraction API now enforce the booth workflow as a predicate-driven, lockstep process:
+
+- the tablet run screen renders only the current checkpoint inputs and the next allowed action
+- downstream handoff controls stay hidden until extraction completion
+- the mobile API rejects progression actions that do not belong to the current booth stage
+- operator-submitted booth fields are filtered to the active stage so future-step values cannot be saved early
+- operators can request a one-step manager bypass with a reason when equipment/process conditions block the current checkpoint
+- bypass requests create supervisor notifications using the existing override workflow
+- `Use Approved Bypass` appears only after manager approval and advances one stage while writing booth history
+
+Verification:
+
+- `.venv\Scripts\python.exe -m pytest tests/test_mobile_api.py -q` -> 20 passed
+- `node --check standalone-extraction-lab-app\src\app.js`
+- `node --test tests/*.test.mjs` in `standalone-extraction-lab-app` -> 9 passed
+## 2026-05-25 - Final clarity selector follow-up
+
+The standalone extraction run screen now keeps active checkpoint choice selections in place before submitting a progression action. This specifically fixes the final clarity checkpoint: `Clear enough` and `Not yet` remain selected and are included when the operator taps `Confirm Final Clarity`.
+
+Verification:
+
+- `node --check standalone-extraction-lab-app\src\app.js`
+- `node --test tests/*.test.mjs`

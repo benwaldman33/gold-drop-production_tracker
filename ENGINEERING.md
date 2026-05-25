@@ -268,7 +268,7 @@ Pilot-hardening additions:
   - `ExtractionBoothSession`
   - `ExtractionBoothEvent`
   - `ExtractionBoothEvidence`
-- `services/extraction_run.py` owns booth-session creation, progression transitions, booth event writes, validations, and payload shaping.
+- `services/extraction_run.py` owns booth-session creation, progression transitions, active-stage locking, booth event writes, validations, manager-bypass metadata, and payload shaping.
 - Current booth-stage keys are:
   - `ready_to_confirm_vacuum`
   - `ready_to_record_solvent_charge`
@@ -290,6 +290,15 @@ Pilot-hardening additions:
   - `ready_to_complete_shutdown`
   - `ready_to_complete`
   - `completed`
+- Operator progression is lockstep:
+  - `run_progression_payload(...)` returns only the current stage's standard actions plus optional bypass actions.
+  - `apply_progression_action(...)` rejects actions that do not belong to the current stage.
+  - `operator_allowed_execution_fields(...)` filters mobile operator writes so future booth fields cannot be saved before their checkpoint is active.
+- Manager bypass uses existing `SupervisorNotification` override columns:
+  - `request_stage_bypass` requires an operator reason and writes `dedupe_key="booth_stage_bypass:<stage_key>"`.
+  - supervisors approve through the existing `Approve Deviation` path, setting `override_decision="approved_deviation"`.
+  - `apply_stage_bypass` is available only after approval and advances one stage while writing a `booth_stage_bypassed` event.
+- The standalone app renders stage-scoped checkpoint fields above progression actions. Choice controls such as flow resumed and final clarity update the active form in place so the selected value is included when the progression button is submitted.
 - Booth evidence uploads currently accept:
   - `solvent_chiller_temp_photo`
   - `plate_temp_photo`

@@ -9,9 +9,9 @@ Touch-first operator app for the extraction lab workflow. It mirrors the main ap
 - dedicated `Scan / Enter Lot` screen with camera and manual fallback
 - chargeable lot search
 - touch-friendly extraction charge form with `100 lbs`, `Half lot`, `Full lot`, and `Last used` presets plus last-reactor recall
-- standalone run-execution screen with timer controls, guided progression actions, blend capture, fill / flush fields, CRC blend, baskets, and notes
+- standalone run-execution screen with lockstep booth progression, active-checkpoint inputs, timer status, blend capture, fill / flush fields, CRC blend, baskets, and notes
 - settings-driven defaults for common run fields so the screen opens with the site's usual blend, aggregate weight, and count assumptions
-- guided downstream workflow on the same `Open Run` screen, with pathway-driven steps for post-extraction handoff plus pot-pour or minor-run downstream decisions
+- guided downstream workflow on the same `Open Run` screen after extraction completion, with pathway-driven steps for post-extraction handoff plus pot-pour or minor-run downstream decisions
 - reactor lifecycle actions from the board
 - full-size `Open Run` button on reactor cards so the linked-run step is obvious on iPad
 - handoff link into the main run form after recording a charge
@@ -34,6 +34,7 @@ By default the dev server runs at `http://127.0.0.1:4175` and proxies `/api/*` t
 4. Open `Lots` when you need browser-style search by tracking id, supplier, strain, or batch id.
 5. On the charge form, use the default `100 lbs` preset or tap `Half lot`, `Full lot`, or `Last used`. The app also preselects the last reactor used when possible.
 6. Record the charge, then choose `Open Run`, `Open Run in Main App`, `Back to Reactors`, or `Charge Another Lot`.
-7. In `Open Run`, use the touch-first timers and counters to capture execution details without leaving the tablet workflow.
-8. Use the progression buttons in order: `Start Run`, `Start Mixer`, `Stop Mixer`, `Start Flush`, `Stop Flush`, and `Mark Run Complete`.
-9. Continue into the downstream workflow on the same screen: choose the pathway, start post-extraction, confirm initial wet outputs, then work top-to-bottom through the relevant downstream branch.
+7. In `Open Run`, use the current checkpoint card and progression buttons in order. The tablet shows only the active booth-step inputs and the next allowed action; later checkpoint fields stay hidden until the predicate is satisfied.
+8. At final clarity, select `Clear enough` or `Not yet` before tapping `Confirm Final Clarity`; the selected decision is stored with that progression action.
+9. If the active checkpoint cannot be completed because equipment or process conditions are blocking it, use `Request Manager Bypass` with a reason. Continue only after manager approval exposes `Use Approved Bypass`.
+9. After `Mark Run Complete`, continue into the downstream workflow on the same screen: choose the pathway, start post-extraction, confirm initial wet outputs, then work top-to-bottom through the relevant downstream branch.

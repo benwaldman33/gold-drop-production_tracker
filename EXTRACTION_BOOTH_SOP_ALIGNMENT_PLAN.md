@@ -27,27 +27,21 @@ Current shipped support already exists for:
 - `ExtractionCharge` creation before run finalization
 - charge-to-run linkage
 - run execution draft fields on `Run`
-- tablet-guided progression through:
-  - `Start Run`
-  - `Start Mixer`
-  - `Stop Mixer`
-  - `Start Flush`
-  - `Stop Flush`
-  - `Mark Run Complete`
+- additive booth session, event, and evidence records
+- lockstep tablet-guided booth progression through vacuum confirmation, solvent charge, soak, mixer, filter clear, pressurization, recovery, flush setup, temperature verification, flush solvent charge, flow-resumed decision, final purge, final clarity, shutdown, and run completion
+- active-stage API enforcement so future progression actions are rejected and future booth fields are ignored until their checkpoint is active
+- manager-approved one-step bypass requests through supervisor notifications
 - downstream handoff after run completion
 
-Current shipped support is not sufficient for full booth-SOP alignment because the app does not yet model:
+Current shipped support is not sufficient for full booth-SOP alignment because the app still does not yet model every equipment-level action as a first-class step:
 
-- vacuum confirmation
-- solvent charge checkpoints
-- soak steps as first-class timed workflow stages
-- nitrogen / burp / pressurization checkpoints
-- recovery / filtration / heat-exchanger checkpoints
-- critical temperature verification and evidence capture
-- decision points such as:
-  - flow resumed
-  - system clear enough to proceed
-- final purge and shutdown checklist
+- small-solvent-tank burp details
+- explicit nitrogen-line attachment confirmation
+- explicit heat-exchanger on/off confirmations
+- reactor bottom outlet / stinger valve / recovery inlet closures outside the grouped shutdown path
+- gas-level wait timing before flush
+- flush mixer timing for the last five minutes of flush soak
+- required evidence-photo gating before flush solvent charge
 
 ## Product direction
 
@@ -648,7 +642,7 @@ Each workflow card should show:
 
 ### Design rule
 
-Do not expose all booth fields as one flat form on the tablet.
+Do not expose all booth fields as one flat form on the tablet. The current tablet implementation follows this rule by rendering only the active checkpoint inputs, while the mobile API filters operator writes to the current stage and rejects future progression actions.
 
 The operator should see:
 
@@ -703,14 +697,15 @@ Rationale:
 
 ### Override policy
 
-If hard-blocked SOP exceptions must be allowed, add explicit supervisor override later.
+Hard-blocked SOP exceptions now use an explicit manager-approved stage bypass instead of free-form jumping.
 
-If added, an override must capture:
+A bypass override must capture:
 
 - overriding user
 - reason
 - timestamp
 - affected checkpoint
+- source stage and next stage advanced to by the approved one-step bypass
 
 ## Audit and deviations
 
