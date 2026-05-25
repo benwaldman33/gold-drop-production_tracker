@@ -194,6 +194,98 @@ def test_mobile_supplier_create_accepts_standalone_form_shape():
             db.session.commit()
 
 
+def test_mobile_extraction_progression_locks_future_steps_and_supports_manager_bypass():
+    app = app_module.create_app()
+    _set_mobile_workflows(app)
+    with app.test_client() as client:
+        _login_mobile(client)
+        with app.app_context():
+            supplier = Supplier(name=f"Locked Flow Supplier {gen_uuid()[:6]}", is_active=True)
+            db.session.add(supplier)
+            db.session.flush()
+            purchase = Purchase(
+                supplier_id=supplier.id,
+                purchase_date=app_module.date.today(),
+                status="delivered",
+                stated_weight_lbs=100,
+                actual_weight_lbs=100,
+                purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            )
+            db.session.add(purchase)
+            db.session.flush()
+            lot = app_module.PurchaseLot(
+                purchase_id=purchase.id,
+                strain_name="Locked Dream",
+                weight_lbs=100,
+                remaining_weight_lbs=100,
+            )
+            db.session.add(lot)
+            db.session.flush()
+            charge = ExtractionCharge(
+                purchase_lot_id=lot.id,
+                reactor_number=2,
+                charged_weight_lbs=25,
+                source_mode="standalone_extraction",
+            )
+            db.session.add(charge)
+            db.session.commit()
+            charge_id = charge.id
+
+        future_step = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={"primary_solvent_charge_lbs": 500, "progression_action": "record_solvent_charge"},
+        )
+        assert future_step.status_code == 400
+        assert "current step" in future_step.get_json()["error"]["message"].lower()
+
+        ignored_future_fields = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={"flush_solvent_chiller_temp_f": -45, "flush_plate_temp_f": -42},
+        )
+        assert ignored_future_fields.status_code == 200
+        assert ignored_future_fields.get_json()["data"]["run"]["booth"]["flush_solvent_chiller_temp_f"] is None
+
+        missing_reason = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={"progression_action": "request_stage_bypass"},
+        )
+        assert missing_reason.status_code == 400
+
+        requested = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={"progression_action": "request_stage_bypass", "bypass_reason": "Vacuum sensor failed during the check."},
+        )
+        assert requested.status_code == 200
+        requested_run = requested.get_json()["data"]["run"]
+        assert requested_run["progression"]["stage_key"] == "ready_to_confirm_vacuum"
+        assert requested_run["progression"]["bypass"]["status"] == "pending"
+
+        unapproved = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={"progression_action": "apply_stage_bypass"},
+        )
+        assert unapproved.status_code == 400
+
+        with app.app_context():
+            run = db.session.get(ExtractionCharge, charge_id).run
+            row = app_module.SupervisorNotification.query.filter_by(
+                run_id=run.id,
+                dedupe_key="booth_stage_bypass:ready_to_confirm_vacuum",
+            ).first()
+            assert row is not None
+            row.override_decision = "approved_deviation"
+            row.override_reason = "Manager approved the failed vacuum sensor bypass."
+            row.override_at = app_module.datetime.now(app_module.timezone.utc)
+            row.status = "resolved"
+            db.session.commit()
+
+        applied = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={"progression_action": "apply_stage_bypass"},
+        )
+        assert applied.status_code == 200
+        assert applied.get_json()["data"]["run"]["progression"]["stage_key"] == "ready_to_record_solvent_charge"
+
 def test_mobile_extraction_run_exception_handling_loops():
     app = app_module.create_app()
     _set_mobile_workflows(app)
@@ -243,7 +335,8 @@ def test_mobile_extraction_run_exception_handling_loops():
             {"progression_action": "confirm_vacuum_down"},
             {"primary_solvent_charge_lbs": 500, "progression_action": "record_solvent_charge"},
             {"progression_action": "start_primary_soak"},
-            {"mixer_started_at": "2026-04-24T09:10", "mixer_ended_at": "2026-04-24T09:20"},
+            {"progression_action": "start_mixer", "primary_soak_short_reason": "Test sequence advances the soak timer immediately."},
+            {"progression_action": "stop_mixer", "mixer_short_reason": "Test sequence advances the mixer timer immediately."},
             {"progression_action": "confirm_filter_clear"},
             {"progression_action": "start_pressurization"},
             {"progression_action": "begin_recovery"},
@@ -1352,8 +1445,6 @@ def test_mobile_extraction_run_execution_flow():
             run_save = client.post(
                 f"/api/mobile/v1/extraction/charges/{charge_id}/run",
                 json={
-                    "run_fill_started_at": "2026-04-19T09:05",
-                    "run_fill_ended_at": "2026-04-19T09:40",
                     "biomass_blend_milled_pct": 80,
                     "biomass_blend_unmilled_pct": 20,
                     "flush_count": 2,
@@ -1362,20 +1453,27 @@ def test_mobile_extraction_run_execution_flow():
                     "fill_total_weight_lbs": 50,
                     "stringer_basket_count": 8,
                     "crc_blend": "House CRC",
-                    "mixer_started_at": "2026-04-19T09:10",
-                    "mixer_ended_at": "2026-04-19T09:20",
                     "notes": "Touch-first run capture",
                 },
             )
             assert run_save.status_code == 200
             saved = run_save.get_json()["data"]["run"]
-            assert saved["run_fill_duration_minutes"] is not None
-            assert saved["mixer_duration_minutes"] == 10
-            assert saved["timing_controls"]["primary_soak"]["status"] == "on_target"
-            assert saved["timing_controls"]["mixer"]["status"] == "on_target"
+            assert saved["run_fill_started_at"]
+            assert saved["mixer_duration_minutes"] is None
             assert saved["crc_blend"] == "House CRC"
             run_id = saved["id"]
             assert saved["open_main_app_url"].endswith(f"/runs/{run_id}/edit?return_to=/floor-ops")
+
+            start_mixer = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={"progression_action": "start_mixer", "primary_soak_short_reason": "QA flow advances the timer immediately."},
+            )
+            assert start_mixer.status_code == 200
+            stop_mixer = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={"progression_action": "stop_mixer", "mixer_short_reason": "QA flow advances the timer immediately."},
+            )
+            assert stop_mixer.status_code == 200
 
             filter_clear = client.post(
                 f"/api/mobile/v1/extraction/charges/{charge_id}/run",

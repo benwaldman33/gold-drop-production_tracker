@@ -470,18 +470,35 @@ The app stores the actual timestamps and also shows the derived duration in minu
 
 ## How does the standalone extraction app guide the run after I tap Open Run?
 
-The run screen now shows the current stage and the next allowed actions directly on the page.
+The run screen now shows the current stage and the next allowed action directly on the page. It is intentionally lockstep: operators only see inputs for the active checkpoint, and future booth steps stay hidden until the current predicate is satisfied.
 
 The normal progression is:
 
-- `Start Run`
+- `Confirm Vacuum Down`
+- `Record Solvent Charge`
+- `Start Primary Soak`
 - `Start Mixer`
 - `Stop Mixer`
+- `Confirm Filter Clear`
+- `Start Pressurization`
+- `Begin Recovery`
+- `Begin Flush Cycle`
+- `Verify Flush Temps`
+- `Record Flush Solvent Charge`
 - `Start Flush`
 - `Stop Flush`
+- `Confirm Flow Resumed`
+- `Start Final Purge`
+- `Stop Final Purge`
+- `Confirm Final Clarity`
+- `Complete Shutdown`
 - `Mark Run Complete`
 
-Each action stamps the matching time field and advances the run to the next stage. When the run is marked complete, the screen shows that completed state and the linked extraction charge is also marked complete when that charge is still the active reactor event.
+Each action stamps the matching time/checkpoint field and advances the run to the next stage. The API also rejects future progression actions and ignores future-step booth fields submitted early from the operator app. At `Confirm Final Clarity`, the operator must first select `Clear enough` or `Not yet`; the selected choice stays active on the page and is submitted with the confirm action. When the run is marked complete, the screen shows that completed state and the linked extraction charge is also marked complete when that charge is still the active reactor event.
+
+## What if the current booth step cannot be completed?
+
+Use `Request Manager Bypass` on the active checkpoint. The operator must enter a reason, which creates a supervisor notification. The run remains on the same step until a manager approves the notification. After approval, the tablet shows `Use Approved Bypass`, which advances one step and records the bypass in booth history.
 
 ## What happens after I mark the extraction run complete?
 

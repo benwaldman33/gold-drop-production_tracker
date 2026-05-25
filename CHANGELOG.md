@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-05-25
+
+### Added
+- Standalone extraction run execution now enforces lockstep booth progression: the tablet shows only the active checkpoint inputs and next allowed action, while the mobile API rejects future progression actions and ignores future-step booth fields submitted before their predicate is satisfied.
+- Operators can now request a one-step manager bypass from the active booth checkpoint when equipment or process conditions prevent normal completion. The request requires an operator reason, creates a supervisor notification, and only exposes `Use Approved Bypass` after a manager approves the deviation.
+
+### Fixed
+- Final clarity choices on the standalone run screen now update in place, so `Clear enough` or `Not yet` stays selected and is submitted with `Confirm Final Clarity` instead of resetting to an empty decision.
+
+### Tests
+- Added mobile API regression coverage for future-step locking, stage-scoped field filtering, bypass request validation, manager approval, and approved one-step bypass application.
+- Re-ran standalone extraction app tests for the updated run-execution UI path.
 ## 2026-04-25
 
 ### Added

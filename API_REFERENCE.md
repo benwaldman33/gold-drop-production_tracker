@@ -128,9 +128,11 @@ Behavior:
 - lot payloads include readiness flags, warnings, and charge defaults for touch-first UIs
 - creating a charge stores a canonical `ExtractionCharge` with `source_mode="standalone_extraction"` and writes run-prefill session data for the existing main run form
 - lifecycle transitions reuse the same validation and audit history rules as the main reactor board
-- the charge-linked run endpoint returns a draft standalone run payload on `GET` without allocating inventory yet; the payload now includes a derived `progression` object plus `run_completed_at`
-- `POST /api/mobile/v1/extraction/charges/<charge_id>/run` accepts both structured execution fields and an optional `progression_action`
-- the first `POST` creates the linked run, applies lot allocation, and stores structured execution fields such as blend, fill/flush totals, timer stamps, stringer baskets, CRC blend, notes, and completion timestamp
+- the charge-linked run endpoint returns a draft standalone run payload on `GET` without allocating inventory yet; the payload includes a derived `progression` object with current `stage_key`, standard `actions`, optional `bypass_actions`, bypass status metadata, and `run_completed_at`
+- `POST /api/mobile/v1/extraction/charges/<charge_id>/run` accepts structured execution fields and an optional `progression_action`, but operator writes are filtered to the active booth stage so future-step booth fields submitted early are ignored
+- the first `POST` creates the linked run, applies lot allocation, and stores allowed structured execution fields such as blend, fill/flush totals, stringer baskets, CRC blend, notes, and active-stage booth values
+- progression actions are locked to the current `progression.stage_key`; invalid future actions return `400` until the current step is completed or bypassed
+- `progression_action="request_stage_bypass"` requires `bypass_reason` and creates a supervisor notification; `progression_action="apply_stage_bypass"` advances one step only after that notification has `override_decision="approved_deviation"`
 
 ### Mobile Write Platform Rules
 

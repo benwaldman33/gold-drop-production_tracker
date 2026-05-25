@@ -176,6 +176,19 @@ RUN_STAGE_SEQUENCE = {
     "ready_to_complete_shutdown": "ready_to_complete",
     "ready_to_complete": "completed",
 }
+ACTION_STAGE_BY_ID = {
+    action["action_id"]: stage_key
+    for stage_key, config in RUN_PROGRESSION.items()
+    for action in config.get("actions", [])
+}
+
+BYPASS_REQUEST_ACTION = "request_stage_bypass"
+BYPASS_APPLY_ACTION = "apply_stage_bypass"
+BYPASSABLE_STAGE_KEYS = {
+    stage_key
+    for stage_key, next_stage_key in RUN_STAGE_SEQUENCE.items()
+    if stage_key != "ready_to_complete" and next_stage_key != "completed"
+}
 
 POST_EXTRACTION_PATHWAY_OPTIONS = [
     ("", "Not set"),
@@ -496,6 +509,53 @@ def _notification_override_approved(root, run, dedupe_key: str) -> bool:
     ).order_by(root.SupervisorNotification.created_at.desc()).first()
     return bool(row is not None and (row.override_decision or "") == "approved_deviation")
 
+def _stage_bypass_dedupe_key(stage_key: str) -> str:
+    return f"booth_stage_bypass:{stage_key}"
+
+
+def _stage_bypass_notification(root, run, stage_key: str):
+    if run is None or getattr(run, "id", None) is None:
+        return None
+    return root.SupervisorNotification.query.filter(
+        root.SupervisorNotification.run_id == run.id,
+        root.SupervisorNotification.dedupe_key == _stage_bypass_dedupe_key(stage_key),
+    ).order_by(root.SupervisorNotification.created_at.desc()).first()
+
+
+def _stage_bypass_payload(root, run, stage_key: str) -> dict | None:
+    if stage_key not in BYPASSABLE_STAGE_KEYS:
+        return None
+    row = _stage_bypass_notification(root, run, stage_key)
+    status = "available"
+    if row is not None:
+        if (row.override_decision or "") == "approved_deviation":
+            status = "approved"
+        elif (row.override_decision or "") == "require_rework":
+            status = "rework_required"
+        elif (row.status or "") in {"open", "acknowledged"}:
+            status = "pending"
+    return {
+        "status": status,
+        "request_action_id": BYPASS_REQUEST_ACTION,
+        "apply_action_id": BYPASS_APPLY_ACTION,
+        "notification_id": getattr(row, "id", None),
+        "stage_key": stage_key,
+        "next_stage_key": RUN_STAGE_SEQUENCE.get(stage_key),
+    }
+
+
+def _current_progression_stage_key(root, run) -> str:
+    return run_progression_payload(root, run).get("stage_key", "ready_to_confirm_vacuum")
+
+
+def _allowed_progression_actions_for_stage(root, run, stage_key: str) -> set[str]:
+    actions = {action["action_id"] for action in RUN_PROGRESSION.get(stage_key, {}).get("actions", [])}
+    if stage_key in BYPASSABLE_STAGE_KEYS:
+        actions.add(BYPASS_REQUEST_ACTION)
+        if (_stage_bypass_payload(root, run, stage_key) or {}).get("status") == "approved":
+            actions.add(BYPASS_APPLY_ACTION)
+    return actions
+
 
 def _active_override_required_notification(root, run, dedupe_key: str):
     if run is None or getattr(run, "id", None) is None:
@@ -600,11 +660,20 @@ def run_progression_payload(root, run) -> dict:
     if block is not None:
         config["description"] = block["message"]
         config["actions"] = []
+    bypass = _stage_bypass_payload(root, run, stage_key)
+    bypass_actions = []
+    if bypass is not None:
+        if bypass["status"] == "approved":
+            bypass_actions.append({"action_id": BYPASS_APPLY_ACTION, "label": "Use Approved Bypass"})
+        elif bypass["status"] == "available":
+            bypass_actions.append({"action_id": BYPASS_REQUEST_ACTION, "label": "Request Manager Bypass"})
     return {
         "stage_key": stage_key,
         "stage_label": config["label"],
         "description": config["description"],
         "actions": list(config["actions"]),
+        "bypass_actions": bypass_actions,
+        "bypass": bypass,
         "completed_at": display_local_datetime(run.run_completed_at),
         "policy_block": block,
     }
@@ -652,6 +721,61 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
     now = _utc_now_localized()
     session = ensure_booth_session(root, run)
     payload = payload or {}
+    current_stage_key = _current_progression_stage_key(root, run)
+    allowed_actions = _allowed_progression_actions_for_stage(root, run, current_stage_key)
+    if action not in allowed_actions:
+        expected = RUN_PROGRESSION.get(current_stage_key, {}).get("label", current_stage_key).lower()
+        raise ValueError(f"This booth step is locked. Complete or bypass the current step first: {expected}.")
+    if action == BYPASS_REQUEST_ACTION:
+        if current_stage_key not in BYPASSABLE_STAGE_KEYS:
+            raise ValueError("This booth step cannot be bypassed.")
+        reason = _required_reason(payload, "bypass_reason", "Enter a reason to request manager bypass.")
+        title = f"Booth bypass requested: {RUN_PROGRESSION.get(current_stage_key, {}).get('label', current_stage_key)}"
+        message = (
+            f"Operator requested permission to bypass the current booth step and advance to "
+            f"{RUN_PROGRESSION.get(RUN_STAGE_SEQUENCE.get(current_stage_key, ''), {}).get('label', RUN_STAGE_SEQUENCE.get(current_stage_key, 'the next step'))}."
+        )
+        create_notification(
+            root,
+            run=run,
+            booth_session=session,
+            event_key="booth_stage_bypass_requested",
+            dedupe_key=_stage_bypass_dedupe_key(current_stage_key),
+            notification_class="warnings",
+            severity="critical",
+            title=title,
+            message=message,
+            operator_reason=reason,
+        )
+        _record_booth_event(
+            root,
+            session,
+            event_key="booth_stage_bypass_requested",
+            event_label="Manager bypass requested",
+            text_value=reason,
+            payload={"stage_key": current_stage_key, "reason": reason},
+        )
+        return
+    if action == BYPASS_APPLY_ACTION:
+        bypass = _stage_bypass_payload(root, run, current_stage_key)
+        if not bypass or bypass.get("status") != "approved":
+            raise ValueError("Manager approval is required before bypassing this booth step.")
+        next_stage_key = RUN_STAGE_SEQUENCE.get(current_stage_key)
+        if not next_stage_key:
+            raise ValueError("This booth step cannot be bypassed.")
+        _record_booth_event(
+            root,
+            session,
+            event_key="booth_stage_bypassed",
+            event_label="Booth step bypassed with manager approval",
+            payload={
+                "from_stage_key": current_stage_key,
+                "to_stage_key": next_stage_key,
+                "notification_id": bypass.get("notification_id"),
+            },
+        )
+        session.current_stage_key = next_stage_key
+        return
     active_block = (
         _policy_block_payload(root, run, "primary_soak", "timing_short_primary_soak", "Primary soak timing deviation")
         or _policy_block_payload(root, run, "mixer", "timing_short_mixer", "Mixer timing deviation")
@@ -1222,7 +1346,63 @@ def _clamped_percent(value, *, field: str) -> float | None:
     return parsed
 
 
-def apply_execution_payload(run, payload: dict) -> None:
+BASE_EXECUTION_FIELDS = {
+    "run_type",
+    "biomass_blend_milled_pct",
+    "biomass_blend_unmilled_pct",
+    "fill_count",
+    "fill_total_weight_lbs",
+    "flush_count",
+    "flush_total_weight_lbs",
+    "stringer_basket_count",
+    "crc_blend",
+    "notes",
+}
+
+STAGE_EXECUTION_FIELDS = {
+    "ready_to_record_solvent_charge": {"primary_solvent_charge_lbs"},
+    "ready_to_verify_flush_temps": {"flush_solvent_chiller_temp_f", "flush_plate_temp_f", "flush_temp_slack_post_confirmed"},
+    "ready_to_record_flush_solvent_charge": {"flush_solvent_charge_lbs"},
+    "ready_to_confirm_flow_resumed": {"flow_resumed_decision"},
+    "ready_to_confirm_clarity": {"final_clarity_decision"},
+}
+
+POST_EXTRACTION_EXECUTION_FIELDS = {
+    "wet_hte_g",
+    "wet_thca_g",
+    "post_extraction_pathway",
+    "post_extraction_started_at",
+    "post_extraction_initial_outputs_recorded_at",
+    "pot_pour_offgas_started_at",
+    "pot_pour_offgas_completed_at",
+    "pot_pour_daily_stir_count",
+    "pot_pour_centrifuged_at",
+    "thca_oven_started_at",
+    "thca_oven_completed_at",
+    "thca_milled_at",
+    "thca_destination",
+    "hte_offgas_started_at",
+    "hte_offgas_completed_at",
+    "hte_clean_decision",
+    "hte_filter_outcome",
+    "hte_prescott_processed_at",
+    "hte_potency_disposition",
+    "hte_queue_destination",
+}
+
+
+def operator_allowed_execution_fields(root, run, payload: dict) -> set[str]:
+    stage_key = _current_progression_stage_key(root, run)
+    allowed = set(BASE_EXECUTION_FIELDS)
+    allowed.update(STAGE_EXECUTION_FIELDS.get(stage_key, set()))
+    if getattr(run, "run_completed_at", None) is not None or (payload.get("post_extraction_action") or "").strip():
+        allowed.update(POST_EXTRACTION_EXECUTION_FIELDS)
+    return allowed
+
+
+def apply_execution_payload(run, payload: dict, allowed_fields: set[str] | None = None) -> None:
+    if allowed_fields is not None:
+        payload = {key: value for key, value in payload.items() if key in allowed_fields}
     if "run_type" in payload:
         run.run_type = (payload.get("run_type") or "").strip() or "standard"
 

@@ -44,6 +44,7 @@ from services.extraction_run import (
     ensure_booth_session,
     ensure_run_for_charge,
     mobile_run_payload,
+    operator_allowed_execution_fields,
 )
 from gold_drop.floor_module import (
     BOARD_VIEW_OPTIONS,
@@ -751,7 +752,7 @@ def register_routes(app, root):
     app.add_url_rule("/api/mobile/v1/extraction/charges/<charge_id>/run/evidence", endpoint="mobile_extraction_run_evidence", view_func=mobile_extraction_run_evidence, methods=["GET", "POST"])
 
 
-def _mobile_supplier_payload(supplier: Supplier) -> dict[str, Any]:
+def _mobile_supplier_payload(root, supplier: Supplier) -> dict[str, Any]:
     if supplier is None:
         return {}
     opportunity_count = Purchase.query.filter(
@@ -1022,7 +1023,7 @@ def mobile_suppliers_view(root):
     rows = query.offset(offset).limit(limit).all()
     return jsonify({
         "meta": build_meta(count=total, limit=limit, offset=offset),
-        "data": [_mobile_supplier_payload(supplier) for supplier in rows],
+        "data": [_mobile_supplier_payload(root, supplier) for supplier in rows],
     })
 
 
@@ -1033,7 +1034,7 @@ def mobile_supplier_detail_view(root, supplier_id: str):
     supplier = root.db.session.get(root.Supplier, supplier_id)
     if not supplier or not bool(supplier.is_active) or getattr(supplier, "merged_into_supplier_id", None):
         return _json_error("Supplier not found.", status_code=404, code="not_found")
-    return jsonify({"meta": build_meta(), "data": _mobile_supplier_payload(supplier)})
+    return jsonify({"meta": build_meta(), "data": _mobile_supplier_payload(root, supplier)})
 
 
 def mobile_opportunity_create_view(root):
@@ -1500,7 +1501,8 @@ def mobile_extraction_run_view(root, charge_id: str):
     try:
         had_run_before = bool(charge.run_id)
         run = ensure_run_for_charge(root, charge)
-        apply_execution_payload(run, payload)
+        allowed_fields = operator_allowed_execution_fields(root, run, payload)
+        apply_execution_payload(run, payload, allowed_fields=allowed_fields)
         apply_progression_action(root, run, payload.get("progression_action"), payload)
         apply_post_extraction_action(run, payload.get("post_extraction_action"))
         if (payload.get("progression_action") or "").strip() == "mark_complete" and (charge.status or "").strip() != "completed":

@@ -656,6 +656,8 @@ function renderTimerField(name, label, value, durationLabel, stopField = "", sto
 function renderRunProgression(run) {
   const progression = run.progression || {};
   const actions = progression.actions || [];
+  const bypassActions = progression.bypass_actions || [];
+  const bypass = progression.bypass || null;
   return `
     <section class="card">
       <div class="section-head">
@@ -679,7 +681,22 @@ function renderRunProgression(run) {
                   `<button class="btn btn-primary" type="button" data-action="run-progression" data-run-action="${escapeHtml(action.action_id)}">${escapeHtml(action.label)}</button>`,
               )
               .join("")}</div>`
-          : `<div class="text-sm" style="color:var(--text-muted);margin-top:10px;">No additional progression actions are available right now.</div>`
+          : `<div class="text-sm" style="color:var(--text-muted);margin-top:10px;">No standard progression action is available right now.</div>`
+      }
+      ${
+        bypass && bypass.status === "pending"
+          ? `<div class="notice warning" style="margin-top:14px;">Manager bypass requested. Continue only after approval appears here.</div>`
+          : ""
+      }
+      ${
+        bypassActions.length
+          ? `<div class="bypass-box" style="margin-top:14px;">
+              ${bypassActions.some((action) => action.action_id === "request_stage_bypass") ? `<div class="field"><label for="bypass_reason">Bypass Reason</label><textarea id="bypass_reason" name="bypass_reason" rows="2" placeholder="Explain what failed and why manager approval is needed"></textarea></div>` : ""}
+              <div class="action-grid">${bypassActions
+                .map((action) => `<button class="btn btn-secondary" type="button" data-action="run-progression" data-run-action="${escapeHtml(action.action_id)}">${escapeHtml(action.label)}</button>`)
+                .join("")}</div>
+            </div>`
+          : ""
       }
     </section>
   `;
@@ -935,6 +952,104 @@ function renderGuidedDownstreamWorkflow(run) {
   `;
 }
 
+function renderCurrentBoothCheckpoint(run) {
+  const progressionActions = (run.progression?.actions || []).map((action) => action.action_id);
+  let stageKey = run.progression?.stage_key || "";
+  if (progressionActions.includes("record_solvent_charge")) stageKey = "ready_to_record_solvent_charge";
+  if (progressionActions.includes("verify_flush_temps")) stageKey = "ready_to_verify_flush_temps";
+  if (progressionActions.includes("record_flush_solvent_charge")) stageKey = "ready_to_record_flush_solvent_charge";
+  if (progressionActions.includes("confirm_flow_resumed")) stageKey = "ready_to_confirm_flow_resumed";
+  if (progressionActions.includes("confirm_final_clarity")) stageKey = "ready_to_confirm_clarity";
+  if (progressionActions.includes("complete_shutdown")) stageKey = "ready_to_complete_shutdown";
+  const booth = run.booth || {};
+  const actionFields = {
+    ready_to_start_mixer: `
+      <div class="field"><label for="primary_soak_short_reason">Reason if starting mixer before target soak time</label><textarea id="primary_soak_short_reason" name="primary_soak_short_reason" rows="2"></textarea></div>
+    `,
+    mixing: `
+      <div class="field"><label for="mixer_short_reason">Reason if stopping mixer before target time</label><textarea id="mixer_short_reason" name="mixer_short_reason" rows="2"></textarea></div>
+    `,
+    flushing: `
+      <div class="field"><label for="flush_short_reason">Reason if stopping flush before target time</label><textarea id="flush_short_reason" name="flush_short_reason" rows="2"></textarea></div>
+    `,
+    purging: `
+      <div class="field"><label for="final_purge_short_reason">Reason if stopping final purge before target time</label><textarea id="final_purge_short_reason" name="final_purge_short_reason" rows="2"></textarea></div>
+    `,
+    ready_to_record_solvent_charge: `
+      <div class="field">
+        <label for="primary_solvent_charge_lbs">Primary Solvent Charge (lbs)</label>
+        <input id="primary_solvent_charge_lbs" name="primary_solvent_charge_lbs" type="number" value="${escapeHtml(String(run.primary_solvent_charge_lbs ?? ""))}" min="0" step="0.1" placeholder="500" />
+      </div>
+    `,
+    ready_to_verify_flush_temps: `
+      <div class="grid-2">
+        <div class="field">
+          <label for="flush_solvent_chiller_temp_f">Flush Solvent Chiller Temp (F)</label>
+          <input id="flush_solvent_chiller_temp_f" name="flush_solvent_chiller_temp_f" type="number" value="${escapeHtml(String(booth.flush_solvent_chiller_temp_f ?? ""))}" step="0.1" placeholder="-40 or below" />
+        </div>
+        <div class="field">
+          <label for="flush_plate_temp_f">Plate Temp (F)</label>
+          <input id="flush_plate_temp_f" name="flush_plate_temp_f" type="number" value="${escapeHtml(String(booth.flush_plate_temp_f ?? ""))}" step="0.1" placeholder="Plate temp" />
+        </div>
+      </div>
+      <div class="field">
+        <label><input type="checkbox" name="flush_temp_slack_post_confirmed" value="1" ${booth.flush_temp_slack_post_confirmed_at ? "checked" : ""}> Posted to Slack</label>
+      </div>
+    `,
+    ready_to_record_flush_solvent_charge: `
+      <div class="field">
+        <label for="flush_solvent_charge_lbs">Flush Solvent Charge (lbs)</label>
+        <input id="flush_solvent_charge_lbs" name="flush_solvent_charge_lbs" type="number" value="${escapeHtml(String(booth.flush_solvent_charge_lbs ?? ""))}" min="0" step="0.1" placeholder="500" />
+      </div>
+    `,
+    ready_to_confirm_flow_resumed: `
+      <div class="field">
+        <label>Flow Resumed</label>
+        ${renderChoiceButtons("flow_resumed_decision", booth.flow_resumed_decision || "", [
+          { value: "", label: "Not set" },
+          { value: "yes", label: "Yes" },
+          { value: "no_adjusting", label: "Still adjusting" },
+        ])}
+      </div>
+      <div class="field"><label for="flow_adjustment_reason">Reason if still adjusting</label><textarea id="flow_adjustment_reason" name="flow_adjustment_reason" rows="2"></textarea></div>
+    `,
+    ready_to_confirm_clarity: `
+      <div class="field">
+        <label>Final Clarity</label>
+        ${renderChoiceButtons("final_clarity_decision", booth.final_clarity_decision || "", [
+          { value: "", label: "Not set" },
+          { value: "yes", label: "Clear enough" },
+          { value: "not_yet", label: "Not yet" },
+        ])}
+      </div>
+      <div class="field"><label for="final_clarity_reason">Reason if not yet clear</label><textarea id="final_clarity_reason" name="final_clarity_reason" rows="2"></textarea></div>
+    `,
+    ready_to_complete_shutdown: `
+      <div class="field">
+        <label>Shutdown Checklist</label>
+        <label><input type="checkbox" name="shutdown_recovery_inlets_closed" value="1" ${booth.final_recovery_inlets_closed_at ? "checked" : ""}> Recovery inlets closed</label>
+        <label><input type="checkbox" name="shutdown_filtration_pumpdown_started" value="1" ${booth.filtration_pumpdown_started_at ? "checked" : ""}> Filtration pump-down started</label>
+        <label><input type="checkbox" name="shutdown_nitrogen_off" value="1" ${booth.nitrogen_turned_off_at ? "checked" : ""}> Nitrogen off</label>
+        <label><input type="checkbox" name="shutdown_dewax_inlet_closed" value="1" ${booth.dewax_inlet_closed_at ? "checked" : ""}> Dewax inlet closed</label>
+      </div>
+    `,
+  };
+  const summaryRows = [
+    ["Primary solvent", booth.primary_solvent_charge_lbs != null ? `${booth.primary_solvent_charge_lbs} lbs` : "Pending"],
+    ["Flush temps", booth.flush_temp_verified_at ? `${booth.flush_solvent_chiller_temp_f}F / ${booth.flush_plate_temp_f}F` : "Pending"],
+    ["Flush solvent", booth.flush_solvent_charge_lbs != null ? `${booth.flush_solvent_charge_lbs} lbs` : "Pending"],
+    ["Flow resumed", booth.flow_resumed_decision || "Pending"],
+    ["Final clarity", booth.final_clarity_decision || "Pending"],
+    ["Shutdown", booth.booth_process_completed_at || "Pending"],
+  ];
+  return `
+    <section class="card">
+      <div class="section-head"><div><div class="eyebrow">Current checkpoint</div><h3>Only the active booth step is editable.</h3></div></div>
+      ${actionFields[stageKey] || `<div class="subtle">No extra inputs are needed for this step. Use the available progression action above.</div>`}
+      <div class="grid-2" style="margin-top:14px;">${summaryRows.map(([label, value]) => `<div class="card" style="padding:10px 12px;"><div class="eyebrow">${escapeHtml(label)}</div><strong>${escapeHtml(String(value))}</strong></div>`).join("")}</div>
+    </section>
+  `;
+}
 function renderRunExecution() {
   const run = state.run;
   const lot = state.lot;
@@ -960,8 +1075,6 @@ function renderRunExecution() {
           <div><span>Charged</span><strong>${escapeHtml(inherited.charged_at_label || "")}</strong></div>
         </div>
       </section>
-      ${renderRunProgression(run)}
-      ${renderPostExtractionProgression(run)}
       <form class="card charge-form" data-form="run-execution">
         <div class="section-head">
           <div>
@@ -970,133 +1083,10 @@ function renderRunExecution() {
           </div>
         </div>
         ${renderBoothTimingControls(run)}
-        ${renderGuidedDownstreamWorkflow(run)}
-        <div class="grid-2">
-          <div class="field">
-            <label for="primary_solvent_charge_lbs">Primary Solvent Charge (lbs)</label>
-            <input id="primary_solvent_charge_lbs" name="primary_solvent_charge_lbs" type="number" value="${escapeHtml(String(run.primary_solvent_charge_lbs ?? ""))}" min="0" step="0.1" placeholder="Typically 500" />
-            <div class="subtle">Required for the booth SOP solvent-charge checkpoint.</div>
-          </div>
-          <div class="field timer-card">
-            <label for="primary_solvent_charged_at_display">Primary Solvent Charge Recorded</label>
-            <input id="primary_solvent_charged_at_display" type="datetime-local" value="${escapeHtml(run.booth?.primary_solvent_charged_at || "")}" disabled />
-            <div class="subtle">This timestamp is captured when the solvent-charge checkpoint is recorded.</div>
-          </div>
-        </div>
-        <div class="grid-2">
-          <div class="field">
-            <label for="flush_solvent_chiller_temp_f">Flush Solvent Chiller Temp (F)</label>
-            <input id="flush_solvent_chiller_temp_f" name="flush_solvent_chiller_temp_f" type="number" value="${escapeHtml(String(run.booth?.flush_solvent_chiller_temp_f ?? ""))}" step="0.1" placeholder="-40 or below" />
-          </div>
-          <div class="field">
-            <label for="flush_plate_temp_f">Plate Temp (F)</label>
-            <input id="flush_plate_temp_f" name="flush_plate_temp_f" type="number" value="${escapeHtml(String(run.booth?.flush_plate_temp_f ?? ""))}" step="0.1" placeholder="Plate temp" />
-          </div>
-        </div>
-        <div class="grid-2">
-          <div class="field">
-            <label for="flush_solvent_charge_lbs">Flush Solvent Charge (lbs)</label>
-            <input id="flush_solvent_charge_lbs" name="flush_solvent_charge_lbs" type="number" value="${escapeHtml(String(run.booth?.flush_solvent_charge_lbs ?? ""))}" min="0" step="0.1" placeholder="Typically 500" />
-          </div>
-          <div class="field">
-            <label>Flush temp Slack post</label>
-            <label><input type="checkbox" name="flush_temp_slack_post_confirmed" value="1" ${run.booth?.flush_temp_slack_post_confirmed_at ? "checked" : ""}> Posted to Slack</label>
-          </div>
-        </div>
-        <div class="grid-2">
-          ${renderTimerField("run_fill_started_at", "Run / Fill Start", run.run_fill_started_at, run.run_fill_duration_minutes != null ? `${run.run_fill_duration_minutes} minute(s) recorded` : "", "run_fill_ended_at", run.run_fill_ended_at)}
-          ${renderTimerField("mixer_started_at", "Mixer Time", run.mixer_started_at, run.mixer_duration_minutes != null ? `${run.mixer_duration_minutes} minute(s) recorded` : "", "mixer_ended_at", run.mixer_ended_at)}
-        </div>
-        <div class="grid-2">
-          ${renderTimerField("flush_started_at", "Flush Start", run.flush_started_at, run.flush_duration_minutes != null ? `${run.flush_duration_minutes} minute(s) recorded` : "", "flush_ended_at", run.flush_ended_at)}
-          <div class="field timer-card">
-            <label for="flush_ended_at_display">Flush End</label>
-            <input id="flush_ended_at_display" type="datetime-local" value="${escapeHtml(run.flush_ended_at || "")}" disabled />
-            <div class="subtle">Stop is captured from the Flush Start timer.</div>
-          </div>
-        </div>
-        <div class="field">
-          <label for="biomass_blend_milled_pct">Biomass Blend</label>
-          <div class="blend-card">
-            <input id="biomass_blend_milled_pct" name="biomass_blend_milled_pct" type="range" min="0" max="100" step="1" value="${escapeHtml(String(run.biomass_blend_milled_pct ?? 100))}" />
-            <div class="metric-row">
-              <div><span>Milled</span><strong data-blend-milled>${escapeHtml(String(run.biomass_blend_milled_pct ?? 100))}%</strong></div>
-              <div><span>Unmilled</span><strong data-blend-unmilled>${escapeHtml(String(run.biomass_blend_unmilled_pct ?? 0))}%</strong></div>
-            </div>
-            <input type="hidden" name="biomass_blend_unmilled_pct" value="${escapeHtml(String(run.biomass_blend_unmilled_pct ?? 0))}" data-blend-unmilled-input="1" />
-          </div>
-        </div>
-        <div class="grid-2">
-          <div class="field counter-card">
-            <label>Flushes</label>
-            <div class="counter-row">
-              <button class="btn btn-secondary" type="button" data-action="adjust-count" data-field="flush_count" data-delta="-1">-</button>
-              <input type="number" name="flush_count" value="${escapeHtml(String(run.flush_count ?? ""))}" min="0" step="1" />
-              <button class="btn btn-secondary" type="button" data-action="adjust-count" data-field="flush_count" data-delta="1">+</button>
-            </div>
-            <input type="number" name="flush_total_weight_lbs" value="${escapeHtml(String(run.flush_total_weight_lbs ?? ""))}" min="0" step="0.1" placeholder="Total flush weight (lbs)" />
-          </div>
-          <div class="field counter-card">
-            <label>Fills</label>
-            <div class="counter-row">
-              <button class="btn btn-secondary" type="button" data-action="adjust-count" data-field="fill_count" data-delta="-1">-</button>
-              <input type="number" name="fill_count" value="${escapeHtml(String(run.fill_count ?? ""))}" min="0" step="1" />
-              <button class="btn btn-secondary" type="button" data-action="adjust-count" data-field="fill_count" data-delta="1">+</button>
-            </div>
-            <input type="number" name="fill_total_weight_lbs" value="${escapeHtml(String(run.fill_total_weight_lbs ?? ""))}" min="0" step="0.1" placeholder="Total fill weight (lbs)" />
-          </div>
-        </div>
-        <div class="grid-2">
-          <div class="field counter-card">
-            <label>Stringer Baskets</label>
-            <div class="counter-row">
-              <button class="btn btn-secondary" type="button" data-action="adjust-count" data-field="stringer_basket_count" data-delta="-1">-</button>
-              <input type="number" name="stringer_basket_count" value="${escapeHtml(String(run.stringer_basket_count ?? ""))}" min="0" step="1" />
-              <button class="btn btn-secondary" type="button" data-action="adjust-count" data-field="stringer_basket_count" data-delta="1">+</button>
-            </div>
-          </div>
-          <div class="field">
-            <label for="crc_blend">CRC Blend</label>
-            <input id="crc_blend" name="crc_blend" type="text" value="${escapeHtml(run.crc_blend || "")}" placeholder="Optional CRC blend" />
-          </div>
-        </div>
-          <div class="field">
-            <label for="notes">Notes</label>
-            <textarea id="notes" name="notes" rows="4" placeholder="Operator notes">${escapeHtml(run.notes || "")}</textarea>
-          </div>
-        <div class="grid-2">
-          <div class="field">
-            <label>Flow Resumed</label>
-            ${renderChoiceButtons("flow_resumed_decision", run.booth?.flow_resumed_decision || "", [
-              { value: "", label: "Not set" },
-              { value: "yes", label: "Yes" },
-              { value: "no_adjusting", label: "Still adjusting" },
-            ])}
-          </div>
-          <div class="field">
-            <label>Final Clarity</label>
-            ${renderChoiceButtons("final_clarity_decision", run.booth?.final_clarity_decision || "", [
-              { value: "", label: "Not set" },
-              { value: "yes", label: "Clear enough" },
-              { value: "not_yet", label: "Not yet" },
-            ])}
-          </div>
-        </div>
-        <div class="grid-2">
-          ${renderTimerField("final_purge_started_at", "Final Purge Start", run.booth?.final_purge_started_at || "", run.booth?.final_purge_duration_minutes != null ? `${run.booth.final_purge_duration_minutes} minute(s) recorded` : "", "final_purge_completed_at", run.booth?.final_purge_completed_at || "")}
-          <div class="field timer-card">
-            <label for="final_purge_completed_at_display">Final Purge End</label>
-            <input id="final_purge_completed_at_display" type="datetime-local" value="${escapeHtml(run.booth?.final_purge_completed_at || "")}" disabled />
-            <div class="subtle">Stop is captured from the Final Purge timer.</div>
-          </div>
-        </div>
-        <div class="field">
-          <label>Shutdown Checklist</label>
-          <label><input type="checkbox" name="shutdown_recovery_inlets_closed" value="1" ${run.booth?.final_recovery_inlets_closed_at ? "checked" : ""}> Recovery inlets closed</label>
-          <label><input type="checkbox" name="shutdown_filtration_pumpdown_started" value="1" ${run.booth?.filtration_pumpdown_started_at ? "checked" : ""}> Filtration pump-down started</label>
-          <label><input type="checkbox" name="shutdown_nitrogen_off" value="1" ${run.booth?.nitrogen_turned_off_at ? "checked" : ""}> Nitrogen off</label>
-          <label><input type="checkbox" name="shutdown_dewax_inlet_closed" value="1" ${run.booth?.dewax_inlet_closed_at ? "checked" : ""}> Dewax inlet closed</label>
-        </div>
+        ${renderCurrentBoothCheckpoint(run)}
+        ${renderRunProgression(run)}
+        ${run.run_completed_at ? renderPostExtractionProgression(run) : ""}
+        ${run.run_completed_at ? renderGuidedDownstreamWorkflow(run) : ""}
         <input type="hidden" name="run_completed_at" value="${escapeHtml(run.run_completed_at || "")}" />
         <div class="actions sticky-actions">
           <a class="btn btn-secondary" href="#/reactors">Back to Reactors</a>
@@ -1321,14 +1311,19 @@ function syncRunDraftFromForm() {
 function handleSetFieldValue(event) {
   const field = event.currentTarget.dataset.field;
   const value = String(event.currentTarget.dataset.value || "");
-  const input = app?.querySelector(`[name='${field}']`);
+  const scope = event.currentTarget.closest("form") || app;
+  const input = scope?.querySelector(`[name='${field}']`);
   if (!input) return;
   input.value = value;
-  app
+  scope
     ?.querySelectorAll(`[data-action='set-field'][data-field='${field}']`)
-    .forEach((button) => button.classList.toggle("is-active", String(button.dataset.value || "") === value));
+    .forEach((button) => {
+      const isSelected = String(button.dataset.value || "") === value;
+      button.classList.toggle("is-active", isSelected);
+      button.classList.toggle("btn-primary", isSelected);
+      button.classList.toggle("btn-secondary", !isSelected);
+    });
   syncRunDraftFromForm();
-  render();
 }
 
 function presetWeightValue(preset, maxWeight) {
@@ -1504,7 +1499,13 @@ function buildRunPayload(form, progressionAction = "") {
     hte_potency_disposition: String(form.get("hte_potency_disposition") || "").trim(),
     hte_queue_destination: String(form.get("hte_queue_destination") || "").trim(),
     flow_resumed_decision: String(form.get("flow_resumed_decision") || "").trim(),
+    flow_adjustment_reason: String(form.get("flow_adjustment_reason") || "").trim(),
     final_clarity_decision: String(form.get("final_clarity_decision") || "").trim(),
+    final_clarity_reason: String(form.get("final_clarity_reason") || "").trim(),
+    primary_soak_short_reason: String(form.get("primary_soak_short_reason") || "").trim(),
+    mixer_short_reason: String(form.get("mixer_short_reason") || "").trim(),
+    flush_short_reason: String(form.get("flush_short_reason") || "").trim(),
+    final_purge_short_reason: String(form.get("final_purge_short_reason") || "").trim(),
     final_purge_started_at: String(form.get("final_purge_started_at") || "").trim(),
     final_purge_completed_at: String(form.get("final_purge_completed_at") || "").trim(),
     shutdown_recovery_inlets_closed: form.get("shutdown_recovery_inlets_closed") ? "1" : "",
@@ -1512,6 +1513,7 @@ function buildRunPayload(form, progressionAction = "") {
     shutdown_nitrogen_off: form.get("shutdown_nitrogen_off") ? "1" : "",
     shutdown_dewax_inlet_closed: form.get("shutdown_dewax_inlet_closed") ? "1" : "",
     progression_action: progressionAction,
+    bypass_reason: String(form.get("bypass_reason") || "").trim(),
     notes: String(form.get("notes") || "").trim(),
   };
 }
