@@ -140,9 +140,12 @@ You’ll see a page where only the fields you fill in are applied to **every sel
 
 ## Dashboard
 The Dashboard shows:
-- **Summary stats**: total runs, lbs processed, dry output, biomass on hand
-- **KPI cards**: color-coded performance vs targets
-- **Quick actions**: shortcuts to create new runs/purchases/suppliers
+- **Period controls**: switch the dashboard between Today, 7 Days, 30 Days, 90 Days, and All Time.
+- **Operating snapshot**: total runs, lbs processed, dry output, biomass on hand, this-week output, and best month-over-month supplier.
+- **Buyer budget snapshot**: weekly dollar budget, pipeline commitments, and purchases for the current calendar week.
+- **Supervisor notifications**: open booth/run alerts with acknowledge, approve deviation, require rework, and resolve actions when your role allows.
+- **KPI cards**: color-coded performance vs targets.
+- **Quick actions**: shortcuts to Floor Ops, Runs, new runs, purchases, suppliers, and exports depending on your permissions.
 
 ### Analytics filter banner (optional)
 If you see a banner saying analytics are excluding runs missing biomass pricing ($/lb), your admin has enabled a data-quality filter in **Settings**. Supplier/strain KPIs will ignore runs with missing purchase pricing on any input lot.

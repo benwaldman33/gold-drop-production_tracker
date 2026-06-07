@@ -1,155 +1,169 @@
 {% extends "base.html" %}
 {% block title %}Extraction dashboard{% endblock %}
 {% block content %}
-<div class="page-header">
-  <h2>Extraction dashboard</h2>
-  <div class="period-selector">
-    <a href="?period=today" class="{% if period == 'today' %}active{% endif %}">Today</a>
-    <a href="?period=7" class="{% if period == '7' %}active{% endif %}">7 Days</a>
-    <a href="?period=30" class="{% if period == '30' %}active{% endif %}">30 Days</a>
-    <a href="?period=90" class="{% if period == '90' %}active{% endif %}">90 Days</a>
-    <a href="?period=all" class="{% if period == 'all' %}active{% endif %}">All Time</a>
-  </div>
-</div>
-
-<div class="card" style="margin-bottom:16px;">
-  <div class="text-sm cell-muted">
-    <strong style="color:var(--text-primary);">Extraction overview:</strong> use this page for performance and throughput review.
-    For live execution go to <a href="{{ url_for('floor_ops') }}">Floor Ops</a>. For record administration and edits go to <a href="{{ url_for('runs_list') }}">Runs</a>.
-  </div>
-</div>
-
-{% if exclude_unpriced %}
-<div class="card" style="padding:12px 16px; margin-bottom:16px; border-color: rgba(251, 191, 36, 0.25);">
-  <div class="text-sm" style="color:var(--yellow); font-weight:600;">
-    Analytics filter enabled: excluding runs missing biomass pricing ($/lb).
-  </div>
-  <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">
-    Change this in Settings → Operational Parameters.
-  </div>
-</div>
-{% endif %}
-
-<!-- Summary Stats -->
-<div class="summary-row">
-  <div class="summary-stat">
-    <div class="label">Total Runs</div>
-    <div class="value">{{ total_runs }}</div>
-  </div>
-  <div class="summary-stat">
-    <div class="label">Lbs Processed</div>
-    <div class="value">{{ "{:,.0f}".format(total_lbs) }}</div>
-  </div>
-  <div class="summary-stat">
-    <div class="label">Dry Output (g)</div>
-    <div class="value">{{ "{:,.0f}".format(total_dry_output) }}</div>
-  </div>
-  <div class="summary-stat">
-    <div class="label">Biomass On Hand (lbs)</div>
-    <div class="value">{{ "{:,.0f}".format(on_hand) }}</div>
-  </div>
-</div>
-
-<div class="summary-row">
-  <div class="summary-stat">
-    <div class="label">This Week Lbs Ran</div>
-    <div class="value">{{ "{:,.0f}".format(wtd_lbs) }}</div>
-  </div>
-  <div class="summary-stat">
-    <div class="label">This Week Dry THCA (g)</div>
-    <div class="value">{{ "{:,.0f}".format(wtd_dry_thca) }}</div>
-  </div>
-  <div class="summary-stat">
-    <div class="label">This Week Dry HTE (g)</div>
-    <div class="value">{{ "{:,.0f}".format(wtd_dry_hte) }}</div>
-  </div>
-  <div class="summary-stat">
-    <div class="label">Best Supplier MoM</div>
-    <div class="value">
-      {% if best_supplier_mom %}
-        {{ best_supplier_mom.name }}
-      {% else %}
-        —
-      {% endif %}
+<div class="dashboard-shell">
+  <div class="dashboard-hero">
+    <div>
+      <div class="dashboard-kicker">Extraction control</div>
+      <h2>Extraction dashboard</h2>
+      <p>Performance review, weekly buyer budget, supervisor alerts, and run-level KPI targets in one operating view.</p>
+    </div>
+    <div class="dashboard-hero-actions">
+      <div class="period-selector">
+        <a href="?period=today" class="{% if period == 'today' %}active{% endif %}">Today</a>
+        <a href="?period=7" class="{% if period == '7' %}active{% endif %}">7 Days</a>
+        <a href="?period=30" class="{% if period == '30' %}active{% endif %}">30 Days</a>
+        <a href="?period=90" class="{% if period == '90' %}active{% endif %}">90 Days</a>
+        <a href="?period=all" class="{% if period == 'all' %}active{% endif %}">All Time</a>
+      </div>
+      <div class="dashboard-action-strip">
+        <a href="{{ url_for('floor_ops') }}" class="btn btn-secondary">Floor Ops</a>
+        <a href="{{ url_for('runs_list') }}" class="btn btn-secondary">Runs</a>
+      </div>
     </div>
   </div>
-</div>
 
-<div class="card" style="margin-bottom:12px;">
-  <div class="card-header"><h3>This week — buyer budget snapshot</h3></div>
-  <div style="padding:12px 16px;">
-    <div class="text-sm" style="color:var(--text-muted); margin-bottom:10px;">
-      Calendar week {{ week_start.strftime('%m/%d/%y') }} – {{ week_end.strftime('%m/%d/%y') }} (commitments use pipeline approval dates; purchases use purchase date).
+  <div class="dashboard-notice">
+    <div>
+      <strong>Extraction overview</strong>
+      <span>Use this page for performance and throughput review. Live execution stays in Floor Ops; record administration stays in Runs.</span>
     </div>
-    <div class="summary-row" style="margin:0;">
-      <div class="summary-stat">
+  </div>
+
+  {% if exclude_unpriced %}
+  <div class="dashboard-alert dashboard-alert-warning">
+    <div class="dashboard-alert-title">Analytics filter enabled</div>
+    <div>Excluding runs missing biomass pricing ($/lb). Change this in Settings - Operational Parameters.</div>
+  </div>
+  {% endif %}
+
+  <section class="dashboard-section">
+    <div class="dashboard-section-header">
+      <h3>Operating snapshot</h3>
+    </div>
+    <div class="dashboard-metric-grid dashboard-metric-grid-8">
+      <div class="summary-stat dashboard-metric-card">
+        <div class="label">Total Runs</div>
+        <div class="value">{{ total_runs }}</div>
+      </div>
+      <div class="summary-stat dashboard-metric-card">
+        <div class="label">Lbs Processed</div>
+        <div class="value">{{ "{:,.0f}".format(total_lbs) }}</div>
+      </div>
+      <div class="summary-stat dashboard-metric-card">
+        <div class="label">Dry Output (g)</div>
+        <div class="value">{{ "{:,.0f}".format(total_dry_output) }}</div>
+      </div>
+      <div class="summary-stat dashboard-metric-card">
+        <div class="label">Biomass On Hand (lbs)</div>
+        <div class="value">{{ "{:,.0f}".format(on_hand) }}</div>
+      </div>
+      <div class="summary-stat dashboard-metric-card">
+        <div class="label">This Week Lbs Ran</div>
+        <div class="value">{{ "{:,.0f}".format(wtd_lbs) }}</div>
+      </div>
+      <div class="summary-stat dashboard-metric-card">
+        <div class="label">This Week Dry THCA (g)</div>
+        <div class="value">{{ "{:,.0f}".format(wtd_dry_thca) }}</div>
+      </div>
+      <div class="summary-stat dashboard-metric-card">
+        <div class="label">This Week Dry HTE (g)</div>
+        <div class="value">{{ "{:,.0f}".format(wtd_dry_hte) }}</div>
+      </div>
+      <div class="summary-stat dashboard-metric-card dashboard-metric-card-wide">
+        <div class="label">Best Supplier MoM</div>
+        <div class="value value-name">
+          {% if best_supplier_mom %}
+            {{ best_supplier_mom.name }}
+          {% else %}
+            -
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="dashboard-panel dashboard-budget-panel">
+    <div class="dashboard-panel-head">
+      <div>
+        <h3>This week buyer budget snapshot</h3>
+        <p>Calendar week {{ week_start.strftime('%m/%d/%y') }} - {{ week_end.strftime('%m/%d/%y') }}. Commitments use pipeline approval dates; purchases use purchase date.</p>
+      </div>
+    </div>
+    <div class="dashboard-metric-grid dashboard-metric-grid-3">
+      <div class="summary-stat dashboard-metric-card">
         <div class="label">Weekly $ budget</div>
         <div class="value">${{ "{:,.0f}".format(weekly_dollar_budget) }}</div>
       </div>
-      <div class="summary-stat">
+      <div class="summary-stat dashboard-metric-card">
         <div class="label">Commitments (pipeline)</div>
         <div class="value">${{ "{:,.0f}".format(week_commitment_dollars) }}</div>
       </div>
-      <div class="summary-stat">
+      <div class="summary-stat dashboard-metric-card">
         <div class="label">Purchases (week)</div>
         <div class="value">${{ "{:,.0f}".format(week_purchase_dollars) }}</div>
       </div>
     </div>
-    <div class="text-sm" style="color:var(--text-muted); margin-top:10px;">
-      Set the weekly dollar budget under <strong>Settings → Operational Parameters</strong>. Grant purchase approval under <strong>Settings → Users</strong>.
+    <div class="dashboard-panel-note">
+      Set the weekly dollar budget under <strong>Settings - Operational Parameters</strong>. Grant purchase approval under <strong>Settings - Users</strong>.
     </div>
-  </div>
-</div>
+  </section>
 
-{% if can_review_supervisor_notifications %}
-<div class="card" id="supervisor-notifications" style="margin-bottom:12px;">
-  <div class="card-header"><h3>Supervisor Notifications</h3></div>
-  <div style="padding:12px 16px;">
-    <div class="summary-row" style="margin:0 0 10px 0;">
-      <div class="summary-stat">
+  {% if can_review_supervisor_notifications %}
+  <section class="dashboard-panel" id="supervisor-notifications">
+    <div class="dashboard-panel-head">
+      <div>
+        <h3>Supervisor Notifications</h3>
+        <p>Open deviations, approvals, rework requests, and delivery status for production oversight.</p>
+      </div>
+    </div>
+    <div class="dashboard-metric-grid dashboard-metric-grid-4 dashboard-notification-summary">
+      <div class="summary-stat dashboard-metric-card">
         <div class="label">Open</div>
         <div class="value">{{ supervisor_notifications.open_count }}</div>
       </div>
-      <div class="summary-stat">
+      <div class="summary-stat dashboard-metric-card">
         <div class="label">Critical</div>
         <div class="value">{{ supervisor_notifications.critical_count }}</div>
       </div>
-      <div class="summary-stat">
+      <div class="summary-stat dashboard-metric-card">
         <div class="label">Warnings</div>
         <div class="value">{{ supervisor_notifications.warning_count }}</div>
       </div>
-      <div class="summary-stat">
+      <div class="summary-stat dashboard-metric-card">
         <div class="label">Info</div>
         <div class="value">{{ supervisor_notifications.info_count }}</div>
       </div>
     </div>
     {% if supervisor_notifications.rows %}
-    <div style="display:grid;gap:10px;">
+    <div class="dashboard-notification-list">
       {% for row in supervisor_notifications.rows %}
-      <div style="border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:12px;background:rgba(255,255,255,0.03);">
-        <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">
+      <div class="dashboard-notification-row">
+        <div class="dashboard-notification-content">
           <div>
-            <div style="font-weight:600;">{{ row.title }}</div>
-            <div class="text-sm" style="color:var(--text-muted);margin-top:4px;">
-              {{ row.notification_class_label }} · {{ row.severity_label }} · {{ row.created_at }}
+            <div class="dashboard-notification-title">{{ row.title }}</div>
+            <div class="dashboard-notification-meta">
+              {{ row.notification_class_label }} / {{ row.severity_label }} / {{ row.created_at }}
             </div>
             {% if row.run_edit_url %}
-            <div class="text-sm" style="margin-top:6px;"><a href="{{ row.run_edit_url }}">Open run</a>{% if row.run_label %} · {{ row.run_label }}{% endif %}</div>
+            <div class="text-sm dashboard-notification-link">
+              <a href="{{ row.run_edit_url }}">Open run</a>{% if row.run_label %} / {{ row.run_label }}{% endif %}
+            </div>
             {% endif %}
-            <div class="text-sm" style="color:var(--text-secondary);margin-top:8px;">{{ row.message }}</div>
+            <div class="dashboard-notification-message">{{ row.message }}</div>
             {% if row.operator_reason %}
-            <div class="text-sm" style="color:var(--text-muted);margin-top:8px;">Operator reason: {{ row.operator_reason }}</div>
+            <div class="dashboard-notification-detail">Operator reason: {{ row.operator_reason }}</div>
             {% endif %}
             {% if row.override_decision %}
-            <div class="text-sm" style="color:var(--text-muted);margin-top:8px;">
-              Supervisor decision: {{ row.override_decision.replace('_', ' ').title() }}{% if row.override_by_name %} by {{ row.override_by_name }}{% endif %}{% if row.override_at %} · {{ row.override_at }}{% endif %}
+            <div class="dashboard-notification-detail">
+              Supervisor decision: {{ row.override_decision.replace('_', ' ').title() }}{% if row.override_by_name %} by {{ row.override_by_name }}{% endif %}{% if row.override_at %} / {{ row.override_at }}{% endif %}
             </div>
             {% if row.override_reason %}
-            <div class="text-sm" style="color:var(--text-muted);margin-top:4px;">Override reason: {{ row.override_reason }}</div>
+            <div class="dashboard-notification-detail">Override reason: {{ row.override_reason }}</div>
             {% endif %}
             {% endif %}
             {% if row.delivery_statuses %}
-            <div class="text-sm" style="color:var(--text-muted);margin-top:8px;">
+            <div class="dashboard-notification-detail">
               Delivery:
               {% for delivery in row.delivery_statuses %}
               {{ delivery.type }}={{ delivery.status }}{% if not loop.last %}, {% endif %}
@@ -157,7 +171,7 @@
             </div>
             {% endif %}
           </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
+          <div class="dashboard-notification-actions">
             {% if row.status == 'open' %}
             <form method="POST" action="{{ url_for('supervisor_notification_ack', notification_id=row.id) }}">
               <input type="hidden" name="return_to" value="/#supervisor-notifications">
@@ -167,12 +181,12 @@
             {% if row.severity in ('warning', 'critical') %}
             <form method="POST" action="{{ url_for('supervisor_notification_approve', notification_id=row.id) }}">
               <input type="hidden" name="return_to" value="/#supervisor-notifications">
-              <input type="text" name="override_reason" placeholder="Reason to approve deviation" style="min-width:220px;margin-bottom:6px;">
+              <input type="text" name="override_reason" placeholder="Reason to approve deviation">
               <button type="submit" class="btn btn-secondary btn-sm">Approve Deviation</button>
             </form>
             <form method="POST" action="{{ url_for('supervisor_notification_rework', notification_id=row.id) }}">
               <input type="hidden" name="return_to" value="/#supervisor-notifications">
-              <input type="text" name="override_reason" placeholder="Reason to require rework" style="min-width:220px;margin-bottom:6px;">
+              <input type="text" name="override_reason" placeholder="Reason to require rework">
               <button type="submit" class="btn btn-secondary btn-sm">Require Rework</button>
             </form>
             {% endif %}
@@ -186,78 +200,76 @@
       {% endfor %}
     </div>
     {% else %}
-    <div class="text-sm" style="color:var(--text-muted);">No open supervisor notifications.</div>
+    <div class="dashboard-empty-state">No open supervisor notifications.</div>
     {% endif %}
-  </div>
-</div>
-{% endif %}
+  </section>
+  {% endif %}
 
-{% if best_supplier_mom %}
-<div class="card" style="margin-bottom:12px;">
-  <div class="card-header"><h3>Best Yield Supplier (Month-over-Month)</h3></div>
-  <div class="text-sm" style="color:var(--text-secondary);">
-    {{ best_supplier_mom.name }} is averaging <strong>{{ "{:.2f}".format(best_supplier_mom.current) }}%</strong> overall yield this month.
-    {% if best_supplier_mom.previous is not none %}
-      Last month: {{ "{:.2f}".format(best_supplier_mom.previous) }}%
-      {% if best_supplier_mom.pct_change is not none %}
-        ({{ "{:+.1f}".format(best_supplier_mom.pct_change) }}%).
-      {% endif %}
-    {% endif %}
-  </div>
-</div>
-{% endif %}
-
-<!-- KPI Cards -->
-<div class="card">
-  <div class="card-header">
-    <h3>Key Performance Indicators</h3>
-  </div>
-  <div class="kpi-grid">
-    {% for kpi in kpi_cards %}
-    <div class="kpi-card {{ kpi.color }}">
-      <div class="kpi-label">{{ kpi.name }}</div>
-      <div class="kpi-value">
-        {% if kpi.actual is not none %}
-          {% if kpi.unit == '%' %}
-            {{ "{:.1f}".format(kpi.actual) }}%
-          {% elif kpi.unit in ('$/g', '$/lb/%pt') %}
-            ${{ "{:.2f}".format(kpi.actual) }}
-          {% elif kpi.unit == 'lbs' %}
-            {{ "{:,.0f}".format(kpi.actual) }}
-          {% elif kpi.unit == 'days' %}
-            {{ "{:.1f}".format(kpi.actual) }}
-          {% else %}
-            {{ "{:.2f}".format(kpi.actual) }}
-          {% endif %}
-        {% else %}
-          —
+  {% if best_supplier_mom %}
+  <section class="dashboard-panel dashboard-insight-panel">
+    <div class="dashboard-panel-head"><h3>Best Yield Supplier (Month-over-Month)</h3></div>
+    <div class="dashboard-insight-copy">
+      {{ best_supplier_mom.name }} is averaging <strong>{{ "{:.2f}".format(best_supplier_mom.current) }}%</strong> overall yield this month.
+      {% if best_supplier_mom.previous is not none %}
+        Last month: {{ "{:.2f}".format(best_supplier_mom.previous) }}%
+        {% if best_supplier_mom.pct_change is not none %}
+          ({{ "{:+.1f}".format(best_supplier_mom.pct_change) }}%).
         {% endif %}
-      </div>
-      <div class="kpi-target">Target: 
-        {% if kpi.unit == '%' %}{{ "{:.1f}".format(kpi.target) }}%
-        {% elif kpi.unit in ('$/g', '$/lb/%pt') %}${{ "{:.2f}".format(kpi.target) }}
-        {% elif kpi.unit == 'lbs' %}{{ "{:,.0f}".format(kpi.target) }}
-        {% else %}{{ kpi.target }}{% endif %}
-      </div>
+      {% endif %}
     </div>
-    {% endfor %}
-  </div>
-</div>
+  </section>
+  {% endif %}
 
-<!-- Quick Actions -->
-<div class="card">
-  <div class="card-header">
-    <h3>Quick Actions</h3>
-  </div>
-  <div class="btn-group">
-    {% if current_user.can_edit %}
-    <a href="{{ url_for('run_new') }}" class="btn btn-primary">+ Log New Run</a>
-    <a href="{{ url_for('purchase_new') }}" class="btn btn-secondary">+ New Purchase</a>
-    <a href="{{ url_for('supplier_new') }}" class="btn btn-secondary">+ Add Supplier</a>
-    {% endif %}
-    {% if has_perm('runs.export') %}
-    <a href="{{ url_for('export_csv', entity='runs') }}" class="btn btn-secondary">Export Runs CSV</a>
-    {% endif %}
-  </div>
+  <section class="dashboard-panel">
+    <div class="dashboard-panel-head">
+      <h3>Key Performance Indicators</h3>
+    </div>
+    <div class="kpi-grid">
+      {% for kpi in kpi_cards %}
+      <div class="kpi-card {{ kpi.color }}">
+        <div class="kpi-label">{{ kpi.name }}</div>
+        <div class="kpi-value">
+          {% if kpi.actual is not none %}
+            {% if kpi.unit == '%' %}
+              {{ "{:.1f}".format(kpi.actual) }}%
+            {% elif kpi.unit in ('$/g', '$/lb/%pt') %}
+              ${{ "{:.2f}".format(kpi.actual) }}
+            {% elif kpi.unit == 'lbs' %}
+              {{ "{:,.0f}".format(kpi.actual) }}
+            {% elif kpi.unit == 'days' %}
+              {{ "{:.1f}".format(kpi.actual) }}
+            {% else %}
+              {{ "{:.2f}".format(kpi.actual) }}
+            {% endif %}
+          {% else %}
+            -
+          {% endif %}
+        </div>
+        <div class="kpi-target">Target:
+          {% if kpi.unit == '%' %}{{ "{:.1f}".format(kpi.target) }}%
+          {% elif kpi.unit in ('$/g', '$/lb/%pt') %}${{ "{:.2f}".format(kpi.target) }}
+          {% elif kpi.unit == 'lbs' %}{{ "{:,.0f}".format(kpi.target) }}
+          {% else %}{{ kpi.target }}{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="dashboard-panel dashboard-actions-panel">
+    <div class="dashboard-panel-head">
+      <h3>Quick Actions</h3>
+    </div>
+    <div class="dashboard-actions">
+      {% if current_user.can_edit %}
+      <a href="{{ url_for('run_new') }}" class="btn btn-primary">Log New Run</a>
+      <a href="{{ url_for('purchase_new') }}" class="btn btn-secondary">New Purchase</a>
+      <a href="{{ url_for('supplier_new') }}" class="btn btn-secondary">Add Supplier</a>
+      {% endif %}
+      {% if has_perm('runs.export') %}
+      <a href="{{ url_for('export_csv', entity='runs') }}" class="btn btn-secondary">Export Runs CSV</a>
+      {% endif %}
+    </div>
+  </section>
 </div>
 {% endblock %}

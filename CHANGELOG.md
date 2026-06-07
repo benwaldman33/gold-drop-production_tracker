@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-06-07
+
+### Changed
+- The Extraction dashboard now has a more polished operating layout with a stronger header, period controls, Floor Ops / Runs shortcuts, grouped operating snapshot metrics, a weekly buyer budget panel, cleaner supervisor notification cards, KPI cards, and responsive quick actions.
+
 ## 2026-05-25
 
 ### Added
