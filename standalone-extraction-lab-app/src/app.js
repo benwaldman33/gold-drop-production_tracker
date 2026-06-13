@@ -1191,7 +1191,7 @@ function renderCheckpointInputs(run) {
       <div class="field"><label for="final_clarity_reason">Reason if not clear</label>
       <textarea id="final_clarity_reason" name="final_clarity_reason" rows="2"></textarea></div>`,
     ready_to_complete_shutdown: `
-      <div class="field shutdown-checklist">
+      <div class="shutdown-checklist">
         <label>Shutdown Checklist</label>
         <label><input type="checkbox" name="shutdown_recovery_inlets_closed" value="1"
           ${booth.final_recovery_inlets_closed_at ? "checked" : ""}> Recovery inlets closed</label>

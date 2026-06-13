@@ -983,6 +983,16 @@ input[type="range"] {
   gap: 10px;
 }
 
+/* Section header label — bold, no box */
+.shutdown-checklist > label:first-child {
+  font-weight: 700;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: default;
+}
+
+/* Checkbox row labels — flex row, text beside checkbox */
 .shutdown-checklist label {
   display: flex;
   align-items: center;
@@ -993,6 +1003,15 @@ input[type="range"] {
   background: white;
   cursor: pointer;
   font-weight: normal;
+}
+
+/* Prevent .field input width:100% from stretching checkboxes */
+.shutdown-checklist input[type="checkbox"] {
+  width: auto;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+  width: 18px;
+  height: 18px;
 }
 
 /* Run summary strip (supervisor view) */
