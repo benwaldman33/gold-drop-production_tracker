@@ -23,6 +23,7 @@ const state = {
   dialog: null,
   scanStatus: "",
   recentLookup: null,
+  blockingError: null, // { message, blockerStageKey, blockerLabel, blockerActionId }
 };
 
 let cameraStream = null;
@@ -66,6 +67,10 @@ async function onRouteChange() {
   const nextRoute = parseRoute(window.location.hash || "#/login");
   if (state.route.name === "scan" && nextRoute.name !== "scan") {
     stopCamera();
+  }
+  // Clear any run blocker when leaving a run screen
+  if (state.route.name === "run" && nextRoute.name !== "run") {
+    state.blockingError = null;
   }
   state.route = nextRoute;
   await loadRoute();
@@ -952,219 +957,328 @@ function renderGuidedDownstreamWorkflow(run) {
   `;
 }
 
-function renderCurrentBoothCheckpoint(run) {
-  const progressionActions = (run.progression?.actions || []).map((action) => action.action_id);
-  let stageKey = run.progression?.stage_key || "";
-  if (progressionActions.includes("record_solvent_charge")) stageKey = "ready_to_record_solvent_charge";
-  if (progressionActions.includes("verify_flush_temps")) stageKey = "ready_to_verify_flush_temps";
-  if (progressionActions.includes("record_flush_solvent_charge")) stageKey = "ready_to_record_flush_solvent_charge";
-  if (progressionActions.includes("confirm_flow_resumed")) stageKey = "ready_to_confirm_flow_resumed";
-  if (progressionActions.includes("confirm_final_clarity")) stageKey = "ready_to_confirm_clarity";
-  if (progressionActions.includes("complete_shutdown")) stageKey = "ready_to_complete_shutdown";
-  const booth = run.booth || {};
-  const actionFields = {
-    ready_to_start_mixer: `
-      <div class="field"><label for="primary_soak_short_reason">Reason if starting mixer before target soak time</label><textarea id="primary_soak_short_reason" name="primary_soak_short_reason" rows="2"></textarea></div>
-    `,
-    mixing: `
-      <div class="field"><label for="mixer_short_reason">Reason if stopping mixer before target time</label><textarea id="mixer_short_reason" name="mixer_short_reason" rows="2"></textarea></div>
-    `,
-    flushing: `
-      <div class="field"><label for="flush_short_reason">Reason if stopping flush before target time</label><textarea id="flush_short_reason" name="flush_short_reason" rows="2"></textarea></div>
-    `,
-    purging: `
-      <div class="field"><label for="final_purge_short_reason">Reason if stopping final purge before target time</label><textarea id="final_purge_short_reason" name="final_purge_short_reason" rows="2"></textarea></div>
-    `,
-    ready_to_record_solvent_charge: `
-      <div class="field">
-        <label for="primary_solvent_charge_lbs">Primary Solvent Charge (lbs)</label>
-        <input id="primary_solvent_charge_lbs" name="primary_solvent_charge_lbs" type="number" value="${escapeHtml(String(run.primary_solvent_charge_lbs ?? ""))}" min="0" step="0.1" placeholder="500" />
-      </div>
-    `,
-    ready_to_verify_flush_temps: `
-      <div class="grid-2">
-        <div class="field">
-          <label for="flush_solvent_chiller_temp_f">Flush Solvent Chiller Temp (F)</label>
-          <input id="flush_solvent_chiller_temp_f" name="flush_solvent_chiller_temp_f" type="number" value="${escapeHtml(String(booth.flush_solvent_chiller_temp_f ?? ""))}" step="0.1" placeholder="-40 or below" />
-        </div>
-        <div class="field">
-          <label for="flush_plate_temp_f">Plate Temp (F)</label>
-          <input id="flush_plate_temp_f" name="flush_plate_temp_f" type="number" value="${escapeHtml(String(booth.flush_plate_temp_f ?? ""))}" step="0.1" placeholder="Plate temp" />
-        </div>
-      </div>
-      <div class="field">
-        <label><input type="checkbox" name="flush_temp_slack_post_confirmed" value="1" ${booth.flush_temp_slack_post_confirmed_at ? "checked" : ""}> Posted to Slack</label>
-      </div>
-    `,
-    ready_to_record_flush_solvent_charge: `
-      <div class="field">
-        <label for="flush_solvent_charge_lbs">Flush Solvent Charge (lbs)</label>
-        <input id="flush_solvent_charge_lbs" name="flush_solvent_charge_lbs" type="number" value="${escapeHtml(String(booth.flush_solvent_charge_lbs ?? ""))}" min="0" step="0.1" placeholder="500" />
-      </div>
-    `,
-    ready_to_confirm_flow_resumed: `
-      <div class="field">
-        <label>Flow Resumed</label>
-        ${renderChoiceButtons("flow_resumed_decision", booth.flow_resumed_decision || "", [
-          { value: "", label: "Not set" },
-          { value: "yes", label: "Yes" },
-          { value: "no_adjusting", label: "Still adjusting" },
-        ])}
-      </div>
-      <div class="field"><label for="flow_adjustment_reason">Reason if still adjusting</label><textarea id="flow_adjustment_reason" name="flow_adjustment_reason" rows="2"></textarea></div>
-    `,
-    ready_to_confirm_clarity: `
-      <div class="field">
-        <label>Final Clarity</label>
-        ${renderChoiceButtons("final_clarity_decision", booth.final_clarity_decision || "", [
-          { value: "", label: "Not set" },
-          { value: "yes", label: "Clear enough" },
-          { value: "not_yet", label: "Not yet" },
-        ])}
-      </div>
-      <div class="field"><label for="final_clarity_reason">Reason if not yet clear</label><textarea id="final_clarity_reason" name="final_clarity_reason" rows="2"></textarea></div>
-    `,
-    ready_to_complete_shutdown: `
-      <div class="field">
-        <label>Shutdown Checklist</label>
-        <label><input type="checkbox" name="shutdown_recovery_inlets_closed" value="1" ${booth.final_recovery_inlets_closed_at ? "checked" : ""}> Recovery inlets closed</label>
-        <label><input type="checkbox" name="shutdown_filtration_pumpdown_started" value="1" ${booth.filtration_pumpdown_started_at ? "checked" : ""}> Filtration pump-down started</label>
-        <label><input type="checkbox" name="shutdown_nitrogen_off" value="1" ${booth.nitrogen_turned_off_at ? "checked" : ""}> Nitrogen off</label>
-        <label><input type="checkbox" name="shutdown_dewax_inlet_closed" value="1" ${booth.dewax_inlet_closed_at ? "checked" : ""}> Dewax inlet closed</label>
-      </div>
-    `,
-  };
-  const summaryRows = [
-    ["Primary solvent", booth.primary_solvent_charge_lbs != null ? `${booth.primary_solvent_charge_lbs} lbs` : "Pending"],
-    ["Flush temps", booth.flush_temp_verified_at ? `${booth.flush_solvent_chiller_temp_f}F / ${booth.flush_plate_temp_f}F` : "Pending"],
-    ["Flush solvent", booth.flush_solvent_charge_lbs != null ? `${booth.flush_solvent_charge_lbs} lbs` : "Pending"],
-    ["Flow resumed", booth.flow_resumed_decision || "Pending"],
-    ["Final clarity", booth.final_clarity_decision || "Pending"],
-    ["Shutdown", booth.booth_process_completed_at || "Pending"],
-  ];
-  return `
-    <section class="card">
-      <div class="section-head"><div><div class="eyebrow">Current checkpoint</div><h3>Only the active booth step is editable.</h3></div></div>
-      ${actionFields[stageKey] || `<div class="subtle">No extra inputs are needed for this step. Use the available progression action above.</div>`}
-      <div class="grid-2" style="margin-top:14px;">${summaryRows.map(([label, value]) => `<div class="card" style="padding:10px 12px;"><div class="eyebrow">${escapeHtml(label)}</div><strong>${escapeHtml(String(value))}</strong></div>`).join("")}</div>
-    </section>
-  `;
+
+// ---------------------------------------------------------------------------
+// ROLE HELPERS
+// Gate operator vs supervisor view on the role the API returns.
+// "extractor" and "assistant_extractor" get the focused operator view.
+// Everything else (manager, supervisor, admin) gets the full supervisor view.
+// If the role is unknown we default to operator — safer to show less.
+// ---------------------------------------------------------------------------
+
+function isSupervisor() {
+  const role = String(state.auth.user?.role || "").toLowerCase();
+  return ["manager", "supervisor", "admin", "vp_operations"].includes(role);
 }
-function renderRunExecution() {
-  const run = state.run;
-  const lot = state.lot;
-  if (!run || !state.route.chargeId) return `<div class="empty">Run not found.</div>`;
-  const inherited = run.inherited || {};
+
+// ---------------------------------------------------------------------------
+// STAGE SEQUENCE — ordered list used to derive "what comes next"
+// Mirrors the stage order in progressionForRun() in api.js.
+// If the backend adds stages, add them here in order.
+// ---------------------------------------------------------------------------
+
+const STAGE_SEQUENCE = [
+  { key: "ready_to_confirm_vacuum",          label: "Confirm vacuum down",          phase: "primary", timer: null },
+  { key: "ready_to_record_solvent_charge",   label: "Record solvent charge",         phase: "primary", timer: null },
+  { key: "ready_to_start_primary_soak",      label: "Start primary soak",            phase: "primary", timer: null },
+  { key: "ready_to_start_mixer",             label: "Start mixer",                   phase: "primary", timer: "primary_soak", targetMinutes: 30 },
+  { key: "mixing",                           label: "Mixer running",                 phase: "primary", timer: "mixer",        targetMinutes: 5  },
+  { key: "ready_to_confirm_filter_clear",    label: "Confirm filter clear",          phase: "primary", timer: null },
+  { key: "ready_to_start_pressurization",    label: "Start pressurization",          phase: "primary", timer: null },
+  { key: "ready_to_begin_recovery",          label: "Begin recovery",                phase: "primary", timer: null },
+  { key: "ready_to_begin_flush_cycle",       label: "Begin flush cycle",             phase: "primary", timer: null },
+  { key: "ready_to_verify_flush_temps",      label: "Verify flush temps",            phase: "flush",   timer: null },
+  { key: "ready_to_record_flush_solvent_charge", label: "Record flush solvent charge", phase: "flush", timer: null },
+  { key: "ready_to_flush",                   label: "Start flush soak",              phase: "flush",   timer: null },
+  { key: "flushing",                         label: "Flush running",                 phase: "flush",   timer: "flush",        targetMinutes: 10 },
+  { key: "ready_to_confirm_flow_resumed",    label: "Confirm flow resumed",          phase: "flush",   timer: null },
+  { key: "flow_adjustment_required",         label: "Flow adjustment required",      phase: "flush",   timer: null },
+  { key: "ready_to_start_final_purge",       label: "Start final purge",             phase: "purge",   timer: null },
+  { key: "purging",                          label: "Final purge running",           phase: "purge",   timer: "final_purge",  targetMinutes: null },
+  { key: "ready_to_confirm_clarity",         label: "Confirm final clarity",         phase: "purge",   timer: null },
+  { key: "clarity_adjustment_required",      label: "More purge work required",      phase: "purge",   timer: null },
+  { key: "ready_to_complete_shutdown",       label: "Complete shutdown checklist",   phase: "purge",   timer: null },
+  { key: "ready_to_complete",               label: "Mark run complete",              phase: "purge",   timer: null },
+];
+
+function nextStageAfter(currentKey) {
+  const idx = STAGE_SEQUENCE.findIndex((s) => s.key === currentKey);
+  if (idx === -1 || idx >= STAGE_SEQUENCE.length - 1) return null;
+  return STAGE_SEQUENCE[idx + 1];
+}
+
+// ---------------------------------------------------------------------------
+// BLOCKER RESOLUTION
+// Maps a progression error message to the stage that is blocking and its
+// action so we can surface it inline instead of leaving the operator stuck.
+// Each entry: error substring -> { stageKey, label, actionId }
+// More specific matches first.
+// ---------------------------------------------------------------------------
+
+const BLOCKER_MAP = [
+  // Each entry matches a substring of the error message (case-insensitive)
+  // and maps it to the stage that needs to be completed to unblock.
+  // More specific strings must come before broader ones.
+  { match: "vacuum",                                   stageKey: "ready_to_confirm_vacuum",               label: "Confirm Vacuum Down",          actionId: "confirm_vacuum_down" },
+  { match: "primary solvent charge before",            stageKey: "ready_to_record_solvent_charge",        label: "Record Solvent Charge",        actionId: "record_solvent_charge" },
+  { match: "enter the primary solvent charge",         stageKey: "ready_to_record_solvent_charge",        label: "Record Solvent Charge",        actionId: "record_solvent_charge" },
+  { match: "primary soak before starting the mixer",   stageKey: "ready_to_start_primary_soak",           label: "Start Primary Soak",           actionId: "start_primary_soak" },
+  { match: "stop the mixer before",                    stageKey: "mixing",                                label: "Stop Mixer",                   actionId: "stop_mixer" },
+  { match: "mixer before stopping",                    stageKey: "mixing",                                label: "Start Mixer",                  actionId: "start_mixer" },
+  { match: "start the mixer before",                   stageKey: "ready_to_start_mixer",                  label: "Start Mixer",                  actionId: "start_mixer" },
+  { match: "both flush temperatures",                  stageKey: "ready_to_verify_flush_temps",           label: "Verify Flush Temps",           actionId: "verify_flush_temps" },
+  { match: "chiller temperature must be",              stageKey: "ready_to_verify_flush_temps",           label: "Verify Flush Temps",           actionId: "verify_flush_temps" },
+  { match: "enter the flush solvent charge",           stageKey: "ready_to_record_flush_solvent_charge",  label: "Record Flush Solvent Charge",  actionId: "record_flush_solvent_charge" },
+  { match: "flush cycle before starting the flush",    stageKey: "ready_to_flush",                        label: "Start Flush",                  actionId: "start_flush" },
+  { match: "start the flush before",                   stageKey: "ready_to_flush",                        label: "Start Flush",                  actionId: "start_flush" },
+  { match: "flow resumed",                             stageKey: "ready_to_confirm_flow_resumed",         label: "Confirm Flow Resumed",         actionId: "confirm_flow_resumed" },
+  { match: "start final purge before",                 stageKey: "ready_to_start_final_purge",            label: "Start Final Purge",            actionId: "start_final_purge" },
+  { match: "shutdown checklist before completing",     stageKey: "ready_to_complete_shutdown",            label: "Complete Shutdown Checklist",  actionId: "complete_shutdown" },
+];
+
+function resolveBlocker(errorMessage) {
+  if (!errorMessage) return null;
+  const lower = errorMessage.toLowerCase();
+  const match = BLOCKER_MAP.find((entry) => lower.includes(entry.match.toLowerCase()));
+  if (!match) return null;
+  return { message: errorMessage, stageKey: match.stageKey, label: match.label, actionId: match.actionId };
+}
+
+function renderBlockerCard(blocker) {
+  if (!blocker) return "";
   return `
-    <div class="layout-grid">
-      <div class="topbar">
-        <div>
-          <h2>Run Execution</h2>
-          <div class="meta">${escapeHtml(inherited.tracking_id || "")} - Reactor ${escapeHtml(String(run.reactor_number || ""))}</div>
-        </div>
-        <div class="actions">
-          <a class="btn btn-secondary" href="#/reactors">Back to Reactors</a>
-          <a class="btn btn-secondary" href="${escapeHtml(run.open_main_app_url || "#")}">Open in Main App</a>
-        </div>
+    <div class="blocker-card">
+      <div class="blocker-icon">&#9888;</div>
+      <div class="blocker-body">
+        <div class="blocker-title">Step required before continuing</div>
+        <p class="blocker-message">${escapeHtml(blocker.message)}</p>
+        <button class="btn btn-primary btn-operator-action" type="button"
+          data-action="run-progression"
+          data-run-action="${escapeHtml(blocker.actionId)}">
+          ${escapeHtml(blocker.label)}
+        </button>
       </div>
-      <section class="card charge-hero">
-        <div class="metric-row">
-          <div><span>Strain</span><strong>${escapeHtml(inherited.strain_name || lotTitle(lot || {}))}</strong></div>
-          <div><span>Source</span><strong>${escapeHtml(inherited.source_summary || "")}</strong></div>
-          <div><span>Biomass Weight</span><strong>${escapeHtml(String(run.bio_in_reactor_lbs || 0))} lbs</strong></div>
-          <div><span>Charged</span><strong>${escapeHtml(inherited.charged_at_label || "")}</strong></div>
-        </div>
-      </section>
-      <form class="card charge-form" data-form="run-execution">
-        <div class="section-head">
-          <div>
-            <div class="eyebrow">Execution details</div>
-            <h3>Capture the extraction details the lab team currently sends in Slack.</h3>
-          </div>
-        </div>
-        ${renderBoothTimingControls(run)}
-        ${renderCurrentBoothCheckpoint(run)}
-        ${renderRunProgression(run)}
-        ${run.run_completed_at ? renderPostExtractionProgression(run) : ""}
-        ${run.run_completed_at ? renderGuidedDownstreamWorkflow(run) : ""}
-        <input type="hidden" name="run_completed_at" value="${escapeHtml(run.run_completed_at || "")}" />
-        <div class="actions sticky-actions">
-          <a class="btn btn-secondary" href="#/reactors">Back to Reactors</a>
-          <a class="btn btn-secondary" href="${escapeHtml(run.open_main_app_url || "#")}">Open in Main App</a>
-          <button class="btn btn-primary" type="submit">${state.loading ? "Saving..." : "Save Run"}</button>
-        </div>
-      </form>
-      ${renderBoothEvidence(run)}
     </div>
   `;
 }
+
+
+// ---------------------------------------------------------------------------
+// PHASE CLASSIFICATION — unchanged from previous version
+// ---------------------------------------------------------------------------
+
+const PRIMARY_STAGES = new Set([
+  "pending", "vacuum_confirmed", "solvent_charged", "soaking",
+  "ready_to_start_mixer", "mixing", "filter_cleared", "pressurizing",
+  "recovering", "ready_to_record_solvent_charge", "ready_to_confirm_vacuum",
+  "ready_to_start_primary_soak", "ready_to_confirm_filter_clear",
+  "ready_to_start_pressurization", "ready_to_begin_recovery",
+  "ready_to_begin_flush_cycle",
+]);
+
+const FLUSH_STAGES = new Set([
+  "flush_setup", "ready_to_verify_flush_temps",
+  "ready_to_record_flush_solvent_charge", "ready_to_flush",
+  "flushing", "ready_to_confirm_flow_resumed", "flow_adjustment_required",
+]);
+
+const PURGE_STAGES = new Set([
+  "purging", "ready_to_confirm_clarity", "clarity_adjustment_required",
+  "ready_to_complete_shutdown", "ready_to_start_final_purge",
+  "ready_to_complete",
+]);
+
+function classifyPhase(run) {
+  if (run.run_completed_at) return "post_extraction";
+  const stageKey = resolvedStageKey(run);
+  if (FLUSH_STAGES.has(stageKey)) return "flush";
+  if (PURGE_STAGES.has(stageKey)) return "purge";
+  return "primary";
+}
+
+function resolvedStageKey(run) {
+  const progressionActions = (run.progression?.actions || []).map((a) => a.action_id);
+  let stageKey = run.progression?.stage_key || "";
+  if (progressionActions.includes("record_solvent_charge"))        stageKey = "ready_to_record_solvent_charge";
+  if (progressionActions.includes("verify_flush_temps"))           stageKey = "ready_to_verify_flush_temps";
+  if (progressionActions.includes("record_flush_solvent_charge"))  stageKey = "ready_to_record_flush_solvent_charge";
+  if (progressionActions.includes("confirm_flow_resumed"))         stageKey = "ready_to_confirm_flow_resumed";
+  if (progressionActions.includes("confirm_final_clarity"))        stageKey = "ready_to_confirm_clarity";
+  if (progressionActions.includes("complete_shutdown"))            stageKey = "ready_to_complete_shutdown";
+  return stageKey;
+}
+
+// ---------------------------------------------------------------------------
+// TIMING CONTROL CARD — unchanged helper
+// ---------------------------------------------------------------------------
 
 function renderTimingControlCard(timing) {
   if (!timing) return "";
   const statusLabels = {
-    not_started: "Not started",
-    active: "Active",
-    active_on_track: "Active / on track",
-    active_target_reached: "Active / target reached",
-    recorded: "Recorded",
-    on_target: "On target",
-    short: "Short",
+    not_started: "Not started", active: "Active",
+    active_on_track: "Active / on track", active_target_reached: "Active / target reached",
+    recorded: "Recorded", on_target: "On target", short: "Short",
   };
   const summary =
-    timing.actual_minutes != null
-      ? `${timing.actual_minutes} minute(s) recorded`
-      : timing.active_minutes != null
-        ? `${timing.active_minutes} minute(s) elapsed`
-        : "No duration yet";
-  const target = timing.target_minutes != null ? `${timing.target_minutes} minute(s) target` : "No default target";
+    timing.actual_minutes != null ? `${timing.actual_minutes} min recorded`
+    : timing.active_minutes != null ? `${timing.active_minutes} min elapsed`
+    : "Not started";
+  const target = timing.target_minutes != null ? `${timing.target_minutes} min target` : "";
   const delta =
-    timing.delta_minutes == null
-      ? ""
-      : timing.delta_minutes >= 0
-        ? `${timing.delta_minutes} minute(s) over target`
-        : `${Math.abs(timing.delta_minutes)} minute(s) under target`;
+    timing.delta_minutes == null ? ""
+    : timing.delta_minutes >= 0 ? `${timing.delta_minutes} min over`
+    : `${Math.abs(timing.delta_minutes)} min under`;
   return `
-    <div class="card" style="padding:12px 14px;">
-      <div class="eyebrow">${escapeHtml(timing.label || "Timing")}</div>
-      <div><strong>${escapeHtml(statusLabels[timing.status] || "Pending")}</strong></div>
-      <div class="subtle">${escapeHtml(summary)}</div>
-      <div class="subtle">${escapeHtml(target)}${delta ? ` • ${escapeHtml(delta)}` : ""}</div>
+    <div class="timing-chip">
+      <span class="timing-chip-label">${escapeHtml(timing.label || "Timer")}</span>
+      <strong>${escapeHtml(statusLabels[timing.status] || "Pending")}</strong>
+      <span class="subtle">${escapeHtml(summary)}${target ? ` · ${target}` : ""}${delta ? ` · ${delta}` : ""}</span>
     </div>
   `;
 }
 
-function renderBoothTimingControls(run) {
-  const timings = run.timing_controls || {};
-  return `
-    <section class="card">
-      <div class="section-head">
-        <div>
-          <div class="eyebrow">Booth timing controls</div>
-          <h3>Track live booth timers against SOP targets.</h3>
-        </div>
-      </div>
+// ---------------------------------------------------------------------------
+// CHECKPOINT INPUTS — same logic, now a clean helper
+// ---------------------------------------------------------------------------
+
+function renderCheckpointInputs(run) {
+  const stageKey = resolvedStageKey(run);
+  const booth = run.booth || {};
+  const map = {
+    ready_to_start_mixer: `
+      <div class="field"><label for="primary_soak_short_reason">Reason if starting mixer early</label>
+      <textarea id="primary_soak_short_reason" name="primary_soak_short_reason" rows="2"></textarea></div>`,
+    mixing: `
+      <div class="field"><label for="mixer_short_reason">Reason if stopping mixer early</label>
+      <textarea id="mixer_short_reason" name="mixer_short_reason" rows="2"></textarea></div>`,
+    flushing: `
+      <div class="field"><label for="flush_short_reason">Reason if stopping flush early</label>
+      <textarea id="flush_short_reason" name="flush_short_reason" rows="2"></textarea></div>`,
+    purging: `
+      <div class="field"><label for="final_purge_short_reason">Reason if stopping purge early</label>
+      <textarea id="final_purge_short_reason" name="final_purge_short_reason" rows="2"></textarea></div>`,
+    ready_to_record_solvent_charge: `
+      <div class="field"><label for="primary_solvent_charge_lbs">Primary Solvent Charge (lbs)</label>
+      <input id="primary_solvent_charge_lbs" name="primary_solvent_charge_lbs" type="number"
+        value="${escapeHtml(String(run.primary_solvent_charge_lbs ?? ""))}" min="0" step="0.1" placeholder="500" /></div>`,
+    ready_to_verify_flush_temps: `
       <div class="grid-2">
-        ${renderTimingControlCard(timings.primary_soak)}
-        ${renderTimingControlCard(timings.mixer)}
-        ${renderTimingControlCard(timings.flush)}
-        ${renderTimingControlCard(timings.final_purge)}
+        <div class="field"><label for="flush_solvent_chiller_temp_f">Chiller Temp (°F)</label>
+        <input id="flush_solvent_chiller_temp_f" name="flush_solvent_chiller_temp_f" type="number"
+          value="${escapeHtml(String(booth.flush_solvent_chiller_temp_f ?? ""))}" step="0.1" placeholder="-40 or below" /></div>
+        <div class="field"><label for="flush_plate_temp_f">Plate Temp (°F)</label>
+        <input id="flush_plate_temp_f" name="flush_plate_temp_f" type="number"
+          value="${escapeHtml(String(booth.flush_plate_temp_f ?? ""))}" step="0.1" placeholder="Plate temp" /></div>
       </div>
-    </section>
+      <div class="field"><label><input type="checkbox" name="flush_temp_slack_post_confirmed" value="1"
+        ${booth.flush_temp_slack_post_confirmed_at ? "checked" : ""}> Posted to Slack</label></div>`,
+    ready_to_record_flush_solvent_charge: `
+      <div class="field"><label for="flush_solvent_charge_lbs">Flush Solvent Charge (lbs)</label>
+      <input id="flush_solvent_charge_lbs" name="flush_solvent_charge_lbs" type="number"
+        value="${escapeHtml(String(booth.flush_solvent_charge_lbs ?? ""))}" min="0" step="0.1" placeholder="500" /></div>`,
+    ready_to_confirm_flow_resumed: `
+      <div class="field"><label>Flow Resumed</label>
+      ${renderChoiceButtons("flow_resumed_decision", booth.flow_resumed_decision || "", [
+        { value: "", label: "Not set" }, { value: "yes", label: "Yes" }, { value: "no_adjusting", label: "Still adjusting" },
+      ])}</div>
+      <div class="field"><label for="flow_adjustment_reason">Reason if still adjusting</label>
+      <textarea id="flow_adjustment_reason" name="flow_adjustment_reason" rows="2"></textarea></div>`,
+    ready_to_confirm_clarity: `
+      <div class="field"><label>Final Clarity</label>
+      ${renderChoiceButtons("final_clarity_decision", booth.final_clarity_decision || "", [
+        { value: "", label: "Not set" }, { value: "yes", label: "Clear enough" }, { value: "not_yet", label: "Not yet" },
+      ])}</div>
+      <div class="field"><label for="final_clarity_reason">Reason if not clear</label>
+      <textarea id="final_clarity_reason" name="final_clarity_reason" rows="2"></textarea></div>`,
+    ready_to_complete_shutdown: `
+      <div class="field shutdown-checklist">
+        <label>Shutdown Checklist</label>
+        <label><input type="checkbox" name="shutdown_recovery_inlets_closed" value="1"
+          ${booth.final_recovery_inlets_closed_at ? "checked" : ""}> Recovery inlets closed</label>
+        <label><input type="checkbox" name="shutdown_filtration_pumpdown_started" value="1"
+          ${booth.filtration_pumpdown_started_at ? "checked" : ""}> Filtration pump-down started</label>
+        <label><input type="checkbox" name="shutdown_nitrogen_off" value="1"
+          ${booth.nitrogen_turned_off_at ? "checked" : ""}> Nitrogen off</label>
+        <label><input type="checkbox" name="shutdown_dewax_inlet_closed" value="1"
+          ${booth.dewax_inlet_closed_at ? "checked" : ""}> Dewax inlet closed</label>
+      </div>`,
+  };
+  return map[stageKey] || "";
+}
+
+// ---------------------------------------------------------------------------
+// RELEVANT TIMER — only show the timer that matters right now.
+// One timing chip, not four. Chosen based on the current stage.
+// ---------------------------------------------------------------------------
+
+function renderRelevantTimer(run) {
+  const stageKey = resolvedStageKey(run);
+  const timings = run.timing_controls || {};
+  const timerMap = {
+    ready_to_start_mixer:          timings.primary_soak,
+    mixing:                        timings.mixer,
+    flushing:                      timings.flush,
+    purging:                       timings.final_purge,
+    ready_to_confirm_flow_resumed: timings.flush,
+    ready_to_confirm_clarity:      timings.final_purge,
+  };
+  const timing = timerMap[stageKey];
+  if (!timing) return "";
+  return `<div class="current-timer">${renderTimingControlCard(timing)}</div>`;
+}
+
+// ---------------------------------------------------------------------------
+// NEXT STEP HINT — one line below the action button.
+// Shows what comes immediately after the current step, with timer target
+// if applicable. Gives the operator just enough lookahead without clutter.
+// ---------------------------------------------------------------------------
+
+function renderNextStepHint(run) {
+  const stageKey = resolvedStageKey(run);
+  const next = nextStageAfter(stageKey);
+  if (!next) return "";
+  const timerNote = next.targetMinutes ? ` · ${next.targetMinutes} min target` : "";
+  return `
+    <div class="next-step-hint">
+      <span class="subtle">Next: ${escapeHtml(next.label)}${escapeHtml(timerNote)}</span>
+    </div>
   `;
 }
+
+// ---------------------------------------------------------------------------
+// OTHER REACTORS STRIP — ambient awareness, not navigation.
+// Shows other active reactors and their current stage in a compact bar.
+// Only shown when there are other active reactors.
+// ---------------------------------------------------------------------------
+
+function renderOtherReactorsStrip(currentReactorNumber) {
+  const cards = (state.board?.reactor_cards || []).filter(
+    (card) => card.reactor_number !== Number(currentReactorNumber) && card.current
+  );
+  if (!cards.length) return "";
+  return `
+    <div class="other-reactors-strip">
+      ${cards.map((card) => `
+        <a class="other-reactor-chip" href="#/runs/charge/${escapeHtml(card.current?.charge_id || "")}">
+          <span class="other-reactor-number">R${escapeHtml(String(card.reactor_number))}</span>
+          <span>${escapeHtml(card.current?.strain_name || "Active")}</span>
+          <span class="subtle">${escapeHtml(card.state_label)}</span>
+        </a>
+      `).join("")}
+    </div>
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// BOOTH EVIDENCE — unchanged, standalone helper
+// ---------------------------------------------------------------------------
 
 function renderBoothEvidence(run) {
   const booth = run.booth || {};
   const counts = booth.evidence_counts || {};
   const evidenceRows = Array.isArray(state.runEvidence) ? state.runEvidence : [];
   return `
-    <section class="card">
-      <div class="section-head">
-        <div>
-          <div class="eyebrow">Booth evidence</div>
-          <h3>Capture the temperature-photo proof required by the SOP.</h3>
-        </div>
-      </div>
+    <div class="booth-evidence-block">
       <div class="grid-2">
         <form class="field" data-form="run-evidence" data-evidence-type="solvent_chiller_temp_photo">
           <label for="solvent_chiller_temp_photo">Solvent Chiller Temp Photo</label>
@@ -1179,22 +1293,231 @@ function renderBoothEvidence(run) {
           <button class="btn btn-secondary" type="submit">Upload Plate Photo</button>
         </form>
       </div>
-      ${
-        evidenceRows.length
-          ? `<div class="stack" style="margin-top:16px;">${evidenceRows
-              .map(
-                (row) => `
-                  <div class="card" style="padding:12px 14px;">
-                    <div><strong>${escapeHtml(String(row.evidence_type || "").replaceAll("_", " "))}</strong></div>
-                    <div class="subtle">${escapeHtml(row.captured_at || "")}</div>
-                    <div class="subtle">${escapeHtml(row.file_path || row.url || "")}</div>
-                  </div>`,
-              )
-              .join("")}</div>`
-          : `<div class="subtle" style="margin-top:16px;">No booth evidence uploaded yet.</div>`
-      }
-    </section>
+      ${evidenceRows.length
+        ? `<div class="stack" style="margin-top:16px;">${evidenceRows.map((row) => `
+            <div class="card" style="padding:12px 14px;">
+              <div><strong>${escapeHtml(String(row.evidence_type || "").replaceAll("_", " "))}</strong></div>
+              <div class="subtle">${escapeHtml(row.captured_at || "")}</div>
+              <div class="subtle">${escapeHtml(row.file_path || row.url || "")}</div>
+            </div>`).join("")}</div>`
+        : `<div class="subtle" style="margin-top:12px;">No booth evidence uploaded yet.</div>`}
+    </div>
   `;
+}
+
+// ---------------------------------------------------------------------------
+// SUPERVISOR FULL VIEW — everything visible, for managers reviewing runs.
+// Separate render path so operator view stays clean and unspoiled.
+// ---------------------------------------------------------------------------
+
+function renderRunExecutionSupervisor(run, lot) {
+  const inherited = run.inherited || {};
+  const booth = run.booth || {};
+  const timings = run.timing_controls || {};
+  const summaryRows = [
+    ["Primary solvent", booth.primary_solvent_charge_lbs != null ? `${booth.primary_solvent_charge_lbs} lbs` : "—"],
+    ["Flush temps", booth.flush_temp_verified_at ? `${booth.flush_solvent_chiller_temp_f}°F / ${booth.flush_plate_temp_f}°F` : "—"],
+    ["Flush solvent", booth.flush_solvent_charge_lbs != null ? `${booth.flush_solvent_charge_lbs} lbs` : "—"],
+    ["Flow resumed", booth.flow_resumed_decision || "—"],
+    ["Final clarity", booth.final_clarity_decision || "—"],
+    ["Shutdown", booth.booth_process_completed_at ? "Done" : "—"],
+  ];
+  return `
+    <div class="layout-grid">
+      <div class="topbar">
+        <div>
+          <h2>Run Execution <span class="supervisor-badge">Supervisor</span></h2>
+          <div class="meta">${escapeHtml(inherited.tracking_id || "")} — Reactor ${escapeHtml(String(run.reactor_number || ""))}</div>
+        </div>
+        <div class="actions">
+          <a class="btn btn-secondary" href="#/reactors">Back to Reactors</a>
+          <a class="btn btn-secondary" href="${escapeHtml(run.open_main_app_url || "#")}">Open in Main App</a>
+        </div>
+      </div>
+
+      <section class="card charge-hero">
+        <div class="metric-row">
+          <div><span>Strain</span><strong>${escapeHtml(inherited.strain_name || lotTitle(lot || {}))}</strong></div>
+          <div><span>Source</span><strong>${escapeHtml(inherited.source_summary || "")}</strong></div>
+          <div><span>Biomass</span><strong>${escapeHtml(String(run.bio_in_reactor_lbs || 0))} lbs</strong></div>
+          <div><span>Charged</span><strong>${escapeHtml(inherited.charged_at_label || "")}</strong></div>
+        </div>
+        <div class="run-summary-strip">
+          ${summaryRows.map(([label, value]) => `
+            <div class="run-summary-item">
+              <span class="subtle">${escapeHtml(label)}</span>
+              <strong>${escapeHtml(String(value))}</strong>
+            </div>`).join("")}
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-head"><div><div class="eyebrow">All Timers</div><h3>Booth timing against SOP targets</h3></div></div>
+        <div class="grid-2">
+          ${renderTimingControlCard(timings.primary_soak)}
+          ${renderTimingControlCard(timings.mixer)}
+          ${renderTimingControlCard(timings.flush)}
+          ${renderTimingControlCard(timings.final_purge)}
+        </div>
+      </section>
+
+      <form class="card charge-form" data-form="run-execution">
+        <input type="hidden" name="run_completed_at" value="${escapeHtml(run.run_completed_at || "")}" />
+        <div class="section-head"><div><div class="eyebrow">Current checkpoint</div>
+          <h3>${escapeHtml(run.progression?.stage_label || "")}</h3></div></div>
+        <p class="subtle">${escapeHtml(run.progression?.description || "")}</p>
+        ${renderCheckpointInputs(run)}
+        ${renderRunProgression(run)}
+        ${run.run_completed_at ? renderPostExtractionProgression(run) : ""}
+        ${run.run_completed_at ? renderGuidedDownstreamWorkflow(run) : ""}
+        <div class="actions sticky-actions">
+          <a class="btn btn-secondary" href="#/reactors">Back to Reactors</a>
+          <a class="btn btn-secondary" href="${escapeHtml(run.open_main_app_url || "#")}">Open in Main App</a>
+          <button class="btn btn-primary" type="submit">${state.loading ? "Saving..." : "Save Run"}</button>
+        </div>
+      </form>
+      ${renderBoothEvidence(run)}
+    </div>
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// OPERATOR FOCUSED VIEW — absolute minimum visible at any moment.
+//
+// Operator sees:
+//   1. Minimal header: lot + reactor + strain (one line)
+//   2. Other active reactors strip (ambient, compact)
+//   3. Current phase label (Primary / Flush / Final Purge / Post-Extraction)
+//   4. Relevant timer only (the one that matters right now)
+//   5. Step instruction (one sentence from progression.description)
+//   6. Checkpoint inputs if needed (e.g. solvent weight, temps)
+//   7. ONE big primary action button — full width
+//   8. "Next: ___" hint (one line)
+//   9. Bypass section collapsed by default, only visible if needed
+// ---------------------------------------------------------------------------
+
+function renderRunExecutionOperator(run, lot) {
+  const inherited = run.inherited || {};
+  const progression = run.progression || {};
+  const actions = progression.actions || [];
+  const bypassActions = progression.bypass_actions || [];
+  const bypass = progression.bypass || null;
+  const activePhase = classifyPhase(run);
+
+  const phaseLabels = {
+    primary: "Primary Extraction",
+    flush: "Flush Cycle",
+    purge: "Final Purge",
+    post_extraction: "Post-Extraction",
+  };
+
+  const checkpointInputs = renderCheckpointInputs(run);
+  const relevantTimer = renderRelevantTimer(run);
+  const needsEvidenceUpload = activePhase === "flush";
+
+  return `
+    <div class="layout-grid operator-layout">
+
+      <div class="operator-topbar">
+        <div class="operator-topbar-left">
+          <span class="operator-lot">${escapeHtml(inherited.tracking_id || "")}</span>
+          <span class="operator-sep">·</span>
+          <span>Reactor ${escapeHtml(String(run.reactor_number || ""))}</span>
+          <span class="operator-sep">·</span>
+          <span>${escapeHtml(inherited.strain_name || lotTitle(lot || {}))}</span>
+        </div>
+        <div class="actions">
+          <a class="btn btn-secondary" href="#/reactors">Reactors</a>
+          <a class="btn btn-secondary" href="${escapeHtml(run.open_main_app_url || "#")}">Main App</a>
+        </div>
+      </div>
+
+      ${renderOtherReactorsStrip(run.reactor_number)}
+
+      <form class="operator-focus-card" data-form="run-execution">
+        <input type="hidden" name="run_completed_at" value="${escapeHtml(run.run_completed_at || "")}" />
+
+        ${renderBlockerCard(state.blockingError)}
+
+        <div class="operator-phase-label">${escapeHtml(phaseLabels[activePhase] || "")}</div>
+
+        <h2 class="operator-step-title">${escapeHtml(progression.stage_label || "")}</h2>
+
+        <p class="operator-step-desc">${escapeHtml(progression.description || "")}</p>
+
+        ${relevantTimer}
+
+        ${checkpointInputs ? `<div class="operator-inputs">${checkpointInputs}</div>` : ""}
+
+        ${needsEvidenceUpload ? `
+          <div class="operator-evidence">
+            <div class="eyebrow" style="margin-bottom:8px;">Required Evidence</div>
+            ${renderBoothEvidence(run)}
+          </div>` : ""}
+
+        ${actions.length ? `
+          <div class="operator-actions">
+            ${actions.map((action) => `
+              <button class="btn btn-primary btn-operator-action" type="button"
+                data-action="run-progression"
+                data-run-action="${escapeHtml(action.action_id)}">
+                ${escapeHtml(action.label)}
+              </button>`).join("")}
+          </div>` : `<div class="subtle">No action available right now.</div>`}
+
+        ${renderNextStepHint(run)}
+
+        ${bypass?.status === "pending" ? `
+          <div class="notice warning" style="margin-top:14px;">
+            Manager bypass requested. Continue only after approval.
+          </div>` : ""}
+
+        ${bypassActions.length ? `
+          <details class="bypass-details">
+            <summary>Request manager bypass</summary>
+            <div class="bypass-box">
+              ${bypassActions.some((a) => a.action_id === "request_stage_bypass") ? `
+                <div class="field">
+                  <label for="bypass_reason">Bypass reason</label>
+                  <textarea id="bypass_reason" name="bypass_reason" rows="2"
+                    placeholder="Explain what failed and why approval is needed"></textarea>
+                </div>` : ""}
+              <div class="action-grid">
+                ${bypassActions.map((action) => `
+                  <button class="btn btn-secondary" type="button"
+                    data-action="run-progression"
+                    data-run-action="${escapeHtml(action.action_id)}">
+                    ${escapeHtml(action.label)}
+                  </button>`).join("")}
+              </div>
+            </div>
+          </details>` : ""}
+
+        <div class="operator-save-bar">
+          <button class="btn btn-secondary" type="submit">${state.loading ? "Saving..." : "Save"}</button>
+        </div>
+      </form>
+
+      ${run.run_completed_at ? `
+        <div class="card" style="padding:20px;">
+          ${renderPostExtractionProgression(run)}
+          ${renderGuidedDownstreamWorkflow(run)}
+        </div>` : ""}
+
+    </div>
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// MAIN ENTRY POINT — routes to operator or supervisor view based on role
+// ---------------------------------------------------------------------------
+
+function renderRunExecution() {
+  const run = state.run;
+  const lot = state.lot;
+  if (!run || !state.route.chargeId) return `<div class="empty">Run not found.</div>`;
+  if (isSupervisor()) return renderRunExecutionSupervisor(run, lot);
+  return renderRunExecutionOperator(run, lot);
 }
 
 function bind() {
@@ -1457,64 +1780,77 @@ async function handleRunEvidenceSubmit(event) {
 }
 
 function buildRunPayload(form, progressionAction = "") {
+  // WHY or undefined: the mock (and live API) use Object.assign(run, payload)
+  // to merge form fields into the run record. If we send empty strings for
+  // fields not present in the current form, they overwrite real timestamps
+  // that were set by earlier progression steps — causing state corruption.
+  // Sending undefined means Object.assign skips the key entirely, preserving
+  // whatever value the server already has for that field.
+  function field(name) {
+    const val = String(form.get(name) || "").trim();
+    return val || undefined;
+  }
+  function checkboxField(name) {
+    return form.get(name) ? "1" : undefined;
+  }
   return {
-    run_fill_started_at: String(form.get("run_fill_started_at") || "").trim(),
-    run_fill_ended_at: String(form.get("run_fill_ended_at") || "").trim(),
-    biomass_blend_milled_pct: String(form.get("biomass_blend_milled_pct") || "").trim(),
-    biomass_blend_unmilled_pct: String(form.get("biomass_blend_unmilled_pct") || "").trim(),
-    flush_count: String(form.get("flush_count") || "").trim(),
-    flush_total_weight_lbs: String(form.get("flush_total_weight_lbs") || "").trim(),
-    fill_count: String(form.get("fill_count") || "").trim(),
-    fill_total_weight_lbs: String(form.get("fill_total_weight_lbs") || "").trim(),
-    stringer_basket_count: String(form.get("stringer_basket_count") || "").trim(),
-    crc_blend: String(form.get("crc_blend") || "").trim(),
-    mixer_started_at: String(form.get("mixer_started_at") || "").trim(),
-    mixer_ended_at: String(form.get("mixer_ended_at") || "").trim(),
-    flush_started_at: String(form.get("flush_started_at") || "").trim(),
-    flush_ended_at: String(form.get("flush_ended_at") || "").trim(),
-    run_completed_at: String(form.get("run_completed_at") || "").trim(),
-    primary_solvent_charge_lbs: String(form.get("primary_solvent_charge_lbs") || "").trim(),
-    flush_solvent_chiller_temp_f: String(form.get("flush_solvent_chiller_temp_f") || "").trim(),
-    flush_plate_temp_f: String(form.get("flush_plate_temp_f") || "").trim(),
-    flush_temp_slack_post_confirmed: form.get("flush_temp_slack_post_confirmed") ? "1" : "",
-    flush_solvent_charge_lbs: String(form.get("flush_solvent_charge_lbs") || "").trim(),
-    wet_hte_g: String(form.get("wet_hte_g") || "").trim(),
-    wet_thca_g: String(form.get("wet_thca_g") || "").trim(),
-    post_extraction_pathway: String(form.get("post_extraction_pathway") || "").trim(),
-    post_extraction_started_at: String(form.get("post_extraction_started_at") || "").trim(),
-    post_extraction_initial_outputs_recorded_at: String(form.get("post_extraction_initial_outputs_recorded_at") || "").trim(),
-    pot_pour_offgas_started_at: String(form.get("pot_pour_offgas_started_at") || "").trim(),
-    pot_pour_offgas_completed_at: String(form.get("pot_pour_offgas_completed_at") || "").trim(),
-    pot_pour_daily_stir_count: String(form.get("pot_pour_daily_stir_count") || "").trim(),
-    pot_pour_centrifuged_at: String(form.get("pot_pour_centrifuged_at") || "").trim(),
-    thca_oven_started_at: String(form.get("thca_oven_started_at") || "").trim(),
-    thca_oven_completed_at: String(form.get("thca_oven_completed_at") || "").trim(),
-    thca_milled_at: String(form.get("thca_milled_at") || "").trim(),
-    thca_destination: String(form.get("thca_destination") || "").trim(),
-    hte_offgas_started_at: String(form.get("hte_offgas_started_at") || "").trim(),
-    hte_offgas_completed_at: String(form.get("hte_offgas_completed_at") || "").trim(),
-    hte_clean_decision: String(form.get("hte_clean_decision") || "").trim(),
-    hte_filter_outcome: String(form.get("hte_filter_outcome") || "").trim(),
-    hte_prescott_processed_at: String(form.get("hte_prescott_processed_at") || "").trim(),
-    hte_potency_disposition: String(form.get("hte_potency_disposition") || "").trim(),
-    hte_queue_destination: String(form.get("hte_queue_destination") || "").trim(),
-    flow_resumed_decision: String(form.get("flow_resumed_decision") || "").trim(),
-    flow_adjustment_reason: String(form.get("flow_adjustment_reason") || "").trim(),
-    final_clarity_decision: String(form.get("final_clarity_decision") || "").trim(),
-    final_clarity_reason: String(form.get("final_clarity_reason") || "").trim(),
-    primary_soak_short_reason: String(form.get("primary_soak_short_reason") || "").trim(),
-    mixer_short_reason: String(form.get("mixer_short_reason") || "").trim(),
-    flush_short_reason: String(form.get("flush_short_reason") || "").trim(),
-    final_purge_short_reason: String(form.get("final_purge_short_reason") || "").trim(),
-    final_purge_started_at: String(form.get("final_purge_started_at") || "").trim(),
-    final_purge_completed_at: String(form.get("final_purge_completed_at") || "").trim(),
-    shutdown_recovery_inlets_closed: form.get("shutdown_recovery_inlets_closed") ? "1" : "",
-    shutdown_filtration_pumpdown_started: form.get("shutdown_filtration_pumpdown_started") ? "1" : "",
-    shutdown_nitrogen_off: form.get("shutdown_nitrogen_off") ? "1" : "",
-    shutdown_dewax_inlet_closed: form.get("shutdown_dewax_inlet_closed") ? "1" : "",
-    progression_action: progressionAction,
-    bypass_reason: String(form.get("bypass_reason") || "").trim(),
-    notes: String(form.get("notes") || "").trim(),
+    run_fill_started_at: field("run_fill_started_at"),
+    run_fill_ended_at: field("run_fill_ended_at"),
+    biomass_blend_milled_pct: field("biomass_blend_milled_pct"),
+    biomass_blend_unmilled_pct: field("biomass_blend_unmilled_pct"),
+    flush_count: field("flush_count"),
+    flush_total_weight_lbs: field("flush_total_weight_lbs"),
+    fill_count: field("fill_count"),
+    fill_total_weight_lbs: field("fill_total_weight_lbs"),
+    stringer_basket_count: field("stringer_basket_count"),
+    crc_blend: field("crc_blend"),
+    mixer_started_at: field("mixer_started_at"),
+    mixer_ended_at: field("mixer_ended_at"),
+    flush_started_at: field("flush_started_at"),
+    flush_ended_at: field("flush_ended_at"),
+    run_completed_at: field("run_completed_at"),
+    primary_solvent_charge_lbs: field("primary_solvent_charge_lbs"),
+    flush_solvent_chiller_temp_f: field("flush_solvent_chiller_temp_f"),
+    flush_plate_temp_f: field("flush_plate_temp_f"),
+    flush_temp_slack_post_confirmed: checkboxField("flush_temp_slack_post_confirmed"),
+    flush_solvent_charge_lbs: field("flush_solvent_charge_lbs"),
+    wet_hte_g: field("wet_hte_g"),
+    wet_thca_g: field("wet_thca_g"),
+    post_extraction_pathway: field("post_extraction_pathway"),
+    post_extraction_started_at: field("post_extraction_started_at"),
+    post_extraction_initial_outputs_recorded_at: field("post_extraction_initial_outputs_recorded_at"),
+    pot_pour_offgas_started_at: field("pot_pour_offgas_started_at"),
+    pot_pour_offgas_completed_at: field("pot_pour_offgas_completed_at"),
+    pot_pour_daily_stir_count: field("pot_pour_daily_stir_count"),
+    pot_pour_centrifuged_at: field("pot_pour_centrifuged_at"),
+    thca_oven_started_at: field("thca_oven_started_at"),
+    thca_oven_completed_at: field("thca_oven_completed_at"),
+    thca_milled_at: field("thca_milled_at"),
+    thca_destination: field("thca_destination"),
+    hte_offgas_started_at: field("hte_offgas_started_at"),
+    hte_offgas_completed_at: field("hte_offgas_completed_at"),
+    hte_clean_decision: field("hte_clean_decision"),
+    hte_filter_outcome: field("hte_filter_outcome"),
+    hte_prescott_processed_at: field("hte_prescott_processed_at"),
+    hte_potency_disposition: field("hte_potency_disposition"),
+    hte_queue_destination: field("hte_queue_destination"),
+    flow_resumed_decision: field("flow_resumed_decision"),
+    flow_adjustment_reason: field("flow_adjustment_reason"),
+    final_clarity_decision: field("final_clarity_decision"),
+    final_clarity_reason: field("final_clarity_reason"),
+    primary_soak_short_reason: field("primary_soak_short_reason"),
+    mixer_short_reason: field("mixer_short_reason"),
+    flush_short_reason: field("flush_short_reason"),
+    final_purge_short_reason: field("final_purge_short_reason"),
+    final_purge_started_at: field("final_purge_started_at"),
+    final_purge_completed_at: field("final_purge_completed_at"),
+    shutdown_recovery_inlets_closed: checkboxField("shutdown_recovery_inlets_closed"),
+    shutdown_filtration_pumpdown_started: checkboxField("shutdown_filtration_pumpdown_started"),
+    shutdown_nitrogen_off: checkboxField("shutdown_nitrogen_off"),
+    shutdown_dewax_inlet_closed: checkboxField("shutdown_dewax_inlet_closed"),
+    progression_action: progressionAction || undefined,
+    bypass_reason: field("bypass_reason"),
+    notes: field("notes"),
   };
 }
 
@@ -1530,9 +1866,19 @@ async function handleRunProgression(event) {
     state.run = response.run;
     state.lot = response.lot;
     state.board = await api.getBoard("all");
+    state.blockingError = null; // clear any prior blocker on success
     showToast("Run progression updated.");
   } catch (error) {
-    showToast(error.payload?.error?.message || error.message || "Unable to update run progression");
+    const message = error.payload?.error?.message || error.message || "Unable to update run progression";
+    const blocker = resolveBlocker(message);
+    if (blocker) {
+      // A prerequisite step is missing — surface it inline, skip the toast
+      state.blockingError = blocker;
+    } else {
+      // Generic error — show toast as before
+      state.blockingError = null;
+      showToast(message);
+    }
   } finally {
     state.loading = false;
     render();

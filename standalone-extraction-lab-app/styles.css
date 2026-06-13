@@ -656,3 +656,406 @@ input[type="range"] {
     border-radius: 22px;
   }
 }
+
+/* -------------------------------------------------------------------------
+   PHASE CARDS — booth execution stepper
+   Four cards rendered in sequence. Only the active one is expanded.
+   Done phases collapse to a single header. Pending phases show header only.
+   ------------------------------------------------------------------------- */
+
+.phase-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.phase-card {
+  border-radius: 24px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  overflow: hidden;
+  transition: border-color 0.15s ease;
+}
+
+.phase-card--active {
+  border-color: rgba(211, 107, 17, 0.38);
+  box-shadow: 0 4px 24px rgba(211, 107, 17, 0.10);
+}
+
+.phase-card--done {
+  border-color: rgba(31, 122, 78, 0.24);
+  background: rgba(31, 122, 78, 0.05);
+}
+
+.phase-card--pending {
+  background: rgba(255, 251, 245, 0.72);
+  opacity: 0.7;
+}
+
+.phase-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  gap: 12px;
+}
+
+.phase-header-label {
+  display: grid;
+  gap: 3px;
+}
+
+.phase-header-label strong {
+  font-size: 1rem;
+}
+
+.phase-card-body {
+  display: grid;
+  gap: 16px;
+  padding: 0 20px 20px;
+  border-top: 1px solid var(--line);
+}
+
+.phase-section-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+  padding-top: 4px;
+}
+
+/* -------------------------------------------------------------------------
+   RUN SUMMARY STRIP — compact checkpoint value row in the run header
+   ------------------------------------------------------------------------- */
+
+.run-summary-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  margin-top: 8px;
+}
+
+.run-summary-item {
+  display: grid;
+  gap: 2px;
+  min-width: 100px;
+}
+
+.run-summary-item strong {
+  font-size: 0.95rem;
+}
+
+/* -------------------------------------------------------------------------
+   BOOTH EVIDENCE BLOCK — when embedded inside a phase card
+   ------------------------------------------------------------------------- */
+
+.booth-evidence-block {
+  display: grid;
+  gap: 12px;
+}
+
+
+/* =========================================================================
+   OPERATOR FOCUSED VIEW
+   ========================================================================= */
+
+/* Operator layout removes sidebar padding and centers the focus card */
+.operator-layout {
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+.operator-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 4px 0;
+}
+
+.operator-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+.operator-lot {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.operator-sep {
+  color: var(--line);
+}
+
+/* The main focus card — everything the operator needs right now */
+.operator-focus-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  box-shadow: var(--shadow);
+  padding: 28px 24px;
+  display: grid;
+  gap: 18px;
+}
+
+.operator-phase-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  color: var(--accent);
+}
+
+.operator-step-title {
+  margin: 0;
+  font-size: clamp(1.4rem, 3vw, 1.9rem);
+  line-height: 1.2;
+}
+
+.operator-step-desc {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+  font-size: 1rem;
+}
+
+/* The single relevant timer — compact chip, not a full card */
+.current-timer {
+  background: rgba(255, 241, 220, 0.7);
+  border: 1px solid rgba(211, 107, 17, 0.18);
+  border-radius: 18px;
+  padding: 12px 16px;
+}
+
+.timing-chip {
+  display: grid;
+  gap: 3px;
+}
+
+.timing-chip-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
+/* Inputs for the current step */
+.operator-inputs {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  background: rgba(255, 251, 245, 0.8);
+  border-radius: 18px;
+  border: 1px solid var(--line);
+}
+
+/* The big action button — full width, impossible to miss */
+.operator-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.btn-operator-action {
+  width: 100%;
+  min-height: 60px;
+  font-size: 1.1rem;
+  border-radius: 20px;
+  text-align: center;
+}
+
+/* What comes next — one quiet line */
+.next-step-hint {
+  text-align: center;
+  padding: 4px 0;
+  font-size: 0.88rem;
+}
+
+/* Bypass is collapsed by default — operators rarely need it */
+.bypass-details {
+  border-radius: 18px;
+  border: 1px solid rgba(120, 76, 35, 0.14);
+  overflow: hidden;
+}
+
+.bypass-details summary {
+  padding: 12px 16px;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: var(--muted);
+  list-style: none;
+  user-select: none;
+}
+
+.bypass-details summary::-webkit-details-marker { display: none; }
+
+.bypass-details[open] summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.bypass-box {
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+/* Save is demoted to a small secondary action — the progression button is primary */
+.operator-save-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+}
+
+/* Evidence upload embedded in flush phase */
+.operator-evidence {
+  padding: 16px;
+  background: rgba(255, 251, 245, 0.8);
+  border-radius: 18px;
+  border: 1px solid var(--line);
+}
+
+/* =========================================================================
+   OTHER REACTORS STRIP — ambient awareness bar
+   ========================================================================= */
+
+.other-reactors-strip {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.other-reactor-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 0.84rem;
+  text-decoration: none;
+  color: var(--ink);
+  transition: border-color 0.12s;
+}
+
+.other-reactor-chip:hover {
+  border-color: rgba(211, 107, 17, 0.3);
+}
+
+.other-reactor-number {
+  font-weight: 800;
+  font-size: 0.76rem;
+  background: rgba(211, 107, 17, 0.12);
+  color: var(--accent-deep);
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+
+/* =========================================================================
+   SUPERVISOR BADGE — shown in supervisor view header
+   ========================================================================= */
+
+.supervisor-badge {
+  display: inline-flex;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(31, 122, 78, 0.12);
+  color: var(--success);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  vertical-align: middle;
+  margin-left: 8px;
+}
+
+/* Shutdown checklist spacing */
+.shutdown-checklist {
+  display: grid;
+  gap: 10px;
+}
+
+.shutdown-checklist label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: white;
+  cursor: pointer;
+  font-weight: normal;
+}
+
+/* Run summary strip (supervisor view) */
+.run-summary-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  margin-top: 8px;
+}
+
+.run-summary-item {
+  display: grid;
+  gap: 2px;
+  min-width: 100px;
+}
+
+.run-summary-item strong {
+  font-size: 0.95rem;
+}
+
+
+/* =========================================================================
+   BLOCKER CARD — inline prerequisite error with resolution action
+   ========================================================================= */
+
+.blocker-card {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 18px;
+  border-radius: 18px;
+  background: rgba(166, 53, 36, 0.07);
+  border: 1.5px solid rgba(166, 53, 36, 0.28);
+}
+
+.blocker-icon {
+  font-size: 1.4rem;
+  color: var(--danger);
+  flex-shrink: 0;
+  line-height: 1;
+  padding-top: 2px;
+}
+
+.blocker-body {
+  display: grid;
+  gap: 10px;
+  flex: 1;
+}
+
+.blocker-title {
+  font-weight: 700;
+  font-size: 0.88rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--danger);
+}
+
+.blocker-message {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
