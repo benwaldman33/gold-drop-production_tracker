@@ -1,0 +1,644 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Extraction Lab Biomass Flow - Charge Through THCA/HTE Pour</title>
+  <style>
+    @page {
+      size: letter landscape;
+      margin: 0.38in;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: #172033;
+      background: #ffffff;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 10px;
+      line-height: 1.28;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    .page {
+      page-break-after: always;
+    }
+
+    .page:last-child {
+      page-break-after: auto;
+    }
+
+    .title-page {
+      min-height: 7.05in;
+      display: grid;
+      grid-template-columns: 1.25fr 0.75fr;
+      gap: 0.28in;
+      align-items: stretch;
+    }
+
+    .hero {
+      padding: 0.34in;
+      border: 2px solid #172033;
+      background: #f6f8fb;
+    }
+
+    .hero h1 {
+      font-size: 34px;
+      line-height: 1.05;
+      letter-spacing: 0;
+      margin-bottom: 18px;
+    }
+
+    .hero .subtitle {
+      font-size: 16px;
+      line-height: 1.35;
+      max-width: 7.1in;
+      margin-bottom: 24px;
+    }
+
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .meta {
+      border: 1px solid #c8d0dc;
+      background: #ffffff;
+      padding: 10px;
+      min-height: 0.75in;
+    }
+
+    .meta strong {
+      display: block;
+      font-size: 10px;
+      color: #5e6b7c;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 5px;
+    }
+
+    .side {
+      padding: 0.24in;
+      border: 1px solid #c8d0dc;
+    }
+
+    .side h2 {
+      font-size: 17px;
+      margin-bottom: 10px;
+    }
+
+    .legend {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .legend-row {
+      display: grid;
+      grid-template-columns: 16px 1fr;
+      gap: 7px;
+      align-items: start;
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      margin-top: 1px;
+      border-radius: 50%;
+      display: inline-block;
+      border: 1px solid rgba(0,0,0,0.18);
+    }
+
+    .app { background: #d9edf8; }
+    .manual { background: #fff1c7; }
+    .branch { background: #e4d8ff; }
+    .control { background: #ffd9d5; }
+    .handoff { background: #dff3df; }
+
+    .note {
+      margin-top: 12px;
+      padding: 10px;
+      border-left: 4px solid #546a7b;
+      background: #f6f8fb;
+      font-size: 10px;
+    }
+
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 20px;
+      margin-bottom: 8px;
+      border-bottom: 2px solid #172033;
+      padding-bottom: 6px;
+    }
+
+    .page-header h2 {
+      font-size: 20px;
+    }
+
+    .page-header span {
+      color: #5e6b7c;
+      font-size: 10px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    thead {
+      display: table-header-group;
+    }
+
+    th {
+      background: #172033;
+      color: #ffffff;
+      text-align: left;
+      padding: 5px 6px;
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    td {
+      border: 1px solid #c8d0dc;
+      vertical-align: top;
+      padding: 5px 6px;
+    }
+
+    tr.app-row td:first-child { border-left: 5px solid #5ba5cf; }
+    tr.manual-row td:first-child { border-left: 5px solid #dfb43a; }
+    tr.control-row td:first-child { border-left: 5px solid #d86b61; }
+    tr.branch-row td:first-child { border-left: 5px solid #8d6bd1; }
+    tr.handoff-row td:first-child { border-left: 5px solid #64a96b; }
+
+    .num {
+      font-weight: 700;
+      color: #172033;
+      white-space: nowrap;
+    }
+
+    .process {
+      font-weight: 700;
+      margin-bottom: 3px;
+    }
+
+    .details {
+      color: #303b4c;
+    }
+
+    .tag {
+      display: inline-block;
+      margin-top: 4px;
+      padding: 2px 5px;
+      border-radius: 3px;
+      font-size: 8px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      border: 1px solid rgba(0,0,0,0.12);
+    }
+
+    .tag.app { background: #d9edf8; }
+    .tag.manual { background: #fff1c7; }
+    .tag.control { background: #ffd9d5; }
+    .tag.branch { background: #e4d8ff; }
+    .tag.handoff { background: #dff3df; }
+
+    .small {
+      color: #5e6b7c;
+      font-size: 9px;
+    }
+
+    .section-band {
+      background: #eef2f6;
+      font-weight: 700;
+      color: #172033;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .box {
+      border: 1px solid #c8d0dc;
+      padding: 10px;
+      min-height: 1.1in;
+    }
+
+    .box h3 {
+      font-size: 14px;
+      margin-bottom: 7px;
+    }
+
+    ul {
+      margin: 6px 0 0 16px;
+      padding: 0;
+    }
+
+    li {
+      margin-bottom: 4px;
+    }
+  </style>
+</head>
+<body>
+  <section class="page title-page">
+    <div class="hero">
+      <h1>Extraction Lab Biomass Flow</h1>
+      <p class="subtitle">Step-by-step process from charging a biomass lot into extraction through the first wet THCA and HTE pour / output confirmation.</p>
+      <div class="meta-grid">
+        <div class="meta">
+          <strong>Built From</strong>
+          Implemented extraction app workflow, run progression state machine, run form fields, and booth SOP alignment notes in this repo.
+        </div>
+        <div class="meta">
+          <strong>Audience</strong>
+          Extraction operators, shift leads, supervisors, and production trainers.
+        </div>
+        <div class="meta">
+          <strong>Format</strong>
+          Landscape workflow table with process name, responsible role, and time / timing expectation.
+        </div>
+        <div class="meta">
+          <strong>Boundary</strong>
+          Ends when wet THCA and wet HTE are poured / weighed and initial outputs are confirmed. Later drying, milling, terp stripping, and destination queues are outside this document.
+        </div>
+      </div>
+      <div class="note">
+        This is an operational training map inferred from the current software and planning documents. It is not a replacement for the approved safety SOP, equipment manuals, or state compliance requirements.
+      </div>
+    </div>
+    <aside class="side">
+      <h2>How To Read This</h2>
+      <p>The rows are ordered in the sequence the team should experience the run. Branches are labeled where the workflow can split or loop.</p>
+      <div class="legend">
+        <div class="legend-row"><span class="dot app"></span><span><strong>App checkpoint:</strong> the current app has a button, field, timer, or stored timestamp for this.</span></div>
+        <div class="legend-row"><span class="dot manual"></span><span><strong>Manual / inferred:</strong> the software implies this operational work but may not capture it as its own step.</span></div>
+        <div class="legend-row"><span class="dot control"></span><span><strong>Critical control:</strong> prerequisite, measurement, evidence, or safety-sensitive decision.</span></div>
+        <div class="legend-row"><span class="dot branch"></span><span><strong>Branch / loop:</strong> the process changes direction based on an operator decision.</span></div>
+        <div class="legend-row"><span class="dot handoff"></span><span><strong>Handoff:</strong> the extraction run closes and wet outputs are transferred to the downstream process.</span></div>
+      </div>
+      <div class="note">
+        Suggested roles use the app's apparent launch-role model: extractor/operator, supervisor/shift lead, downstream operator, and maintenance/facilities where relevant.
+      </div>
+    </aside>
+  </section>
+
+  <section class="page">
+    <div class="page-header">
+      <h2>Phase 1 - Charge, Reactor Prep, And Primary Extraction</h2>
+      <span>Biomass lot enters extraction and primary solvent contact is completed</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:5%;">Step</th>
+          <th style="width:29%;">Name Of Process</th>
+          <th style="width:18%;">Person / Role Responsible</th>
+          <th style="width:16%;">Time</th>
+          <th style="width:32%;">What Happens / Critical Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="section-band"><td colspan="5">Lot selection and charge creation</td></tr>
+        <tr class="app-row">
+          <td class="num">1</td>
+          <td><div class="process">Scan or enter biomass lot</div><span class="tag app">App</span></td>
+          <td>Extractor / operator</td>
+          <td>Start of extraction session</td>
+          <td class="details">Operator scans or types the tracking ID in the standalone extraction app. The app opens the lot charge workflow and shows source, supplier, strain, and available biomass context.</td>
+        </tr>
+        <tr class="control-row">
+          <td class="num">2</td>
+          <td><div class="process">Confirm lot is ready to charge</div><span class="tag control">Critical</span></td>
+          <td>Extractor; supervisor if exception</td>
+          <td>Before biomass is loaded</td>
+          <td class="details">Confirm the lot is available, correct, and ready. The app has ready/not-ready state and charge warnings. Do not proceed if the selected lot, weight, or reactor is wrong.</td>
+        </tr>
+        <tr class="app-row">
+          <td class="num">3</td>
+          <td><div class="process">Record extraction charge</div><span class="tag app">App</span></td>
+          <td>Extractor / operator</td>
+          <td>When biomass is committed to a reactor</td>
+          <td class="details">Choose reactor and charge weight. The current app favors 100 lb, Half lot, Full lot, or Last used presets. Recording the charge links the lot, reactor, and draft run.</td>
+        </tr>
+        <tr class="manual-row">
+          <td class="num">4</td>
+          <td><div class="process">Physically load biomass / baskets into reactor</div><span class="tag manual">Inferred</span></td>
+          <td>Extractor / operator</td>
+          <td>Immediately after charge is recorded</td>
+          <td class="details">Load the charged biomass into the selected reactor using site SOP. App stores charge weight, fill count, total fill weight, stringer basket count, and blend %, but does not currently spell out every physical loading movement.</td>
+        </tr>
+        <tr class="manual-row">
+          <td class="num">5</td>
+          <td><div class="process">Confirm reactor/tank readiness</div><span class="tag manual">Inferred</span></td>
+          <td>Extractor; maintenance if needed</td>
+          <td>Before vacuum down</td>
+          <td class="details">Confirm reactor, recovery path, filtration path, and relevant tanks are clean, assembled, closed/open as required, and safe to pull down. This is critical but not fully modeled as a separate app checkpoint.</td>
+        </tr>
+        <tr class="section-band"><td colspan="5">Primary extraction</td></tr>
+        <tr class="control-row">
+          <td class="num">6</td>
+          <td><div class="process">Confirm vacuum down</div><span class="tag control">Critical</span></td>
+          <td>Extractor / operator</td>
+          <td>Before solvent charge</td>
+          <td class="details">App button: Confirm Vacuum Down. This records timestamp/operator and is required before solvent charging can continue.</td>
+        </tr>
+        <tr class="manual-row">
+          <td class="num">7</td>
+          <td><div class="process">Prepare solvent supply / tank charge path</div><span class="tag manual">Inferred</span></td>
+          <td>Extractor; maintenance/facilities as assigned</td>
+          <td>Before or during solvent charge setup</td>
+          <td class="details">Confirm solvent source/tank is ready and valve path is correct. The app captures solvent charge amount, not the full equipment prep sequence.</td>
+        </tr>
+        <tr class="control-row">
+          <td class="num">8</td>
+          <td><div class="process">Record primary solvent charge</div><span class="tag control">Critical</span></td>
+          <td>Extractor / operator</td>
+          <td>After vacuum; before soak</td>
+          <td class="details">App field/button: Primary Solvent Charge, typically 500 lb per placeholder/default language. Weight must be positive. Timestamp is stored when Record Solvent Charge is pressed.</td>
+        </tr>
+        <tr class="app-row">
+          <td class="num">9</td>
+          <td><div class="process">Start primary soak</div><span class="tag app">App</span></td>
+          <td>Extractor / operator</td>
+          <td>Target: 30 min</td>
+          <td class="details">App button: Start Primary Soak. Timing target is settings-driven and currently defaults to 30 minutes. Timing misses can warn, require override, or hard stop depending on settings.</td>
+        </tr>
+        <tr class="app-row">
+          <td class="num">10</td>
+          <td><div class="process">Start mixer / agitation</div><span class="tag app">App</span></td>
+          <td>Extractor / operator</td>
+          <td>During primary soak; target: 5 min</td>
+          <td class="details">App button: Start Mixer. The mixer stage is timed separately so the operator can document agitation during the soak.</td>
+        </tr>
+        <tr class="app-row">
+          <td class="num">11</td>
+          <td><div class="process">Stop mixer</div><span class="tag app">App</span></td>
+          <td>Extractor / operator</td>
+          <td>After agitation target</td>
+          <td class="details">App button: Stop Mixer. This completes mixer timing and advances the operator to the filter-clear checkpoint.</td>
+        </tr>
+        <tr class="control-row">
+          <td class="num">12</td>
+          <td><div class="process">Confirm basket filter clear</div><span class="tag control">Critical</span></td>
+          <td>Extractor / operator</td>
+          <td>After mixer; before pressurization</td>
+          <td class="details">App button: Confirm Filter Clear. The SOP plan describes this as clearing the basket filter before nitrogen pressurization.</td>
+        </tr>
+        <tr class="control-row">
+          <td class="num">13</td>
+          <td><div class="process">Start nitrogen pressurization</div><span class="tag control">Critical</span></td>
+          <td>Extractor / operator</td>
+          <td>After filter clear</td>
+          <td class="details">App button: Start Pressurization. This begins the pressure step that moves the process toward recovery.</td>
+        </tr>
+        <tr class="app-row">
+          <td class="num">14</td>
+          <td><div class="process">Begin recovery / flow to filtration and recovery</div><span class="tag app">App</span></td>
+          <td>Extractor / operator</td>
+          <td>After pressurization begins</td>
+          <td class="details">App button: Begin Recovery. This checkpoint represents sending gas/liquid through filtration and recovery. Heat-exchanger handling is implied by the SOP plan but not currently its own app button.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="page">
+    <div class="page-header">
+      <h2>Phase 2 - Flush Cycle, Recovery, And Final Purge</h2>
+      <span>Critical temperature, solvent, flow, clarity, and shutdown controls</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:5%;">Step</th>
+          <th style="width:29%;">Name Of Process</th>
+          <th style="width:18%;">Person / Role Responsible</th>
+          <th style="width:16%;">Time</th>
+          <th style="width:32%;">What Happens / Critical Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="section-band"><td colspan="5">Transition from primary extraction into flush</td></tr>
+        <tr class="app-row">
+          <td class="num">15</td>
+          <td><div class="process">Begin flush cycle</div><span class="tag app">App</span></td>
+          <td>Extractor / operator</td>
+          <td>After primary recovery checkpoint</td>
+          <td class="details">App button: Begin Flush Cycle. This moves the run from primary extraction checkpoints into flush controls.</td>
+        </tr>
+        <tr class="control-row">
+          <td class="num">16</td>
+          <td><div class="process">Verify flush solvent and plate temperatures</div><span class="tag control">Critical</span></td>
+          <td>Extractor / operator; supervisor if out of range</td>
+          <td>Before flush solvent charge</td>
+          <td class="details">App fields: Flush Solvent Chiller Temp and Plate Temp. Placeholder indicates -40 F or below for solvent chiller. Current app also supports evidence uploads for solvent chiller and plate temp photos.</td>
+        </tr>
+        <tr class="manual-row">
+          <td class="num">17</td>
+          <td><div class="process">Post / document temperature evidence</div><span class="tag manual">Partially captured</span></td>
+          <td>Extractor / operator</td>
+          <td>With temperature verification</td>
+          <td class="details">The app has a Posted to Slack checkbox and photo evidence counts. Slack reliability was previously deferred, so the app should be treated as the stronger system record for temp proof.</td>
+        </tr>
+        <tr class="control-row">
+          <td class="num">18</td>
+          <td><div class="process">Record flush solvent charge</div><span class="tag control">Critical</span></td>
+          <td>Extractor / operator</td>
+          <td>After temp verification</td>
+          <td class="details">App field/button: Flush Solvent Charge, typically 500 lb per placeholder/default language. Requires temp verification in the guided flow.</td>
+        </tr>
+        <tr class="app-row">
+          <td class="num">19</td>
+          <td><div class="process">Start flush soak</div><span class="tag app">App</span></td>
+          <td>Extractor / operator</td>
+          <td>Target: 10 min</td>
+          <td class="details">App button: Start Flush. Timing target is settings-driven and defaults to 10 minutes. The run also stores flush count and total flush weight.</td>
+        </tr>
+        <tr class="manual-row">
+          <td class="num">20</td>
+          <td><div class="process">Flush agitation / valve handling</div><span class="tag manual">Inferred</span></td>
+          <td>Extractor / operator</td>
+          <td>During flush soak</td>
+          <td class="details">The SOP plan calls for flush soak with mixer/agitation, then burp and re-pressurization. The app currently captures the flush timer and surrounding checkpoints more clearly than each physical valve movement.</td>
+        </tr>
+        <tr class="app-row">
+          <td class="num">21</td>
+          <td><div class="process">Stop flush</div><span class="tag app">App</span></td>
+          <td>Extractor / operator</td>
+          <td>After flush target / when flush is complete</td>
+          <td class="details">App button: Stop Flush. This closes the flush timer and advances the process to the flow-resumed decision.</td>
+        </tr>
+        <tr class="section-band"><td colspan="5">Branch A/B - flow resumed decision</td></tr>
+        <tr class="branch-row">
+          <td class="num">22A</td>
+          <td><div class="process">Branch A - flow resumed</div><span class="tag branch">Branch A</span></td>
+          <td>Extractor / operator</td>
+          <td>After flush stop</td>
+          <td class="details">App button/decision: Confirm Flow Resumed. If yes, the run advances to final purge.</td>
+        </tr>
+        <tr class="branch-row">
+          <td class="num">22B</td>
+          <td><div class="process">Branch B - flow not resumed; adjust and re-check</div><span class="tag branch">Branch B</span></td>
+          <td>Extractor / operator; supervisor if repeated issue</td>
+          <td>Until flow resumes</td>
+          <td class="details">If flow has not resumed, the app enters Flow Adjustment Required and offers Re-check Flow. Repeat adjustments and decision until the flow decision is yes.</td>
+        </tr>
+        <tr class="section-band"><td colspan="5">Final purge, clarity, and booth shutdown</td></tr>
+        <tr class="app-row">
+          <td class="num">23</td>
+          <td><div class="process">Start final purge</div><span class="tag app">App</span></td>
+          <td>Extractor / operator</td>
+          <td>After flow resumed is confirmed</td>
+          <td class="details">App button: Start Final Purge. Optional target duration can be configured in Settings; default policy is informational unless tightened.</td>
+        </tr>
+        <tr class="app-row">
+          <td class="num">24</td>
+          <td><div class="process">Stop final purge</div><span class="tag app">App</span></td>
+          <td>Extractor / operator</td>
+          <td>When purge/burp is complete</td>
+          <td class="details">App button: Stop Final Purge. Duration is computed from start/end timestamps.</td>
+        </tr>
+        <tr class="section-band"><td colspan="5">Branch C/D - final clarity decision</td></tr>
+        <tr class="branch-row">
+          <td class="num">25C</td>
+          <td><div class="process">Branch C - final clarity confirmed</div><span class="tag branch">Branch C</span></td>
+          <td>Extractor / operator</td>
+          <td>After final purge</td>
+          <td class="details">App button/decision: Confirm Final Clarity. If yes, the process can move to shutdown checklist.</td>
+        </tr>
+        <tr class="branch-row">
+          <td class="num">25D</td>
+          <td><div class="process">Branch D - more purge / clarity work required</div><span class="tag branch">Branch D</span></td>
+          <td>Extractor / operator; supervisor if repeated issue</td>
+          <td>Until clear enough to proceed</td>
+          <td class="details">If not clear enough, the app enters More Purge / Clarity Work Required and offers Resume Final Purge. Repeat final purge and clarity confirmation until clear.</td>
+        </tr>
+        <tr class="control-row">
+          <td class="num">26</td>
+          <td><div class="process">Complete shutdown checklist</div><span class="tag control">Critical</span></td>
+          <td>Extractor / operator</td>
+          <td>After final clarity is confirmed</td>
+          <td class="details">App checklist fields: Recovery inlets closed, Filtration pump-down started, Nitrogen off, Dewax inlet closed. These are captured as shutdown timestamps before closing the booth process.</td>
+        </tr>
+        <tr class="app-row">
+          <td class="num">27</td>
+          <td><div class="process">Mark run complete</div><span class="tag app">App</span></td>
+          <td>Extractor / operator</td>
+          <td>After shutdown checklist</td>
+          <td class="details">App button: Mark Run Complete. This records run completion and completes the linked reactor event when it is still active.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="page">
+    <div class="page-header">
+      <h2>Phase 3 - Wet THCA / HTE Pour And Handoff</h2>
+      <span>Initial output capture and immediate downstream handoff</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:5%;">Step</th>
+          <th style="width:29%;">Name Of Process</th>
+          <th style="width:18%;">Person / Role Responsible</th>
+          <th style="width:16%;">Time</th>
+          <th style="width:32%;">What Happens / Critical Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="handoff-row">
+          <td class="num">28</td>
+          <td><div class="process">Select post-extraction pathway</div><span class="tag handoff">Handoff</span></td>
+          <td>Extractor or supervisor</td>
+          <td>After run completion; before downstream starts</td>
+          <td class="details">App choices: 100 lb pot pour or 200 lb minor run. The current question stops at the initial THCA/HTE pour, but the pathway should be selected so downstream knows what workflow owns the material next.</td>
+        </tr>
+        <tr class="handoff-row">
+          <td class="num">29</td>
+          <td><div class="process">Start post-extraction handoff</div><span class="tag handoff">Handoff</span></td>
+          <td>Extractor / downstream operator</td>
+          <td>Immediately before pour/output capture</td>
+          <td class="details">App button: Start Post-Extraction. This is blocked until the extraction run is complete.</td>
+        </tr>
+        <tr class="manual-row">
+          <td class="num">30</td>
+          <td><div class="process">Prepare receiving containers and labels</div><span class="tag manual">Inferred</span></td>
+          <td>Extractor / downstream operator</td>
+          <td>Before opening/pouring outputs</td>
+          <td class="details">Prepare labeled containers for wet THCA and wet HTE. The app captures weights but does not currently enforce container labeling, tare, or label scan steps in this exact handoff.</td>
+        </tr>
+        <tr class="control-row">
+          <td class="num">31</td>
+          <td><div class="process">Pour / collect wet HTE</div><span class="tag control">Critical</span></td>
+          <td>Extractor / downstream operator</td>
+          <td>During output pour</td>
+          <td class="details">Collect wet HTE into the correct receiving container. Record Wet HTE in grams in the app before confirming initial outputs.</td>
+        </tr>
+        <tr class="control-row">
+          <td class="num">32</td>
+          <td><div class="process">Pour / collect wet THCA</div><span class="tag control">Critical</span></td>
+          <td>Extractor / downstream operator</td>
+          <td>During output pour</td>
+          <td class="details">Collect wet THCA into the correct receiving container. Record Wet THCA in grams in the app before confirming initial outputs.</td>
+        </tr>
+        <tr class="handoff-row">
+          <td class="num">33</td>
+          <td><div class="process">Confirm initial outputs</div><span class="tag handoff">App</span></td>
+          <td>Extractor or supervisor</td>
+          <td>After both wet output weights are entered</td>
+          <td class="details">App button: Confirm Initial Outputs. This requires both Wet HTE and Wet THCA. It timestamps the handoff and allows the chosen downstream branch to continue.</td>
+        </tr>
+        <tr class="manual-row">
+          <td class="num">34</td>
+          <td><div class="process">Clean / reset extraction equipment for next run</div><span class="tag manual">Inferred</span></td>
+          <td>Extractor; maintenance/facilities as assigned</td>
+          <td>After output pour and shutdown, before next charge</td>
+          <td class="details">Clean tanks, lines, reactor, filtration path, and receiving area according to SOP. The current app does not make cleaning a first-class completion gate, but production feedback suggests it should be visible in the operator workflow.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div style="height:12px;"></div>
+    <div class="two-col">
+      <div class="box">
+        <h3>Suggested Additions To Make This Easier To Follow</h3>
+        <ul>
+          <li>Add a one-page laminated “Run Card” with the same step numbers as the app buttons.</li>
+          <li>Group the tablet workflow into four big phases: Charge, Primary, Flush/Purge, Pour/Handoff.</li>
+          <li>Add a visual progress rail with Branch A/B and Branch C/D loops shown directly on screen.</li>
+          <li>Make prep and cleaning visible: reactor ready, solvent tank ready, containers labeled, post-run clean/reset.</li>
+          <li>Use role initials on each step: EXT, SUP, DOWN, MAINT.</li>
+        </ul>
+      </div>
+      <div class="box">
+        <h3>Process Gaps Worth Confirming With The Team</h3>
+        <ul>
+          <li>Exact owner and timing for tank cleaning, solvent loading, and reactor readiness checks.</li>
+          <li>Whether -40 F is a hard stop or a supervisor-overridable warning in production.</li>
+          <li>Whether Slack evidence remains required or app photo evidence replaces it as the source of truth.</li>
+          <li>Whether wet HTE and wet THCA should require container labels, tare weights, photos, or supervisor signoff.</li>
+          <li>Whether run complete should mean booth shutdown complete or output pour complete.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</body>
+</html>

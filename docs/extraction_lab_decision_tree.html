@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Extraction Lab Decision Tree</title>
+  <style>
+    @page {
+      size: letter landscape;
+      margin: 0.25in;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: #172033;
+      background: #ffffff;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 8px;
+      line-height: 1.16;
+    }
+
+    .page {
+      page-break-after: always;
+      min-height: 7.35in;
+      position: relative;
+    }
+
+    .page:last-child { page-break-after: auto; }
+
+    h1, h2, h3, p { margin: 0; }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      border-bottom: 2px solid #172033;
+      padding-bottom: 6px;
+      margin-bottom: 8px;
+      gap: 14px;
+    }
+
+    h1 { font-size: 22px; letter-spacing: 0; }
+    h2 { font-size: 18px; letter-spacing: 0; }
+
+    .subtle { color: #5e6b7c; }
+
+    .legend {
+      display: flex;
+      gap: 7px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      font-size: 7.5px;
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      white-space: nowrap;
+    }
+
+    .swatch {
+      width: 10px;
+      height: 10px;
+      border: 1px solid rgba(0,0,0,0.22);
+      border-radius: 2px;
+    }
+
+    .tree {
+      display: grid;
+      grid-template-columns: 1.02fr 0.28fr 1.02fr 0.28fr 1.02fr 0.28fr 1.02fr 0.28fr 1.02fr;
+      grid-auto-rows: minmax(0.58in, auto);
+      gap: 6px;
+      align-items: center;
+    }
+
+    .tree.compact {
+      grid-template-columns: 1fr 0.22fr 1fr 0.22fr 1fr 0.22fr 1fr;
+      gap: 6px;
+    }
+
+    .node {
+      border: 1.5px solid #748296;
+      border-radius: 7px;
+      padding: 7px;
+      min-height: 0.58in;
+      background: #ffffff;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      break-inside: avoid;
+      box-shadow: 0 1px 0 rgba(23,32,51,0.08);
+    }
+
+    .node strong {
+      display: block;
+      font-size: 9.5px;
+      margin-bottom: 3px;
+    }
+
+    .node .meta {
+      display: block;
+      color: #5e6b7c;
+      margin-top: 4px;
+      font-size: 7.3px;
+    }
+
+    .start { background: #172033; color: #fff; border-color: #172033; }
+    .start .meta { color: #d7dde7; }
+    .app { background: #d9edf8; border-color: #5ba5cf; }
+    .manual { background: #fff1c7; border-color: #dfb43a; }
+    .critical { background: #ffd9d5; border-color: #d86b61; }
+    .decision { background: #e4d8ff; border-color: #8d6bd1; border-radius: 14px; }
+    .handoff { background: #dff3df; border-color: #64a96b; }
+    .stop { background: #f1f3f6; border-color: #8793a3; }
+
+    .arrow {
+      font-size: 19px;
+      font-weight: 700;
+      text-align: center;
+      color: #172033;
+    }
+
+    .decision-label {
+      display: inline-block;
+      margin-bottom: 3px;
+      padding: 2px 5px;
+      border-radius: 999px;
+      background: #fff;
+      color: #6045a4;
+      border: 1px solid rgba(96,69,164,0.25);
+      font-weight: 700;
+      font-size: 7px;
+      text-transform: uppercase;
+    }
+
+    .branch-area {
+      margin-top: 8px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .branch {
+      border: 1.5px dashed #8d6bd1;
+      border-radius: 8px;
+      background: #fbf9ff;
+      padding: 7px;
+    }
+
+    .branch h3 {
+      font-size: 10px;
+      margin-bottom: 5px;
+      color: #6045a4;
+    }
+
+    .branch-flow {
+      display: grid;
+      grid-template-columns: 1fr 22px 1fr 22px 1fr;
+      gap: 5px;
+      align-items: center;
+    }
+
+    .band {
+      margin: 8px 0 6px;
+      background: #eef2f6;
+      border-left: 5px solid #172033;
+      padding: 5px 7px;
+      font-weight: 700;
+      font-size: 10px;
+    }
+
+    .note {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      padding: 6px 8px;
+      background: #f6f8fb;
+      border-left: 4px solid #546a7b;
+      color: #303b4c;
+      font-size: 7.8px;
+    }
+
+    .row-gap { margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <section class="page">
+    <div class="header">
+      <div>
+        <h1>Extraction Lab Decision Tree</h1>
+        <p class="subtle">Decision-tree view of the biomass path from charge through extraction closeout</p>
+      </div>
+      <div class="legend">
+        <span><i class="swatch app"></i>App checkpoint</span>
+        <span><i class="swatch critical"></i>Critical control</span>
+        <span><i class="swatch manual"></i>Manual / inferred</span>
+        <span><i class="swatch decision"></i>Decision</span>
+        <span><i class="swatch handoff"></i>Handoff</span>
+      </div>
+    </div>
+
+    <div class="band">Trunk: lot charge through primary recovery</div>
+    <div class="tree">
+      <div class="node start"><strong>Start: Biomass Lot Selected</strong>Scan or enter tracking ID in extraction app.<span class="meta">Extractor</span></div>
+      <div class="arrow">→</div>
+      <div class="node decision"><span class="decision-label">Decision 1</span><strong>Lot Ready To Charge?</strong>Correct lot, weight available, and eligible?</div>
+      <div class="arrow">→</div>
+      <div class="node app"><strong>Record Charge</strong>Select reactor and charged lbs. App links lot, reactor, charge, and run.<span class="meta">App checkpoint</span></div>
+      <div class="arrow">→</div>
+      <div class="node manual"><strong>Load Reactor</strong>Load biomass / baskets and confirm reactor/tank readiness.<span class="meta">Manual critical prep</span></div>
+      <div class="arrow">→</div>
+      <div class="node critical"><strong>Confirm Vacuum Down</strong>Required before solvent charge can proceed.<span class="meta">Critical control</span></div>
+
+      <div class="node stop"><strong>No</strong>Hold lot, correct source/weight issue, or supervisor review.</div>
+      <div class="arrow">↺</div>
+      <div class="node manual"><strong>Resolve Readiness Issue</strong>Fix lot status, selected reactor, charge weight, or material problem.</div>
+      <div class="arrow">↺</div>
+      <div class="node decision"><strong>Return To Decision 1</strong>Re-check charge readiness.</div>
+      <div></div>
+      <div></div>
+      <div></div>
+      <div></div>
+    </div>
+
+    <div class="band">Primary extraction controls</div>
+    <div class="tree compact">
+      <div class="node manual"><strong>Prepare Solvent Path</strong>Confirm solvent supply/tank path and equipment state.</div>
+      <div class="arrow">→</div>
+      <div class="node critical"><strong>Record Primary Solvent Charge</strong>Enter solvent charge lbs; typically 500 lb placeholder.<span class="meta">Before soak</span></div>
+      <div class="arrow">→</div>
+      <div class="node app"><strong>Primary Soak + Mixer</strong>Start primary soak, start mixer, stop mixer.<span class="meta">Targets: 30 min soak, 5 min mixer</span></div>
+      <div class="arrow">→</div>
+      <div class="node critical"><strong>Filter Clear + Pressurize + Begin Recovery</strong>Confirm filter clear, start nitrogen pressurization, begin recovery.</div>
+    </div>
+
+    <div class="note">
+      Style follows the referenced decision-flow pattern: a central process trunk, explicit decision nodes, and side branches for failed checks or rework loops. It is still based on this repo's implemented app flow and SOP alignment notes, not a copied template.
+    </div>
+  </section>
+
+  <section class="page">
+    <div class="header">
+      <div>
+        <h2>Decision Tree: Flush, Clarity, Shutdown, And Wet Output Handoff</h2>
+        <p class="subtle">Branch labels match the operator-facing flow chart.</p>
+      </div>
+      <div class="legend">
+        <span><i class="swatch app"></i>App checkpoint</span>
+        <span><i class="swatch critical"></i>Critical control</span>
+        <span><i class="swatch manual"></i>Manual / inferred</span>
+        <span><i class="swatch decision"></i>Decision</span>
+        <span><i class="swatch handoff"></i>Handoff</span>
+      </div>
+    </div>
+
+    <div class="band">Flush cycle setup</div>
+    <div class="tree compact">
+      <div class="node app"><strong>Begin Flush Cycle</strong>Primary extraction complete enough to move into flush controls.</div>
+      <div class="arrow">→</div>
+      <div class="node decision"><span class="decision-label">Decision 2</span><strong>Flush Temps Acceptable?</strong>Record solvent chiller and plate temps; photo evidence supported.</div>
+      <div class="arrow">→</div>
+      <div class="node critical"><strong>Record Flush Solvent Charge</strong>Enter flush solvent lbs; typically 500 lb placeholder.</div>
+      <div class="arrow">→</div>
+      <div class="node app"><strong>Run Flush Soak</strong>Start flush, complete flush work, stop flush.<span class="meta">Target: 10 min</span></div>
+    </div>
+
+    <div class="branch-area">
+      <div class="branch">
+        <h3>Temperature Branch: Pass</h3>
+        <div class="branch-flow">
+          <div class="node decision"><strong>At / Below Threshold</strong>Proceed after documentation.</div>
+          <div class="arrow">→</div>
+          <div class="node critical"><strong>Charge Flush Solvent</strong>Continue flush sequence.</div>
+          <div class="arrow">→</div>
+          <div class="node app"><strong>Start Flush</strong>Begin timer.</div>
+        </div>
+      </div>
+      <div class="branch">
+        <h3>Temperature Branch: Not Acceptable</h3>
+        <div class="branch-flow">
+          <div class="node decision"><strong>Above Threshold / Evidence Missing</strong>Do not treat as normal pass.</div>
+          <div class="arrow">↺</div>
+          <div class="node manual"><strong>Correct Temp / Capture Evidence</strong>Wait, adjust, document, or request supervisor override depending on policy.</div>
+          <div class="arrow">↺</div>
+          <div class="node decision"><strong>Re-check Decision 2</strong>Verify again before solvent charge.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="band">Flow and final clarity decisions</div>
+    <div class="tree compact">
+      <div class="node decision"><span class="decision-label">Decision 3</span><strong>Has Flow Resumed?</strong>Operator confirms after flush/recovery adjustments.</div>
+      <div class="arrow">→</div>
+      <div class="node app"><strong>Start Final Purge</strong>If flow resumed, begin final purge.</div>
+      <div class="arrow">→</div>
+      <div class="node app"><strong>Stop Final Purge</strong>Record purge completion and duration.</div>
+      <div class="arrow">→</div>
+      <div class="node decision"><span class="decision-label">Decision 4</span><strong>Final Clarity Confirmed?</strong>System clear enough to proceed?</div>
+    </div>
+
+    <div class="branch-area">
+      <div class="branch">
+        <h3>Branch A - Flow Resumed</h3>
+        <div class="branch-flow">
+          <div class="node decision"><strong>Yes</strong>Confirm Flow Resumed.</div>
+          <div class="arrow">→</div>
+          <div class="node app"><strong>Final Purge</strong>Continue to purge stage.</div>
+          <div class="arrow">→</div>
+          <div class="node decision"><strong>Decision 4</strong>Check final clarity.</div>
+        </div>
+      </div>
+      <div class="branch">
+        <h3>Branch B - Flow Not Resumed</h3>
+        <div class="branch-flow">
+          <div class="node decision"><strong>No</strong>Flow adjustment required.</div>
+          <div class="arrow">↺</div>
+          <div class="node manual"><strong>Adjust Flow</strong>Make recovery/valve/process adjustments.</div>
+          <div class="arrow">↺</div>
+          <div class="node decision"><strong>Re-check Decision 3</strong>Loop until yes.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="branch-area row-gap">
+      <div class="branch">
+        <h3>Branch C - Clarity Confirmed</h3>
+        <div class="branch-flow">
+          <div class="node decision"><strong>Yes</strong>Confirm final clarity.</div>
+          <div class="arrow">→</div>
+          <div class="node critical"><strong>Shutdown Checklist</strong>Recovery inlets closed, pump-down started, nitrogen off, dewax inlet closed.</div>
+          <div class="arrow">→</div>
+          <div class="node app"><strong>Mark Run Complete</strong>Booth workflow closes.</div>
+        </div>
+      </div>
+      <div class="branch">
+        <h3>Branch D - More Purge Needed</h3>
+        <div class="branch-flow">
+          <div class="node decision"><strong>No</strong>More purge / clarity work required.</div>
+          <div class="arrow">↺</div>
+          <div class="node app"><strong>Resume Final Purge</strong>Run additional purge work.</div>
+          <div class="arrow">↺</div>
+          <div class="node decision"><strong>Re-check Decision 4</strong>Loop until clear.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="band">Wet output handoff</div>
+    <div class="tree compact">
+      <div class="node handoff"><strong>Select Pathway</strong>100 lb pot pour or 200 lb minor run.</div>
+      <div class="arrow">→</div>
+      <div class="node handoff"><strong>Start Post-Extraction</strong>Handoff begins after run completion.</div>
+      <div class="arrow">→</div>
+      <div class="node critical"><strong>Pour / Weigh Wet HTE + THCA</strong>Enter both wet gram values.</div>
+      <div class="arrow">→</div>
+      <div class="node handoff"><strong>Confirm Initial Outputs</strong>End of this decision tree.</div>
+    </div>
+  </section>
+</body>
+</html>
