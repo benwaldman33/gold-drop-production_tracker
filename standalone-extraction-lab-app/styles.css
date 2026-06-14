@@ -437,10 +437,42 @@ textarea {
 }
 
 .blend-card,
-.counter-card,
-.timer-card {
+.counter-card {
   display: grid;
   gap: 12px;
+}
+
+.timer-card {
+  display: grid;
+  gap: 8px;
+  min-width: 0;        /* prevent grid blowout — lets the card shrink to fit */
+  overflow: hidden;
+}
+
+.timer-card label {
+  text-align: center;
+  font-weight: 700;
+  font-size: 0.84rem;
+}
+
+/* datetime-local inputs must never exceed their container */
+.timer-card input[type="datetime-local"] {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  font-size: 0.82rem;  /* slightly smaller text fits the native date widget in narrow columns */
+  padding: 10px 8px;
+}
+
+/* Stack Start/Stop buttons vertically so they don't force the card wider */
+.timer-card .weight-actions {
+  flex-direction: column;
+  gap: 8px;
+}
+
+.timer-card .weight-actions .btn {
+  width: 100%;
+  text-align: center;
 }
 
 .workflow-stack,
