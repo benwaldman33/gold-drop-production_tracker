@@ -1709,10 +1709,15 @@ function handleCountAdjust(event) {
 function syncRunDraftFromForm() {
   const formEl = app?.querySelector("form[data-form='run-execution']");
   if (!formEl || !state.run) return;
-  state.run = {
-    ...state.run,
-    ...buildRunPayload(new FormData(formEl)),
-  };
+  // Only merge form values that are actually present (not undefined).
+  // buildRunPayload returns undefined for missing fields — spreading those
+  // would overwrite valid state.run values (like post_extraction_pathway)
+  // with undefined if the hidden input is stale or absent.
+  const formPayload = buildRunPayload(new FormData(formEl));
+  const safePayload = Object.fromEntries(
+    Object.entries(formPayload).filter(([, v]) => v !== undefined)
+  );
+  state.run = { ...state.run, ...safePayload };
 }
 
 // Fields that gate UI visibility — when these change we need a full re-render
