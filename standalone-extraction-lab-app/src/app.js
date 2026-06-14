@@ -803,7 +803,11 @@ function renderGuidedDownstreamWorkflow(run) {
         <label for="post_extraction_started_at">Started At</label>
         <input id="post_extraction_started_at" name="post_extraction_started_at" type="datetime-local" value="${escapeHtml(run.post_extraction_started_at || "")}" />
       </div>
-      ${startAction ? `<button class="btn btn-primary" type="button" data-action="post-extraction-progression" data-post-action="${escapeHtml(startAction.action_id)}">${escapeHtml(startAction.label)}</button>` : `<div class="subtle">Downstream handoff has already started.</div>`}
+      ${run.post_extraction_started_at
+          ? `<div class="subtle">Downstream handoff has already started.</div>`
+          : pathway && startAction
+            ? `<button class="btn btn-primary" type="button" data-action="post-extraction-progression" data-post-action="${escapeHtml(startAction.action_id)}">${escapeHtml(startAction.label)}</button>`
+            : `<div class="notice">Choose a downstream pathway above before starting the session.</div>`}
     `,
   );
 
