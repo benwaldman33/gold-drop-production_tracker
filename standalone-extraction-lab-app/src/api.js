@@ -296,8 +296,8 @@ function progressionForRun(run) {
   return {
     stage_key: "ready_to_confirm_biomass",
     stage_label: "Confirm biomass loaded",
-    description: "Confirm the reactor was vacuumed down before solvent charging begins.",
-    actions: [{ action_id: "confirm_vacuum_down", label: "Confirm Vacuum Down" }],
+    description: "Confirm that biomass is loaded in the reactor before beginning the chiller check.",
+    actions: [{ action_id: "confirm_biomass_loaded", label: "Confirm Biomass Loaded" }],
     completed_at: "",
   };
 }
