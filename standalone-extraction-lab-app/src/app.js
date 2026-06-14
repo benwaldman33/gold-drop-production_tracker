@@ -1399,6 +1399,7 @@ function renderRunExecutionSupervisor(run, lot) {
 
       <form class="card charge-form" data-form="run-execution">
         <input type="hidden" name="run_completed_at" value="${escapeHtml(run.run_completed_at || "")}" />
+        <input type="hidden" name="post_extraction_pathway" value="${escapeHtml(run.post_extraction_pathway || "")}" />
         <div class="section-head"><div><div class="eyebrow">Current checkpoint</div>
           <h3>${escapeHtml(run.progression?.stage_label || "")}</h3></div></div>
         <p class="subtle">${escapeHtml(run.progression?.description || "")}</p>
@@ -1409,7 +1410,7 @@ function renderRunExecutionSupervisor(run, lot) {
         <div class="actions sticky-actions">
           <a class="btn btn-secondary" href="#/reactors">Back to Reactors</a>
           <a class="btn btn-secondary" href="${escapeHtml(run.open_main_app_url || "#")}">Open in Main App</a>
-          <button class="btn btn-primary" type="submit">${state.loading ? "Saving..." : "Save Run"}</button>
+          ${run.run_completed_at ? "" : `<button class="btn btn-primary" type="submit">${state.loading ? "Saving..." : "Save Run"}</button>`}
         </div>
       </form>
       ${renderBoothEvidence(run)}
@@ -1531,15 +1532,14 @@ function renderRunExecutionOperator(run, lot) {
             </div>
           </details>` : ""}
 
-        <div class="operator-save-bar">
-          <button class="btn btn-secondary" type="submit">${state.loading ? "Saving..." : "Save"}</button>
-        </div>
+        ${run.run_completed_at ? `
+          <div class="card" style="padding:20px;margin-top:14px;">
+            ${renderGuidedDownstreamWorkflow(run)}
+          </div>` : `
+          <div class="operator-save-bar">
+            <button class="btn btn-secondary" type="submit">${state.loading ? "Saving..." : "Save"}</button>
+          </div>`}
       </form>
-
-      ${run.run_completed_at ? `
-        <form class="card" style="padding:20px;" data-form="downstream-workflow">
-          ${renderGuidedDownstreamWorkflow(run)}
-        </form>` : ""}
 
     </div>
   `;
@@ -1731,7 +1731,7 @@ const RENDER_ON_CHANGE_FIELDS = new Set([
   "post_extraction_pathway",
 ]);
 
-function handleSetFieldValue(event) {
+async function handleSetFieldValue(event) {
   const field = event.currentTarget.dataset.field;
   const value = String(event.currentTarget.dataset.value || "");
   const scope = event.currentTarget.closest("form") || app;
@@ -1743,6 +1743,18 @@ function handleSetFieldValue(event) {
   if (state.run && RENDER_ON_CHANGE_FIELDS.has(field)) {
     state.run = { ...state.run, [field]: value };
     render(); // Re-render so gated UI updates (e.g. Start Post-Extraction button)
+    if (field === "post_extraction_pathway" && value && state.route.chargeId) {
+      try {
+        const response = await api.saveChargeRun(state.route.chargeId, { post_extraction_pathway: value });
+        state.run = response.run;
+        state.lot = response.lot;
+        state.board = await api.getBoard("all");
+      } catch (error) {
+        showToast(error.payload?.error?.message || error.message || "Unable to save pathway");
+      } finally {
+        render();
+      }
+    }
     return;   // render() + bind() already re-attached all listeners; we're done
   }
   // For non-gating fields: update state.run so value survives re-renders,
@@ -1894,7 +1906,7 @@ async function handleRunSubmit(event) {
   event.preventDefault();
   if (!state.route.chargeId) return;
   const form = new FormData(event.currentTarget);
-  const payload = buildRunPayload(form);
+  const payload = withPostExtractionFallbacks(buildRunPayload(form));
   state.loading = true;
   render();
   try {
@@ -1914,12 +1926,8 @@ async function handleRunSubmit(event) {
 async function handleDownstreamSubmit(event) {
   event.preventDefault();
   if (!state.route.chargeId) return;
-  // Merge operator form (run_completed_at, post_extraction_pathway) with
-  // downstream form (centrifuge, stir count, wet outputs, etc.)
-  const operatorFormEl = app?.querySelector("form[data-form='run-execution']");
-  const operatorPayload = operatorFormEl ? buildRunPayload(new FormData(operatorFormEl)) : {};
-  const downstreamPayload = buildRunPayload(new FormData(event.currentTarget));
-  const payload = { ...operatorPayload, ...downstreamPayload };
+  const formEl = app?.querySelector("form[data-form='run-execution']") || event.currentTarget;
+  const payload = withPostExtractionFallbacks(buildRunPayload(new FormData(formEl)));
   state.loading = true;
   render();
   try {
@@ -2071,21 +2079,22 @@ async function handleRunProgression(event) {
   }
 }
 
+function withPostExtractionFallbacks(payload) {
+  const next = { ...payload };
+  if (!next.post_extraction_pathway && state.run?.post_extraction_pathway) {
+    next.post_extraction_pathway = state.run.post_extraction_pathway;
+  }
+  return next;
+}
+
 async function handlePostExtractionProgression(event) {
   if (!state.route.chargeId) return;
   const formEl = app?.querySelector("form[data-form='run-execution']");
   if (!formEl) return;
-  // Merge both forms: operator form has run_completed_at + post_extraction_pathway,
-  // downstream workflow form has wet_hte_g, wet_thca_g, confirmed_at, etc.
-  // Without merging, inputs in the downstream card are never collected and
-  // the API sees null values, clearing whatever the operator just typed.
-  const downstreamFormEl = app?.querySelector("form[data-form='downstream-workflow']");
-  const downstreamPayload = downstreamFormEl ? buildRunPayload(new FormData(downstreamFormEl)) : {};
-  const payload = {
+  const payload = withPostExtractionFallbacks({
     ...buildRunPayload(new FormData(formEl)),
-    ...downstreamPayload,
     post_extraction_action: event.currentTarget.dataset.postAction || "",
-  };
+  });
   state.loading = true;
   render();
   try {

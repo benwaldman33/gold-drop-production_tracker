@@ -451,7 +451,7 @@ The top of the run screen now shows the current stage and the next action button
 
 Those actions write the matching timestamps and booth checkpoints automatically. Operators cannot jump ahead to later booth actions from the tablet or by submitting future-step API fields; the current step must be completed, looped, or bypassed with manager approval first. At the final clarity checkpoint, choose `Clear enough` or `Not yet` before tapping `Confirm Final Clarity`; `Not yet` keeps the run in the final-purge loop and should include the reason/context in the reason field. When the run is marked complete, the run stores a completed timestamp and the linked extraction charge moves to completed as well when that charge is still the active reactor event.
 
-After **Mark Run Complete**, scroll to the **Guided downstream workflow** section on the same screen. That section is part of the operator save form, so downstream values and confirmation actions submit with the same run record.
+After **Mark Run Complete**, the **Guided downstream workflow** section appears on the same screen inside the run form. You do not need the page-level **Save** button during post-extraction — use the step buttons in the guided workflow instead.
 
 ### Guided downstream workflow on the iPad
 
@@ -459,7 +459,7 @@ The standalone extraction app turns the downstream portion of **Open Run** into 
 
 Work top to bottom through these steps:
 
-1. **Choose the downstream pathway** — tap `100 lb pot pour` or `200 lb minor run`.
+1. **Choose the downstream pathway** — tap `100 lb pot pour` or `200 lb minor run`. The choice saves immediately.
 2. **Start post-extraction** — after a pathway is selected, tap `Start Post-Extraction`. If you started too early, use **Undo Session Start** on this step before initial outputs are confirmed.
 3. **Confirm the initial wet outputs** — in **Step 3 — Initial wet outputs**, enter both **Wet THCA (g)** and **Wet HTE (g)**, then tap **Confirm Initial Outputs**. This is the natural end of the opening post-extraction handoff.
 4. **Follow the branch-specific steps**:
@@ -610,6 +610,7 @@ After **Mark Run Complete**, scroll to the **Guided downstream workflow** sectio
 1. **Step 1 — Choose the downstream pathway**
    - `100 lb pot pour`
    - `200 lb minor run`
+   - The choice saves immediately; you do not need the page-level **Save** button for this step.
 
 2. **Step 2 — Start post-extraction**
    - The extraction run must already be complete.

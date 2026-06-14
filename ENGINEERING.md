@@ -270,6 +270,7 @@ Pilot-hardening additions:
   - Steps 4+: pathway-specific pot-pour or minor-run fields saved through the same run payload
   - pending and completed steps collapse to headers only; current / ready steps expose their bodies
 - choice-button fields that gate later UI (`post_extraction_pathway`, `flow_resumed_decision`, `final_clarity_decision`, THCA / HTE decision fields) trigger an immediate re-render so dependent buttons appear without a separate save
+- `post_extraction_pathway` also auto-saves on choice so Start Post-Extraction works after Step 1 collapses; deferred uniform step-only UX is tracked in `standalone-extraction-lab-app/FIX_BACKLOG.md`
 - production deploy for standalone extraction frontend-only changes remains: `git pull` on `main`, then `rsync` `standalone-extraction-lab-app/` to the extraction-lab static web root; hard refresh iPad browsers after deploy
 
 ### Extraction booth workflow internals

@@ -15,6 +15,8 @@ Touch-first operator app for the extraction lab workflow. It mirrors the main ap
   - managers / supervisors / admins: broader supervisor review screen with full timing cards
 - settings-driven defaults for common run fields so the screen opens with the site's usual blend, aggregate weight, and count assumptions
 - guided downstream workflow on the same `Open Run` screen after extraction completion, with pathway-driven steps for post-extraction handoff plus pot-pour or minor-run downstream decisions
+- post-extraction quick fix: single run form after completion, immediate pathway save, step buttons instead of page-level Save during post-extraction
+- deferred full post-extraction UX polish tracked in `FIX_BACKLOG.md`
 - gated post-extraction handoff: pathway selection before start, wet-output entry in Step 3, undo-before-confirm on Step 2
 - reactor lifecycle actions from the board
 - full-size `Open Run` button on reactor cards so the linked-run step is obvious on iPad
