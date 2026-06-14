@@ -956,6 +956,7 @@ function renderGuidedDownstreamWorkflow(run) {
           <h3>Work top to bottom and save as you move.</h3>
         </div>
       </div>
+      ${pathway ? `<input type="hidden" name="post_extraction_pathway" value="${escapeHtml(pathway)}" />` : ""}
       <div class="workflow-grid">${steps.join("")}</div>
     </section>
   `;
@@ -1036,6 +1037,7 @@ const BLOCKER_MAP = [
   { match: "flush cycle before starting the flush",    stageKey: "ready_to_flush",                        label: "Start Flush",                  actionId: "start_flush" },
   { match: "start the flush before",                   stageKey: "ready_to_flush",                        label: "Start Flush",                  actionId: "start_flush" },
   { match: "flow resumed",                             stageKey: "ready_to_confirm_flow_resumed",         label: "Confirm Flow Resumed",         actionId: "confirm_flow_resumed" },
+  { match: "post-extraction pathway before starting",   stageKey: "post_extraction_pathway",               label: "Choose Downstream Pathway",    actionId: "" }, // no action — operator must pick from step 1
   { match: "start final purge before",                 stageKey: "ready_to_start_final_purge",            label: "Start Final Purge",            actionId: "start_final_purge" },
   { match: "shutdown checklist before completing",     stageKey: "ready_to_complete_shutdown",            label: "Complete Shutdown Checklist",  actionId: "complete_shutdown" },
 ];
