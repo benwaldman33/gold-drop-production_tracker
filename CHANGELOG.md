@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-06-13
+
+### Changed
+- The standalone extraction lab app received a multi-release UX refactor (`v5`–`v18`) focused on booth execution and post-extraction handoff clarity on iPad.
+- Extractors and assistant extractors now get a focused **operator run screen** with one primary action, phase label, compact checkpoint inputs, and a separate **Guided downstream workflow** stack after run completion. Managers, supervisors, admins, and VP Operations still get the broader **supervisor run screen** with full timing cards, checkpoint review, and the same guided downstream stack.
+- The guided downstream workflow now uses numbered step cards that collapse pending and completed steps so operators see only the active work. Step 1 chooses the pathway, Step 2 starts post-extraction, Step 3 records wet THCA / wet HTE and confirms initial outputs, and later steps follow the selected pot-pour or minor-run branch.
+- Post-extraction handoff controls are now gated more clearly: `Start Post-Extraction` appears only after a downstream pathway is chosen, the selected pathway is preserved on save, and duplicate handoff action buttons were removed from the operator surface.
+- Choice buttons for pathway and downstream decision fields now re-render the screen immediately so gated buttons such as `Start Post-Extraction` appear as soon as the prerequisite choice is made.
+
+### Fixed
+- The shutdown checklist on the standalone run screen now renders as a proper checkbox list instead of stretching controls like a text field.
+- Wet THCA / wet HTE entry is surfaced in **Step 3 — Initial wet outputs** once post-extraction has started, and the operator downstream workflow now lives inside the same save form so `Confirm Initial Outputs` submits the entered weights.
+- Operators can use **Undo Session Start** on Step 2 before initial outputs are confirmed if post-extraction was started prematurely.
+- Inline blocker cards now explain prerequisite booth or handoff steps when a progression action is rejected, instead of leaving the operator with only a toast.
+
+### Deployment
+- Standalone extraction frontend-only releases still deploy with `git pull` on `main` followed by `rsync` of `standalone-extraction-lab-app/` to the extraction-lab web root. No Flask restart is required unless backend code also changed.
+
 ## 2026-06-07
 
 ### Changed

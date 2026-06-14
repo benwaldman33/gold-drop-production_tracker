@@ -260,6 +260,17 @@ Pilot-hardening additions:
 - the standalone purchasing app consumes mobile `capabilities` so production users see a clear unavailable state when standalone buying is disabled or the user lacks access
 - the standalone receiving app also consumes mobile `capabilities` plus per-record `receiving_editable` / `locked_reason` fields so the UI can expose `Edit Receipt` only while no downstream lot usage exists
 - the standalone extraction app now consumes the same mobile surface for booth-SOP execution, including run progression state and booth evidence uploads
+- the standalone extraction frontend (`standalone-extraction-lab-app/src/app.js`) now renders two run-execution surfaces from the same mobile payload:
+  - **operator view** for extractor / assistant-extractor roles: one primary progression action, phase label, compact checkpoint inputs, optional evidence upload, and the guided downstream workflow inside the same `data-form="run-execution"` form
+  - **supervisor view** for manager / supervisor / admin / VP Operations roles: full timing cards, checkpoint inputs, progression actions, booth evidence, and the same guided downstream workflow stack
+- guided downstream workflow rendering is client-side in `standalone-extraction-lab-app/src/app.js`:
+  - Step 1: `post_extraction_pathway`
+  - Step 2: start post-extraction (`start_post_extraction`) with optional **Undo Session Start** before initial outputs are confirmed
+  - Step 3: wet THCA / wet HTE plus `confirm_initial_outputs`
+  - Steps 4+: pathway-specific pot-pour or minor-run fields saved through the same run payload
+  - pending and completed steps collapse to headers only; current / ready steps expose their bodies
+- choice-button fields that gate later UI (`post_extraction_pathway`, `flow_resumed_decision`, `final_clarity_decision`, THCA / HTE decision fields) trigger an immediate re-render so dependent buttons appear without a separate save
+- production deploy for standalone extraction frontend-only changes remains: `git pull` on `main`, then `rsync` `standalone-extraction-lab-app/` to the extraction-lab static web root; hard refresh iPad browsers after deploy
 
 ### Extraction booth workflow internals
 

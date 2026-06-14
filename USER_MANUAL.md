@@ -6,7 +6,7 @@ This guide explains how to use the Gold Drop web app day-to-day. It intentionall
 
 **Current release note:** the app has now been split internally across dedicated route modules for dashboard, field intake, runs, purchases, biomass, costs, inventory, batch edit, suppliers/photos, purchase import, strains, settings, and Slack integration. The workflows in this manual are still the ones you should test: routes, page names, approvals, list screens, and Slack import behavior are intended to work the same as before.
 
-**Operator-facing additions in the current release:** Purchases and Inventory are more status-first, the Journey page is richer, Slack imports now includes inbox buckets, lot labels now print with scannable barcodes, `Floor Ops` gives operators a recent activity surface, the standalone receiving app can now correct a confirmed receipt before downstream lot consumption, the standalone extraction app now mirrors the reactor workflow with touch-first controls, and the data model supports live smart-scale capture.
+**Operator-facing additions in the current release:** Purchases and Inventory are more status-first, the Journey page is richer, Slack imports now includes inbox buckets, lot labels now print with scannable barcodes, `Floor Ops` gives operators a recent activity surface, the standalone receiving app can now correct a confirmed receipt before downstream lot consumption, the standalone extraction app now uses a focused operator run screen plus a numbered post-extraction workflow on iPad, and the data model supports live smart-scale capture.
 
 **Manager-facing note for the current release:** the app now includes the first usable derivative-lot genealogy layer. Current day-to-day workflows still use Purchases, Inventory, Runs, and Downstream Queues the same way, but the system can now bridge biomass lots into first-class material genealogy records, auto-create dry HTE / dry THCA derivative lots from eligible extraction runs, extend genealogy into accountable downstream child lots like GoldDrop / wholesale THCA / terp strip / HP base oil / distillate, expose manager-facing ancestry / descendant journey endpoints through the internal API, record correction-forward genealogy fixes instead of silently overwriting bad lineage, summarize open derivative cost basis through the internal API, surface linked derivative lots directly on downstream queue cards, provide a dedicated `Genealogy Report` page for manager reporting, open those lots or runs in a real HTML `Material Journey Viewer` with `By Lot` and `By Run` path tracing, and record actual revenue events against material lots for actual-vs-projected margin review.
 
@@ -76,6 +76,7 @@ Journey revenue projections:
 
 - Use this app when you want a focused extraction surface without the rest of the admin UI.
 - It is built for tablet and phone use by extractors and assistant extractors.
+- During booth execution, extractors see a focused **operator run screen** with one primary action, the current phase label, and only the active checkpoint inputs. Managers, supervisors, and admins see the broader **supervisor run screen** with full timing cards and review layout.
 - The app emphasizes large buttons, weight sliders, quick `- / +` nudges, segmented reactor buttons, and minimal keyboard use.
 - It also now includes a dedicated `Scan / Enter Lot` screen so operators can use the iPad camera, a Bluetooth scanner, or manual tracking-ID entry.
 - The default charge preset is `100 lbs` per reactor whenever the lot has at least 100 lbs remaining; otherwise it defaults to the remaining lot weight.
@@ -450,6 +451,25 @@ The top of the run screen now shows the current stage and the next action button
 
 Those actions write the matching timestamps and booth checkpoints automatically. Operators cannot jump ahead to later booth actions from the tablet or by submitting future-step API fields; the current step must be completed, looped, or bypassed with manager approval first. At the final clarity checkpoint, choose `Clear enough` or `Not yet` before tapping `Confirm Final Clarity`; `Not yet` keeps the run in the final-purge loop and should include the reason/context in the reason field. When the run is marked complete, the run stores a completed timestamp and the linked extraction charge moves to completed as well when that charge is still the active reactor event.
 
+After **Mark Run Complete**, scroll to the **Guided downstream workflow** section on the same screen. That section is part of the operator save form, so downstream values and confirmation actions submit with the same run record.
+
+### Guided downstream workflow on the iPad
+
+The standalone extraction app turns the downstream portion of **Open Run** into a guided sequence instead of leaving operators on one flat form.
+
+Work top to bottom through these steps:
+
+1. **Choose the downstream pathway** — tap `100 lb pot pour` or `200 lb minor run`.
+2. **Start post-extraction** — after a pathway is selected, tap `Start Post-Extraction`. If you started too early, use **Undo Session Start** on this step before initial outputs are confirmed.
+3. **Confirm the initial wet outputs** — in **Step 3 — Initial wet outputs**, enter both **Wet THCA (g)** and **Wet HTE (g)**, then tap **Confirm Initial Outputs**. This is the natural end of the opening post-extraction handoff.
+4. **Follow the branch-specific steps**:
+   - `100 lb pot pour`: warm off-gas, daily stir count, centrifuge handoff
+   - `200 lb minor run`: THCA branch, then HTE branch
+
+Pending and completed steps collapse to headers only. The active step stays expanded so you can see the fields and buttons that matter right now.
+
+The main app still keeps the full raw fields for supervisor editing. Use **Open in Main App** only when a supervisor needs the full admin run form.
+
 ### Manager-approved booth bypass
 
 If a booth step cannot be completed because an instrument, sensor, or physical condition is not functioning properly, the operator can use `Request Manager Bypass` from the current checkpoint card.
@@ -585,25 +605,25 @@ Those reasons are stored in the booth event trail and shown to supervisors in th
 
 ### Post-extraction handoff (Phase 1)
 
-After **Mark Run Complete**, the same standalone run screen opens the first downstream handoff step.
+After **Mark Run Complete**, scroll to the **Guided downstream workflow** section on the same standalone run screen.
 
-1. Choose the **Downstream pathway**:
-- `100 lb pot pour`
-- `200 lb minor run`
+1. **Step 1 — Choose the downstream pathway**
+   - `100 lb pot pour`
+   - `200 lb minor run`
 
-2. Tap **Start Post-Extraction**.
-- The extraction run must already be complete.
-- A pathway must be selected first.
+2. **Step 2 — Start post-extraction**
+   - The extraction run must already be complete.
+   - A pathway must be selected first.
+   - Tap **Start Post-Extraction**.
+   - If you started too early, use **Undo Session Start** before initial outputs are confirmed.
 
-3. Enter the initial output weights:
-- `Wet HTE (g)`
-- `Wet THCA (g)`
+3. **Step 3 — Initial wet outputs**
+   - Enter `Wet HTE (g)` and `Wet THCA (g)`
+   - Tap **Confirm Initial Outputs**
+   - Both wet output fields are required before confirmation.
+   - The run stores the downstream start time and the initial-output confirmation time.
 
-4. Tap **Confirm Initial Outputs**.
-- Both wet output fields are required before confirmation.
-- The run stores the downstream start time and the initial-output confirmation time.
-
-This is the current Phase 1 foundation only. The later THCA-path / HTE-path workflow screens are still planned. For now, the system stores the chosen pathway and the initial downstream handoff on the run itself so the team has a structured starting point for post-extraction orchestration.
+This is the natural end of the opening post-extraction handoff. After Step 3 is confirmed, continue into the branch-specific downstream steps on the same screen.
 
 ### Downstream state tracking (Phase 2)
 
@@ -650,29 +670,7 @@ Typical queue / disposition values now supported:
 
 This is still not the final downstream operator workflow. It is the structured data foundation for the later guided THCA / HTE workflow screens.
 
-### Guided downstream workflow on the iPad
-
-The standalone extraction app now turns the downstream portion of **Open Run** into a guided sequence instead of leaving operators on one flat form.
-
-The sequence is:
-
-1. Choose the downstream pathway.
-2. Start post-extraction.
-3. Confirm the initial wet THCA / wet HTE outputs.
-4. Follow the branch-specific steps:
-- `100 lb pot pour`:
-  - warm off-gas
-  - daily stir count
-  - centrifuge handoff
-- `200 lb minor run`:
-  - THCA branch
-  - HTE branch
-
-The key difference is that the screen now works top-to-bottom, with numbered step cards and tap-first choice buttons for pathway and decision fields. The main app still keeps the full raw fields for supervisor editing.
-
-Use **Open in Main App** only when a supervisor needs the full admin run form.
-
-### Supervisor Console
+### Downstream Queues in the main app
 
 Use **Downstream -> Supervisor Console** as the supervisor's first page during daily operations.
 

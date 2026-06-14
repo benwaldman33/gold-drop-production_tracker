@@ -470,7 +470,7 @@ The app stores the actual timestamps and also shows the derived duration in minu
 
 ## How does the standalone extraction app guide the run after I tap Open Run?
 
-The run screen now shows the current stage and the next allowed action directly on the page. It is intentionally lockstep: operators only see inputs for the active checkpoint, and future booth steps stay hidden until the current predicate is satisfied.
+Extractors see a focused operator layout with the current stage, one primary action, and only the active checkpoint inputs. Supervisors and managers see the broader review layout with full timing cards. Both layouts are lockstep: future booth steps stay hidden until the current predicate is satisfied.
 
 The normal progression is:
 
@@ -502,7 +502,7 @@ Use `Request Manager Bypass` on the active checkpoint. The operator must enter a
 
 ## What happens after I mark the extraction run complete?
 
-Phase 1 of post-extraction now begins on the same run screen. After completion, choose the downstream pathway (`100 lb pot pour` or `200 lb minor run`), tap `Start Post-Extraction`, and then confirm the initial wet THCA / wet HTE outputs.
+Phase 1 of post-extraction now begins on the same run screen. After completion, open the **Guided downstream workflow** section, choose the downstream pathway (`100 lb pot pour` or `200 lb minor run`), tap `Start Post-Extraction`, enter wet THCA / wet HTE in **Step 3 — Initial wet outputs**, then tap `Confirm Initial Outputs`.
 
 ## Why won’t the app let me start post-extraction yet?
 
@@ -510,7 +510,19 @@ The handoff is gated. You must first complete the extraction run, then select th
 
 ## Why won’t the app let me confirm the initial outputs?
 
-You must first start the post-extraction session and enter both `Wet THCA (g)` and `Wet HTE (g)`. Phase 1 is only the downstream handoff foundation; later THCA / HTE-specific orchestration is planned on top of it.
+You must first start the post-extraction session and enter both `Wet THCA (g)` and `Wet HTE (g)` in **Step 3 — Initial wet outputs** inside the guided downstream workflow. Phase 1 is only the downstream handoff foundation; later THCA / HTE-specific orchestration is planned on top of it.
+
+## Where do I enter the wet THCA and wet HTE outputs on the iPad?
+
+After you tap `Start Post-Extraction`, scroll to the **Guided downstream workflow** section and open **Step 3 — Initial wet outputs**. That step is marked **Current** once the session has started. Enter both weights there, then tap `Confirm Initial Outputs`.
+
+## Can I undo a post-extraction session start?
+
+Yes, but only before initial outputs are confirmed. On **Step 2 — Post-extraction session**, use **Undo Session Start** if you started too early or chose the wrong pathway. After Step 3 is confirmed, the handoff is treated as established and you should correct it from the main app supervisor run form instead.
+
+## Why does the standalone run screen look different for supervisors?
+
+Extractors and assistant extractors get the focused operator layout with one primary action at a time. Managers, supervisors, admins, and VP Operations get the broader supervisor layout with full timing cards and review surfaces. Both layouts continue into the same guided downstream workflow after run completion.
 
 ## Can we record downstream THCA / HTE state yet?
 
@@ -526,10 +538,10 @@ There is not a separate downstream app screen yet. For now, those fields live on
 No on the tablet side. The standalone extraction app now turns the downstream part of `Open Run` into a guided sequence:
 - choose pathway
 - start post-extraction
-- confirm initial outputs
+- enter wet outputs in Step 3 and confirm initial outputs
 - then follow the relevant pot-pour or minor-run branch steps
 
-The main app still shows the raw editable fields for supervisor review and corrections.
+Pending and completed steps collapse so the active step stays obvious. The main app still shows the raw editable fields for supervisor review and corrections.
 
 ## Can receiving staff correct a receipt after it was submitted?
 
