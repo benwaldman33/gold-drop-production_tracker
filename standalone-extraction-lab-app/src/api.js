@@ -872,12 +872,50 @@ function ensureMockRunForCharge(state, chargeId) {
   return { charge, run };
 }
 
+function chargeStateLabel(status) {
+  const labels = {
+    pending: "Charged / waiting",
+    in_reactor: "In reactor",
+    applied: "Run linked",
+    running: "Running",
+    completed: "Completed today",
+    cancelled: "Cancelled today",
+    cleared: "Reactor emptied",
+  };
+  return labels[String(status || "").trim()] || "Charged / waiting";
+}
+
+function mockBoardChargeVisible(charge) {
+  if (!charge) return false;
+  const status = String(charge.status || "").trim();
+  if (status === "cleared") return false;
+  return ["pending", "in_reactor", "applied", "running", "completed", "cancelled"].includes(status);
+}
+
+function mockReactorCardActions(charge) {
+  if (!charge) return [];
+  const status = String(charge.status || "").trim();
+  if (status === "completed") {
+    return [{ target_state: "cleared", label: "Reactor Emptied" }];
+  }
+  if (status === "running") {
+    return [
+      { target_state: "completed", label: "Mark Complete" },
+      { target_state: "cancelled", label: "Cancel Charge" },
+    ];
+  }
+  return [
+    { target_state: "in_reactor", label: "Mark In Reactor" },
+    { target_state: "running", label: "Mark Running" },
+  ];
+}
+
 function buildMockBoard(state, boardView = "all") {
   const charges = state.charges || [];
   const configuredReactors = 3;
   const cards = [];
   for (let reactorNumber = 1; reactorNumber <= configuredReactors; reactorNumber += 1) {
-    const charge = charges.find((row) => Number(row.reactor_number) === reactorNumber);
+    const charge = charges.find((row) => Number(row.reactor_number) === reactorNumber && mockBoardChargeVisible(row));
     const stateKey = charge?.status || "empty";
     const visible =
       boardView === "all" ||
@@ -890,9 +928,13 @@ function buildMockBoard(state, boardView = "all") {
     cards.push({
       reactor_number: reactorNumber,
       state_key: stateKey,
-      state_label: charge?.state_label || "Empty",
+      state_label: charge ? chargeStateLabel(charge.status) : "Empty",
       state_badge: "badge",
-      next_step: charge ? "Advance the lifecycle or open the linked run." : "Ready for the next charge.",
+      next_step: charge
+        ? charge.status === "completed"
+          ? "Mark Reactor Emptied after pour-out to free this reactor for the next charge."
+          : "Advance the lifecycle or open the linked run."
+        : "Ready for the next charge.",
       pending_count: charge ? 1 : 0,
       pending_weight_lbs: charge ? Number(charge.charged_weight_lbs || 0) : 0,
       show_history: true,
@@ -907,13 +949,10 @@ function buildMockBoard(state, boardView = "all") {
             charged_at_label: charge.charged_at_label,
             operator_name: "Extractor One",
             state_key: charge.status,
-            state_label: charge.state_label,
+            state_label: chargeStateLabel(charge.status),
             source_mode: charge.source_mode,
             run_id: charge.run_id || null,
-            available_actions:
-              charge.status === "running"
-                ? [{ target_state: "completed", label: "Mark Complete" }, { target_state: "cancelled", label: "Cancel Charge" }]
-                : [{ target_state: "in_reactor", label: "Mark In Reactor" }, { target_state: "running", label: "Mark Running" }],
+            available_actions: mockReactorCardActions(charge),
             history: charge.history || [],
           }
         : null,
@@ -926,7 +965,7 @@ function buildMockBoard(state, boardView = "all") {
       ready_lot_count: state.lots.filter((lot) => lot.ready_for_charge).length,
       pending_charge_count: charges.filter((charge) => ["pending", "in_reactor", "applied", "running"].includes(charge.status)).length,
       pending_charge_weight_lbs: charges.reduce((sum, charge) => sum + Number(charge.charged_weight_lbs || 0), 0),
-      active_reactor_count: charges.length,
+      active_reactor_count: cards.filter((card) => card.state_key !== "empty").length,
       reactor_count: configuredReactors,
     },
     board_view: boardView,
@@ -1085,7 +1124,7 @@ export function createApiClient({ mode = "mock", apiBaseUrl = "", fetchImpl = fe
       const charge = state.charges.find((row) => row.id === chargeId);
       if (!charge) throw Object.assign(new Error("Charge not found"), { status: 404 });
       charge.status = payload.target_state;
-      charge.state_label = payload.target_state === "completed" ? "Completed today" : payload.target_state === "cancelled" ? "Cancelled today" : payload.target_state === "running" ? "Running" : "In reactor";
+      charge.state_label = chargeStateLabel(payload.target_state);
       charge.history = [historyEntry(`State -> ${charge.state_label}`, payload.target_state), ...(charge.history || [])];
       saveState(state);
       return { charge: mockChargePayload(state, charge) };

@@ -32,7 +32,7 @@ This PRD describes the problem, users, workflows, data requirements, calculation
 - **lot identity** at creation time via **tracking ID + barcode + QR**
 - a dedicated **extraction charge** workflow rooted in `lot -> lbs -> reactor -> time -> run`
 - a reactor-first **active reactor board** that summarizes current extractor state from canonical charge events
-- an explicit **reactor lifecycle** on top of charge events so floor operators can move material through `in_reactor -> running -> completed/cancelled` with policy-driven requirements
+- an explicit **reactor lifecycle** on top of charge events so floor operators can move material through `in_reactor -> running -> completed/cancelled -> cleared (Reactor emptied)` with policy-driven requirements
 - a filterable **reactor board** and same-day **reactor history** view so extractors can focus on the work that matters right now without opening every run
 - a dedicated **standalone extraction run execution** flow so extractors can capture execution details (timers, blend, fills, flushes, CRC, baskets, notes) without leaving the tablet workflow
 - a lockstep **standalone extraction run progression** flow so extractors can advance only the current booth checkpoint on the iPad instead of relying on Slack timestamps or the admin form

@@ -404,3 +404,24 @@ test("live api unwraps extraction mobile envelopes", async () => {
   const savedRun = await api.saveChargeRun("chg-1", { notes: "Saved" });
   assert.equal(savedRun.run.notes, "Saved");
 });
+
+test("mock api reactor cleared frees board slot", async () => {
+  const api = createApiClient({ mode: "mock" });
+  await api.login("extractor1", "secret");
+  const lots = await api.listLots("Blue");
+  const created = await api.createCharge(lots[0].id, {
+    charged_weight_lbs: 40,
+    reactor_number: 3,
+    charged_at: "2026-06-14T10:00",
+  });
+  await api.transitionCharge(created.charge.id, { target_state: "completed" });
+  const before = await api.getBoard("all");
+  const reactorCard = before.reactor_cards.find((card) => card.reactor_number === 3);
+  assert.equal(reactorCard.state_key, "completed");
+
+  await api.transitionCharge(created.charge.id, { target_state: "cleared" });
+  const after = await api.getBoard("all");
+  const reactorCardAfter = after.reactor_cards.find((card) => card.reactor_number === 3);
+  assert.equal(reactorCardAfter.state_key, "empty");
+  assert.equal(reactorCardAfter.current, null);
+});

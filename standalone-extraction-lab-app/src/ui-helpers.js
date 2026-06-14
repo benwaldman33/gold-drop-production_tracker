@@ -69,8 +69,14 @@ export function buildReactorActionMarkup(current, escape = escapeHtml) {
     );
   }
   for (const action of actions) {
+    const accent =
+      action.target_state === "cleared"
+        ? "btn-primary"
+        : action.target_state === "cancelled"
+          ? "btn-danger"
+          : "btn-secondary";
     buttons.push(
-      `<button class="btn ${action.target_state === "cancelled" ? "btn-danger" : "btn-secondary"}" data-action="transition-charge" data-charge-id="${escape(current.charge_id)}" data-target-state="${escape(action.target_state)}">${escape(action.label)}</button>`,
+      `<button class="btn ${accent}" data-action="transition-charge" data-charge-id="${escape(current.charge_id)}" data-target-state="${escape(action.target_state)}">${escape(action.label)}</button>`,
     );
   }
   return `<div class="action-grid">${buttons.join("")}</div>`;

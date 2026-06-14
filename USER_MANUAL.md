@@ -355,10 +355,11 @@ The page now also includes a reactor-oriented extraction queue:
   - **Mark In Reactor**
   - **Mark Running**
   - **Mark Complete**
+  - **Reactor Emptied** (after pour-out on a completed charge)
   - **Cancel Charge**
 - each lifecycle action writes a timestamped history entry to the extraction charge
 - by default, **Mark Running** requires that the charge already has a linked run
-- completed or cancelled charges stay visible on the board for the rest of the local day, then move to history-only visibility
+- completed or cancelled charges stay visible on the board for the rest of the local day unless the operator taps **Reactor Emptied** after physical pour-out
 - if you open a run from **Active Reactor Board** or **Recently Applied Charges**, the run form now shows **Back to Floor Ops** plus a separate **Open Runs** button so operators can return to the floor screen without losing context
 - **Board view** lets operators focus the board on:
   - all reactors
@@ -465,6 +466,7 @@ Work top to bottom through these steps:
 4. **Follow the branch-specific steps**:
    - `100 lb pot pour`: warm off-gas, daily stir count, centrifuge handoff
    - `200 lb minor run`: THCA branch, then HTE branch
+5. **Reactor Emptied** — after physical pour-out, tap **Reactor Emptied** on the run screen or the **Reactors** board so the vessel shows **Empty** and is ready for the next charge.
 
 Pending and completed steps collapse to headers only. The active step stays expanded so you can see the fields and buttons that matter right now.
 

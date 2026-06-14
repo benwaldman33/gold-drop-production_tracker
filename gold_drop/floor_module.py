@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from services.extraction_charge import (
+    build_reactor_card_actions,
     charge_history_entries,
     charge_state_badge,
     charge_state_label,
@@ -750,7 +751,7 @@ def _build_active_reactor_board(root):
             elif state_key == "running":
                 next_step = "Mark the charge complete when the reactor cycle finishes."
             elif state_key == "completed":
-                next_step = "Completed charges stay visible until the day rolls over."
+                next_step = "Mark Reactor Emptied after pour-out to free this reactor for the next charge."
             else:
                 next_step = "Cancelled charges stay visible until the day rolls over."
             history = charge_history_entries(root, current.id, limit=6) if settings["show_history"] else []
@@ -789,7 +790,7 @@ def _build_active_reactor_board(root):
                         "state_label": state_label,
                         "source_mode": (current.source_mode or "").replace("_", " ") if current else None,
                         "run_id": current.run_id if current else None,
-                        "available_actions": _reactor_card_actions(settings, current),
+                        "available_actions": build_reactor_card_actions(settings, current),
                         "history": history,
                     }
                     if current
@@ -840,17 +841,7 @@ def _build_reactor_history(root, cards):
 
 
 def _reactor_card_actions(settings, charge):
-    status = (charge.status or "pending").strip() or "pending"
-    actions = []
-    if status in {"pending", "applied"} and settings["states"]["in_reactor"]["enabled"]:
-        actions.append({"target_state": "in_reactor", "label": "Mark In Reactor"})
-    if status in {"pending", "in_reactor", "applied"} and settings["states"]["running"]["enabled"]:
-        actions.append({"target_state": "running", "label": "Mark Running"})
-    if status in {"pending", "in_reactor", "applied", "running"} and settings["states"]["completed"]["enabled"]:
-        actions.append({"target_state": "completed", "label": "Mark Complete"})
-    if status in {"pending", "in_reactor", "applied", "running"} and settings["states"]["cancelled"]["enabled"]:
-        actions.append({"target_state": "cancelled", "label": "Cancel Charge"})
-    return actions
+    return build_reactor_card_actions(settings, charge)
 
 
 def _downstream_active_queue(run):

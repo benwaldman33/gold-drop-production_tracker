@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-REACTOR_LIFECYCLE_ORDER = ("in_reactor", "running", "completed", "cancelled")
+REACTOR_LIFECYCLE_ORDER = ("in_reactor", "running", "completed", "cancelled", "cleared")
 REACTOR_LIFECYCLE_DEFAULTS = {
     "in_reactor": {"enabled": True, "required": False},
     "running": {"enabled": True, "required": False},
     "completed": {"enabled": True, "required": False},
     "cancelled": {"enabled": True, "required": False},
+    "cleared": {"enabled": True, "required": False},
 }
 REACTOR_CHARGE_STATE_META = {
     "pending": {"label": "Charged / waiting", "badge": "badge-gold"},
@@ -16,6 +17,7 @@ REACTOR_CHARGE_STATE_META = {
     "running": {"label": "Running", "badge": "badge-green"},
     "completed": {"label": "Completed today", "badge": "badge-gray"},
     "cancelled": {"label": "Cancelled today", "badge": "badge-red"},
+    "cleared": {"label": "Reactor emptied", "badge": "badge-gray"},
 }
 
 from gold_drop.list_state import app_display_zoneinfo
@@ -122,6 +124,11 @@ def validate_charge_transition(root, charge, target_state: str, *, history_entri
     if target in state_settings and not state_settings[target]["enabled"]:
         raise ValueError(f"{charge_state_label(target)} is currently hidden in Settings.")
     history = history_entries if history_entries is not None else charge_history_entries(root, charge.id, limit=20)
+    if target == "cleared":
+        current = (charge.status or "pending").strip() or "pending"
+        if current != "completed":
+            raise ValueError("Mark Reactor Emptied only after the charge is completed.")
+        return
     if target == "running" and settings["running_requires_linked_run"] and not charge.run_id:
         raise ValueError("Mark Running requires a linked run under the current Settings policy.")
     if target in {"running", "completed"} and state_settings["in_reactor"]["enabled"] and state_settings["in_reactor"]["required"]:
@@ -159,6 +166,8 @@ def update_charge_state(
 def charge_visible_on_board(root, charge) -> bool:
     status = (charge.status or "pending").strip() or "pending"
     settings = reactor_lifecycle_settings(root)
+    if status == "cleared":
+        return False
     if status in settings["states"] and not settings["states"][status]["enabled"]:
         return False
     if status in {"completed", "cancelled"}:
@@ -171,6 +180,25 @@ def charge_visible_on_board(root, charge) -> bool:
         now_local = datetime.now(timezone.utc).astimezone(app_display_zoneinfo())
         return local_dt.date() == now_local.date()
     return status in {"pending", "in_reactor", "applied", "running"}
+
+
+def build_reactor_card_actions(settings, charge) -> list[dict]:
+    if charge is None:
+        return []
+    status = (charge.status or "pending").strip() or "pending"
+    state_settings = settings["states"]
+    actions = []
+    if status in {"pending", "applied"} and state_settings["in_reactor"]["enabled"]:
+        actions.append({"target_state": "in_reactor", "label": "Mark In Reactor"})
+    if status in {"pending", "in_reactor", "applied"} and state_settings["running"]["enabled"]:
+        actions.append({"target_state": "running", "label": "Mark Running"})
+    if status in {"pending", "in_reactor", "applied", "running"} and state_settings["completed"]["enabled"]:
+        actions.append({"target_state": "completed", "label": "Mark Complete"})
+    if status == "completed" and state_settings["cleared"]["enabled"]:
+        actions.append({"target_state": "cleared", "label": "Reactor Emptied"})
+    if status in {"pending", "in_reactor", "applied", "running"} and state_settings["cancelled"]["enabled"]:
+        actions.append({"target_state": "cancelled", "label": "Cancel Charge"})
+    return actions
 
 
 def parse_charge_datetime(raw_value: str | None) -> datetime:

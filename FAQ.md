@@ -322,6 +322,7 @@ Yes. `Floor Ops` now exposes lifecycle actions directly on the current reactor c
 - `Mark In Reactor`
 - `Mark Running`
 - `Mark Complete`
+- `Reactor Emptied` (after physical pour-out on a completed charge — frees the reactor immediately)
 - `Cancel Charge`
 
 Each action records a timestamped audit entry against the extraction charge. By default, `Mark Running` requires a linked run. If a charge is cancelled and already has a run linked, the app asks whether the operator wants to open the run for modification or abandon the charge and logs that choice.
@@ -333,7 +334,10 @@ Yes. Super Admin can use `Settings -> Operational Parameters -> Reactor lifecycl
 - require a linked run before `Mark Running`
 - show or hide state history on the active reactor board
 
-Completed and cancelled charges stay visible on the board for the rest of the local day, then fall back to history.
+Completed and cancelled charges stay visible on the board for the rest of the local day unless the operator marks **Reactor Emptied** after physical pour-out.
+
+**Why does a reactor still show “Completed today” after post-extraction is done?**
+Post-extraction steps update the **run** only. The reactor board follows the **extraction charge** lifecycle. After extraction is complete, the charge stays **Completed today** until you tap **Reactor Emptied** on the reactor card (standalone extraction app or Floor Ops) once the vessel has been physically poured out. That immediately shows the reactor as **Empty** on both boards.
 
 **When I open a run from Floor Ops, how do I get back?**
 The run form now preserves the floor context. If you open a run from `Floor Ops`, the top button becomes `Back to Floor Ops`, and the page also keeps a separate `Open Runs` button when you still want the full run list.

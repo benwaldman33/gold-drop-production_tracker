@@ -1,6 +1,6 @@
 # Standalone Extraction Lab — Fix Backlog
 
-Tracked UX and workflow fixes for `standalone-extraction-lab-app/`.  
+Tracked UX and workflow fixes for `standalone-extraction-lab-app/`, plus **cross-app** extraction items that also touch the main app and shared mobile API.  
 **Quick fixes** ship as soon as they unblock operators. **Full fixes** are intentional follow-ups once the foundation is stable.
 
 ## Status key
@@ -50,6 +50,23 @@ Post-extraction still mixes patterns: some fields use manual datetime entry, som
 - Pathway, handoff start, and initial outputs work without using a top-of-page Save button.
 - Supervisor and operator views follow the same save semantics.
 - Documented in `USER_MANUAL.md` and `standalone-extraction-lab-app/README.md`.
+
+---
+
+## Cross-app — Reactor available when physically emptied (pour out)
+
+**Status:** `done` (2026-06-14)
+
+### Shipped
+
+- New charge lifecycle state **`cleared`** (`Reactor emptied`) after `completed`.
+- **`charge_visible_on_board`** hides cleared charges immediately — reactor card shows **Empty**.
+- **`Reactor Emptied`** action on completed charges in:
+  - standalone extraction lab **Reactors** board
+  - standalone extraction lab **Open Run** (after post-extraction)
+  - main app **Floor Ops → Active Reactor Board**
+- Settings include **Reactor emptied** under reactor lifecycle controls.
+- Shared mobile API transition: `POST .../charges/{id}/transition` with `target_state: "cleared"`.
 
 ---
 

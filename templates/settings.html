@@ -166,7 +166,7 @@
         <table>
           <thead><tr><th>State</th><th>Show on Floor Ops</th><th>Require before later steps</th></tr></thead>
           <tbody>
-            {% for state_key in ['in_reactor', 'running', 'completed', 'cancelled'] %}
+            {% for state_key in ['in_reactor', 'running', 'completed', 'cancelled', 'cleared'] %}
             {% set state_cfg = reactor_lifecycle.states[state_key] %}
             <tr>
               <td><strong>{{ state_cfg.label }}</strong></td>
@@ -522,7 +522,7 @@
             </tr>
           </thead>
           <tbody>
-            {% for state_key in ['in_reactor', 'running', 'completed', 'cancelled'] %}
+            {% for state_key in ['in_reactor', 'running', 'completed', 'cancelled', 'cleared'] %}
             {% set state_cfg = reactor_lifecycle.states[state_key] %}
             <tr>
               <td><strong>{{ state_cfg.label }}</strong></td>

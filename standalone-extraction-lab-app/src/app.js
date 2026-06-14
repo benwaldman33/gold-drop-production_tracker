@@ -16,6 +16,7 @@ const state = {
   lots: [],
   lot: null,
   run: null,
+  charge: null,
   runEvidence: [],
   loading: false,
   toast: "",
@@ -93,6 +94,7 @@ async function loadRoute() {
     const payload = await api.getChargeRun(state.route.chargeId);
     state.run = payload.run;
     state.lot = payload.lot;
+    state.charge = payload.charge || null;
     const evidencePayload = await api.getChargeRunEvidence(state.route.chargeId);
     state.runEvidence = Array.isArray(evidencePayload?.evidence) ? evidencePayload.evidence : [];
     if (!state.board) state.board = await api.getBoard("all");
@@ -778,6 +780,23 @@ function renderWorkflowStep(stepNumber, stateKey, eyebrow, title, description, b
   `;
 }
 
+function renderReactorEmptiedAction(charge) {
+  if (!charge || charge.status !== "completed" || !state.route.chargeId) return "";
+  return `
+    <section class="card" style="padding:20px;margin-top:14px;">
+      <div class="eyebrow">Reactor availability</div>
+      <h3 style="margin-top:6px;">Physical pour-out complete?</h3>
+      <p class="subtle">Mark the reactor empty after pour-out so this reactor shows as available on the board and in Floor Ops.</p>
+      <button class="btn btn-primary btn-operator-action" type="button"
+        data-action="transition-charge"
+        data-charge-id="${escapeHtml(state.route.chargeId)}"
+        data-target-state="cleared">
+        Reactor Emptied
+      </button>
+    </section>
+  `;
+}
+
 function renderGuidedDownstreamWorkflow(run) {
   const post = run.post_extraction || {};
   const pathway = run.post_extraction_pathway || "";
@@ -1407,6 +1426,7 @@ function renderRunExecutionSupervisor(run, lot) {
         ${renderRunProgression(run)}
         ${run.run_completed_at ? renderPostExtractionProgression(run) : ""}
         ${run.run_completed_at ? renderGuidedDownstreamWorkflow(run) : ""}
+        ${run.run_completed_at ? renderReactorEmptiedAction(state.charge) : ""}
         <div class="actions sticky-actions">
           <a class="btn btn-secondary" href="#/reactors">Back to Reactors</a>
           <a class="btn btn-secondary" href="${escapeHtml(run.open_main_app_url || "#")}">Open in Main App</a>
@@ -1535,7 +1555,8 @@ function renderRunExecutionOperator(run, lot) {
         ${run.run_completed_at ? `
           <div class="card" style="padding:20px;margin-top:14px;">
             ${renderGuidedDownstreamWorkflow(run)}
-          </div>` : `
+          </div>
+          ${renderReactorEmptiedAction(state.charge)}` : `
           <div class="operator-save-bar">
             <button class="btn btn-secondary" type="submit">${state.loading ? "Saving..." : "Save"}</button>
           </div>`}
@@ -2131,13 +2152,28 @@ async function handleConfirmCancel(event) {
 }
 
 async function submitTransition(chargeId, targetState, cancelResolution = undefined) {
+  state.loading = true;
+  render();
   try {
     await api.transitionCharge(chargeId, { target_state: targetState, cancel_resolution: cancelResolution });
     state.board = await api.getBoard(state.route.boardView || "all");
+    if (state.route.name === "run" && state.route.chargeId) {
+      const payload = await api.getChargeRun(state.route.chargeId);
+      state.run = payload.run;
+      state.lot = payload.lot;
+      state.charge = payload.charge || null;
+    }
+    if (targetState === "cleared") {
+      showToast("Reactor marked empty and available.");
+      navigate("#/reactors");
+      return;
+    }
     showToast(`Charge moved to ${targetState.replaceAll("_", " ")}.`);
-    render();
   } catch (error) {
     showToast(error.payload?.error?.message || error.message || "Unable to update charge state");
+  } finally {
+    state.loading = false;
+    render();
   }
 }
 
