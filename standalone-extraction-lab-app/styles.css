@@ -202,9 +202,13 @@ textarea {
   gap: 16px;
 }
 
-.stat-grid,
-.grid-2 {
+.stat-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
 }
 
 .reactor-grid {
