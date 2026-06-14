@@ -472,6 +472,12 @@ For run / fill time, mixer time, and flush time, use:
 
 The app stores the actual timestamps and also shows the derived duration in minutes when both endpoints are present.
 
+## Why did my typed number disappear from a checkpoint field?
+
+Older standalone extraction builds re-painted the whole run form whenever a toast appeared or a step button was tapped. If you were still typing a value such as primary solvent pounds, that refresh could clear the field before you tapped the step action.
+
+Current builds keep a live draft in memory as you type, capture the form before any screen refresh, and show toasts without rebuilding the whole form. Finish entering the value, then tap the step button (for example **Record Solvent Charge**) to save and advance.
+
 ## How does the standalone extraction app guide the run after I tap Open Run?
 
 Extractors see a focused operator layout with the current stage, one primary action, and only the active checkpoint inputs. Supervisors and managers see the broader review layout with full timing cards. Both layouts are lockstep: future booth steps stay hidden until the current predicate is satisfied.

@@ -2,7 +2,17 @@ import { createApiClient } from "./api.js";
 import { clampChargeWeight, halfLotChargeWeight, lotTitle, readyLotCount, stateTone } from "./domain.js";
 import { getAppConfig } from "./config.js";
 import { readJson, writeJson } from "./storage.js";
-import { buildChargePayload, buildReactorActionMarkup, defaultChargeValue, defaultReactorValue, escapeHtml, localDateTimeInputValue, parseRoute } from "./ui-helpers.js";
+import {
+  buildChargePayload,
+  buildReactorActionMarkup,
+  defaultChargeValue,
+  defaultReactorValue,
+  escapeHtml,
+  lastNamedFormValue,
+  localDateTimeInputValue,
+  namedFormCheckboxValue,
+  parseRoute,
+} from "./ui-helpers.js";
 
 const config = getAppConfig();
 const api = createApiClient(config);
@@ -25,7 +35,20 @@ const state = {
   scanStatus: "",
   recentLookup: null,
   blockingError: null, // { message, blockerStageKey, blockerLabel, blockerActionId }
+  chargeDraft: null,
+  lotSearchDraft: "",
 };
+
+const RUN_BOOTH_MIRROR_KEYS = new Set([
+  "primary_solvent_charge_lbs",
+  "flush_solvent_chiller_temp_f",
+  "flush_plate_temp_f",
+  "flush_solvent_charge_lbs",
+  "flow_resumed_decision",
+  "final_clarity_decision",
+]);
+
+const ENTER_SUBMIT_FORMS = new Set(["login", "scan-lookup", "lot-search"]);
 
 let cameraStream = null;
 let barcodeDetector = null;
@@ -85,10 +108,14 @@ async function loadRoute() {
   }
   if (state.route.name === "lots") {
     state.lots = await api.listLots(state.route.query || "");
+    state.lotSearchDraft = state.route.query || "";
   }
   if (["lot", "charge"].includes(state.route.name)) {
     state.lot = await api.getLot(state.route.id);
     if (!state.board) state.board = await api.getBoard("all");
+    if (state.route.name === "charge" && state.chargeDraft?.lotId !== state.route.id) {
+      state.chargeDraft = null;
+    }
   }
   if (state.route.name === "run") {
     const payload = await api.getChargeRun(state.route.chargeId);
@@ -131,12 +158,87 @@ function preferredChargePreset(maxWeight) {
 
 function showToast(message) {
   state.toast = message;
-  render();
+  renderToast();
   window.clearTimeout(showToast.timer);
   showToast.timer = window.setTimeout(() => {
     state.toast = "";
-    render();
+    renderToast();
   }, 2800);
+}
+
+function renderToast() {
+  if (!app) return;
+  let toast = app.querySelector(":scope > .toast");
+  if (state.toast) {
+    if (!toast) {
+      toast = document.createElement("div");
+      toast.className = "toast";
+      app.appendChild(toast);
+    }
+    toast.textContent = state.toast;
+  } else if (toast) {
+    toast.remove();
+  }
+}
+
+function applyRunDraftPayload(payload) {
+  if (!state.run) return;
+  const safePayload = Object.fromEntries(
+    Object.entries(payload).filter(([, value]) => value !== undefined),
+  );
+  if (!Object.keys(safePayload).length) return;
+  const boothPatch = {};
+  for (const [key, value] of Object.entries(safePayload)) {
+    if (RUN_BOOTH_MIRROR_KEYS.has(key)) boothPatch[key] = value;
+  }
+  state.run = {
+    ...state.run,
+    ...safePayload,
+    ...(Object.keys(boothPatch).length && state.run.booth
+      ? { booth: { ...state.run.booth, ...boothPatch } }
+      : {}),
+  };
+}
+
+function captureFormDrafts() {
+  if (!app) return;
+  const runForm = app.querySelector("form[data-form='run-execution']");
+  if (runForm && state.run) {
+    applyRunDraftPayload(buildRunPayload(new FormData(runForm)));
+  }
+  const chargeForm = app.querySelector("form[data-form='charge']");
+  if (chargeForm && state.lot) {
+    const form = new FormData(chargeForm);
+    state.chargeDraft = {
+      lotId: state.lot.id,
+      charged_weight_lbs: String(form.get("charged_weight_lbs") || ""),
+      charged_at: String(form.get("charged_at") || "").trim(),
+      notes: String(form.get("notes") || ""),
+      reactor_number: String(form.get("reactor_number") || ""),
+    };
+  }
+  const settingsForm = app.querySelector("form[data-form='settings']");
+  if (settingsForm) {
+    const raw = String(new FormData(settingsForm).get("chiller_temp_threshold_c") || "").trim();
+    state.settings = {
+      ...(state.settings || {}),
+      chiller_temp_threshold_c: raw === "" ? (state.settings?.chiller_temp_threshold_c ?? -40) : raw,
+    };
+  }
+  const lotSearchForm = app.querySelector("form[data-form='lot-search']");
+  if (lotSearchForm) {
+    state.lotSearchDraft = String(new FormData(lotSearchForm).get("query") || "");
+  }
+}
+
+function preventEnterFormSubmit(event) {
+  if (event.key !== "Enter") return;
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) return;
+  if (target.type === "submit" || target.type === "button") return;
+  const formType = target.closest("form")?.dataset?.form || "";
+  if (ENTER_SUBMIT_FORMS.has(formType)) return;
+  event.preventDefault();
 }
 
 function shell(content) {
@@ -197,6 +299,7 @@ function renderDialog() {
 
 function render() {
   if (!app) return;
+  captureFormDrafts();
   app.innerHTML = shell(renderContent());
   bind();
 }
@@ -467,6 +570,7 @@ function renderHistoryCard(card) {
 }
 
 function renderLots() {
+  const searchQuery = state.lotSearchDraft || state.route.query || "";
   return `
     <div class="layout-grid">
       <div class="topbar">
@@ -480,7 +584,7 @@ function renderLots() {
       </div>
       <section class="card">
         <form class="toolbar" data-form="lot-search">
-          <input name="query" placeholder="Search lots or scan tracking id" value="${escapeHtml(state.route.query || "")}" />
+          <input name="query" placeholder="Search lots or scan tracking id" value="${escapeHtml(searchQuery)}" />
           <button class="btn btn-primary" type="submit">Search</button>
           <a class="btn btn-secondary" href="#/lots">Clear</a>
         </form>
@@ -552,11 +656,16 @@ function renderChargeForm() {
   const chargeDefaults = lot.charge_defaults || {};
   const reactorCount = Number(state.board?.summary?.reactor_count || 3);
   const prefs = loadUiPrefs();
+  const draft = state.chargeDraft?.lotId === lot.id ? state.chargeDraft : null;
   const presetWeight = preferredChargePreset(maxWeight);
   const lastUsedWeight = clampChargeWeight(prefs.last_charge_weight_lbs || 0, maxWeight);
-  const defaultReactor = defaultReactorValue(prefs.last_reactor_number || 1, reactorCount);
-  const defaultWeight = clampChargeWeight(chargeDefaults.charged_weight_lbs || presetWeight, maxWeight) || presetWeight;
-  const defaultTime = chargeDefaults.charged_at || localDateTimeInputValue();
+  const defaultReactor = draft?.reactor_number
+    ? defaultReactorValue(Number(draft.reactor_number) || prefs.last_reactor_number || 1, reactorCount)
+    : defaultReactorValue(prefs.last_reactor_number || 1, reactorCount);
+  const defaultWeight = draft?.charged_weight_lbs
+    ? clampChargeWeight(Number(draft.charged_weight_lbs), maxWeight)
+    : clampChargeWeight(chargeDefaults.charged_weight_lbs || presetWeight, maxWeight) || presetWeight;
+  const defaultTime = draft?.charged_at || chargeDefaults.charged_at || localDateTimeInputValue();
   const lookupContext = state.recentLookup && state.recentLookup.lot_id === lot.id ? state.recentLookup : null;
   return `
     <div class="layout-grid">
@@ -634,7 +743,7 @@ function renderChargeForm() {
         </div>
         <div class="field">
           <label for="notes">Charge notes</label>
-          <textarea id="notes" name="notes" rows="3" placeholder="Optional note about staging, scale evidence, or lot condition"></textarea>
+          <textarea id="notes" name="notes" rows="3" placeholder="Optional note about staging, scale evidence, or lot condition">${escapeHtml(draft?.notes || "")}</textarea>
         </div>
         <div class="actions sticky-actions">
           <a class="btn btn-secondary" href="#/scan">Charge Another Lot</a>
@@ -700,7 +809,7 @@ function renderRunProgression(run) {
       ${
         bypassActions.length
           ? `<div class="bypass-box" style="margin-top:14px;">
-              ${bypassActions.some((action) => action.action_id === "request_stage_bypass") ? `<div class="field"><label for="bypass_reason">Bypass Reason</label><textarea id="bypass_reason" name="bypass_reason" rows="2" placeholder="Explain what failed and why manager approval is needed"></textarea></div>` : ""}
+              ${bypassActions.some((action) => action.action_id === "request_stage_bypass") ? `<div class="field"><label for="bypass_reason">Bypass Reason</label><textarea id="bypass_reason" name="bypass_reason" rows="2" placeholder="Explain what failed and why manager approval is needed">${escapeHtml(run.bypass_reason || "")}</textarea></div>` : ""}
               <div class="action-grid">${bypassActions
                 .map((action) => `<button class="btn btn-secondary" type="button" data-action="run-progression" data-run-action="${escapeHtml(action.action_id)}">${escapeHtml(action.label)}</button>`)
                 .join("")}</div>
@@ -1202,16 +1311,16 @@ function renderCheckpointInputs(run) {
         <div class="notice warning">⚠ This run proceeded out of spec. Supervisor has been notified.</div>` : ""}`,
     ready_to_start_mixer: `
       <div class="field"><label for="primary_soak_short_reason">Reason if starting mixer early</label>
-      <textarea id="primary_soak_short_reason" name="primary_soak_short_reason" rows="2"></textarea></div>`,
+      <textarea id="primary_soak_short_reason" name="primary_soak_short_reason" rows="2">${escapeHtml(run.primary_soak_short_reason || "")}</textarea></div>`,
     mixing: `
       <div class="field"><label for="mixer_short_reason">Reason if stopping mixer early</label>
-      <textarea id="mixer_short_reason" name="mixer_short_reason" rows="2"></textarea></div>`,
+      <textarea id="mixer_short_reason" name="mixer_short_reason" rows="2">${escapeHtml(run.mixer_short_reason || "")}</textarea></div>`,
     flushing: `
       <div class="field"><label for="flush_short_reason">Reason if stopping flush early</label>
-      <textarea id="flush_short_reason" name="flush_short_reason" rows="2"></textarea></div>`,
+      <textarea id="flush_short_reason" name="flush_short_reason" rows="2">${escapeHtml(run.flush_short_reason || "")}</textarea></div>`,
     purging: `
       <div class="field"><label for="final_purge_short_reason">Reason if stopping purge early</label>
-      <textarea id="final_purge_short_reason" name="final_purge_short_reason" rows="2"></textarea></div>`,
+      <textarea id="final_purge_short_reason" name="final_purge_short_reason" rows="2">${escapeHtml(run.final_purge_short_reason || "")}</textarea></div>`,
     ready_to_record_solvent_charge: `
       <div class="field"><label for="primary_solvent_charge_lbs">Primary Solvent Charge (lbs)</label>
       <input id="primary_solvent_charge_lbs" name="primary_solvent_charge_lbs" type="number"
@@ -1237,14 +1346,14 @@ function renderCheckpointInputs(run) {
         { value: "", label: "Not set" }, { value: "yes", label: "Yes" }, { value: "no_adjusting", label: "Still adjusting" },
       ])}</div>
       <div class="field"><label for="flow_adjustment_reason">Reason if still adjusting</label>
-      <textarea id="flow_adjustment_reason" name="flow_adjustment_reason" rows="2"></textarea></div>`,
+      <textarea id="flow_adjustment_reason" name="flow_adjustment_reason" rows="2">${escapeHtml(run.flow_adjustment_reason || "")}</textarea></div>`,
     ready_to_confirm_clarity: `
       <div class="field"><label>Final Clarity</label>
       ${renderChoiceButtons("final_clarity_decision", run.final_clarity_decision || booth.final_clarity_decision || "", [
         { value: "", label: "Not set" }, { value: "yes", label: "Clear enough" }, { value: "not_yet", label: "Not yet" },
       ])}</div>
       <div class="field"><label for="final_clarity_reason">Reason if not clear</label>
-      <textarea id="final_clarity_reason" name="final_clarity_reason" rows="2"></textarea></div>`,
+      <textarea id="final_clarity_reason" name="final_clarity_reason" rows="2">${escapeHtml(run.final_clarity_reason || "")}</textarea></div>`,
     ready_to_complete_shutdown: `
       <div class="shutdown-checklist">
         <label>Shutdown Checklist</label>
@@ -1494,7 +1603,6 @@ function renderRunExecutionOperator(run, lot) {
       <form class="operator-focus-card" data-form="run-execution">
         <input type="hidden" name="run_completed_at" value="${escapeHtml(run.run_completed_at || "")}" />
         <input type="hidden" name="post_extraction_pathway" value="${escapeHtml(run.post_extraction_pathway || "")}" />
-        <input type="hidden" name="chiller_check_actual_temp_c" value="${escapeHtml(String(run.chiller_check_actual_temp_c ?? ""))}" />
 
         ${renderBlockerCard(state.blockingError)}
 
@@ -1539,7 +1647,7 @@ function renderRunExecutionOperator(run, lot) {
                 <div class="field">
                   <label for="bypass_reason">Bypass reason</label>
                   <textarea id="bypass_reason" name="bypass_reason" rows="2"
-                    placeholder="Explain what failed and why approval is needed"></textarea>
+                    placeholder="Explain what failed and why approval is needed">${escapeHtml(run.bypass_reason || "")}</textarea>
                 </div>` : ""}
               <div class="action-grid">
                 ${bypassActions.map((action) => `
@@ -1624,6 +1732,14 @@ function renderRunExecution() {
 }
 
 function bind() {
+  app?.querySelectorAll("form").forEach((form) => form.addEventListener("keydown", preventEnterFormSubmit));
+  app?.querySelector("form[data-form='run-execution']")?.addEventListener("input", handleRunDraftInput);
+  app?.querySelector("form[data-form='run-execution']")?.addEventListener("change", handleRunDraftInput);
+  app?.querySelector("form[data-form='charge']")?.addEventListener("input", handleChargeDraftInput);
+  app?.querySelector("form[data-form='charge']")?.addEventListener("change", handleChargeDraftInput);
+  app?.querySelector("form[data-form='settings']")?.addEventListener("input", handleSettingsDraftInput);
+  app?.querySelector("form[data-form='settings']")?.addEventListener("change", handleSettingsDraftInput);
+  app?.querySelector("form[data-form='lot-search']")?.addEventListener("input", handleLotSearchDraftInput);
   app?.querySelectorAll("[data-action='logout']").forEach((button) => button.addEventListener("click", handleLogout));
   app?.querySelector("form[data-form='login']")?.addEventListener("submit", handleLogin);
   app?.querySelector("form[data-form='lot-search']")?.addEventListener("submit", handleLotSearch);
@@ -1654,6 +1770,41 @@ function bind() {
   app?.querySelector("input[type='range'][name='biomass_blend_milled_pct']")?.addEventListener("input", syncBlendDisplay);
   focusScanInput();
   syncBlendDisplay();
+}
+
+function handleRunDraftInput(event) {
+  const formEl = event.currentTarget;
+  if (!formEl || !state.run) return;
+  applyRunDraftPayload(buildRunPayload(new FormData(formEl)));
+}
+
+function handleChargeDraftInput(event) {
+  const formEl = event.currentTarget;
+  if (!formEl || !state.lot) return;
+  const form = new FormData(formEl);
+  state.chargeDraft = {
+    lotId: state.lot.id,
+    charged_weight_lbs: String(form.get("charged_weight_lbs") || ""),
+    charged_at: String(form.get("charged_at") || "").trim(),
+    notes: String(form.get("notes") || ""),
+    reactor_number: String(form.get("reactor_number") || ""),
+  };
+}
+
+function handleSettingsDraftInput(event) {
+  const formEl = event.currentTarget;
+  if (!formEl) return;
+  const raw = String(new FormData(formEl).get("chiller_temp_threshold_c") || "").trim();
+  state.settings = {
+    ...(state.settings || {}),
+    chiller_temp_threshold_c: raw === "" ? (state.settings?.chiller_temp_threshold_c ?? -40) : raw,
+  };
+}
+
+function handleLotSearchDraftInput(event) {
+  const formEl = event.currentTarget;
+  if (!formEl) return;
+  state.lotSearchDraft = String(new FormData(formEl).get("query") || "");
 }
 
 async function handleLogin(event) {
@@ -1730,15 +1881,7 @@ function handleCountAdjust(event) {
 function syncRunDraftFromForm() {
   const formEl = app?.querySelector("form[data-form='run-execution']");
   if (!formEl || !state.run) return;
-  // Only merge form values that are actually present (not undefined).
-  // buildRunPayload returns undefined for missing fields — spreading those
-  // would overwrite valid state.run values (like post_extraction_pathway)
-  // with undefined if the hidden input is stale or absent.
-  const formPayload = buildRunPayload(new FormData(formEl));
-  const safePayload = Object.fromEntries(
-    Object.entries(formPayload).filter(([, v]) => v !== undefined)
-  );
-  state.run = { ...state.run, ...safePayload };
+  applyRunDraftPayload(buildRunPayload(new FormData(formEl)));
 }
 
 // Fields that gate UI visibility — when these change we need a full re-render
@@ -1756,13 +1899,15 @@ async function handleSetFieldValue(event) {
   const field = event.currentTarget.dataset.field;
   const value = String(event.currentTarget.dataset.value || "");
   const scope = event.currentTarget.closest("form") || app;
-  const input = scope?.querySelector(`[name='${field}']`);
-  if (!input) return;
-  input.value = value;
+  scope?.querySelectorAll(`[name='${field}']`).forEach((node) => {
+    if (node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement) {
+      node.value = value;
+    }
+  });
   // Update state.run with the new value so render() reads it correctly.
   // Must happen before render() below, otherwise the re-render reads stale state.
   if (state.run && RENDER_ON_CHANGE_FIELDS.has(field)) {
-    state.run = { ...state.run, [field]: value };
+    applyRunDraftPayload({ [field]: value || undefined });
     render(); // Re-render so gated UI updates (e.g. Start Post-Extraction button)
     if (field === "post_extraction_pathway" && value && state.route.chargeId) {
       try {
@@ -1782,7 +1927,7 @@ async function handleSetFieldValue(event) {
   // then toggle button visuals without re-rendering the whole DOM.
   // Do NOT call render() here — it destroys live input values the user typed.
   if (state.run) {
-    state.run = { ...state.run, [field]: value };
+    applyRunDraftPayload({ [field]: value || undefined });
   }
   scope
     ?.querySelectorAll(`[data-action='set-field'][data-field='${field}']`)
@@ -1889,6 +2034,7 @@ async function handleChargeSubmit(event) {
   try {
     const result = await api.createCharge(String(form.get("lot_id") || ""), payload);
     state.lastCharge = result;
+    state.chargeDraft = null;
     saveUiPrefs({ ...loadUiPrefs(), last_charge_weight_lbs: payload.charged_weight_lbs, last_reactor_number: payload.reactor_number });
     state.board = await api.getBoard("all");
     showToast(`Recorded ${result.charge.charged_weight_lbs} lbs into Reactor ${result.charge.reactor_number}.`);
@@ -2001,11 +2147,11 @@ function buildRunPayload(form, progressionAction = "") {
   // Sending undefined means Object.assign skips the key entirely, preserving
   // whatever value the server already has for that field.
   function field(name) {
-    const val = String(form.get(name) || "").trim();
+    const val = lastNamedFormValue(form, name);
     return val || undefined;
   }
   function checkboxField(name) {
-    return form.get(name) ? "1" : undefined;
+    return namedFormCheckboxValue(form, name) ? "1" : undefined;
   }
   return {
     run_fill_started_at: field("run_fill_started_at"),

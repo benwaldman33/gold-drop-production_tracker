@@ -271,6 +271,7 @@ Pilot-hardening additions:
   - pending and completed steps collapse to headers only; current / ready steps expose their bodies
 - choice-button fields that gate later UI (`post_extraction_pathway`, `flow_resumed_decision`, `final_clarity_decision`, THCA / HTE decision fields) trigger an immediate re-render so dependent buttons appear without a separate save
 - `post_extraction_pathway` also auto-saves on choice so Start Post-Extraction works after Step 1 collapses; deferred uniform step-only UX is tracked in `standalone-extraction-lab-app/FIX_BACKLOG.md`
+- form draft sync in `standalone-extraction-lab-app/src/app.js`: `captureFormDrafts()` runs before every `render()`, `input`/`change` listeners mirror live field values into `state.run`, `showToast()` updates only the toast node (no full re-render), duplicate named fields resolve via `lastNamedFormValue()` in `ui-helpers.js`, and Enter is blocked from submitting run/charge/settings forms accidentally
 - production deploy for standalone extraction frontend-only changes remains: `git pull` on `main`, then `rsync` `standalone-extraction-lab-app/` to the extraction-lab static web root; hard refresh iPad browsers after deploy
 - **planned reactor availability:** physical pour-out is recorded with the **Reactor Emptied** charge transition (`completed` → `cleared`) so `_build_active_reactor_board()` returns **Empty** on the main app `Floor Ops` page and the standalone extraction mobile board immediately
 

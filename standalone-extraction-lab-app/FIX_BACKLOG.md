@@ -68,6 +68,8 @@ Post-extraction still mixes patterns: some fields use manual datetime entry, som
 - Settings include **Reactor emptied** under reactor lifecycle controls.
 - Shared mobile API transition: `POST .../charges/{id}/transition` with `target_state: "cleared"`.
 
+- **Done (2026-06-14):** Form draft sync — checkpoint and settings inputs keep typed values across screen refreshes, toasts, and step actions. See `CHANGELOG.md` 2026-06-14.
+
 ---
 
 ## Open items (other)

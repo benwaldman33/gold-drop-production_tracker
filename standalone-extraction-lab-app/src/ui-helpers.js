@@ -39,6 +39,19 @@ export function shortDateTime(value) {
   return new Date(value).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
+// When duplicate named fields exist (hidden + visible), prefer the last non-empty value.
+export function lastNamedFormValue(form, name) {
+  const values = form.getAll(name).map((entry) => String(entry || "").trim());
+  for (let index = values.length - 1; index >= 0; index -= 1) {
+    if (values[index]) return values[index];
+  }
+  return "";
+}
+
+export function namedFormCheckboxValue(form, name) {
+  return form.getAll(name).some((entry) => String(entry || "").trim()) ? "1" : "";
+}
+
 export function buildChargePayload(form, maxWeight) {
   const rawWeight = form.get("charged_weight_lbs");
   const chargedWeight = clampChargeWeight(rawWeight, maxWeight);

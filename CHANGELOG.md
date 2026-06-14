@@ -3,6 +3,7 @@
 ## 2026-06-14
 
 ### Fixed
+- Standalone extraction form inputs no longer erase while typing: checkpoint fields (solvent lbs, temps, wet outputs, etc.) now sync into memory on each keystroke, drafts are captured before every screen refresh, toast notifications update without rebuilding the whole form, and Enter in numeric fields no longer accidentally submits the run form.
 - Standalone extraction post-extraction quick fix: the guided downstream workflow now lives in the same `run-execution` form as booth checkpoints (operator view), the downstream pathway saves immediately when chosen, `Start Post-Extraction` falls back to the in-memory pathway when collapsed steps omit the hidden field, and the page-level **Save** / **Save Run** button is hidden after the extraction run is marked complete so operators use step actions instead of scrolling to save.
 - **Reactor emptied** lifecycle: after physical pour-out, operators can tap **Reactor Emptied** on a completed charge to show the reactor as **Empty** immediately on the standalone extraction board and main app Floor Ops (no longer waiting until midnight).
 
