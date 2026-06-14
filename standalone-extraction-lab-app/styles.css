@@ -460,8 +460,18 @@ textarea {
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
-  font-size: 0.82rem;  /* slightly smaller text fits the native date widget in narrow columns */
+  font-size: 0.82rem;
   padding: 10px 8px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: white;
+}
+
+/* readonly end-time fields: same styling as editable but visually distinct */
+.timer-card input[type="datetime-local"]:read-only {
+  background: rgba(255, 247, 235, 0.7);
+  color: var(--ink);
+  opacity: 1;
 }
 
 /* Stack Start/Stop buttons vertically so they don't force the card wider */
@@ -557,9 +567,31 @@ textarea {
 
 .counter-row {
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr) 64px;
-  gap: 10px;
+  grid-template-columns: 48px 80px 48px;
+  gap: 8px;
   align-items: center;
+  justify-content: center;
+}
+
+.counter-row input[type="number"] {
+  text-align: center;
+  padding: 10px 8px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: white;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/* Hide number input spinners — +/- buttons handle incrementing */
+.counter-row input[type="number"]::-webkit-inner-spin-button,
+.counter-row input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.counter-row input[type="number"] {
+  -moz-appearance: textfield;
 }
 
 .warning-row {

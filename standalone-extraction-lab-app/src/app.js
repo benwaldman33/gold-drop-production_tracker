@@ -851,7 +851,7 @@ function renderGuidedDownstreamWorkflow(run) {
             ${renderTimerField("pot_pour_offgas_started_at", "Warm Off-Gas Start", run.pot_pour_offgas_started_at, run.downstream?.pot_pour_offgas_duration_minutes != null ? `${run.downstream.pot_pour_offgas_duration_minutes} minute(s) recorded` : "", "pot_pour_offgas_completed_at", run.pot_pour_offgas_completed_at)}
             <div class="field timer-card">
               <label for="pot_pour_offgas_completed_at_display">Warm Off-Gas End</label>
-              <input id="pot_pour_offgas_completed_at_display" type="datetime-local" value="${escapeHtml(run.pot_pour_offgas_completed_at || "")}" disabled />
+              <input id="pot_pour_offgas_completed_at_display" type="datetime-local" value="${escapeHtml(run.pot_pour_offgas_completed_at || "")}" readonly />
               <div class="subtle">Stop is captured from the Warm Off-Gas timer.</div>
             </div>
           </div>
@@ -873,8 +873,8 @@ function renderGuidedDownstreamWorkflow(run) {
                 <button class="btn btn-secondary" type="button" data-action="adjust-count" data-field="pot_pour_daily_stir_count" data-delta="1">+</button>
               </div>
             </div>
-            <div class="field">
-              <label for="pot_pour_centrifuged_at">Centrifuged At</label>
+            <div class="field timer-card">
+              <label for="pot_pour_centrifuged_at" style="text-align:center;">Centrifuged At</label>
               <input id="pot_pour_centrifuged_at" name="pot_pour_centrifuged_at" type="datetime-local" value="${escapeHtml(run.pot_pour_centrifuged_at || "")}" />
             </div>
           </div>
@@ -896,7 +896,7 @@ function renderGuidedDownstreamWorkflow(run) {
             ${renderTimerField("thca_oven_started_at", "THCA Oven Start", run.thca_oven_started_at, run.downstream?.thca_oven_duration_minutes != null ? `${run.downstream.thca_oven_duration_minutes} minute(s) recorded` : "", "thca_oven_completed_at", run.thca_oven_completed_at)}
             <div class="field timer-card">
               <label for="thca_oven_completed_at_display">THCA Oven End</label>
-              <input id="thca_oven_completed_at_display" type="datetime-local" value="${escapeHtml(run.thca_oven_completed_at || "")}" disabled />
+              <input id="thca_oven_completed_at_display" type="datetime-local" value="${escapeHtml(run.thca_oven_completed_at || "")}" readonly />
               <div class="subtle">Stop is captured from the THCA Oven timer.</div>
             </div>
           </div>
@@ -921,7 +921,7 @@ function renderGuidedDownstreamWorkflow(run) {
             ${renderTimerField("hte_offgas_started_at", "HTE Off-Gas Start", run.hte_offgas_started_at, run.downstream?.hte_offgas_duration_minutes != null ? `${run.downstream.hte_offgas_duration_minutes} minute(s) recorded` : "", "hte_offgas_completed_at", run.hte_offgas_completed_at)}
             <div class="field timer-card">
               <label for="hte_offgas_completed_at_display">HTE Off-Gas End</label>
-              <input id="hte_offgas_completed_at_display" type="datetime-local" value="${escapeHtml(run.hte_offgas_completed_at || "")}" disabled />
+              <input id="hte_offgas_completed_at_display" type="datetime-local" value="${escapeHtml(run.hte_offgas_completed_at || "")}" readonly />
               <div class="subtle">Stop is captured from the HTE Off-Gas timer.</div>
             </div>
           </div>
@@ -1715,8 +1715,15 @@ function syncBlendDisplay() {
 
 function handleTimerStamp(event) {
   const field = event.currentTarget.dataset.field;
+  const value = localDateTimeInputValue();
+  // Update state.run so step state re-evaluates immediately on render.
+  if (state.run && field) {
+    state.run = { ...state.run, [field]: value };
+    render();
+    return;
+  }
   const input = app?.querySelector(`input[name='${field}']`);
-  if (input) input.value = localDateTimeInputValue();
+  if (input) input.value = value;
 }
 
 function timerStopField(field) {
@@ -1733,6 +1740,14 @@ function timerStopField(field) {
 function handleTimerStop(event) {
   const targetField = timerStopField(event.currentTarget.dataset.field || "");
   const value = localDateTimeInputValue();
+  // Update state.run immediately so the step state re-evaluates on render.
+  // Without this, the step stays "current" until the operator manually saves
+  // the form — even though the timer has been stopped.
+  if (state.run && targetField) {
+    state.run = { ...state.run, [targetField]: value };
+    render();
+    return;
+  }
   const input = app?.querySelector(`input[name='${targetField}']`);
   if (input) input.value = value;
   const display = app?.querySelector(`#${targetField}_display`);
