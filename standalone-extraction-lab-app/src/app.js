@@ -1719,17 +1719,24 @@ function syncBlendDisplay() {
   if (unmilledInput) unmilledInput.value = String(unmilled);
 }
 
-function handleTimerStamp(event) {
+async function handleTimerStamp(event) {
   const field = event.currentTarget.dataset.field;
   const value = localDateTimeInputValue();
-  // Update state.run so step state re-evaluates immediately on render.
-  if (state.run && field) {
-    state.run = { ...state.run, [field]: value };
+  if (!field || !state.run || !state.route.chargeId) return;
+  // Save immediately so the server record reflects the timestamp.
+  // If we only update state.run in memory, any subsequent form save
+  // will return a fresh server response that overwrites our in-memory value.
+  state.run = { ...state.run, [field]: value };
+  render();
+  try {
+    const response = await api.saveChargeRun(state.route.chargeId, { [field]: value });
+    state.run = response.run;
+    state.lot = response.lot;
+  } catch (error) {
+    showToast(error.payload?.error?.message || error.message || "Unable to save timer");
+  } finally {
     render();
-    return;
   }
-  const input = app?.querySelector(`input[name='${field}']`);
-  if (input) input.value = value;
 }
 
 function timerStopField(field) {
@@ -1743,21 +1750,24 @@ function timerStopField(field) {
   return field;
 }
 
-function handleTimerStop(event) {
+async function handleTimerStop(event) {
   const targetField = timerStopField(event.currentTarget.dataset.field || "");
   const value = localDateTimeInputValue();
-  // Update state.run immediately so the step state re-evaluates on render.
-  // Without this, the step stays "current" until the operator manually saves
-  // the form — even though the timer has been stopped.
-  if (state.run && targetField) {
-    state.run = { ...state.run, [targetField]: value };
+  if (!targetField || !state.run || !state.route.chargeId) return;
+  // Save immediately so the server record reflects the stop timestamp.
+  // Without an immediate save, subsequent form submits return a server
+  // response with the old empty value, reopening steps that were done.
+  state.run = { ...state.run, [targetField]: value };
+  render();
+  try {
+    const response = await api.saveChargeRun(state.route.chargeId, { [targetField]: value });
+    state.run = response.run;
+    state.lot = response.lot;
+  } catch (error) {
+    showToast(error.payload?.error?.message || error.message || "Unable to save timer");
+  } finally {
     render();
-    return;
   }
-  const input = app?.querySelector(`input[name='${targetField}']`);
-  if (input) input.value = value;
-  const display = app?.querySelector(`#${targetField}_display`);
-  if (display) display.value = value;
 }
 
 async function handleChargeSubmit(event) {
