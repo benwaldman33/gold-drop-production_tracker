@@ -756,6 +756,10 @@ function renderWorkflowStep(stepNumber, stateKey, eyebrow, title, description, b
     ready: "Ready",
     pending: "Pending",
   };
+  // Pending steps collapse to header only — body is not yet actionable.
+  // Done steps also hide the body — operator doesn't need to re-read completed work.
+  // Current and ready steps show the full body.
+  const showBody = stateKey === "current" || stateKey === "ready";
   return `
     <article class="workflow-step state-${escapeHtml(stateKey)}">
       <div class="workflow-step-head">
@@ -763,11 +767,11 @@ function renderWorkflowStep(stepNumber, stateKey, eyebrow, title, description, b
         <div class="workflow-step-copy">
           <div class="eyebrow">${escapeHtml(eyebrow)}</div>
           <h3>${escapeHtml(title)}</h3>
-          <p class="subtle">${escapeHtml(description)}</p>
+          ${showBody ? `<p class="subtle">${escapeHtml(description)}</p>` : ""}
         </div>
         <div class="workflow-step-state">${escapeHtml(labelMap[stateKey] || "Pending")}</div>
       </div>
-      <div class="workflow-step-body">${body}</div>
+      ${showBody ? `<div class="workflow-step-body">${body}</div>` : ""}
     </article>
   `;
 }
