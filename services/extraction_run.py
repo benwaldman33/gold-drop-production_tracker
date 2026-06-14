@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from services.extraction_charge import (
     app_display_zoneinfo,
@@ -40,6 +40,10 @@ TIMING_POLICY_DEFAULTS = {
     "extraction_policy_final_purge": ("informational", "Policy for final purge timing deviations"),
 }
 
+MIXER_START_ALERT_MINUTES = 3
+MIXER_MAX_RUNTIME_ALERT_MINUTES = 6
+MIXER_EMERGENCY_ESCALATION_MINUTES = 3
+
 RUN_PROGRESSION = {
     "ready_to_confirm_biomass": {
         "label": "Confirm biomass loaded",
@@ -76,7 +80,7 @@ RUN_PROGRESSION = {
     },
     "ready_to_start_mixer": {
         "label": "Ready to start mixer",
-        "description": "Primary soak is active. Start the mixer when agitation begins.",
+        "description": "Primary soak is active. Start the mixer at the beginning of soak (within 3 minutes) and run it for 5 minutes.",
         "actions": [{"action_id": "start_mixer", "label": "Start Mixer"}],
     },
     "mixing": {
@@ -470,6 +474,138 @@ def _active_duration_minutes(start_at: datetime | None) -> int | None:
     return int(round(delta_seconds / 60.0))
 
 
+def _elapsed_minutes_since(start_at: datetime | None, *, now: datetime | None = None) -> int | None:
+    if start_at is None:
+        return None
+    anchor = now or _utc_now_localized()
+    start = start_at if start_at.tzinfo is not None else start_at.replace(tzinfo=timezone.utc)
+    delta_seconds = (anchor - start).total_seconds()
+    if delta_seconds < 0:
+        return None
+    return int(delta_seconds // 60)
+
+
+def _open_notification_for_dedupe(root, run, dedupe_key: str):
+    if run is None or getattr(run, "id", None) is None:
+        return None
+    return root.SupervisorNotification.query.filter(
+        root.SupervisorNotification.run_id == run.id,
+        root.SupervisorNotification.dedupe_key == dedupe_key,
+        root.SupervisorNotification.status.in_(("open", "acknowledged")),
+    ).order_by(root.SupervisorNotification.created_at.desc()).first()
+
+
+def _created_over_minutes_ago(row, minutes: int, *, now: datetime) -> bool:
+    if row is None or getattr(row, "created_at", None) is None:
+        return False
+    created = row.created_at if row.created_at.tzinfo is not None else row.created_at.replace(tzinfo=timezone.utc)
+    return now >= created + timedelta(minutes=max(0, int(minutes)))
+
+
+def _maybe_emit_mixer_supervisor_alerts(root, run, session) -> None:
+    if run is None or session is None:
+        return
+    now = _utc_now_localized()
+
+    start_dedupe = "mixer_not_started_within_3m"
+    start_emergency_dedupe = f"{start_dedupe}_emergency_unacknowledged"
+    runtime_dedupe = "mixer_runtime_exceeded_6m"
+    runtime_emergency_dedupe = f"{runtime_dedupe}_emergency_unacknowledged"
+
+    soak_elapsed = _elapsed_minutes_since(getattr(run, "run_fill_started_at", None), now=now)
+    mixer_started_at = getattr(run, "mixer_started_at", None)
+    mixer_ended_at = getattr(run, "mixer_ended_at", None)
+
+    if soak_elapsed is not None and mixer_started_at is None and soak_elapsed >= MIXER_START_ALERT_MINUTES:
+        create_notification(
+            root,
+            run=run,
+            booth_session=session,
+            event_key="mixer_not_started_within_threshold",
+            dedupe_key=start_dedupe,
+            notification_class="warnings",
+            severity="critical",
+            title="Mixer start delayed beyond soak threshold",
+            message=(
+                f"The primary soak started {soak_elapsed} minute(s) ago and the mixer has not started. "
+                f"Target is to begin mixing within {MIXER_START_ALERT_MINUTES} minutes of soak start."
+            ),
+        )
+        start_row = _open_notification_for_dedupe(root, run, start_dedupe)
+        if (
+            start_row is not None
+            and (start_row.status or "") == "open"
+            and start_row.acknowledged_at is None
+            and _created_over_minutes_ago(start_row, MIXER_EMERGENCY_ESCALATION_MINUTES, now=now)
+        ):
+            create_notification(
+                root,
+                run=run,
+                booth_session=session,
+                event_key="mixer_not_started_emergency_escalation",
+                dedupe_key=start_emergency_dedupe,
+                notification_class="emergency",
+                severity="critical",
+                title="EMERGENCY: Mixer start alert unacknowledged",
+                message=(
+                    "Mixer start delay alert remained unacknowledged for 3 additional minutes. "
+                    "Escalate immediately on the Emergency Alert channel."
+                ),
+            )
+    else:
+        resolve_matching_notifications(
+            root,
+            run=run,
+            dedupe_keys=[start_dedupe, start_emergency_dedupe],
+            note="Mixer start threshold condition cleared.",
+        )
+
+    mixer_runtime = _elapsed_minutes_since(mixer_started_at, now=now) if mixer_started_at is not None and mixer_ended_at is None else None
+    if mixer_runtime is not None and mixer_runtime > MIXER_MAX_RUNTIME_ALERT_MINUTES:
+        create_notification(
+            root,
+            run=run,
+            booth_session=session,
+            event_key="mixer_runtime_exceeded_threshold",
+            dedupe_key=runtime_dedupe,
+            notification_class="warnings",
+            severity="critical",
+            title="Mixer runtime exceeded threshold",
+            message=(
+                f"Mixer has been running for {mixer_runtime} minute(s). "
+                f"Supervisor alert threshold is >{MIXER_MAX_RUNTIME_ALERT_MINUTES} minutes."
+            ),
+        )
+        runtime_row = _open_notification_for_dedupe(root, run, runtime_dedupe)
+        if (
+            runtime_row is not None
+            and (runtime_row.status or "") == "open"
+            and runtime_row.acknowledged_at is None
+            and _created_over_minutes_ago(runtime_row, MIXER_EMERGENCY_ESCALATION_MINUTES, now=now)
+        ):
+            create_notification(
+                root,
+                run=run,
+                booth_session=session,
+                event_key="mixer_runtime_emergency_escalation",
+                dedupe_key=runtime_emergency_dedupe,
+                notification_class="emergency",
+                severity="critical",
+                title="EMERGENCY: Mixer runtime alert unacknowledged",
+                message=(
+                    "Mixer runtime alert remained unacknowledged for 3 additional minutes. "
+                    "Escalate immediately on the Emergency Alert channel."
+                ),
+            )
+    else:
+        resolve_matching_notifications(
+            root,
+            run=run,
+            dedupe_keys=[runtime_dedupe, runtime_emergency_dedupe],
+            note="Mixer runtime threshold condition cleared.",
+        )
+
+
 def timing_control_payload(*, label: str, target_minutes: int | None, start_at: datetime | None, end_at: datetime | None) -> dict:
     actual_minutes = duration_minutes(start_at, end_at)
     active_minutes = _active_duration_minutes(start_at) if start_at is not None and end_at is None else None
@@ -673,6 +809,7 @@ def run_timing_controls_payload(root, run) -> dict:
 
 def run_progression_payload(root, run) -> dict:
     session = getattr(run, "booth_session", None)
+    _maybe_emit_mixer_supervisor_alerts(root, run, session)
     if run.run_completed_at:
         stage_key = "completed"
     elif session is not None and (session.current_stage_key or "").strip() in RUN_PROGRESSION and (session.current_stage_key or "").strip() != "completed":

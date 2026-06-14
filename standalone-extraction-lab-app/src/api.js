@@ -205,7 +205,7 @@ function progressionForRun(run) {
     },
     ready_to_start_mixer: {
       stage_label: "Ready to start mixer",
-      description: "Primary soak is active. Start the mixer when agitation begins.",
+      description: "Primary soak is active. Start the mixer at the beginning of soak (within 3 minutes) and run it for 5 minutes.",
       actions: [{ action_id: "start_mixer", label: "Start Mixer" }],
     },
     mixing: {

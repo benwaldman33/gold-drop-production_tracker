@@ -11,6 +11,7 @@ NOTIFICATION_CLASS_LABELS = {
     "completions": "Completions",
     "warnings": "Warnings",
     "reminders": "Reminders",
+    "emergency": "Emergency",
 }
 
 NOTIFICATION_SEVERITY_LABELS = {
@@ -23,6 +24,7 @@ SLACK_WEBHOOK_SETTING_BY_CLASS = {
     "completions": "slack_webhook_completions_url",
     "warnings": "slack_webhook_warnings_url",
     "reminders": "slack_webhook_reminders_url",
+    "emergency": "slack_webhook_emergency_url",
 }
 
 REMINDER_DEFAULTS = {
@@ -88,6 +90,8 @@ def _slack_webhook_url(root, notification_class: str) -> str | None:
         candidate = (root.SystemSetting.get(setting_key, "") or "").strip()
         if candidate:
             return candidate
+    if notification_class == "emergency":
+        return None
     return (root.SystemSetting.get("slack_webhook_url", "") or "").strip() or None
 
 

@@ -453,6 +453,8 @@ The top of the run screen now shows the current stage and the next action button
 
 Those actions write the matching timestamps and booth checkpoints automatically. Operators cannot jump ahead to later booth actions from the tablet or by submitting future-step API fields; the current step must be completed, looped, or bypassed with manager approval first. At the final clarity checkpoint, choose `Clear enough` or `Not yet` before tapping `Confirm Final Clarity`; `Not yet` keeps the run in the final-purge loop and should include the reason/context in the reason field. When the run is marked complete, the run stores a completed timestamp and the linked extraction charge moves to completed as well when that charge is still the active reactor event.
 
+Mixer timing controls now have explicit safety alerts during primary extraction: start the mixer within 3 minutes after `Start Primary Soak`, run for approximately 5 minutes, and stop with `Stop Mixer`. If mixer start is delayed beyond 3 minutes or runtime exceeds 6 minutes, supervisors receive a critical alert. If that critical alert is still unacknowledged after another 3 minutes, the system raises an emergency-class escalation notification for Slack emergency-channel delivery.
+
 After **Mark Run Complete**, the **Guided downstream workflow** section appears on the same screen inside the run form. You do not need the page-level **Save** button during post-extraction — use the step buttons in the guided workflow instead.
 
 ### Guided downstream workflow on the iPad

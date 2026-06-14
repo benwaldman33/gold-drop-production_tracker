@@ -356,6 +356,112 @@ def test_mobile_extraction_requires_biomass_and_chiller_before_vacuum():
         assert run_payload["chiller_out_of_spec"] is True
 
 
+def test_mobile_extraction_mixer_alerts_and_emergency_escalation():
+    app = app_module.create_app()
+    _set_mobile_workflows(app)
+    with app.test_client() as client:
+        _login_mobile(client)
+        with app.app_context():
+            supplier = Supplier(name=f"Mixer Alert Supplier {gen_uuid()[:6]}", is_active=True)
+            db.session.add(supplier)
+            db.session.flush()
+            purchase = Purchase(
+                supplier_id=supplier.id,
+                purchase_date=app_module.date.today(),
+                status="delivered",
+                stated_weight_lbs=100,
+                actual_weight_lbs=100,
+                purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            )
+            db.session.add(purchase)
+            db.session.flush()
+            lot = app_module.PurchaseLot(
+                purchase_id=purchase.id,
+                strain_name="Mixer Alert Dream",
+                weight_lbs=100,
+                remaining_weight_lbs=100,
+            )
+            db.session.add(lot)
+            db.session.flush()
+            charge = ExtractionCharge(
+                purchase_lot_id=lot.id,
+                reactor_number=1,
+                charged_weight_lbs=20,
+                source_mode="standalone_extraction",
+            )
+            db.session.add(charge)
+            db.session.commit()
+            charge_id = charge.id
+
+        for payload in (
+            {"progression_action": "confirm_biomass_loaded"},
+            {"chiller_check_actual_temp_c": -40, "progression_action": "confirm_chiller_temp_met"},
+            {"progression_action": "confirm_vacuum_down"},
+            {"primary_solvent_charge_lbs": 500, "progression_action": "record_solvent_charge"},
+            {"progression_action": "confirm_pressurized_50psi"},
+            {"progression_action": "start_primary_soak"},
+        ):
+            response = client.post(f"/api/mobile/v1/extraction/charges/{charge_id}/run", json=payload)
+            assert response.status_code == 200
+
+        with app.app_context():
+            run = db.session.get(ExtractionCharge, charge_id).run
+            run.run_fill_started_at = app_module.datetime.now(app_module.timezone.utc) - app_module.timedelta(minutes=4)
+            db.session.commit()
+
+        run_get = client.post(f"/api/mobile/v1/extraction/charges/{charge_id}/run", json={})
+        assert run_get.status_code == 200
+        with app.app_context():
+            run = db.session.get(ExtractionCharge, charge_id).run
+            delayed = app_module.SupervisorNotification.query.filter_by(
+                run_id=run.id,
+                dedupe_key="mixer_not_started_within_3m",
+            ).order_by(app_module.SupervisorNotification.created_at.desc()).first()
+            assert delayed is not None
+            assert delayed.status in {"open", "acknowledged"}
+
+            delayed.created_at = app_module.datetime.now(app_module.timezone.utc) - app_module.timedelta(minutes=4)
+            db.session.commit()
+
+        escalated = client.post(f"/api/mobile/v1/extraction/charges/{charge_id}/run", json={})
+        assert escalated.status_code == 200
+        with app.app_context():
+            run = db.session.get(ExtractionCharge, charge_id).run
+            emergency = app_module.SupervisorNotification.query.filter_by(
+                run_id=run.id,
+                dedupe_key="mixer_not_started_within_3m_emergency_unacknowledged",
+            ).order_by(app_module.SupervisorNotification.created_at.desc()).first()
+            assert emergency is not None
+            assert emergency.notification_class == "emergency"
+            assert emergency.severity == "critical"
+
+        started = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={
+                "progression_action": "start_mixer",
+                "primary_soak_short_reason": "Mixer threshold alert scenario test.",
+            },
+        )
+        assert started.status_code == 200
+
+        with app.app_context():
+            run = db.session.get(ExtractionCharge, charge_id).run
+            run.mixer_started_at = app_module.datetime.now(app_module.timezone.utc) - app_module.timedelta(minutes=7)
+            run.mixer_ended_at = None
+            db.session.commit()
+
+        runtime_get = client.post(f"/api/mobile/v1/extraction/charges/{charge_id}/run", json={})
+        assert runtime_get.status_code == 200
+        with app.app_context():
+            run = db.session.get(ExtractionCharge, charge_id).run
+            runtime_alert = app_module.SupervisorNotification.query.filter_by(
+                run_id=run.id,
+                dedupe_key="mixer_runtime_exceeded_6m",
+            ).order_by(app_module.SupervisorNotification.created_at.desc()).first()
+            assert runtime_alert is not None
+            assert runtime_alert.status in {"open", "acknowledged"}
+
+
 def test_mobile_extraction_run_exception_handling_loops():
     app = app_module.create_app()
     _set_mobile_workflows(app)

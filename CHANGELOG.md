@@ -7,6 +7,7 @@
 - Standalone extraction post-extraction quick fix: the guided downstream workflow now lives in the same `run-execution` form as booth checkpoints (operator view), the downstream pathway saves immediately when chosen, `Start Post-Extraction` falls back to the in-memory pathway when collapsed steps omit the hidden field, and the page-level **Save** / **Save Run** button is hidden after the extraction run is marked complete so operators use step actions instead of scrolling to save.
 - **Reactor emptied** lifecycle: after physical pour-out, operators can tap **Reactor Emptied** on a completed charge to show the reactor as **Empty** immediately on the standalone extraction board and main app Floor Ops (no longer waiting until midnight).
 - Extraction booth progression now requires a new checkpoint after `Record Solvent Charge`: operators must confirm the reactor is pressurized to **50 PSI** before the app allows `Start Primary Soak`.
+- Mixer timing safety now triggers critical supervisor alerts when the mixer is not started within 3 minutes of soak start or runs longer than 6 minutes, and escalates to an emergency-class notification if unacknowledged for an additional 3 minutes.
 
 ### Notes
 - Full post-extraction uniform step workflow (server-set timestamps, one action per step only, supervisor parity) is tracked in `standalone-extraction-lab-app/FIX_BACKLOG.md`.
