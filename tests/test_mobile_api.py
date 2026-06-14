@@ -406,6 +406,7 @@ def test_mobile_extraction_run_exception_handling_loops():
             {"chiller_check_actual_temp_c": -40, "progression_action": "confirm_chiller_temp_met"},
             {"progression_action": "confirm_vacuum_down"},
             {"primary_solvent_charge_lbs": 500, "progression_action": "record_solvent_charge"},
+            {"progression_action": "confirm_pressurized_50psi"},
             {"progression_action": "start_primary_soak"},
             {"progression_action": "start_mixer", "primary_soak_short_reason": "Test sequence advances the soak timer immediately."},
             {"progression_action": "stop_mixer", "mixer_short_reason": "Test sequence advances the mixer timer immediately."},
@@ -567,6 +568,7 @@ def test_mobile_extraction_timing_policy_can_require_supervisor_override():
             {"chiller_check_actual_temp_c": -40, "progression_action": "confirm_chiller_temp_met"},
             {"progression_action": "confirm_vacuum_down"},
             {"primary_solvent_charge_lbs": 500, "progression_action": "record_solvent_charge"},
+            {"progression_action": "confirm_pressurized_50psi"},
             {"progression_action": "start_primary_soak", "primary_soak_short_reason": "Training override prep."},
             {"progression_action": "start_mixer"},
             {"progression_action": "stop_mixer", "mixer_short_reason": "Training override prep."},
@@ -1523,7 +1525,15 @@ def test_mobile_extraction_run_execution_flow():
             assert charge_solvent.status_code == 200
             solvent_recorded = charge_solvent.get_json()["data"]["run"]
             assert solvent_recorded["primary_solvent_charge_lbs"] == 500.0
-            assert solvent_recorded["progression"]["stage_key"] == "ready_to_start_primary_soak"
+            assert solvent_recorded["progression"]["stage_key"] == "ready_to_confirm_pressurized_50psi"
+
+            confirm_pressure = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={"progression_action": "confirm_pressurized_50psi"},
+            )
+            assert confirm_pressure.status_code == 200
+            pressure_confirmed = confirm_pressure.get_json()["data"]["run"]
+            assert pressure_confirmed["progression"]["stage_key"] == "ready_to_start_primary_soak"
 
             start_soak = client.post(
                 f"/api/mobile/v1/extraction/charges/{charge_id}/run",

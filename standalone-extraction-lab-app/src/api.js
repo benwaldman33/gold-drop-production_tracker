@@ -193,6 +193,11 @@ function progressionForRun(run) {
       description: "Enter the primary solvent charge and record it before starting the soak.",
       actions: [{ action_id: "record_solvent_charge", label: "Record Solvent Charge" }],
     },
+    ready_to_confirm_pressurized_50psi: {
+      stage_label: "Confirm reactor at 50 PSI",
+      description: "After charging solvent, confirm the reactor is pressurized to 50 PSI before starting the soak.",
+      actions: [{ action_id: "confirm_pressurized_50psi", label: "Confirm 50 PSI" }],
+    },
     ready_to_start_primary_soak: {
       stage_label: "Start primary soak",
       description: "The primary solvent charge is recorded. Start the primary soak to begin booth execution timing.",
@@ -431,12 +436,18 @@ function applyMockProgressionAction(run, action) {
     const solventLbs = Number(run.primary_solvent_charge_lbs || 0);
     if (!Number.isFinite(solventLbs) || solventLbs <= 0) throw new Error("Enter the primary solvent charge before continuing.");
     if (!run.primary_solvent_charged_at) run.primary_solvent_charged_at = now;
-    run.booth_stage_key = "ready_to_start_primary_soak";
+    run.booth_stage_key = "ready_to_confirm_pressurized_50psi";
     run.booth_history = [{ event_label: "Primary solvent charge recorded", occurred_at: now }, ...(run.booth_history || [])];
     return;
   }
+  if (action === "confirm_pressurized_50psi") {
+    if (!run.primary_solvent_charged_at) throw new Error("Record the primary solvent charge before confirming reactor pressure.");
+    run.booth_stage_key = "ready_to_start_primary_soak";
+    run.booth_history = [{ event_label: "Reactor pressurized to 50 PSI confirmed", occurred_at: now }, ...(run.booth_history || [])];
+    return;
+  }
   if (action === "start_primary_soak") {
-    if (!run.primary_solvent_charged_at) throw new Error("Record the primary solvent charge before starting the soak.");
+    if (run.booth_stage_key !== "ready_to_start_primary_soak") throw new Error("Confirm reactor pressurized to 50 PSI before starting the soak.");
     if (!run.run_fill_started_at) run.run_fill_started_at = now;
     run.booth_stage_key = "ready_to_start_mixer";
     run.booth_history = [{ event_label: "Primary soak started", occurred_at: now }, ...(run.booth_history || [])];

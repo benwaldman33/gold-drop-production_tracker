@@ -486,6 +486,7 @@ The normal progression is:
 
 - `Confirm Vacuum Down`
 - `Record Solvent Charge`
+- `Confirm 50 PSI`
 - `Start Primary Soak`
 - `Start Mixer`
 - `Stop Mixer`

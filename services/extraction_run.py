@@ -64,6 +64,11 @@ RUN_PROGRESSION = {
         "description": "Enter the primary solvent charge and record it before starting the soak.",
         "actions": [{"action_id": "record_solvent_charge", "label": "Record Solvent Charge"}],
     },
+    "ready_to_confirm_pressurized_50psi": {
+        "label": "Confirm reactor at 50 PSI",
+        "description": "After charging solvent, confirm the reactor is pressurized to 50 PSI before starting the soak.",
+        "actions": [{"action_id": "confirm_pressurized_50psi", "label": "Confirm 50 PSI"}],
+    },
     "ready_to_start_primary_soak": {
         "label": "Start primary soak",
         "description": "The primary solvent charge is recorded. Start the primary soak to begin booth execution timing.",
@@ -170,7 +175,8 @@ RUN_STAGE_SEQUENCE = {
     "ready_to_confirm_biomass": "ready_to_check_chiller_temp",
     "ready_to_check_chiller_temp": "ready_to_confirm_vacuum",
     "ready_to_confirm_vacuum": "ready_to_record_solvent_charge",
-    "ready_to_record_solvent_charge": "ready_to_start_primary_soak",
+    "ready_to_record_solvent_charge": "ready_to_confirm_pressurized_50psi",
+    "ready_to_confirm_pressurized_50psi": "ready_to_start_primary_soak",
     "ready_to_start_primary_soak": "ready_to_start_mixer",
     "ready_to_start_mixer": "mixing",
     "mixing": "ready_to_confirm_filter_clear",
@@ -881,11 +887,23 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
                 event_label="Primary solvent charge recorded",
                 numeric_value=solvent_lbs,
             )
+        session.current_stage_key = "ready_to_confirm_pressurized_50psi"
+        return
+    if action == "confirm_pressurized_50psi":
+        if session.primary_solvent_charged_at is None:
+            raise ValueError("Record the primary solvent charge before confirming reactor pressure.")
+        if _booth_event(root, session, "reactor_pressurized_50psi") is None:
+            _record_booth_event(
+                root,
+                session,
+                event_key="reactor_pressurized_50psi",
+                event_label="Reactor pressurized to 50 PSI confirmed",
+            )
         session.current_stage_key = "ready_to_start_primary_soak"
         return
     if action == "start_primary_soak":
-        if session.primary_solvent_charged_at is None:
-            raise ValueError("Record the primary solvent charge before starting the soak.")
+        if _booth_event(root, session, "reactor_pressurized_50psi") is None:
+            raise ValueError("Confirm reactor pressurized to 50 PSI before starting the soak.")
         if run.run_fill_started_at is None:
             run.run_fill_started_at = now
         if _booth_event(root, session, "primary_soak_started") is None:

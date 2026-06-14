@@ -49,7 +49,12 @@ test("mock api login, board, charge, and transition flow", async () => {
     progression_action: "record_solvent_charge",
   });
   assert.equal(solventRecorded.run.primary_solvent_charge_lbs, 500);
-  assert.equal(solventRecorded.run.progression.stage_key, "ready_to_start_primary_soak");
+  assert.equal(solventRecorded.run.progression.stage_key, "ready_to_confirm_pressurized_50psi");
+
+  const pressureConfirmed = await api.saveChargeRun(created.charge.id, {
+    progression_action: "confirm_pressurized_50psi",
+  });
+  assert.equal(pressureConfirmed.run.progression.stage_key, "ready_to_start_primary_soak");
 
   const startedRun = await api.saveChargeRun(created.charge.id, {
     progression_action: "start_primary_soak",
@@ -172,6 +177,7 @@ test("mock api supports extraction exception-handling loops", async () => {
   const actions = [
     { progression_action: "confirm_vacuum_down" },
     { primary_solvent_charge_lbs: 500, progression_action: "record_solvent_charge" },
+    { progression_action: "confirm_pressurized_50psi" },
     { progression_action: "start_primary_soak" },
     { mixer_started_at: "2026-04-19T09:10", mixer_ended_at: "2026-04-19T09:20" },
     { progression_action: "confirm_filter_clear" },

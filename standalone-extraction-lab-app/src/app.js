@@ -1130,6 +1130,7 @@ const STAGE_SEQUENCE = [
   { key: "ready_to_check_chiller_temp",      label: "Check chiller temperature",     phase: "primary", timer: null },
   { key: "ready_to_confirm_vacuum",          label: "Confirm vacuum down",          phase: "primary", timer: null },
   { key: "ready_to_record_solvent_charge",   label: "Record solvent charge",         phase: "primary", timer: null },
+  { key: "ready_to_confirm_pressurized_50psi", label: "Confirm reactor at 50 PSI",   phase: "primary", timer: null },
   { key: "ready_to_start_primary_soak",      label: "Start primary soak",            phase: "primary", timer: null },
   { key: "ready_to_start_mixer",             label: "Start mixer",                   phase: "primary", timer: "primary_soak", targetMinutes: 30 },
   { key: "mixing",                           label: "Mixer running",                 phase: "primary", timer: "mixer",        targetMinutes: 5  },
@@ -1174,6 +1175,8 @@ const BLOCKER_MAP = [
   { match: "vacuum",                                   stageKey: "ready_to_confirm_vacuum",               label: "Confirm Vacuum Down",          actionId: "confirm_vacuum_down" },
   { match: "primary solvent charge before",            stageKey: "ready_to_record_solvent_charge",        label: "Record Solvent Charge",        actionId: "record_solvent_charge" },
   { match: "enter the primary solvent charge",         stageKey: "ready_to_record_solvent_charge",        label: "Record Solvent Charge",        actionId: "record_solvent_charge" },
+  { match: "confirm reactor at 50 psi",                stageKey: "ready_to_confirm_pressurized_50psi",    label: "Confirm 50 PSI",               actionId: "confirm_pressurized_50psi" },
+  { match: "confirm reactor pressurized to 50 psi",    stageKey: "ready_to_confirm_pressurized_50psi",    label: "Confirm 50 PSI",               actionId: "confirm_pressurized_50psi" },
   { match: "primary soak before starting the mixer",   stageKey: "ready_to_start_primary_soak",           label: "Start Primary Soak",           actionId: "start_primary_soak" },
   { match: "stop the mixer before",                    stageKey: "mixing",                                label: "Stop Mixer",                   actionId: "stop_mixer" },
   { match: "mixer before stopping",                    stageKey: "mixing",                                label: "Start Mixer",                  actionId: "start_mixer" },
@@ -1223,7 +1226,7 @@ function renderBlockerCard(blocker) {
 const PRIMARY_STAGES = new Set([
   "pending", "vacuum_confirmed", "solvent_charged", "soaking",
   "ready_to_start_mixer", "mixing", "filter_cleared", "pressurizing",
-  "recovering", "ready_to_record_solvent_charge", "ready_to_confirm_vacuum",
+  "recovering", "ready_to_record_solvent_charge", "ready_to_confirm_pressurized_50psi", "ready_to_confirm_vacuum",
   "ready_to_start_primary_soak", "ready_to_confirm_filter_clear",
   "ready_to_start_pressurization", "ready_to_begin_recovery",
   "ready_to_begin_flush_cycle",
@@ -1253,6 +1256,7 @@ function resolvedStageKey(run) {
   const progressionActions = (run.progression?.actions || []).map((a) => a.action_id);
   let stageKey = run.progression?.stage_key || "";
   if (progressionActions.includes("record_solvent_charge"))        stageKey = "ready_to_record_solvent_charge";
+  if (progressionActions.includes("confirm_pressurized_50psi"))    stageKey = "ready_to_confirm_pressurized_50psi";
   if (progressionActions.includes("verify_flush_temps"))           stageKey = "ready_to_verify_flush_temps";
   if (progressionActions.includes("record_flush_solvent_charge"))  stageKey = "ready_to_record_flush_solvent_charge";
   if (progressionActions.includes("confirm_flow_resumed"))         stageKey = "ready_to_confirm_flow_resumed";
@@ -1325,6 +1329,8 @@ function renderCheckpointInputs(run) {
       <div class="field"><label for="primary_solvent_charge_lbs">Primary Solvent Charge (lbs)</label>
       <input id="primary_solvent_charge_lbs" name="primary_solvent_charge_lbs" type="number"
         value="${escapeHtml(String(run.primary_solvent_charge_lbs ?? ""))}" min="0" step="0.1" placeholder="500" /></div>`,
+    ready_to_confirm_pressurized_50psi: `
+      <div class="notice" style="margin-bottom:4px;">Confirm the reactor is pressurized to 50 PSI before starting the primary soak.</div>`,
     ready_to_verify_flush_temps: `
       <div class="grid-2">
         <div class="field"><label for="flush_solvent_chiller_temp_f">Chiller Temp (°F)</label>
