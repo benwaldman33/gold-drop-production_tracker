@@ -465,6 +465,15 @@ textarea {
   border-radius: 18px;
   border: 1px solid var(--line);
   background: white;
+  overflow: hidden; /* clips native calendar icon to border-radius boundary */
+}
+
+/* Global fix: all datetime-local inputs get rounded corners.
+   overflow:hidden clips the native calendar picker button that otherwise
+   produces a square right edge regardless of border-radius. */
+input[type="datetime-local"] {
+  border-radius: 18px;
+  overflow: hidden;
 }
 
 /* readonly end-time fields: same styling as editable but visually distinct */

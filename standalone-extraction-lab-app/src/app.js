@@ -866,7 +866,7 @@ function renderGuidedDownstreamWorkflow(run) {
         `
           <div class="grid-2">
             <div class="field counter-card">
-              <label>Daily Stirs</label>
+              <label style="text-align:center;">Daily Stirs</label>
               <div class="counter-row">
                 <button class="btn btn-secondary" type="button" data-action="adjust-count" data-field="pot_pour_daily_stir_count" data-delta="-1">-</button>
                 <input type="number" name="pot_pour_daily_stir_count" value="${escapeHtml(String(run.pot_pour_daily_stir_count ?? ""))}" min="0" step="1" />
@@ -878,6 +878,11 @@ function renderGuidedDownstreamWorkflow(run) {
               <input id="pot_pour_centrifuged_at" name="pot_pour_centrifuged_at" type="datetime-local" value="${escapeHtml(run.pot_pour_centrifuged_at || "")}" />
             </div>
           </div>
+          ${!run.pot_pour_centrifuged_at ? "" : ""}
+          <button class="btn btn-primary btn-operator-action" type="submit"
+            style="margin-top:4px;">
+            Complete Pot Pour
+          </button>
         `,
       ),
     );
@@ -1536,6 +1541,7 @@ function bind() {
   app?.querySelector("form[data-form='scan-lookup']")?.addEventListener("submit", handleScanLookup);
   app?.querySelector("form[data-form='charge']")?.addEventListener("submit", handleChargeSubmit);
   app?.querySelector("form[data-form='run-execution']")?.addEventListener("submit", handleRunSubmit);
+  app?.querySelector("form[data-form='downstream-workflow']")?.addEventListener("submit", handleDownstreamSubmit);
   app?.querySelectorAll("form[data-form='run-evidence']").forEach((form) => form.addEventListener("submit", handleRunEvidenceSubmit));
   app?.querySelectorAll("[data-action='adjust-weight']").forEach((button) => button.addEventListener("click", handleWeightAdjust));
   app?.querySelectorAll("[data-action='adjust-count']").forEach((button) => button.addEventListener("click", handleCountAdjust));
@@ -1790,6 +1796,31 @@ async function handleRunSubmit(event) {
     showToast("Run execution saved.");
   } catch (error) {
     showToast(error.payload?.error?.message || error.message || "Unable to save run execution");
+  } finally {
+    state.loading = false;
+    render();
+  }
+}
+
+async function handleDownstreamSubmit(event) {
+  event.preventDefault();
+  if (!state.route.chargeId) return;
+  // Merge operator form (run_completed_at, post_extraction_pathway) with
+  // downstream form (centrifuge, stir count, wet outputs, etc.)
+  const operatorFormEl = app?.querySelector("form[data-form='run-execution']");
+  const operatorPayload = operatorFormEl ? buildRunPayload(new FormData(operatorFormEl)) : {};
+  const downstreamPayload = buildRunPayload(new FormData(event.currentTarget));
+  const payload = { ...operatorPayload, ...downstreamPayload };
+  state.loading = true;
+  render();
+  try {
+    const response = await api.saveChargeRun(state.route.chargeId, payload);
+    state.run = response.run;
+    state.lot = response.lot;
+    state.board = await api.getBoard("all");
+    showToast("Saved.");
+  } catch (error) {
+    showToast(error.payload?.error?.message || error.message || "Unable to save");
   } finally {
     state.loading = false;
     render();
