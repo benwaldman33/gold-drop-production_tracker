@@ -1639,6 +1639,10 @@ function syncRunDraftFromForm() {
     ...state.run,
     ...buildRunPayload(new FormData(formEl)),
   };
+  // Re-render so UI gates (e.g. pathway-dependent buttons) update immediately.
+  // Without this, choice button taps update state.run but the DOM stays stale
+  // until the next unrelated event triggers a render.
+  render();
 }
 
 function handleSetFieldValue(event) {
