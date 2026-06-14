@@ -1509,9 +1509,9 @@ function renderRunExecutionOperator(run, lot) {
       </form>
 
       ${run.run_completed_at ? `
-        <div class="card" style="padding:20px;">
+        <form class="card" style="padding:20px;" data-form="downstream-workflow">
           ${renderGuidedDownstreamWorkflow(run)}
-        </div>` : ""}
+        </form>` : ""}
 
     </div>
   `;
@@ -1919,8 +1919,15 @@ async function handlePostExtractionProgression(event) {
   if (!state.route.chargeId) return;
   const formEl = app?.querySelector("form[data-form='run-execution']");
   if (!formEl) return;
+  // Merge both forms: operator form has run_completed_at + post_extraction_pathway,
+  // downstream workflow form has wet_hte_g, wet_thca_g, confirmed_at, etc.
+  // Without merging, inputs in the downstream card are never collected and
+  // the API sees null values, clearing whatever the operator just typed.
+  const downstreamFormEl = app?.querySelector("form[data-form='downstream-workflow']");
+  const downstreamPayload = downstreamFormEl ? buildRunPayload(new FormData(downstreamFormEl)) : {};
   const payload = {
     ...buildRunPayload(new FormData(formEl)),
+    ...downstreamPayload,
     post_extraction_action: event.currentTarget.dataset.postAction || "",
   };
   state.loading = true;
