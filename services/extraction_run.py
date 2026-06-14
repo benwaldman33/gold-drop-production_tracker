@@ -41,6 +41,19 @@ TIMING_POLICY_DEFAULTS = {
 }
 
 RUN_PROGRESSION = {
+    "ready_to_confirm_biomass": {
+        "label": "Confirm biomass loaded",
+        "description": "Confirm that biomass is loaded in the reactor before beginning the chiller check.",
+        "actions": [{"action_id": "confirm_biomass_loaded", "label": "Confirm Biomass Loaded"}],
+    },
+    "ready_to_check_chiller_temp": {
+        "label": "Check chiller temperature",
+        "description": "Record the actual chiller temperature and confirm it meets the required threshold before vacuum down.",
+        "actions": [
+            {"action_id": "confirm_chiller_temp_met", "label": "Confirm Temperature Met"},
+            {"action_id": "acknowledge_chiller_out_of_spec", "label": "Acknowledge and Proceed Out of Spec"},
+        ],
+    },
     "ready_to_confirm_vacuum": {
         "label": "Confirm vacuum down",
         "description": "Confirm the reactor was vacuumed down before solvent charging begins.",
@@ -154,6 +167,8 @@ RUN_PROGRESSION = {
 }
 
 RUN_STAGE_SEQUENCE = {
+    "ready_to_confirm_biomass": "ready_to_check_chiller_temp",
+    "ready_to_check_chiller_temp": "ready_to_confirm_vacuum",
     "ready_to_confirm_vacuum": "ready_to_record_solvent_charge",
     "ready_to_record_solvent_charge": "ready_to_start_primary_soak",
     "ready_to_start_primary_soak": "ready_to_start_mixer",
@@ -305,7 +320,7 @@ def ensure_booth_session(root, run, charge=None):
         run_id=run.id,
         charge_id=getattr(charge, "id", None),
         operator_user_id=getattr(root.current_user, "id", None),
-        current_stage_key="ready_to_confirm_vacuum",
+        current_stage_key="ready_to_confirm_biomass",
         status="in_progress",
     )
     root.db.session.add(session)
@@ -339,12 +354,32 @@ def _record_booth_event(root, session, *, event_key: str, event_label: str, nume
     return event
 
 
+def _event_payload_dict(root, event) -> dict:
+    raw = getattr(event, "payload_json", None)
+    if not raw:
+        return {}
+    try:
+        parsed = root.json.loads(raw)
+    except Exception:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def extraction_chiller_threshold_c(root) -> float:
+    try:
+        return float(root.SystemSetting.get_float("extraction_chiller_temp_threshold_c", -40.0) or -40.0)
+    except (TypeError, ValueError):
+        return -40.0
+
+
 def booth_session_payload(root, run) -> dict:
     session = getattr(run, "booth_session", None)
     if session is None:
         return {
             "status": "not_started",
-            "current_stage_key": "ready_to_confirm_vacuum",
+            "current_stage_key": "ready_to_confirm_biomass",
+            "chiller_check_actual_temp_c": None,
+            "chiller_out_of_spec": False,
             "primary_solvent_charge_lbs": None,
             "primary_solvent_charged_at": "",
             "flush_solvent_chiller_temp_f": None,
@@ -375,9 +410,13 @@ def booth_session_payload(root, run) -> dict:
         if hasattr(session.booth_events, "order_by")
         else []
     )
+    chiller_check = _booth_event(root, session, "chiller_temperature_checked")
+    chiller_payload = _event_payload_dict(root, chiller_check)
     return {
         "status": session.status,
         "current_stage_key": session.current_stage_key,
+        "chiller_check_actual_temp_c": float(chiller_check.numeric_value or 0) if chiller_check and chiller_check.numeric_value is not None else None,
+        "chiller_out_of_spec": bool(chiller_payload.get("out_of_spec", False)),
         "primary_solvent_charge_lbs": float(session.primary_solvent_charge_lbs or 0) if session.primary_solvent_charge_lbs is not None else None,
         "primary_solvent_charged_at": display_local_datetime(session.primary_solvent_charged_at),
         "flush_solvent_chiller_temp_f": float(session.flush_solvent_chiller_temp_f or 0) if session.flush_solvent_chiller_temp_f is not None else None,
@@ -545,7 +584,7 @@ def _stage_bypass_payload(root, run, stage_key: str) -> dict | None:
 
 
 def _current_progression_stage_key(root, run) -> str:
-    return run_progression_payload(root, run).get("stage_key", "ready_to_confirm_vacuum")
+    return run_progression_payload(root, run).get("stage_key", "ready_to_confirm_biomass")
 
 
 def _allowed_progression_actions_for_stage(root, run, stage_key: str) -> set[str]:
@@ -641,7 +680,7 @@ def run_progression_payload(root, run) -> dict:
     elif run.mixer_ended_at:
         stage_key = "ready_to_confirm_filter_clear"
     else:
-        stage_key = "ready_to_confirm_vacuum"
+        stage_key = "ready_to_confirm_biomass"
     config = dict(RUN_PROGRESSION[stage_key])
     block = None
     if root is not None and run is not None:
@@ -784,7 +823,40 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
     )
     if active_block is not None:
         raise ValueError(active_block["message"])
+    if action == "confirm_biomass_loaded":
+        if _booth_event(root, session, "biomass_loaded_confirmed") is None:
+            _record_booth_event(root, session, event_key="biomass_loaded_confirmed", event_label="Biomass loaded confirmed")
+        session.current_stage_key = "ready_to_check_chiller_temp"
+        return
+    if action in {"confirm_chiller_temp_met", "acknowledge_chiller_out_of_spec"}:
+        raw_chiller_temp = payload.get("chiller_check_actual_temp_c")
+        if raw_chiller_temp in (None, ""):
+            raise ValueError("Enter the actual chiller temperature before continuing.")
+        try:
+            chiller_temp = float(raw_chiller_temp)
+        except (TypeError, ValueError):
+            raise ValueError("Chiller temperature must be a number.")
+        threshold_c = extraction_chiller_threshold_c(root)
+        is_within_spec = chiller_temp <= threshold_c
+        if action == "confirm_chiller_temp_met" and not is_within_spec:
+            raise ValueError(f"Chiller temperature must be at or below {threshold_c:.1f}C before continuing.")
+        if action == "acknowledge_chiller_out_of_spec" and is_within_spec:
+            raise ValueError("Temperature is within spec; use Confirm Temperature Met.")
+        out_of_spec = not is_within_spec
+        _record_booth_event(
+            root,
+            session,
+            event_key="chiller_temperature_checked",
+            event_label="Chiller temperature acknowledged out of spec" if out_of_spec else "Chiller temperature confirmed in spec",
+            numeric_value=chiller_temp,
+            decision_value="out_of_spec" if out_of_spec else "in_spec",
+            payload={"threshold_c": threshold_c, "out_of_spec": out_of_spec},
+        )
+        session.current_stage_key = "ready_to_confirm_vacuum"
+        return
     if action == "confirm_vacuum_down":
+        if _booth_event(root, session, "chiller_temperature_checked") is None:
+            raise ValueError("Confirm the chiller temperature step before vacuum down.")
         if _booth_event(root, session, "reactor_vacuum_confirmed") is None:
             _record_booth_event(root, session, event_key="reactor_vacuum_confirmed", event_label="Reactor vacuum confirmed")
         session.current_stage_key = "ready_to_record_solvent_charge"
@@ -1360,6 +1432,7 @@ BASE_EXECUTION_FIELDS = {
 }
 
 STAGE_EXECUTION_FIELDS = {
+    "ready_to_check_chiller_temp": {"chiller_check_actual_temp_c"},
     "ready_to_record_solvent_charge": {"primary_solvent_charge_lbs"},
     "ready_to_verify_flush_temps": {"flush_solvent_chiller_temp_f", "flush_plate_temp_f", "flush_temp_slack_post_confirmed"},
     "ready_to_record_flush_solvent_charge": {"flush_solvent_charge_lbs"},
@@ -1606,6 +1679,8 @@ def mobile_run_payload(root, run, charge) -> dict:
         "progression": run_progression_payload(root, run),
         "booth": booth_payload,
         "timing_controls": timing_controls,
+        "chiller_check_actual_temp_c": booth_payload["chiller_check_actual_temp_c"],
+        "chiller_out_of_spec": booth_payload["chiller_out_of_spec"],
         "primary_solvent_charge_lbs": booth_payload["primary_solvent_charge_lbs"],
         "wet_hte_g": float(run.wet_hte_g or 0) if run.wet_hte_g is not None else None,
         "wet_thca_g": float(run.wet_thca_g or 0) if run.wet_thca_g is not None else None,

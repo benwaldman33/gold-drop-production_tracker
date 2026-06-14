@@ -257,7 +257,7 @@ def test_mobile_extraction_progression_locks_future_steps_and_supports_manager_b
         )
         assert requested.status_code == 200
         requested_run = requested.get_json()["data"]["run"]
-        assert requested_run["progression"]["stage_key"] == "ready_to_confirm_vacuum"
+        assert requested_run["progression"]["stage_key"] == "ready_to_confirm_biomass"
         assert requested_run["progression"]["bypass"]["status"] == "pending"
 
         unapproved = client.post(
@@ -270,7 +270,7 @@ def test_mobile_extraction_progression_locks_future_steps_and_supports_manager_b
             run = db.session.get(ExtractionCharge, charge_id).run
             row = app_module.SupervisorNotification.query.filter_by(
                 run_id=run.id,
-                dedupe_key="booth_stage_bypass:ready_to_confirm_vacuum",
+                dedupe_key="booth_stage_bypass:ready_to_confirm_biomass",
             ).first()
             assert row is not None
             row.override_decision = "approved_deviation"
@@ -284,7 +284,77 @@ def test_mobile_extraction_progression_locks_future_steps_and_supports_manager_b
             json={"progression_action": "apply_stage_bypass"},
         )
         assert applied.status_code == 200
-        assert applied.get_json()["data"]["run"]["progression"]["stage_key"] == "ready_to_record_solvent_charge"
+        assert applied.get_json()["data"]["run"]["progression"]["stage_key"] == "ready_to_check_chiller_temp"
+
+
+def test_mobile_extraction_requires_biomass_and_chiller_before_vacuum():
+    app = app_module.create_app()
+    _set_mobile_workflows(app)
+    with app.test_client() as client:
+        _login_mobile(client)
+        with app.app_context():
+            supplier = Supplier(name=f"Chiller Flow Supplier {gen_uuid()[:6]}", is_active=True)
+            db.session.add(supplier)
+            db.session.flush()
+            purchase = Purchase(
+                supplier_id=supplier.id,
+                purchase_date=app_module.date.today(),
+                status="delivered",
+                stated_weight_lbs=100,
+                actual_weight_lbs=100,
+                purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            )
+            db.session.add(purchase)
+            db.session.flush()
+            lot = app_module.PurchaseLot(
+                purchase_id=purchase.id,
+                strain_name="Chiller Dream",
+                weight_lbs=100,
+                remaining_weight_lbs=100,
+            )
+            db.session.add(lot)
+            db.session.flush()
+            charge = ExtractionCharge(
+                purchase_lot_id=lot.id,
+                reactor_number=1,
+                charged_weight_lbs=20,
+                source_mode="standalone_extraction",
+            )
+            db.session.add(charge)
+            db.session.commit()
+            charge_id = charge.id
+
+        blocked_vacuum = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={"progression_action": "confirm_vacuum_down"},
+        )
+        assert blocked_vacuum.status_code == 400
+        assert "current step" in blocked_vacuum.get_json()["error"]["message"].lower()
+
+        biomass = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={"progression_action": "confirm_biomass_loaded"},
+        )
+        assert biomass.status_code == 200
+        assert biomass.get_json()["data"]["run"]["progression"]["stage_key"] == "ready_to_check_chiller_temp"
+
+        temp_too_warm = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={"chiller_check_actual_temp_c": -35, "progression_action": "confirm_chiller_temp_met"},
+        )
+        assert temp_too_warm.status_code == 400
+        assert "at or below" in temp_too_warm.get_json()["error"]["message"].lower()
+
+        acknowledged = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={"chiller_check_actual_temp_c": -35, "progression_action": "acknowledge_chiller_out_of_spec"},
+        )
+        assert acknowledged.status_code == 200
+        run_payload = acknowledged.get_json()["data"]["run"]
+        assert run_payload["progression"]["stage_key"] == "ready_to_confirm_vacuum"
+        assert run_payload["chiller_check_actual_temp_c"] == -35.0
+        assert run_payload["chiller_out_of_spec"] is True
+
 
 def test_mobile_extraction_run_exception_handling_loops():
     app = app_module.create_app()
@@ -332,6 +402,8 @@ def test_mobile_extraction_run_exception_handling_loops():
             charge_id = charge.id
 
         sequence = [
+            {"progression_action": "confirm_biomass_loaded"},
+            {"chiller_check_actual_temp_c": -40, "progression_action": "confirm_chiller_temp_met"},
             {"progression_action": "confirm_vacuum_down"},
             {"primary_solvent_charge_lbs": 500, "progression_action": "record_solvent_charge"},
             {"progression_action": "start_primary_soak"},
@@ -491,6 +563,8 @@ def test_mobile_extraction_timing_policy_can_require_supervisor_override():
             charge_id = charge.id
 
         sequence = [
+            {"progression_action": "confirm_biomass_loaded"},
+            {"chiller_check_actual_temp_c": -40, "progression_action": "confirm_chiller_temp_met"},
             {"progression_action": "confirm_vacuum_down"},
             {"primary_solvent_charge_lbs": 500, "progression_action": "record_solvent_charge"},
             {"progression_action": "start_primary_soak", "primary_soak_short_reason": "Training override prep."},
@@ -1395,7 +1469,7 @@ def test_mobile_extraction_run_execution_flow():
             assert run_payload["run"]["run_fill_started_at"] == ""
             assert run_payload["run"]["reactor_number"] == 1
             assert run_payload["run"]["bio_in_reactor_lbs"] == 50.0
-            assert run_payload["run"]["progression"]["stage_key"] == "ready_to_confirm_vacuum"
+            assert run_payload["run"]["progression"]["stage_key"] == "ready_to_confirm_biomass"
             assert run_payload["run"]["biomass_blend_milled_pct"] == 50.0
             assert run_payload["run"]["biomass_blend_unmilled_pct"] == 50.0
             assert run_payload["run"]["fill_count"] == 2
@@ -1407,11 +1481,29 @@ def test_mobile_extraction_run_execution_flow():
             assert run_payload["run"]["inherited"]["tracking_id"]
             assert run_payload["run"]["post_extraction"]["stage_key"] == "blocked_until_run_complete"
             assert run_payload["run"]["post_extraction_pathway_options"]
-            assert run_payload["run"]["booth"]["current_stage_key"] == "ready_to_confirm_vacuum"
+            assert run_payload["run"]["booth"]["current_stage_key"] == "ready_to_confirm_biomass"
             assert run_payload["run"]["booth"]["timing_targets"]["primary_soak_minutes"] == 30
             assert run_payload["run"]["booth"]["timing_targets"]["mixer_minutes"] == 5
             assert run_payload["run"]["booth"]["timing_targets"]["flush_minutes"] == 10
             assert run_payload["run"]["timing_controls"]["primary_soak"]["status"] == "not_started"
+
+            confirm_biomass = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={"progression_action": "confirm_biomass_loaded"},
+            )
+            assert confirm_biomass.status_code == 200
+            biomass_confirmed = confirm_biomass.get_json()["data"]["run"]
+            assert biomass_confirmed["progression"]["stage_key"] == "ready_to_check_chiller_temp"
+
+            confirm_chiller = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={"chiller_check_actual_temp_c": -40, "progression_action": "confirm_chiller_temp_met"},
+            )
+            assert confirm_chiller.status_code == 200
+            chiller_confirmed = confirm_chiller.get_json()["data"]["run"]
+            assert chiller_confirmed["progression"]["stage_key"] == "ready_to_confirm_vacuum"
+            assert chiller_confirmed["chiller_check_actual_temp_c"] == -40.0
+            assert chiller_confirmed["chiller_out_of_spec"] is False
 
             confirm_vacuum = client.post(
                 f"/api/mobile/v1/extraction/charges/{charge_id}/run",

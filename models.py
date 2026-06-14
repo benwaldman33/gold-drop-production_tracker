@@ -685,7 +685,7 @@ class ExtractionBoothSession(db.Model):
     operator_user_id = db.Column(db.String(36), db.ForeignKey("users.id"))
     started_at = db.Column(db.DateTime, default=utc_now, nullable=False)
     completed_at = db.Column(db.DateTime)
-    current_stage_key = db.Column(db.String(64), nullable=False, default="ready_to_confirm_vacuum")
+    current_stage_key = db.Column(db.String(64), nullable=False, default="ready_to_confirm_biomass")
     status = db.Column(db.String(20), nullable=False, default="in_progress")
     sop_version = db.Column(db.String(32), nullable=False, default="extraction_booth_v1")
     primary_solvent_charge_lbs = db.Column(db.Float)
