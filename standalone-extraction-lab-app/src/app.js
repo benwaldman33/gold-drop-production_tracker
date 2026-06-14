@@ -960,7 +960,6 @@ function renderGuidedDownstreamWorkflow(run) {
           <h3>Work top to bottom and save as you move.</h3>
         </div>
       </div>
-      ${pathway ? `<input type="hidden" name="post_extraction_pathway" value="${escapeHtml(pathway)}" />` : ""}
       <div class="workflow-grid">${steps.join("")}</div>
     </section>
   `;
@@ -1446,6 +1445,7 @@ function renderRunExecutionOperator(run, lot) {
 
       <form class="operator-focus-card" data-form="run-execution">
         <input type="hidden" name="run_completed_at" value="${escapeHtml(run.run_completed_at || "")}" />
+        <input type="hidden" name="post_extraction_pathway" value="${escapeHtml(run.post_extraction_pathway || "")}" />
 
         ${renderBlockerCard(state.blockingError)}
 
