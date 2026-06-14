@@ -1214,14 +1214,14 @@ function renderCheckpointInputs(run) {
         value="${escapeHtml(String(booth.flush_solvent_charge_lbs ?? ""))}" min="0" step="0.1" placeholder="500" /></div>`,
     ready_to_confirm_flow_resumed: `
       <div class="field"><label>Flow Resumed</label>
-      ${renderChoiceButtons("flow_resumed_decision", booth.flow_resumed_decision || "", [
+      ${renderChoiceButtons("flow_resumed_decision", run.flow_resumed_decision || booth.flow_resumed_decision || "", [
         { value: "", label: "Not set" }, { value: "yes", label: "Yes" }, { value: "no_adjusting", label: "Still adjusting" },
       ])}</div>
       <div class="field"><label for="flow_adjustment_reason">Reason if still adjusting</label>
       <textarea id="flow_adjustment_reason" name="flow_adjustment_reason" rows="2"></textarea></div>`,
     ready_to_confirm_clarity: `
       <div class="field"><label>Final Clarity</label>
-      ${renderChoiceButtons("final_clarity_decision", booth.final_clarity_decision || "", [
+      ${renderChoiceButtons("final_clarity_decision", run.final_clarity_decision || booth.final_clarity_decision || "", [
         { value: "", label: "Not set" }, { value: "yes", label: "Clear enough" }, { value: "not_yet", label: "Not yet" },
       ])}</div>
       <div class="field"><label for="final_clarity_reason">Reason if not clear</label>
@@ -1717,16 +1717,13 @@ function syncRunDraftFromForm() {
 
 // Fields that gate UI visibility — when these change we need a full re-render
 // so dependent buttons (like Start Post-Extraction) appear or disappear.
+// Only fields whose value change must immediately re-render gated UI elements.
+// Specifically: post_extraction_pathway gates the "Start Post-Extraction" button.
+// Choice fields like flow_resumed_decision do NOT gate any button visibility —
+// they only need to reach the form payload, so they stay out of this set.
+// Keeping this set minimal prevents render() from clobbering live input values.
 const RENDER_ON_CHANGE_FIELDS = new Set([
-  "chiller_check_actual_temp_c",
   "post_extraction_pathway",
-  "flow_resumed_decision",
-  "final_clarity_decision",
-  "thca_destination",
-  "hte_clean_decision",
-  "hte_filter_outcome",
-  "hte_potency_disposition",
-  "hte_queue_destination",
 ]);
 
 function handleSetFieldValue(event) {
@@ -1743,7 +1740,12 @@ function handleSetFieldValue(event) {
     render(); // Re-render so gated UI updates (e.g. Start Post-Extraction button)
     return;   // render() + bind() already re-attached all listeners; we're done
   }
-  // For non-gating fields, just toggle active state visually — no re-render needed
+  // For non-gating fields: update state.run so value survives re-renders,
+  // then toggle button visuals without re-rendering the whole DOM.
+  // Do NOT call render() here — it destroys live input values the user typed.
+  if (state.run) {
+    state.run = { ...state.run, [field]: value };
+  }
   scope
     ?.querySelectorAll(`[data-action='set-field'][data-field='${field}']`)
     .forEach((button) => {
