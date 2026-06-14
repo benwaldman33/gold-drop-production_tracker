@@ -14,6 +14,7 @@ export function parseRoute(hash) {
   if (parts[0] === "lots" && parts[1] && parts[2] === "charge") return { name: "charge", id: parts[1] };
   if (parts[0] === "lots" && parts[1]) return { name: "lot", id: parts[1] };
   if (parts[0] === "lots") return { name: "lots", query: query.get("q") || "" };
+  if (parts[0] === "settings") return { name: "settings" };
   return { name: "home" };
 }
 

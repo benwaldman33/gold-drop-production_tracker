@@ -168,8 +168,21 @@ function progressionForRun(run) {
       completed_at: "",
     };
   }
-  const stageKey = run.booth_stage_key || "ready_to_confirm_vacuum";
+  const stageKey = run.booth_stage_key || "ready_to_confirm_biomass";
   const config = {
+    ready_to_confirm_biomass: {
+      stage_label: "Confirm biomass loaded",
+      description: "Confirm that biomass is loaded in the reactor before beginning the chiller check.",
+      actions: [{ action_id: "confirm_biomass_loaded", label: "Confirm Biomass Loaded" }],
+    },
+    ready_to_check_chiller_temp: {
+      stage_label: "Check chiller temperature",
+      description: "Record the actual chiller temperature and confirm it meets the required threshold before solvent charging.",
+      actions: [
+        { action_id: "confirm_chiller_temp_met", label: "Confirm Temperature Met" },
+        { action_id: "acknowledge_chiller_out_of_spec", label: "Acknowledge and Proceed Out of Spec" },
+      ],
+    },
     ready_to_confirm_vacuum: {
       stage_label: "Confirm vacuum down",
       description: "Confirm the reactor was vacuumed down before solvent charging begins.",
@@ -281,8 +294,8 @@ function progressionForRun(run) {
     };
   }
   return {
-    stage_key: "ready_to_confirm_vacuum",
-    stage_label: "Confirm vacuum down",
+    stage_key: "ready_to_confirm_biomass",
+    stage_label: "Confirm biomass loaded",
     description: "Confirm the reactor was vacuumed down before solvent charging begins.",
     actions: [{ action_id: "confirm_vacuum_down", label: "Confirm Vacuum Down" }],
     completed_at: "",
@@ -370,6 +383,45 @@ function downstreamForRun(run) {
 
 function applyMockProgressionAction(run, action) {
   const now = nowLocalInputValue();
+  // Default chiller threshold used in mock — matches main app default
+  const CHILLER_TEMP_THRESHOLD_C = -40;
+
+  if (action === "confirm_biomass_loaded") {
+    if (!run.biomass_confirmed_at) run.biomass_confirmed_at = now;
+    run.booth_stage_key = "ready_to_check_chiller_temp";
+    run.booth_history = [{ event_label: "Biomass confirmed loaded in reactor", occurred_at: now }, ...(run.booth_history || [])];
+    return;
+  }
+  if (action === "confirm_chiller_temp_met" || action === "acknowledge_chiller_out_of_spec") {
+    const actualTempC = Number(run.chiller_check_actual_temp_c ?? "");
+    if (!Number.isFinite(actualTempC) || run.chiller_check_actual_temp_c === "" || run.chiller_check_actual_temp_c === null || run.chiller_check_actual_temp_c === undefined) {
+      throw new Error("Enter the actual chiller temperature before confirming.");
+    }
+    const threshold = CHILLER_TEMP_THRESHOLD_C;
+    const met = actualTempC <= threshold;
+    const outOfSpec = !met;
+    if (action === "confirm_chiller_temp_met" && outOfSpec) {
+      throw new Error(`Chiller temperature (${actualTempC.toFixed(1)}°C) has not met the ${threshold}°C threshold. Use 'Acknowledge and Proceed Out of Spec' if you must continue anyway.`);
+    }
+    if (action === "acknowledge_chiller_out_of_spec" && met) {
+      throw new Error(`Chiller temperature (${actualTempC.toFixed(1)}°C) has already met the ${threshold}°C threshold. Use 'Confirm Temperature Met' instead.`);
+    }
+    run.chiller_check_met_threshold = met;
+    run.chiller_check_threshold_c = threshold;
+    run.chiller_out_of_spec = outOfSpec;
+    if (!run.chiller_check_confirmed_at) run.chiller_check_confirmed_at = now;
+    run.booth_stage_key = "ready_to_confirm_vacuum";
+    const eventLabel = outOfSpec
+      ? `Chiller temp checked: ${actualTempC.toFixed(1)}°C (out of spec — operator acknowledged)`
+      : `Chiller temp checked: ${actualTempC.toFixed(1)}°C (threshold met)`;
+    run.booth_history = [{ event_label: eventLabel, occurred_at: now }, ...(run.booth_history || [])];
+    // In production this fires a Slack notification via create_notification() server-side.
+    // In the mock we log it so developers can see it would fire.
+    if (outOfSpec) {
+      console.warn(`[MOCK] Supervisor notification: chiller out of spec at ${actualTempC.toFixed(1)}°C (threshold: ${threshold}°C). Reactor ${run.reactor_number}.`);
+    }
+    return;
+  }
   if (action === "confirm_vacuum_down") {
     run.booth_stage_key = "ready_to_record_solvent_charge";
     run.booth_history = [{ event_label: "Reactor vacuum confirmed", occurred_at: now }, ...(run.booth_history || [])];

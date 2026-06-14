@@ -155,6 +155,7 @@ function shell(content) {
             <a href="#/scan" class="${state.route.name === "scan" ? "active" : ""}">Scan / Enter Lot <small>Fast entry</small></a>
             <a href="#/reactors" class="${state.route.name === "reactors" ? "active" : ""}">Reactors <small>Control board</small></a>
             <a href="#/lots" class="${["lots", "lot", "charge"].includes(state.route.name) ? "active" : ""}">Lots <small>Charge queue</small></a>
+            <a href="${isAdmin() ? "#/settings" : "javascript:void(0)"}" class="${state.route.name === "settings" ? "active" : ""}" style="${isAdmin() ? "" : "opacity:0.45;pointer-events:none;"}">Settings <small>${isAdmin() ? "Admin" : "Locked"}</small></a>
           </nav>
           <div class="user-card">
             <strong>${escapeHtml(state.auth.user?.display_name || state.auth.user?.username || "")}</strong>
@@ -207,6 +208,7 @@ function renderContent() {
   if (state.route.name === "lot") return renderLotDetail();
   if (state.route.name === "charge") return renderChargeForm();
   if (state.route.name === "run") return renderRunExecution();
+  if (state.route.name === "settings") return renderSettings();
   return `<div class="empty">Page not found.</div>`;
 }
 
@@ -984,6 +986,11 @@ function isSupervisor() {
   return ["manager", "supervisor", "admin", "vp_operations"].includes(role);
 }
 
+function isAdmin() {
+  const role = String(state.auth.user?.role || "").toLowerCase();
+  return ["admin", "super_admin", "vp_operations"].includes(role);
+}
+
 // ---------------------------------------------------------------------------
 // STAGE SEQUENCE — ordered list used to derive "what comes next"
 // Mirrors the stage order in progressionForRun() in api.js.
@@ -991,6 +998,8 @@ function isSupervisor() {
 // ---------------------------------------------------------------------------
 
 const STAGE_SEQUENCE = [
+  { key: "ready_to_confirm_biomass",         label: "Confirm biomass loaded",        phase: "primary", timer: null },
+  { key: "ready_to_check_chiller_temp",      label: "Check chiller temperature",     phase: "primary", timer: null },
   { key: "ready_to_confirm_vacuum",          label: "Confirm vacuum down",          phase: "primary", timer: null },
   { key: "ready_to_record_solvent_charge",   label: "Record solvent charge",         phase: "primary", timer: null },
   { key: "ready_to_start_primary_soak",      label: "Start primary soak",            phase: "primary", timer: null },
@@ -1032,6 +1041,8 @@ const BLOCKER_MAP = [
   // Each entry matches a substring of the error message (case-insensitive)
   // and maps it to the stage that needs to be completed to unblock.
   // More specific strings must come before broader ones.
+  { match: "biomass",                                  stageKey: "ready_to_confirm_biomass",              label: "Confirm Biomass Loaded",        actionId: "confirm_biomass_loaded" },
+  { match: "chiller temperature",                      stageKey: "ready_to_check_chiller_temp",            label: "Check Chiller Temperature",     actionId: "confirm_chiller_temp_met" },
   { match: "vacuum",                                   stageKey: "ready_to_confirm_vacuum",               label: "Confirm Vacuum Down",          actionId: "confirm_vacuum_down" },
   { match: "primary solvent charge before",            stageKey: "ready_to_record_solvent_charge",        label: "Record Solvent Charge",        actionId: "record_solvent_charge" },
   { match: "enter the primary solvent charge",         stageKey: "ready_to_record_solvent_charge",        label: "Record Solvent Charge",        actionId: "record_solvent_charge" },
@@ -1159,6 +1170,17 @@ function renderCheckpointInputs(run) {
   const stageKey = resolvedStageKey(run);
   const booth = run.booth || {};
   const map = {
+    ready_to_confirm_biomass: `
+      <div class="notice" style="margin-bottom:4px;">Confirm that biomass is physically loaded in the reactor before proceeding.</div>`,
+    ready_to_check_chiller_temp: `
+      <div class="field">
+        <label for="chiller_check_actual_temp_c">Actual Chiller Temperature (°C)</label>
+        <input id="chiller_check_actual_temp_c" name="chiller_check_actual_temp_c" type="number"
+          value="${escapeHtml(String(run.chiller_check_actual_temp_c ?? ""))}"
+          step="0.1" placeholder="-40 or below" />
+      </div>
+      ${run.chiller_out_of_spec ? `
+        <div class="notice warning">⚠ This run proceeded out of spec. Supervisor has been notified.</div>` : ""}`,
     ready_to_start_mixer: `
       <div class="field"><label for="primary_soak_short_reason">Reason if starting mixer early</label>
       <textarea id="primary_soak_short_reason" name="primary_soak_short_reason" rows="2"></textarea></div>`,
@@ -1451,6 +1473,7 @@ function renderRunExecutionOperator(run, lot) {
       <form class="operator-focus-card" data-form="run-execution">
         <input type="hidden" name="run_completed_at" value="${escapeHtml(run.run_completed_at || "")}" />
         <input type="hidden" name="post_extraction_pathway" value="${escapeHtml(run.post_extraction_pathway || "")}" />
+        <input type="hidden" name="chiller_check_actual_temp_c" value="${escapeHtml(String(run.chiller_check_actual_temp_c ?? ""))}" />
 
         ${renderBlockerCard(state.blockingError)}
 
@@ -1523,6 +1546,51 @@ function renderRunExecutionOperator(run, lot) {
 }
 
 // ---------------------------------------------------------------------------
+// SETTINGS PANEL — admin only
+// ---------------------------------------------------------------------------
+
+function renderSettings() {
+  if (!isAdmin()) {
+    return `
+      <div class="layout-grid">
+        <div class="card" style="padding:24px;text-align:center;">
+          <div class="eyebrow" style="margin-bottom:8px;">Settings</div>
+          <p>Settings are managed by administrators.</p>
+        </div>
+      </div>`;
+  }
+  const threshold = state.settings?.chiller_temp_threshold_c ?? -40;
+  const saved = state.settings?.saved;
+  return `
+    <div class="layout-grid">
+      <div class="topbar">
+        <div><h2>Settings</h2><div class="meta">Extraction Lab — Admin</div></div>
+      </div>
+      ${saved ? `<div class="notice good">Settings saved.</div>` : ""}
+      <form class="card" data-form="settings" style="display:grid;gap:20px;padding:24px;">
+        <section style="display:grid;gap:14px;">
+          <div class="eyebrow">Pre-Extraction Safety Thresholds</div>
+          <div class="field">
+            <label for="chiller_temp_threshold_c">Chiller Temperature Threshold (°C)</label>
+            <input id="chiller_temp_threshold_c" name="chiller_temp_threshold_c"
+              type="number" step="0.5" placeholder="-40"
+              value="${escapeHtml(String(threshold))}" />
+            <div class="subtle" style="margin-top:6px;">
+              Operators must confirm the chiller is at or below this temperature before solvent charging.
+              Default: −40°C. If an operator proceeds above this threshold, a critical supervisor
+              notification is sent automatically via Slack.
+            </div>
+          </div>
+        </section>
+        <div class="actions">
+          <button class="btn btn-primary" type="submit">${state.loading ? "Saving..." : "Save Settings"}</button>
+        </div>
+      </form>
+    </div>
+  `;
+}
+
+// ---------------------------------------------------------------------------
 // MAIN ENTRY POINT — routes to operator or supervisor view based on role
 // ---------------------------------------------------------------------------
 
@@ -1541,6 +1609,7 @@ function bind() {
   app?.querySelector("form[data-form='scan-lookup']")?.addEventListener("submit", handleScanLookup);
   app?.querySelector("form[data-form='charge']")?.addEventListener("submit", handleChargeSubmit);
   app?.querySelector("form[data-form='run-execution']")?.addEventListener("submit", handleRunSubmit);
+  app?.querySelector("form[data-form='settings']")?.addEventListener("submit", handleSettingsSubmit);
   app?.querySelector("form[data-form='downstream-workflow']")?.addEventListener("submit", handleDownstreamSubmit);
   app?.querySelectorAll("form[data-form='run-evidence']").forEach((form) => form.addEventListener("submit", handleRunEvidenceSubmit));
   app?.querySelectorAll("[data-action='adjust-weight']").forEach((button) => button.addEventListener("click", handleWeightAdjust));
@@ -1649,6 +1718,7 @@ function syncRunDraftFromForm() {
 // Fields that gate UI visibility — when these change we need a full re-render
 // so dependent buttons (like Start Post-Extraction) appear or disappear.
 const RENDER_ON_CHANGE_FIELDS = new Set([
+  "chiller_check_actual_temp_c",
   "post_extraction_pathway",
   "flow_resumed_decision",
   "final_clarity_decision",
@@ -1791,6 +1861,28 @@ async function handleChargeSubmit(event) {
   }
 }
 
+async function handleSettingsSubmit(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const rawThreshold = String(form.get("chiller_temp_threshold_c") || "").trim();
+  const threshold = parseFloat(rawThreshold);
+  if (!Number.isFinite(threshold)) {
+    showToast("Enter a valid temperature threshold.");
+    return;
+  }
+  if (threshold > 0) {
+    showToast("Threshold must be 0°C or below (chiller temperatures are negative).");
+    return;
+  }
+  // Persist in state.settings — in production this calls an API endpoint
+  // that updates SystemSetting('extraction_chiller_temp_threshold_c').
+  state.settings = { ...(state.settings || {}), chiller_temp_threshold_c: threshold, saved: true };
+  // Also update auth.site so the mock api.js picks it up
+  if (state.auth.site) state.auth.site.chiller_temp_threshold_c = threshold;
+  showToast(`Chiller threshold set to ${threshold}°C.`);
+  render();
+}
+
 async function handleRunSubmit(event) {
   event.preventDefault();
   if (!state.route.chargeId) return;
@@ -1895,6 +1987,7 @@ function buildRunPayload(form, progressionAction = "") {
     flush_started_at: field("flush_started_at"),
     flush_ended_at: field("flush_ended_at"),
     run_completed_at: field("run_completed_at"),
+    chiller_check_actual_temp_c: field("chiller_check_actual_temp_c"),
     primary_solvent_charge_lbs: field("primary_solvent_charge_lbs"),
     flush_solvent_chiller_temp_f: field("flush_solvent_chiller_temp_f"),
     flush_plate_temp_f: field("flush_plate_temp_f"),
