@@ -1639,11 +1639,20 @@ function syncRunDraftFromForm() {
     ...state.run,
     ...buildRunPayload(new FormData(formEl)),
   };
-  // Re-render so UI gates (e.g. pathway-dependent buttons) update immediately.
-  // Without this, choice button taps update state.run but the DOM stays stale
-  // until the next unrelated event triggers a render.
-  render();
 }
+
+// Fields that gate UI visibility — when these change we need a full re-render
+// so dependent buttons (like Start Post-Extraction) appear or disappear.
+const RENDER_ON_CHANGE_FIELDS = new Set([
+  "post_extraction_pathway",
+  "flow_resumed_decision",
+  "final_clarity_decision",
+  "thca_destination",
+  "hte_clean_decision",
+  "hte_filter_outcome",
+  "hte_potency_disposition",
+  "hte_queue_destination",
+]);
 
 function handleSetFieldValue(event) {
   const field = event.currentTarget.dataset.field;
@@ -1652,6 +1661,14 @@ function handleSetFieldValue(event) {
   const input = scope?.querySelector(`[name='${field}']`);
   if (!input) return;
   input.value = value;
+  // Update state.run with the new value so render() reads it correctly.
+  // Must happen before render() below, otherwise the re-render reads stale state.
+  if (state.run && RENDER_ON_CHANGE_FIELDS.has(field)) {
+    state.run = { ...state.run, [field]: value };
+    render(); // Re-render so gated UI updates (e.g. Start Post-Extraction button)
+    return;   // render() + bind() already re-attached all listeners; we're done
+  }
+  // For non-gating fields, just toggle active state visually — no re-render needed
   scope
     ?.querySelectorAll(`[data-action='set-field'][data-field='${field}']`)
     .forEach((button) => {
