@@ -902,7 +902,7 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
         session.current_stage_key = "ready_to_start_primary_soak"
         return
     if action == "start_primary_soak":
-        if _booth_event(root, session, "reactor_pressurized_50psi") is None:
+        if (session.current_stage_key or "").strip() != "ready_to_start_primary_soak":
             raise ValueError("Confirm reactor pressurized to 50 PSI before starting the soak.")
         if run.run_fill_started_at is None:
             run.run_fill_started_at = now
