@@ -1510,7 +1510,6 @@ function renderRunExecutionOperator(run, lot) {
 
       ${run.run_completed_at ? `
         <div class="card" style="padding:20px;">
-          ${renderPostExtractionProgression(run)}
           ${renderGuidedDownstreamWorkflow(run)}
         </div>` : ""}
 
