@@ -266,7 +266,7 @@ Pilot-hardening additions:
 - guided downstream workflow rendering is client-side in `standalone-extraction-lab-app/src/app.js`:
   - Step 1: `post_extraction_pathway`
   - Step 2: start post-extraction (`start_post_extraction`) with optional **Undo Session Start** before initial outputs are confirmed
-  - Step 3: wet THCA / wet HTE plus `confirm_initial_outputs`
+  - Step 3: wet THCA / wet HTE plus `confirm_initial_outputs`; operators can also use `Save Updates` to persist typed wet-output edits without confirming the step yet
   - Steps 4+: pathway-specific pot-pour or minor-run fields saved through the same run payload
   - pending and completed steps collapse to headers only; current / ready steps expose their bodies
 - choice-button fields that gate later UI (`post_extraction_pathway`, `flow_resumed_decision`, `final_clarity_decision`, THCA / HTE decision fields) trigger an immediate re-render so dependent buttons appear without a separate save

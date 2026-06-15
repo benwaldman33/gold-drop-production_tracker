@@ -455,7 +455,7 @@ Those actions write the matching timestamps and booth checkpoints automatically.
 
 Mixer timing controls now have explicit safety alerts during primary extraction: start the mixer within 3 minutes after `Start Primary Soak`, run for approximately 5 minutes, and stop with `Stop Mixer`. If mixer start is delayed beyond 3 minutes or runtime exceeds 6 minutes, supervisors receive a critical alert. If that critical alert is still unacknowledged after another 3 minutes, the system raises an emergency-class escalation notification for Slack emergency-channel delivery.
 
-After **Mark Run Complete**, the **Guided downstream workflow** section appears on the same screen inside the run form. You do not need the page-level **Save** button during post-extraction — use the step buttons in the guided workflow instead.
+After **Mark Run Complete**, the **Guided downstream workflow** section appears on the same screen inside the run form. During post-extraction, use the guided step buttons when possible, and use **Save Updates** when you need to persist edits before confirming a step.
 
 ### Guided downstream workflow on the iPad
 
@@ -466,6 +466,7 @@ Work top to bottom through these steps:
 1. **Choose the downstream pathway** — tap `100 lb pot pour` or `200 lb minor run`. The choice saves immediately.
 2. **Start post-extraction** — after a pathway is selected, tap `Start Post-Extraction`. If you started too early, use **Undo Session Start** on this step before initial outputs are confirmed.
 3. **Confirm the initial wet outputs** — in **Step 3 — Initial wet outputs**, enter both **Wet THCA (g)** and **Wet HTE (g)**, then tap **Confirm Initial Outputs**. This is the natural end of the opening post-extraction handoff.
+   - If you are still collecting values and are not ready to confirm, tap **Save Updates** to persist the wet-output edits first.
 4. **Follow the branch-specific steps**:
    - `100 lb pot pour`: warm off-gas, daily stir count, centrifuge handoff
    - `200 lb minor run`: THCA branch, then HTE branch
@@ -625,7 +626,7 @@ After **Mark Run Complete**, scroll to the **Guided downstream workflow** sectio
 
 3. **Step 3 — Initial wet outputs**
    - Enter `Wet HTE (g)` and `Wet THCA (g)`
-   - Tap **Confirm Initial Outputs**
+   - Tap **Confirm Initial Outputs** (or **Save Updates** to persist changes before confirmation)
    - Both wet output fields are required before confirmation.
    - The run stores the downstream start time and the initial-output confirmation time.
 

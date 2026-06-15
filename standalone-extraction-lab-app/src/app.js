@@ -962,6 +962,9 @@ function renderGuidedDownstreamWorkflow(run) {
         <label for="post_extraction_initial_outputs_recorded_at">Confirmed At</label>
         <input id="post_extraction_initial_outputs_recorded_at" name="post_extraction_initial_outputs_recorded_at" type="datetime-local" value="${escapeHtml(run.post_extraction_initial_outputs_recorded_at || "")}" />
       </div>
+      <div class="notice" style="margin-top:10px;">
+        Wet output edits are not saved until you tap <strong>Save Updates</strong> or <strong>Confirm Initial Outputs</strong>.
+      </div>
       ${confirmAction ? `<button class="btn btn-primary" type="button" data-action="post-extraction-progression" data-post-action="${escapeHtml(confirmAction.action_id)}">${escapeHtml(confirmAction.label)}</button>` : `<div class="subtle">Initial outputs are already confirmed.</div>`}
     `,
   );
@@ -1545,7 +1548,7 @@ function renderRunExecutionSupervisor(run, lot) {
         <div class="actions sticky-actions">
           <a class="btn btn-secondary" href="#/reactors">Back to Reactors</a>
           <a class="btn btn-secondary" href="${escapeHtml(run.open_main_app_url || "#")}">Open in Main App</a>
-          ${run.run_completed_at ? "" : `<button class="btn btn-primary" type="submit">${state.loading ? "Saving..." : "Save Run"}</button>`}
+          <button class="btn btn-primary" type="submit">${state.loading ? "Saving..." : run.run_completed_at ? "Save Updates" : "Save Run"}</button>
         </div>
       </form>
       ${renderBoothEvidence(run)}
@@ -1669,6 +1672,9 @@ function renderRunExecutionOperator(run, lot) {
         ${run.run_completed_at ? `
           <div class="card" style="padding:20px;margin-top:14px;">
             ${renderGuidedDownstreamWorkflow(run)}
+            <div class="actions" style="margin-top:14px;">
+              <button class="btn btn-secondary" type="submit">${state.loading ? "Saving..." : "Save Updates"}</button>
+            </div>
           </div>
           ${renderReactorEmptiedAction(state.charge)}` : `
           <div class="operator-save-bar">

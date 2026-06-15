@@ -520,7 +520,7 @@ Use `Request Manager Bypass` on the active checkpoint. The operator must enter a
 
 ## What happens after I mark the extraction run complete?
 
-Phase 1 of post-extraction now begins on the same run screen. After completion, open the **Guided downstream workflow** section, choose the downstream pathway (`100 lb pot pour` or `200 lb minor run`), tap `Start Post-Extraction`, enter wet THCA / wet HTE in **Step 3 — Initial wet outputs**, then tap `Confirm Initial Outputs`.
+Phase 1 of post-extraction now begins on the same run screen. After completion, open the **Guided downstream workflow** section, choose the downstream pathway (`100 lb pot pour` or `200 lb minor run`), tap `Start Post-Extraction`, enter wet THCA / wet HTE in **Step 3 — Initial wet outputs**, then tap `Confirm Initial Outputs` (or `Save Updates` if you need to save edits before confirming).
 
 ## Why won’t the app let me start post-extraction yet?
 
@@ -532,7 +532,7 @@ You must first start the post-extraction session and enter both `Wet THCA (g)` a
 
 ## Where do I enter the wet THCA and wet HTE outputs on the iPad?
 
-After you tap `Start Post-Extraction`, scroll to the **Guided downstream workflow** section and open **Step 3 — Initial wet outputs**. That step is marked **Current** once the session has started. Enter both weights there, then tap `Confirm Initial Outputs`.
+After you tap `Start Post-Extraction`, scroll to the **Guided downstream workflow** section and open **Step 3 — Initial wet outputs**. That step is marked **Current** once the session has started. Enter both weights there, then tap `Confirm Initial Outputs` (or `Save Updates` to persist the edit without confirming yet).
 
 ## Can I undo a post-extraction session start?
 
