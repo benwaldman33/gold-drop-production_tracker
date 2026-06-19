@@ -46,7 +46,7 @@ LAUNCH_READINESS_DEFAULT_ITEMS = (
         "classification": "launch_blocker",
         "status": "not_started",
         "owner": "Inventory lead",
-        "notes": "Confirm receipt, photos, labels, scans, inventory review, and charge handoff.",
+        "notes": "Confirm receipt, photos, labels, scans, inventory review, and load handoff.",
     },
     {
         "key": "extraction_sop_acceptance",
@@ -55,7 +55,7 @@ LAUNCH_READINESS_DEFAULT_ITEMS = (
         "classification": "launch_blocker",
         "status": "not_started",
         "owner": "Extraction lead",
-        "notes": "Run a realistic charge through standalone extraction, booth SOP, exceptions, evidence, and completion.",
+        "notes": "Run a realistic load through standalone extraction, booth SOP, exceptions, evidence, and completion.",
     },
     {
         "key": "supervisor_downstream_acceptance",

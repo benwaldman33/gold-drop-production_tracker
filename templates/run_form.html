@@ -43,15 +43,15 @@
     {% if scan_meta and scan_meta.tracking_id %}
     <div class="flash flash-success" style="margin-bottom:16px;">
       {% if scan_meta.charge_id %}
-      <strong>Extraction charge recorded:</strong> lot <strong>{{ scan_meta.tracking_id }}</strong> is preloaded from a saved charge event.
+      <strong>Extraction load recorded:</strong> lot <strong>{{ scan_meta.tracking_id }}</strong> is preloaded from a saved load event.
       <span class="text-sm" style="display:block;margin-top:6px;color:var(--text-muted);">
         {{ "{:,.1f}".format(scan_meta.planned_weight_lbs or 0) }} lbs into Reactor {{ scan_meta.reactor_number or '?' }}
-        {% if scan_meta.charged_at_label %}&middot; charged {{ scan_meta.charged_at_label }}{% endif %}
+        {% if scan_meta.charged_at_label %}&middot; loaded {{ scan_meta.charged_at_label }}{% endif %}
         {% if scan_meta.charge_source_mode %}&middot; source {{ scan_meta.charge_source_mode.replace('_', ' ') }}{% endif %}
       </span>
       {% if scan_meta.charge_notes %}
       <span class="text-sm" style="display:block;margin-top:6px;color:var(--text-muted);">
-        Charge notes: {{ scan_meta.charge_notes }}
+        Load notes: {{ scan_meta.charge_notes }}
       </span>
       {% endif %}
       {% elif scan_meta.run_start_mode == 'full_remaining' %}

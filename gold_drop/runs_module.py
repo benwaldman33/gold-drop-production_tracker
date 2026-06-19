@@ -492,7 +492,7 @@ def save_run(root, existing_run):
             charge = root.db.session.get(root.ExtractionCharge, scan_meta["charge_id"])
             if charge is not None:
                 if charge.run_id and charge.run_id != run.id:
-                    raise ValueError("This extraction charge is already linked to another run.")
+                    raise ValueError("This extraction load is already linked to another run.")
                 charge.run_id = run.id
                 if (charge.status or "pending").strip() == "pending":
                     update_charge_state(

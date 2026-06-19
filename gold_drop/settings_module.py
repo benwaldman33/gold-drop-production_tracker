@@ -514,7 +514,7 @@ def settings_view(root, page="operational"):
             show_history_val = "1" if root.request.form.get("reactor_show_state_history") else "0"
             for key, val, desc in (
                 ("reactor_running_requires_linked_run", running_linked_val, "Require a linked run before Mark Running"),
-                ("reactor_show_state_history", show_history_val, "Show extraction charge lifecycle history on Floor Ops"),
+                ("reactor_show_state_history", show_history_val, "Show extraction load lifecycle history on Floor Ops"),
             ):
                 existing = root.db.session.get(root.SystemSetting, key)
                 if existing:
@@ -801,7 +801,7 @@ def settings_view(root, page="operational"):
             show_history_val = "1" if root.request.form.get("reactor_show_state_history") else "0"
             for key, val, desc in (
                 ("reactor_running_requires_linked_run", running_linked_val, "Require a linked run before Mark Running"),
-                ("reactor_show_state_history", show_history_val, "Show extraction charge lifecycle history on Floor Ops"),
+                ("reactor_show_state_history", show_history_val, "Show extraction load lifecycle history on Floor Ops"),
             ):
                 existing = root.db.session.get(root.SystemSetting, key)
                 if existing:

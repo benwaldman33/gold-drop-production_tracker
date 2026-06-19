@@ -775,7 +775,7 @@ def _charge_form_prefill(root, lot):
     testing_status = (getattr(lot.purchase, "testing_status", None) or "pending").strip()
     warnings: list[str] = []
     if testing_status not in {"completed", "not_needed"}:
-        warnings.append("Testing is not marked complete or waived. Extraction is allowed, but review this lot's current testing state before charging.")
+        warnings.append("Testing is not marked complete or waived. Extraction is allowed, but review this lot's current testing state before loading.")
     if not getattr(lot, "milled", False):
         warnings.append("Lot prep is still marked not milled.")
     if (getattr(lot, "floor_state", None) or "inventory").strip() != "reactor_staging":
@@ -855,7 +855,7 @@ def _submit_charge_form(root, lot, *, entry_mode: str):
         )
         root.db.session.commit()
         root.flash(
-            f"Extraction charge recorded for {charged_weight_lbs:.1f} lbs into Reactor {reactor_number}. Finish the run details next.",
+            f"Extraction load recorded for {charged_weight_lbs:.1f} lbs into Reactor {reactor_number}. Finish the run details next.",
             "success",
         )
         return root.redirect(root.url_for("run_new", return_to=back_url))
@@ -934,7 +934,7 @@ def scan_lot_start_run_view(root, tracking_id):
     }
     if planned_weight_lbs is not None:
         params["requested_weight_lbs"] = f"{planned_weight_lbs:.1f}"
-    root.flash("Review reactor, weight, and charge time before opening the run form.", "success")
+    root.flash("Review reactor, weight, and load time before opening the run form.", "success")
     return root.redirect(root.url_for("scan_lot_charge", tracking_id=tracking_id, **params))
 
 

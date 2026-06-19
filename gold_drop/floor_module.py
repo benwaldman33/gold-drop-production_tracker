@@ -751,23 +751,23 @@ def _build_active_reactor_board(root):
             state_label = charge_state_label(state_key)
             state_badge = charge_state_badge(state_key)
             if state_key == "pending":
-                next_step = "Open the saved charge and move it into reactor, start the run, or save the linked run."
+                next_step = "Open the saved load and move it into reactor, start the run, or save the linked run."
             elif state_key == "applied":
-                next_step = "Mark the charge running, complete it, or open the linked run."
+                next_step = "Mark the load running, complete it, or open the linked run."
             elif state_key == "in_reactor":
-                next_step = "Mark the charge running when the reactor actually starts."
+                next_step = "Mark the load running when the reactor actually starts."
             elif state_key == "running":
-                next_step = "Mark the charge complete when the reactor cycle finishes."
+                next_step = "Mark the load complete when the reactor cycle finishes."
             elif state_key == "completed":
-                next_step = "Mark Reactor Emptied after pour-out to free this reactor for the next charge."
+                next_step = "Mark Reactor Emptied after pour-out to free this reactor for the next load."
             else:
-                next_step = "Cancelled charges stay visible until the day rolls over."
+                next_step = "Cancelled loads stay visible until the day rolls over."
             history = charge_history_entries(root, current.id, limit=6) if settings["show_history"] else []
         else:
             state_key = "empty"
             state_label = "Empty"
             state_badge = "badge-gray"
-            next_step = "Ready for the next lot charge."
+            next_step = "Ready for the next lot load."
             history = []
 
         cards.append(
@@ -835,7 +835,7 @@ def _build_reactor_history(root, cards):
             entries.insert(
                 0,
                 {
-                    "label": f"Charge recorded ({current.get('state_label')})",
+                        "label": f"Load recorded ({current.get('state_label')})",
                     "timestamp_label": current.get("charged_at_label") or "",
                     "run_id": current.get("run_id"),
                 },
@@ -1320,13 +1320,13 @@ def scan_center_view(root):
 def floor_charge_transition_view(root, charge_id):
     charge = root.db.session.get(root.ExtractionCharge, charge_id)
     if charge is None:
-        root.flash("Extraction charge not found.", "error")
+        root.flash("Extraction load not found.", "error")
         return root.redirect(root.url_for("floor_ops"))
 
     target_state = (root.request.form.get("target_state") or "").strip()
     cancel_resolution = (root.request.form.get("cancel_resolution") or "").strip().lower() or None
     if target_state == "cancelled" and cancel_resolution not in {"modify", "abandon", None}:
-        root.flash("Choose whether the cancelled charge should send you to modify the linked run or simply abandon it.", "error")
+        root.flash("Choose whether the cancelled load should send you to modify the linked run or simply abandon it.", "error")
         return root.redirect(root.url_for("floor_ops"))
 
     try:
@@ -1348,8 +1348,8 @@ def floor_charge_transition_view(root, charge_id):
         root.flash(str(exc), "error")
     except Exception:
         root.db.session.rollback()
-        root.app.logger.exception("Error updating reactor charge state")
-        root.flash("Error updating reactor charge state.", "error")
+        root.app.logger.exception("Error updating reactor load state")
+        root.flash("Error updating reactor load state.", "error")
     return root.redirect(root.url_for("floor_ops"))
 
 

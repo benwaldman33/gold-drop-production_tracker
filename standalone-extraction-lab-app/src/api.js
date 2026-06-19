@@ -177,7 +177,7 @@ function progressionForRun(run) {
     },
     ready_to_check_chiller_temp: {
       stage_label: "Check chiller temperature",
-      description: "Record the actual chiller temperature and confirm it meets the required threshold before solvent charging.",
+      description: "Record the actual chiller temperature and confirm it meets the required threshold before solvent loading.",
       actions: [
         { action_id: "confirm_chiller_temp_met", label: "Confirm Temperature Met" },
         { action_id: "acknowledge_chiller_out_of_spec", label: "Acknowledge and Proceed Out of Spec" },
@@ -185,22 +185,22 @@ function progressionForRun(run) {
     },
     ready_to_confirm_vacuum: {
       stage_label: "Confirm vacuum down",
-      description: "Confirm the reactor was vacuumed down before solvent charging begins.",
+      description: "Confirm the reactor was vacuumed down before solvent loading begins.",
       actions: [{ action_id: "confirm_vacuum_down", label: "Confirm Vacuum Down" }],
     },
     ready_to_record_solvent_charge: {
-      stage_label: "Record solvent charge",
-      description: "Enter the primary solvent charge and record it before starting the soak.",
-      actions: [{ action_id: "record_solvent_charge", label: "Record Solvent Charge" }],
+      stage_label: "Record solvent load",
+      description: "Enter the primary solvent load and record it before starting the soak.",
+      actions: [{ action_id: "record_solvent_charge", label: "Record Solvent Load" }],
     },
     ready_to_confirm_pressurized_50psi: {
       stage_label: "Confirm reactor at 50 PSI",
-      description: "After charging solvent, confirm the reactor is pressurized to 50 PSI before starting the soak.",
+      description: "After loading solvent, confirm the reactor is pressurized to 50 PSI before starting the soak.",
       actions: [{ action_id: "confirm_pressurized_50psi", label: "Confirm 50 PSI" }],
     },
     ready_to_start_primary_soak: {
       stage_label: "Start primary soak",
-      description: "The primary solvent charge is recorded. Start the primary soak to begin booth execution timing.",
+      description: "The primary solvent load is recorded. Start the primary soak to begin booth execution timing.",
       actions: [{ action_id: "start_primary_soak", label: "Start Primary Soak" }],
     },
     ready_to_start_mixer: {
@@ -235,17 +235,17 @@ function progressionForRun(run) {
     },
     ready_to_verify_flush_temps: {
       stage_label: "Verify flush temperatures",
-      description: "Record the solvent chiller and plate temperatures before flush solvent is charged.",
+      description: "Record the solvent chiller and plate temperatures before flush solvent is loaded.",
       actions: [{ action_id: "verify_flush_temps", label: "Verify Flush Temps" }],
     },
     ready_to_record_flush_solvent_charge: {
-      stage_label: "Record flush solvent charge",
-      description: "Record the flush solvent charge after temperature verification is complete.",
-      actions: [{ action_id: "record_flush_solvent_charge", label: "Record Flush Solvent Charge" }],
+      stage_label: "Record flush solvent load",
+      description: "Record the flush solvent load after temperature verification is complete.",
+      actions: [{ action_id: "record_flush_solvent_charge", label: "Record Flush Solvent Load" }],
     },
     ready_to_flush: {
       stage_label: "Start flush soak",
-      description: "The flush solvent charge is recorded. Start the flush timer when the flush soak begins.",
+      description: "The flush solvent load is recorded. Start the flush timer when the flush soak begins.",
       actions: [{ action_id: "start_flush", label: "Start Flush" }],
     },
     ready_to_confirm_flow_resumed: {
@@ -434,14 +434,14 @@ function applyMockProgressionAction(run, action) {
   }
   if (action === "record_solvent_charge") {
     const solventLbs = Number(run.primary_solvent_charge_lbs || 0);
-    if (!Number.isFinite(solventLbs) || solventLbs <= 0) throw new Error("Enter the primary solvent charge before continuing.");
+    if (!Number.isFinite(solventLbs) || solventLbs <= 0) throw new Error("Enter the primary solvent load before continuing.");
     if (!run.primary_solvent_charged_at) run.primary_solvent_charged_at = now;
     run.booth_stage_key = "ready_to_confirm_pressurized_50psi";
-    run.booth_history = [{ event_label: "Primary solvent charge recorded", occurred_at: now }, ...(run.booth_history || [])];
+    run.booth_history = [{ event_label: "Primary solvent load recorded", occurred_at: now }, ...(run.booth_history || [])];
     return;
   }
   if (action === "confirm_pressurized_50psi") {
-    if (!run.primary_solvent_charged_at) throw new Error("Record the primary solvent charge before confirming reactor pressure.");
+    if (!run.primary_solvent_charged_at) throw new Error("Record the primary solvent load before confirming reactor pressure.");
     run.booth_stage_key = "ready_to_start_primary_soak";
     run.booth_history = [{ event_label: "Reactor pressurized to 50 PSI confirmed", occurred_at: now }, ...(run.booth_history || [])];
     return;
@@ -495,7 +495,7 @@ function applyMockProgressionAction(run, action) {
   }
   if (action === "record_flush_solvent_charge") {
     const solventLbs = Number(run.flush_solvent_charge_lbs || 0);
-    if (!Number.isFinite(solventLbs) || solventLbs <= 0) throw new Error("Enter the flush solvent charge before continuing.");
+    if (!Number.isFinite(solventLbs) || solventLbs <= 0) throw new Error("Enter the flush solvent load before continuing.");
     run.flush_solvent_charged_at = now;
     run.booth_stage_key = "ready_to_flush";
     return;
@@ -801,7 +801,7 @@ function buildMockDraftRun(charge) {
 
 function ensureMockRunForCharge(state, chargeId) {
   const charge = state.charges.find((row) => row.id === chargeId);
-  if (!charge) throw Object.assign(new Error("Charge not found"), { status: 404 });
+  if (!charge) throw Object.assign(new Error("Load not found"), { status: 404 });
   if (charge.run_id) {
     const existing = state.runs.find((row) => row.id === charge.run_id);
     if (existing) return { charge, run: existing };
@@ -885,7 +885,7 @@ function ensureMockRunForCharge(state, chargeId) {
 
 function chargeStateLabel(status) {
   const labels = {
-    pending: "Charged / waiting",
+    pending: "Loaded / waiting",
     in_reactor: "In reactor",
     applied: "Run linked",
     running: "Running",
@@ -893,7 +893,7 @@ function chargeStateLabel(status) {
     cancelled: "Cancelled today",
     cleared: "Reactor emptied",
   };
-  return labels[String(status || "").trim()] || "Charged / waiting";
+  return labels[String(status || "").trim()] || "Loaded / waiting";
 }
 
 function mockBoardChargeVisible(charge) {
@@ -912,7 +912,7 @@ function mockReactorCardActions(charge) {
   if (status === "running") {
     return [
       { target_state: "completed", label: "Mark Complete" },
-      { target_state: "cancelled", label: "Cancel Charge" },
+      { target_state: "cancelled", label: "Cancel Load" },
     ];
   }
   return [
@@ -943,9 +943,9 @@ function buildMockBoard(state, boardView = "all") {
       state_badge: "badge",
       next_step: charge
         ? charge.status === "completed"
-          ? "Mark Reactor Emptied after pour-out to free this reactor for the next charge."
+          ? "Mark Reactor Emptied after pour-out to free this reactor for the next load."
           : "Advance the lifecycle or open the linked run."
-        : "Ready for the next charge.",
+        : "Ready for the next load.",
       pending_count: charge ? 1 : 0,
       pending_weight_lbs: charge ? Number(charge.charged_weight_lbs || 0) : 0,
       show_history: true,
@@ -1105,7 +1105,7 @@ export function createApiClient({ mode = "mock", apiBaseUrl = "", fetchImpl = fe
         id: `chg-${Date.now()}`,
         purchase_lot_id: lot.id,
         status: "pending",
-        state_label: "Charged / waiting",
+        state_label: "Loaded / waiting",
         reactor_number: Number(payload.reactor_number || 1),
         charged_weight_lbs: Number(payload.charged_weight_lbs || 0),
         charged_at: payload.charged_at,
@@ -1113,7 +1113,7 @@ export function createApiClient({ mode = "mock", apiBaseUrl = "", fetchImpl = fe
         source_mode: "standalone_extraction",
         notes: payload.notes || "",
         run_id: null,
-        history: [historyEntry("Charge recorded")],
+        history: [historyEntry("Load recorded")],
       };
       state.charges.push(charge);
       saveState(state);
@@ -1133,7 +1133,7 @@ export function createApiClient({ mode = "mock", apiBaseUrl = "", fetchImpl = fe
       ensureMockSession();
       const state = loadState();
       const charge = state.charges.find((row) => row.id === chargeId);
-      if (!charge) throw Object.assign(new Error("Charge not found"), { status: 404 });
+      if (!charge) throw Object.assign(new Error("Load not found"), { status: 404 });
       charge.status = payload.target_state;
       charge.state_label = chargeStateLabel(payload.target_state);
       charge.history = [historyEntry(`State -> ${charge.state_label}`, payload.target_state), ...(charge.history || [])];
@@ -1147,7 +1147,7 @@ export function createApiClient({ mode = "mock", apiBaseUrl = "", fetchImpl = fe
       ensureMockSession();
       const state = loadState();
       const charge = state.charges.find((row) => row.id === chargeId);
-      if (!charge) throw Object.assign(new Error("Charge not found"), { status: 404 });
+      if (!charge) throw Object.assign(new Error("Load not found"), { status: 404 });
       const run = charge.run_id ? state.runs.find((row) => row.id === charge.run_id) : null;
       return {
         charge: mockChargePayload(state, charge),

@@ -930,7 +930,7 @@ def settings_slack_import_apply_charge_view(root, msg_id):
 
     derived = _derive_slack_production_message(row.raw_text or "")
     if derived.get("message_kind") == "biomass_intake":
-        root.flash("Biomass intake messages cannot create extraction charges.", "error")
+        root.flash("Biomass intake messages cannot create extraction loads.", "error")
         return root.redirect(root.url_for("settings_slack_import_preview", msg_id=msg_id))
 
     resolution = None
@@ -960,10 +960,10 @@ def settings_slack_import_apply_charge_view(root, msg_id):
         reactor_number = None
 
     if requested_run_lbs is None:
-        root.flash("Slack charge creation requires a parsed biomass weight.", "error")
+        root.flash("Slack load creation requires a parsed biomass weight.", "error")
         return root.redirect(root.url_for("settings_slack_import_preview", msg_id=msg_id))
     if reactor_number is None:
-        root.flash("Slack charge creation requires a parsed reactor number.", "error")
+        root.flash("Slack load creation requires a parsed reactor number.", "error")
         return root.redirect(root.url_for("settings_slack_import_preview", msg_id=msg_id))
 
     selected_allocations, selected_allocations_err = slack_selected_allocations_from_form(
@@ -983,7 +983,7 @@ def settings_slack_import_apply_charge_view(root, msg_id):
     suggested_allocations = selected_allocations or choose_default_lot_allocation(lot_candidates, requested_run_lbs)
     if len(suggested_allocations) != 1:
         root.flash(
-            "Slack charge creation requires exactly one source lot. Use 'Create run from Slack' for split or multi-lot allocations.",
+            "Slack load creation requires exactly one source lot. Use 'Create run from Slack' for split or multi-lot allocations.",
             "error",
         )
         return root.redirect(root.url_for("settings_slack_import_preview", msg_id=msg_id))
@@ -1017,7 +1017,7 @@ def settings_slack_import_apply_charge_view(root, msg_id):
         root.flash(str(exc), "error")
         return root.redirect(root.url_for("settings_slack_import_preview", msg_id=msg_id))
 
-    root.flash("Slack extraction charge recorded. Review the run form and save when ready.", "success")
+    root.flash("Slack extraction load recorded. Review the run form and save when ready.", "success")
     return root.redirect(root.url_for("run_new", return_to=root.url_for("settings_slack_import_preview", msg_id=msg_id)))
 
 

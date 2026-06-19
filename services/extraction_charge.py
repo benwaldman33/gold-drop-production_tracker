@@ -11,7 +11,7 @@ REACTOR_LIFECYCLE_DEFAULTS = {
     "cleared": {"enabled": True, "required": False},
 }
 REACTOR_CHARGE_STATE_META = {
-    "pending": {"label": "Charged / waiting", "badge": "badge-gold"},
+    "pending": {"label": "Loaded / waiting", "badge": "badge-gold"},
     "in_reactor": {"label": "In reactor", "badge": "badge-gold"},
     "applied": {"label": "Run linked", "badge": "badge-green"},
     "running": {"label": "Running", "badge": "badge-green"},
@@ -86,7 +86,7 @@ def charge_history_entries(root, charge_id: str, *, limit: int = 8) -> list[dict
         except (TypeError, ValueError):
             payload = {}
         if log.action == "create":
-            label = "Charge recorded"
+            label = "Load recorded"
         elif log.action == "state_change":
             label = f"State -> {charge_state_label(payload.get('to_state'))}"
         else:
@@ -127,7 +127,7 @@ def validate_charge_transition(root, charge, target_state: str, *, history_entri
     if target == "cleared":
         current = (charge.status or "pending").strip() or "pending"
         if current != "completed":
-            raise ValueError("Mark Reactor Emptied only after the charge is completed.")
+            raise ValueError("Mark Reactor Emptied only after the load is completed.")
         return
     if target == "running" and settings["running_requires_linked_run"] and not charge.run_id:
         raise ValueError("Mark Running requires a linked run under the current Settings policy.")
@@ -197,7 +197,7 @@ def build_reactor_card_actions(settings, charge) -> list[dict]:
     if status == "completed" and state_settings["cleared"]["enabled"]:
         actions.append({"target_state": "cleared", "label": "Reactor Emptied"})
     if status in {"pending", "in_reactor", "applied", "running"} and state_settings["cancelled"]["enabled"]:
-        actions.append({"target_state": "cancelled", "label": "Cancel Charge"})
+        actions.append({"target_state": "cancelled", "label": "Cancel Load"})
     return actions
 
 
@@ -211,7 +211,7 @@ def parse_charge_datetime(raw_value: str | None) -> datetime:
             return parsed.replace(tzinfo=app_display_zoneinfo()).astimezone(timezone.utc)
         except ValueError:
             continue
-    raise ValueError("Enter a valid charge date and time.")
+    raise ValueError("Enter a valid load date and time.")
 
 
 def validate_chargeable_lot(root, lot) -> None:
@@ -221,9 +221,9 @@ def validate_chargeable_lot(root, lot) -> None:
     if purchase is None or purchase.deleted_at is not None:
         raise ValueError("Lot belongs to a deleted purchase.")
     if float(lot.remaining_weight_lbs or 0) <= 0:
-        raise ValueError("Lot has no remaining inventory to charge.")
+        raise ValueError("Lot has no remaining inventory to load.")
     if purchase.purchase_approved_at is None:
-        raise ValueError("Lot cannot be charged until the purchase is approved.")
+        raise ValueError("Lot cannot be loaded until the purchase is approved.")
     if purchase.status not in root.INVENTORY_ON_HAND_PURCHASE_STATUSES:
         raise ValueError("Lot is not currently in an on-hand inventory state.")
 
@@ -244,11 +244,11 @@ def create_extraction_charge(
     validate_chargeable_lot(root, lot)
 
     if charged_weight_lbs <= 0:
-        raise ValueError("Charge weight must be greater than zero.")
+        raise ValueError("Load weight must be greater than zero.")
 
     remaining = float(lot.remaining_weight_lbs or 0)
     if charged_weight_lbs > remaining + 1e-9:
-        raise ValueError(f"Charge weight cannot exceed the lot's {remaining:.1f} lbs remaining.")
+        raise ValueError(f"Load weight cannot exceed the lot's {remaining:.1f} lbs remaining.")
 
     if reactor_number not in set(range(1, reactor_count(root) + 1)):
         raise ValueError("Choose a valid reactor.")

@@ -80,7 +80,7 @@ const seed = {
       charged_at: "2026-04-19T14:00:00Z",
       charged_at_label: "2026-04-19 07:00",
       source_mode: "standalone extraction",
-      notes: "Morning charge",
+      notes: "Morning load",
       run_id: "run-501",
       tracking_id: "LOT-A1B2C3D4",
       supplier_name: "Forest Farms",

@@ -1446,7 +1446,7 @@ def mobile_extraction_transition_view(root, charge_id: str):
         return write_error
     charge = root.db.session.get(root.ExtractionCharge, charge_id)
     if charge is None:
-        return _json_error("Extraction charge not found.", status_code=404, code="not_found")
+        return _json_error("Extraction load not found.", status_code=404, code="not_found")
     payload = _mobile_payload()
     target_state = (payload.get("target_state") or "").strip()
     cancel_resolution = (payload.get("cancel_resolution") or "").strip().lower() or None
@@ -1481,7 +1481,7 @@ def mobile_extraction_run_view(root, charge_id: str):
         return write_error
     charge = root.db.session.get(root.ExtractionCharge, charge_id)
     if charge is None:
-        return _json_error("Extraction charge not found.", status_code=404, code="not_found")
+        return _json_error("Extraction load not found.", status_code=404, code="not_found")
 
     if request.method == "GET":
         if charge.run_id:
@@ -1537,7 +1537,7 @@ def mobile_extraction_run_evidence_view(root, charge_id: str):
         return write_error
     charge = root.db.session.get(root.ExtractionCharge, charge_id)
     if charge is None:
-        return _json_error("Extraction charge not found.", status_code=404, code="not_found")
+        return _json_error("Extraction load not found.", status_code=404, code="not_found")
     run = ensure_run_for_charge(root, charge)
     session = ensure_booth_session(root, run, charge)
 

@@ -258,7 +258,7 @@ function shell(content) {
             <a href="#/home" class="${state.route.name === "home" ? "active" : ""}">Home <small>Snapshot</small></a>
             <a href="#/scan" class="${state.route.name === "scan" ? "active" : ""}">Scan / Enter Lot <small>Fast entry</small></a>
             <a href="#/reactors" class="${state.route.name === "reactors" ? "active" : ""}">Reactors <small>Control board</small></a>
-            <a href="#/lots" class="${["lots", "lot", "charge"].includes(state.route.name) ? "active" : ""}">Lots <small>Charge queue</small></a>
+            <a href="#/lots" class="${["lots", "lot", "charge"].includes(state.route.name) ? "active" : ""}">Lots <small>Load queue</small></a>
             <a href="${isAdmin() ? "#/settings" : "javascript:void(0)"}" class="${state.route.name === "settings" ? "active" : ""}" style="${isAdmin() ? "" : "opacity:0.45;pointer-events:none;"}">Settings <small>${isAdmin() ? "Admin" : "Locked"}</small></a>
           </nav>
           <div class="user-card">
@@ -283,12 +283,12 @@ function renderDialog() {
     <div class="modal-backdrop">
       <div class="modal-card">
         <div class="stack">
-          <div class="eyebrow">Cancel charge</div>
+          <div class="eyebrow">Cancel load</div>
           <h3>How should this cancellation be recorded?</h3>
-          <p class="subtle">Choose whether the operator intends to abandon the charge or continue by modifying the linked run.</p>
+          <p class="subtle">Choose whether the operator intends to abandon the load or continue by modifying the linked run.</p>
         </div>
         <div class="grid-2">
-          <button class="btn btn-danger" data-action="confirm-cancel" data-resolution="abandon">Abandon charge</button>
+          <button class="btn btn-danger" data-action="confirm-cancel" data-resolution="abandon">Abandon load</button>
           <button class="btn btn-primary" data-action="confirm-cancel" data-resolution="modify">Cancel and modify run</button>
         </div>
         <div class="actions"><button class="btn btn-secondary" data-action="close-dialog">Keep current state</button></div>
@@ -323,7 +323,7 @@ function renderLogin() {
       <div class="stack">
         <div class="brand-badge">Standalone App</div>
         <h1 class="page-title">Extraction Lab Login</h1>
-        <p class="subtle">Use your Gold Drop account to open reactor status, lot readiness, and charge controls.</p>
+        <p class="subtle">Use your Gold Drop account to open reactor status, lot readiness, and load controls.</p>
       </div>
       <form class="form" data-form="login">
         <div class="field">
@@ -347,7 +347,7 @@ function renderHome() {
       <div class="topbar">
         <div>
           <h2>Extraction Home</h2>
-          <div class="meta">Immediate reactor status, ready lots, and the next charge decisions.</div>
+          <div class="meta">Immediate reactor status, ready lots, and the next load decisions.</div>
         </div>
         <div class="actions">
           <a class="btn btn-primary" href="#/scan">Scan / Enter Lot</a>
@@ -357,7 +357,7 @@ function renderHome() {
       </div>
       <section class="stat-grid">
         <div class="metric-card"><span class="label">Active reactors</span><strong>${escapeHtml(String(summary.active_reactor_count || 0))}</strong><span>${escapeHtml(String(summary.reactor_count || 0))} configured</span></div>
-        <div class="metric-card"><span class="label">Pending charges</span><strong>${escapeHtml(String(summary.pending_charge_count || 0))}</strong><span>${escapeHtml(String(summary.pending_charge_weight_lbs || 0))} lbs queued</span></div>
+        <div class="metric-card"><span class="label">Pending loads</span><strong>${escapeHtml(String(summary.pending_charge_count || 0))}</strong><span>${escapeHtml(String(summary.pending_charge_weight_lbs || 0))} lbs queued</span></div>
         <div class="metric-card"><span class="label">Ready lots</span><strong>${escapeHtml(String(summary.ready_lot_count || readyLotCount(state.lots)))}</strong><span>${escapeHtml(String(summary.open_lot_count || 0))} open lots</span></div>
       </section>
       <section class="card">
@@ -381,7 +381,7 @@ function renderLastChargeCard() {
     <section class="card accent">
       <div class="section-head">
         <div>
-          <div class="eyebrow">Last charge</div>
+          <div class="eyebrow">Last load</div>
           <h3>${escapeHtml(lotTitle(state.lastCharge.lot))}</h3>
         </div>
       </div>
@@ -390,7 +390,7 @@ function renderLastChargeCard() {
         <a class="btn btn-primary" href="#/runs/charge/${escapeHtml(state.lastCharge.charge?.id || "")}">Open Run</a>
         <a class="btn btn-secondary" href="${escapeHtml(state.lastCharge.next_run_url || "#")}">Open Run in Main App</a>
         <a class="btn btn-secondary" href="#/reactors">Back to Reactors</a>
-        <a class="btn btn-secondary" href="#/scan">Charge Another Lot</a>
+        <a class="btn btn-secondary" href="#/scan">Load Another Lot</a>
       </div>
     </section>
   `;
@@ -407,7 +407,7 @@ function renderScan() {
       <div class="topbar">
         <div>
           <h2>Scan / Enter Lot</h2>
-          <div class="meta">Use the camera, a Bluetooth scanner, or manual tracking-ID entry to open a lot charge fast.</div>
+          <div class="meta">Use the camera, a Bluetooth scanner, or manual tracking-ID entry to open a lot load fast.</div>
         </div>
         <div class="actions">
           <a class="btn btn-secondary" href="#/reactors">Back to Reactors</a>
@@ -418,7 +418,7 @@ function renderScan() {
           <div class="section-head">
             <div>
               <div class="eyebrow">Camera scan</div>
-              <h3>Open the lot charge form from a barcode or QR code</h3>
+              <h3>Open the lot load form from a barcode or QR code</h3>
             </div>
           </div>
           <div class="scan-preview" id="scan-preview">
@@ -447,12 +447,12 @@ function renderScan() {
               <input id="scan-tracking-id" name="tracking_id" autocomplete="off" placeholder="LOT-..." enterkeyhint="go" />
             </div>
             <div class="actions">
-              <button class="btn btn-primary" type="submit">Open Charge Form</button>
+              <button class="btn btn-primary" type="submit">Open Load Form</button>
               <a class="btn btn-secondary" href="#/lots">Browse Lots Instead</a>
             </div>
           </form>
           <div class="preset-note">
-            <strong>Default charge preset:</strong>
+            <strong>Default load preset:</strong>
             <span>100 lbs per reactor when the lot has at least 100 lbs remaining.</span>
           </div>
         </article>
@@ -469,7 +469,7 @@ function renderScan() {
           </div>
           <p class="subtle">${escapeHtml(state.recentLookup.method_label)} opened ${escapeHtml(state.recentLookup.lot_label)}.</p>
           <div class="actions">
-            <a class="btn btn-secondary" href="#/lots/${encodeURIComponent(state.recentLookup.lot_id)}/charge">Open charge form again</a>
+            <a class="btn btn-secondary" href="#/lots/${encodeURIComponent(state.recentLookup.lot_id)}/charge">Open load form again</a>
           </div>
         </section>
       `
@@ -487,7 +487,7 @@ function renderReactors() {
       <div class="topbar">
         <div>
           <h2>Active Reactor Board</h2>
-          <div class="meta">Advance charges through the reactor lifecycle without opening the full admin app.</div>
+          <div class="meta">Advance loads through the reactor lifecycle without opening the full admin app.</div>
         </div>
         <div class="actions">
           <a class="btn btn-primary" href="#/scan">Scan / Enter Lot</a>
@@ -575,8 +575,8 @@ function renderLots() {
     <div class="layout-grid">
       <div class="topbar">
         <div>
-          <h2>Chargeable Lots</h2>
-          <div class="meta">Search by tracking id, supplier, strain, or batch. Open a lot to charge it fast.</div>
+          <h2>Loadable Lots</h2>
+          <div class="meta">Search by tracking id, supplier, strain, or batch. Open a lot to load it fast.</div>
         </div>
         <div class="actions">
           <a class="btn btn-primary" href="#/scan">Scan / Enter Lot</a>
@@ -614,7 +614,7 @@ function renderLotCard(lot) {
       </div>
       <div class="actions">
         <a class="btn btn-secondary" href="#/lots/${encodeURIComponent(lot.id)}">Open lot</a>
-        <a class="btn btn-primary" href="#/lots/${encodeURIComponent(lot.id)}/charge">Charge</a>
+        <a class="btn btn-primary" href="#/lots/${encodeURIComponent(lot.id)}/charge">Load</a>
       </div>
     </article>
   `;
@@ -632,7 +632,7 @@ function renderLotDetail() {
         </div>
         <div class="actions">
           <a class="btn btn-secondary" href="#/lots">Back to lots</a>
-          <a class="btn btn-primary" href="#/lots/${encodeURIComponent(lot.id)}/charge">Charge this lot</a>
+          <a class="btn btn-primary" href="#/lots/${encodeURIComponent(lot.id)}/charge">Load this lot</a>
         </div>
       </div>
       <section class="card">
@@ -671,7 +671,7 @@ function renderChargeForm() {
     <div class="layout-grid">
       <div class="topbar">
         <div>
-          <h2>Start Extraction Charge</h2>
+          <h2>Start Extraction Load</h2>
           <div class="meta">${escapeHtml(lot.tracking_id || "No tracking id")} - ${escapeHtml(lotTitle(lot))}</div>
         </div>
         <div class="actions">
@@ -703,12 +703,12 @@ function renderChargeForm() {
         <input type="hidden" name="lot_id" value="${escapeHtml(lot.id)}" />
         <div class="section-head">
           <div>
-            <div class="eyebrow">Charge details</div>
+            <div class="eyebrow">Load details</div>
             <h3>Default preset is 100 lbs per reactor when the lot can support it.</h3>
           </div>
         </div>
         <div class="weight-panel">
-          <label for="charged_weight_lbs">Charge weight (lbs)</label>
+          <label for="charged_weight_lbs">Load weight (lbs)</label>
           <div class="weight-display" data-weight-display>${escapeHtml(String(defaultWeight.toFixed(1)))} lbs</div>
           <input id="charged_weight_lbs" name="charged_weight_lbs" type="range" min="0" max="${escapeHtml(String(maxWeight))}" step="0.5" value="${escapeHtml(String(defaultWeight))}" />
           <div class="weight-actions">
@@ -732,23 +732,23 @@ function renderChargeForm() {
               return `<label class="reactor-option"><input type="radio" name="reactor_number" value="${reactorNumber}" ${reactorNumber === defaultReactor ? "checked" : ""} /><span>Reactor ${reactorNumber}</span></label>`;
             }).join("")}
           </div>
-          <div class="subtle">Last used reactor defaults first so repeat charges take one less tap.</div>
+          <div class="subtle">Last used reactor defaults first so repeat loads take one less tap.</div>
         </div>
         <div class="field">
-          <label for="charged_at">Charge time</label>
+          <label for="charged_at">Load time</label>
           <div class="toolbar">
             <input id="charged_at" name="charged_at" type="datetime-local" value="${escapeHtml(defaultTime)}" />
             <button class="btn btn-secondary" type="button" data-action="set-now">Now</button>
           </div>
         </div>
         <div class="field">
-          <label for="notes">Charge notes</label>
+          <label for="notes">Load notes</label>
           <textarea id="notes" name="notes" rows="3" placeholder="Optional note about staging, scale evidence, or lot condition">${escapeHtml(draft?.notes || "")}</textarea>
         </div>
         <div class="actions sticky-actions">
-          <a class="btn btn-secondary" href="#/scan">Charge Another Lot</a>
+          <a class="btn btn-secondary" href="#/scan">Load Another Lot</a>
           <a class="btn btn-secondary" href="#/lots/${encodeURIComponent(lot.id)}">Cancel</a>
-          <button class="btn btn-primary" type="submit">${state.loading ? "Recording..." : "Record Charge"}</button>
+          <button class="btn btn-primary" type="submit">${state.loading ? "Recording..." : "Record Load"}</button>
         </div>
       </form>
       ${renderLastChargeCard()}
@@ -1132,7 +1132,7 @@ const STAGE_SEQUENCE = [
   { key: "ready_to_confirm_biomass",         label: "Confirm biomass loaded",        phase: "primary", timer: null },
   { key: "ready_to_check_chiller_temp",      label: "Check chiller temperature",     phase: "primary", timer: null },
   { key: "ready_to_confirm_vacuum",          label: "Confirm vacuum down",          phase: "primary", timer: null },
-  { key: "ready_to_record_solvent_charge",   label: "Record solvent charge",         phase: "primary", timer: null },
+  { key: "ready_to_record_solvent_charge",   label: "Record solvent load",           phase: "primary", timer: null },
   { key: "ready_to_confirm_pressurized_50psi", label: "Confirm reactor at 50 PSI",   phase: "primary", timer: null },
   { key: "ready_to_start_primary_soak",      label: "Start primary soak",            phase: "primary", timer: null },
   { key: "ready_to_start_mixer",             label: "Start mixer",                   phase: "primary", timer: "primary_soak", targetMinutes: 30 },
@@ -1142,7 +1142,7 @@ const STAGE_SEQUENCE = [
   { key: "ready_to_begin_recovery",          label: "Begin recovery",                phase: "primary", timer: null },
   { key: "ready_to_begin_flush_cycle",       label: "Begin flush cycle",             phase: "primary", timer: null },
   { key: "ready_to_verify_flush_temps",      label: "Verify flush temps",            phase: "flush",   timer: null },
-  { key: "ready_to_record_flush_solvent_charge", label: "Record flush solvent charge", phase: "flush", timer: null },
+  { key: "ready_to_record_flush_solvent_charge", label: "Record flush solvent load", phase: "flush", timer: null },
   { key: "ready_to_flush",                   label: "Start flush soak",              phase: "flush",   timer: null },
   { key: "flushing",                         label: "Flush running",                 phase: "flush",   timer: "flush",        targetMinutes: 10 },
   { key: "ready_to_confirm_flow_resumed",    label: "Confirm flow resumed",          phase: "flush",   timer: null },
@@ -1176,8 +1176,10 @@ const BLOCKER_MAP = [
   { match: "biomass",                                  stageKey: "ready_to_confirm_biomass",              label: "Confirm Biomass Loaded",        actionId: "confirm_biomass_loaded" },
   { match: "chiller temperature",                      stageKey: "ready_to_check_chiller_temp",            label: "Check Chiller Temperature",     actionId: "confirm_chiller_temp_met" },
   { match: "vacuum",                                   stageKey: "ready_to_confirm_vacuum",               label: "Confirm Vacuum Down",          actionId: "confirm_vacuum_down" },
-  { match: "primary solvent charge before",            stageKey: "ready_to_record_solvent_charge",        label: "Record Solvent Charge",        actionId: "record_solvent_charge" },
-  { match: "enter the primary solvent charge",         stageKey: "ready_to_record_solvent_charge",        label: "Record Solvent Charge",        actionId: "record_solvent_charge" },
+  { match: "primary solvent charge before",            stageKey: "ready_to_record_solvent_charge",        label: "Record Solvent Load",          actionId: "record_solvent_charge" },
+  { match: "primary solvent load before",              stageKey: "ready_to_record_solvent_charge",        label: "Record Solvent Load",          actionId: "record_solvent_charge" },
+  { match: "enter the primary solvent charge",         stageKey: "ready_to_record_solvent_charge",        label: "Record Solvent Load",          actionId: "record_solvent_charge" },
+  { match: "enter the primary solvent load",           stageKey: "ready_to_record_solvent_charge",        label: "Record Solvent Load",          actionId: "record_solvent_charge" },
   { match: "confirm reactor at 50 psi",                stageKey: "ready_to_confirm_pressurized_50psi",    label: "Confirm 50 PSI",               actionId: "confirm_pressurized_50psi" },
   { match: "confirm reactor pressurized to 50 psi",    stageKey: "ready_to_confirm_pressurized_50psi",    label: "Confirm 50 PSI",               actionId: "confirm_pressurized_50psi" },
   { match: "primary soak before starting the mixer",   stageKey: "ready_to_start_primary_soak",           label: "Start Primary Soak",           actionId: "start_primary_soak" },
@@ -1186,7 +1188,8 @@ const BLOCKER_MAP = [
   { match: "start the mixer before",                   stageKey: "ready_to_start_mixer",                  label: "Start Mixer",                  actionId: "start_mixer" },
   { match: "both flush temperatures",                  stageKey: "ready_to_verify_flush_temps",           label: "Verify Flush Temps",           actionId: "verify_flush_temps" },
   { match: "chiller temperature must be",              stageKey: "ready_to_verify_flush_temps",           label: "Verify Flush Temps",           actionId: "verify_flush_temps" },
-  { match: "enter the flush solvent charge",           stageKey: "ready_to_record_flush_solvent_charge",  label: "Record Flush Solvent Charge",  actionId: "record_flush_solvent_charge" },
+  { match: "enter the flush solvent charge",           stageKey: "ready_to_record_flush_solvent_charge",  label: "Record Flush Solvent Load",    actionId: "record_flush_solvent_charge" },
+  { match: "enter the flush solvent load",             stageKey: "ready_to_record_flush_solvent_charge",  label: "Record Flush Solvent Load",    actionId: "record_flush_solvent_charge" },
   { match: "flush cycle before starting the flush",    stageKey: "ready_to_flush",                        label: "Start Flush",                  actionId: "start_flush" },
   { match: "start the flush before",                   stageKey: "ready_to_flush",                        label: "Start Flush",                  actionId: "start_flush" },
   { match: "flow resumed",                             stageKey: "ready_to_confirm_flow_resumed",         label: "Confirm Flow Resumed",         actionId: "confirm_flow_resumed" },
@@ -1329,7 +1332,7 @@ function renderCheckpointInputs(run) {
       <div class="field"><label for="final_purge_short_reason">Reason if stopping purge early</label>
       <textarea id="final_purge_short_reason" name="final_purge_short_reason" rows="2">${escapeHtml(run.final_purge_short_reason || "")}</textarea></div>`,
     ready_to_record_solvent_charge: `
-      <div class="field"><label for="primary_solvent_charge_lbs">Primary Solvent Charge (lbs)</label>
+      <div class="field"><label for="primary_solvent_charge_lbs">Primary Solvent Load (lbs)</label>
       <input id="primary_solvent_charge_lbs" name="primary_solvent_charge_lbs" type="number"
         value="${escapeHtml(String(run.primary_solvent_charge_lbs ?? ""))}" min="0" step="0.1" placeholder="500" /></div>`,
     ready_to_confirm_pressurized_50psi: `
@@ -1346,7 +1349,7 @@ function renderCheckpointInputs(run) {
       <div class="field"><label><input type="checkbox" name="flush_temp_slack_post_confirmed" value="1"
         ${booth.flush_temp_slack_post_confirmed_at ? "checked" : ""}> Posted to Slack</label></div>`,
     ready_to_record_flush_solvent_charge: `
-      <div class="field"><label for="flush_solvent_charge_lbs">Flush Solvent Charge (lbs)</label>
+      <div class="field"><label for="flush_solvent_charge_lbs">Flush Solvent Load (lbs)</label>
       <input id="flush_solvent_charge_lbs" name="flush_solvent_charge_lbs" type="number"
         value="${escapeHtml(String(booth.flush_solvent_charge_lbs ?? ""))}" min="0" step="0.1" placeholder="500" /></div>`,
     ready_to_confirm_flow_resumed: `
@@ -1513,7 +1516,7 @@ function renderRunExecutionSupervisor(run, lot) {
           <div><span>Strain</span><strong>${escapeHtml(inherited.strain_name || lotTitle(lot || {}))}</strong></div>
           <div><span>Source</span><strong>${escapeHtml(inherited.source_summary || "")}</strong></div>
           <div><span>Biomass</span><strong>${escapeHtml(String(run.bio_in_reactor_lbs || 0))} lbs</strong></div>
-          <div><span>Charged</span><strong>${escapeHtml(inherited.charged_at_label || "")}</strong></div>
+          <div><span>Loaded</span><strong>${escapeHtml(inherited.charged_at_label || "")}</strong></div>
         </div>
         <div class="run-summary-strip">
           ${summaryRows.map(([label, value]) => `
@@ -1717,7 +1720,7 @@ function renderSettings() {
               type="number" step="0.5" placeholder="-40"
               value="${escapeHtml(String(threshold))}" />
             <div class="subtle" style="margin-top:6px;">
-              Operators must confirm the chiller is at or below this temperature before solvent charging.
+              Operators must confirm the chiller is at or below this temperature before solvent loading.
               Default: −40°C. If an operator proceeds above this threshold, a critical supervisor
               notification is sent automatically via Slack.
             </div>
@@ -2052,7 +2055,7 @@ async function handleChargeSubmit(event) {
     showToast(`Recorded ${result.charge.charged_weight_lbs} lbs into Reactor ${result.charge.reactor_number}.`);
     navigate("#/reactors");
   } catch (error) {
-    showToast(error.payload?.error?.message || error.message || "Unable to record charge");
+    showToast(error.payload?.error?.message || error.message || "Unable to record load");
   } finally {
     state.loading = false;
     render();
@@ -2326,9 +2329,9 @@ async function submitTransition(chargeId, targetState, cancelResolution = undefi
       navigate("#/reactors");
       return;
     }
-    showToast(`Charge moved to ${targetState.replaceAll("_", " ")}.`);
+    showToast(`Load moved to ${targetState.replaceAll("_", " ")}.`);
   } catch (error) {
-    showToast(error.payload?.error?.message || error.message || "Unable to update charge state");
+    showToast(error.payload?.error?.message || error.message || "Unable to update load state");
   } finally {
     state.loading = false;
     render();
@@ -2393,7 +2396,7 @@ async function scanFrame() {
       const rawValue = String(barcodes[0].rawValue || "").trim();
       if (rawValue && rawValue !== lastScannedValue) {
         lastScannedValue = rawValue;
-        setScanStatus(`Scanned ${rawValue}. Opening charge form...`);
+        setScanStatus(`Scanned ${rawValue}. Opening load form...`);
         await openTrackingId(rawValue, "Camera scan");
         return;
       }
@@ -2457,7 +2460,7 @@ async function openTrackingId(trackingId, method = "Manual entry") {
       lot_label: lotTitle(lot),
       method_label: method,
     };
-    setScanStatus(`${method} resolved ${value}. Opening charge form...`);
+    setScanStatus(`${method} resolved ${value}. Opening load form...`);
     stopCamera();
     navigate(`#/lots/${encodeURIComponent(lot.id)}/charge`);
   } catch (error) {

@@ -11,7 +11,7 @@
 
 <div class="card" style="margin-bottom:18px;">
   <div class="text-sm cell-muted">
-    <strong style="color:var(--text-primary);">Execution surface:</strong> use Floor Ops for scanner, scale, charge, and reactor-floor activity.
+    <strong style="color:var(--text-primary);">Execution surface:</strong> use Floor Ops for scanner, scale, load, and reactor-floor activity.
     Use <a href="{{ url_for('runs_list') }}">Runs</a> for broader record review and edits.
   </div>
 </div>
@@ -48,7 +48,7 @@
 <div class="card" style="margin-bottom:18px;">
   <div class="card-header">
     <h3>Extraction Readiness</h3>
-    <span class="text-sm cell-muted">Prep, testing, and charge status at a glance</span>
+    <span class="text-sm cell-muted">Prep, testing, and load status at a glance</span>
   </div>
   <div class="summary-row" style="margin-bottom:0;">
     <div class="summary-stat">
@@ -67,7 +67,7 @@
       <div class="summary-footnote">Open lots waiting on completed or waived testing</div>
     </div>
     <div class="summary-stat">
-      <div class="label">Pending Charges</div>
+      <div class="label">Pending Loads</div>
       <div class="value">{{ reactor_charge_view.pending_count }}</div>
       <div class="summary-footnote">{{ "{:,.1f}".format(reactor_charge_view.pending_weight_lbs or 0) }} lbs recorded but not yet linked to a saved run</div>
     </div>
@@ -93,7 +93,7 @@
 <div class="card" style="margin-bottom:18px;">
   <div class="card-header">
     <h3>Active Reactor Board</h3>
-    <span class="text-sm cell-muted">{{ active_reactor_board.active_count }} of {{ active_reactor_board.reactor_count }} reactors currently holding a charge or linked run</span>
+    <span class="text-sm cell-muted">{{ active_reactor_board.active_count }} of {{ active_reactor_board.reactor_count }} reactors currently holding a load or linked run</span>
   </div>
   <form method="GET" class="form-actions" style="justify-content:flex-start;margin-bottom:12px;gap:8px;flex-wrap:wrap;">
     <label class="text-sm cell-muted" for="board_view">Board view</label>
@@ -127,7 +127,7 @@
             {{ card.current.strain_name }} / {{ card.current.supplier_name }}
           </div>
           <div class="text-sm cell-muted" style="margin-top:4px;">
-            charged {{ card.current.charged_at_label }}{% if card.current.source_mode %} &middot; {{ card.current.source_mode }}{% endif %}
+            loaded {{ card.current.charged_at_label }}{% if card.current.source_mode %} &middot; {{ card.current.source_mode }}{% endif %}
           </div>
           {% if card.current.operator_name %}
           <div class="text-sm cell-muted" style="margin-top:4px;">operator: {{ card.current.operator_name }}</div>
@@ -173,11 +173,11 @@
       </div>
       {% endif %}
       {% else %}
-      <div class="summary-footnote" style="margin-top:12px;">No active charge. {{ card.next_step }}</div>
+      <div class="summary-footnote" style="margin-top:12px;">No active load. {{ card.next_step }}</div>
       {% endif %}
       {% if card.pending_count %}
       <div class="summary-footnote" style="margin-top:12px;">
-        Queue depth: {{ card.pending_count }} pending charge{% if card.pending_count != 1 %}s{% endif %} / {{ "{:,.1f}".format(card.pending_weight_lbs or 0) }} lbs
+        Queue depth: {{ card.pending_count }} pending load{% if card.pending_count != 1 %}s{% endif %} / {{ "{:,.1f}".format(card.pending_weight_lbs or 0) }} lbs
       </div>
       {% else %}
       <div class="summary-footnote" style="margin-top:12px;">{{ card.next_step }}</div>
@@ -193,7 +193,7 @@
 <div class="card" style="margin-bottom:18px;">
   <div class="card-header">
     <h3>Reactor History Today</h3>
-    <span class="text-sm cell-muted">Same-day charge and lifecycle milestones by reactor</span>
+    <span class="text-sm cell-muted">Same-day load and lifecycle milestones by reactor</span>
   </div>
   <div class="summary-row">
     {% for card in reactor_history %}
@@ -215,7 +215,7 @@
         {% endfor %}
       </div>
       {% else %}
-      <div class="summary-footnote" style="margin-top:10px;">No same-day charge history for this reactor.</div>
+      <div class="summary-footnote" style="margin-top:10px;">No same-day load history for this reactor.</div>
       {% endif %}
     </div>
     {% endfor %}
@@ -224,8 +224,8 @@
 
 <div class="card" style="margin-bottom:18px;">
   <div class="card-header">
-    <h3>Reactor Charge Queue</h3>
-    <span class="text-sm cell-muted">Pending extraction charges by reactor</span>
+    <h3>Reactor Load Queue</h3>
+    <span class="text-sm cell-muted">Pending extraction loads by reactor</span>
   </div>
   <div class="summary-row">
     {% for card in reactor_charge_view.pending_cards %}
@@ -245,7 +245,7 @@
             {{ charge.strain_name }} / {{ charge.supplier_name }}
           </div>
           <div class="text-sm cell-muted" style="margin-top:4px;">
-            charged {{ charge.charged_at_label }}{% if charge.source_mode %} &middot; {{ charge.source_mode }}{% endif %}
+            loaded {{ charge.charged_at_label }}{% if charge.source_mode %} &middot; {{ charge.source_mode }}{% endif %}
           </div>
           {% if charge.notes %}
           <div class="text-sm" style="margin-top:4px;">{{ charge.notes }}</div>
@@ -254,7 +254,7 @@
         {% endfor %}
       </div>
       {% else %}
-      <div class="summary-footnote" style="margin-top:12px;">No pending charges.</div>
+      <div class="summary-footnote" style="margin-top:12px;">No pending loads.</div>
       {% endif %}
     </div>
     {% endfor %}
@@ -289,7 +289,7 @@
         </div>
         <div class="form-actions" style="justify-content:flex-start;margin-top:10px;">
           <a href="{{ url_for('scan_lot', tracking_id=event.tracking_id_snapshot) }}" class="btn btn-secondary btn-sm">Open Scan Page</a>
-          <a href="{{ url_for('scan_lot_charge', tracking_id=event.tracking_id_snapshot) }}" class="btn btn-secondary btn-sm">Charge Lot</a>
+          <a href="{{ url_for('scan_lot_charge', tracking_id=event.tracking_id_snapshot) }}" class="btn btn-secondary btn-sm">Load Lot</a>
         </div>
       </div>
       {% endfor %}
@@ -339,8 +339,8 @@
 
 <div class="card" style="margin-top:18px;">
   <div class="card-header">
-    <h3>Recently Applied Charges</h3>
-    <span class="text-sm cell-muted">Charges already linked to saved runs</span>
+    <h3>Recently Applied Loads</h3>
+    <span class="text-sm cell-muted">Loads already linked to saved runs</span>
   </div>
   <div class="summary-row">
     {% for card in reactor_charge_view.applied_cards %}
@@ -358,7 +358,7 @@
             {{ charge.strain_name }} / {{ charge.supplier_name }}
           </div>
           <div class="text-sm cell-muted" style="margin-top:4px;">
-            charged {{ charge.charged_at_label }} &middot; run linked
+            loaded {{ charge.charged_at_label }} &middot; run linked
           </div>
           {% if charge.run_id %}
           <div class="form-actions" style="justify-content:flex-start;margin-top:8px;">
@@ -369,7 +369,7 @@
         {% endfor %}
       </div>
       {% else %}
-      <div class="summary-footnote" style="margin-top:8px;">No recent applied charges.</div>
+      <div class="summary-footnote" style="margin-top:8px;">No recent applied loads.</div>
       {% endif %}
     </div>
     {% endfor %}

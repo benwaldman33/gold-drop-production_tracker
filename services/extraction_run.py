@@ -60,22 +60,22 @@ RUN_PROGRESSION = {
     },
     "ready_to_confirm_vacuum": {
         "label": "Confirm vacuum down",
-        "description": "Confirm the reactor was vacuumed down before solvent charging begins.",
+        "description": "Confirm the reactor was vacuumed down before solvent loading begins.",
         "actions": [{"action_id": "confirm_vacuum_down", "label": "Confirm Vacuum Down"}],
     },
     "ready_to_record_solvent_charge": {
-        "label": "Record solvent charge",
-        "description": "Enter the primary solvent charge and record it before starting the soak.",
-        "actions": [{"action_id": "record_solvent_charge", "label": "Record Solvent Charge"}],
+        "label": "Record solvent load",
+        "description": "Enter the primary solvent load and record it before starting the soak.",
+        "actions": [{"action_id": "record_solvent_charge", "label": "Record Solvent Load"}],
     },
     "ready_to_confirm_pressurized_50psi": {
         "label": "Confirm reactor at 50 PSI",
-        "description": "After charging solvent, confirm the reactor is pressurized to 50 PSI before starting the soak.",
+        "description": "After loading solvent, confirm the reactor is pressurized to 50 PSI before starting the soak.",
         "actions": [{"action_id": "confirm_pressurized_50psi", "label": "Confirm 50 PSI"}],
     },
     "ready_to_start_primary_soak": {
         "label": "Start primary soak",
-        "description": "The primary solvent charge is recorded. Start the primary soak to begin booth execution timing.",
+        "description": "The primary solvent load is recorded. Start the primary soak to begin booth execution timing.",
         "actions": [{"action_id": "start_primary_soak", "label": "Start Primary Soak"}],
     },
     "ready_to_start_mixer": {
@@ -110,17 +110,17 @@ RUN_PROGRESSION = {
     },
     "ready_to_verify_flush_temps": {
         "label": "Verify flush temperatures",
-        "description": "Record the solvent chiller and plate temperatures before flush solvent is charged.",
+        "description": "Record the solvent chiller and plate temperatures before flush solvent is loaded.",
         "actions": [{"action_id": "verify_flush_temps", "label": "Verify Flush Temps"}],
     },
     "ready_to_record_flush_solvent_charge": {
-        "label": "Record flush solvent charge",
-        "description": "Record the flush solvent charge after temperature verification is complete.",
-        "actions": [{"action_id": "record_flush_solvent_charge", "label": "Record Flush Solvent Charge"}],
+        "label": "Record flush solvent load",
+        "description": "Record the flush solvent load after temperature verification is complete.",
+        "actions": [{"action_id": "record_flush_solvent_charge", "label": "Record Flush Solvent Load"}],
     },
     "ready_to_flush": {
         "label": "Start flush soak",
-        "description": "The flush solvent charge is recorded. Start the flush timer when the flush soak begins.",
+        "description": "The flush solvent load is recorded. Start the flush timer when the flush soak begins.",
         "actions": [{"action_id": "start_flush", "label": "Start Flush"}],
     },
     "flushing": {
@@ -1006,13 +1006,13 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
         return
     if action == "record_solvent_charge":
         if _booth_event(root, session, "reactor_vacuum_confirmed") is None:
-            raise ValueError("Confirm vacuum down before recording solvent charge.")
+            raise ValueError("Confirm vacuum down before recording solvent load.")
         try:
             solvent_lbs = float(payload.get("primary_solvent_charge_lbs") or 0)
         except (TypeError, ValueError):
-            raise ValueError("Primary solvent charge must be a number.")
+            raise ValueError("Primary solvent load must be a number.")
         if solvent_lbs <= 0:
-            raise ValueError("Enter the primary solvent charge before continuing.")
+            raise ValueError("Enter the primary solvent load before continuing.")
         session.primary_solvent_charge_lbs = solvent_lbs
         if session.primary_solvent_charged_at is None:
             session.primary_solvent_charged_at = now
@@ -1021,14 +1021,14 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
                 root,
                 session,
                 event_key="primary_solvent_charged",
-                event_label="Primary solvent charge recorded",
+                event_label="Primary solvent load recorded",
                 numeric_value=solvent_lbs,
             )
         session.current_stage_key = "ready_to_confirm_pressurized_50psi"
         return
     if action == "confirm_pressurized_50psi":
         if session.primary_solvent_charged_at is None:
-            raise ValueError("Record the primary solvent charge before confirming reactor pressure.")
+            raise ValueError("Record the primary solvent load before confirming reactor pressure.")
         if _booth_event(root, session, "reactor_pressurized_50psi") is None:
             _record_booth_event(
                 root,
@@ -1203,13 +1203,13 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
         return
     if action == "record_flush_solvent_charge":
         if session.flush_temp_verified_at is None or not session.flush_temp_threshold_passed:
-            raise ValueError("Verify flush temperatures before recording the flush solvent charge.")
+            raise ValueError("Verify flush temperatures before recording the flush solvent load.")
         try:
             flush_solvent_lbs = float(payload.get("flush_solvent_charge_lbs") or 0)
         except (TypeError, ValueError):
-            raise ValueError("Flush solvent charge must be a number.")
+            raise ValueError("Flush solvent load must be a number.")
         if flush_solvent_lbs <= 0:
-            raise ValueError("Enter the flush solvent charge before continuing.")
+            raise ValueError("Enter the flush solvent load before continuing.")
         session.flush_solvent_charge_lbs = flush_solvent_lbs
         session.flush_solvent_charged_at = now
         if _booth_event(root, session, "flush_solvent_charged") is None:
@@ -1217,7 +1217,7 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
                 root,
                 session,
                 event_key="flush_solvent_charged",
-                event_label="Flush solvent charge recorded",
+                event_label="Flush solvent load recorded",
                 numeric_value=flush_solvent_lbs,
             )
         session.current_stage_key = "ready_to_flush"
@@ -1228,7 +1228,7 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
         if _booth_event(root, session, "flush_cycle_started") is None:
             raise ValueError("Begin the flush cycle before starting the flush timer.")
         if session.flush_solvent_charged_at is None:
-            raise ValueError("Record the flush solvent charge before starting the flush.")
+            raise ValueError("Record the flush solvent load before starting the flush.")
         if run.flush_started_at is None:
             run.flush_started_at = now
         session.current_stage_key = "flushing"

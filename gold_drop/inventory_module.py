@@ -490,7 +490,7 @@ def inventory_import_sample_view(root):
         return denied
     lines = [
         "Tracking ID,Strain,Potency %,Location,Floor State,Milled,Notes",
-        "LOT-ABC12345,Blue Dream BX1,31.2,Dock B,reactor_staging,yes,Ready for charge",
+        "LOT-ABC12345,Blue Dream BX1,31.2,Dock B,reactor_staging,yes,Ready for load",
     ]
     body = "\n".join(lines) + "\n"
     return root.Response(
