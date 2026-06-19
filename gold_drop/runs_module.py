@@ -150,6 +150,20 @@ def runs_list_view(root):
         hte_pipeline_options=root._hte_pipeline_options(),
         list_filters_active=root._runs_list_filters_active(merged),
         clear_filters_url=root.url_for("runs_list", clear_filters=1),
+        show_completed_url=root.url_for(
+            "runs_list",
+            page=1,
+            sort=sort,
+            order=order,
+            search=search,
+            start_date=start_raw,
+            end_date=end_raw,
+            supplier_id=supplier_filter,
+            min_potency=min_pot_raw,
+            max_potency=max_pot_raw,
+            hte_stage=hte_stage,
+            hide_non_operational="0",
+        ),
     )
 
 

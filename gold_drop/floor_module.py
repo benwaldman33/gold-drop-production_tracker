@@ -731,6 +731,13 @@ def _build_active_reactor_board(root):
         .limit(60)
         .all()
     )
+    run_ids = {charge.run_id for charge in charges if charge.run_id}
+    run_by_id = {}
+    if run_ids:
+        run_by_id = {
+            run.id: run
+            for run in root.Run.query.filter(root.Run.id.in_(run_ids)).all()
+        }
 
     cards = []
     for reactor_number in _reactor_numbers(root, charges):
@@ -739,6 +746,7 @@ def _build_active_reactor_board(root):
         current = next((charge for charge in reactor_charges if charge_visible_on_board(root, charge)), None)
 
         if current:
+            linked_run = run_by_id.get(current.run_id) if current.run_id else None
             state_key = (current.status or "pending").strip() or "pending"
             state_label = charge_state_label(state_key)
             state_badge = charge_state_badge(state_key)
@@ -790,6 +798,8 @@ def _build_active_reactor_board(root):
                         "state_label": state_label,
                         "source_mode": (current.source_mode or "").replace("_", " ") if current else None,
                         "run_id": current.run_id if current else None,
+                        "wet_hte_g": float(linked_run.wet_hte_g) if linked_run and linked_run.wet_hte_g is not None else None,
+                        "wet_thca_g": float(linked_run.wet_thca_g) if linked_run and linked_run.wet_thca_g is not None else None,
                         "available_actions": build_reactor_card_actions(settings, current),
                         "history": history,
                     }

@@ -87,6 +87,14 @@
     </div>
   </form>
 </div>
+{% if hide_non_operational %}
+<div class="card" style="margin-bottom:12px;border-color:#8a6d3b;">
+  <div class="text-sm" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+    <span><strong>Completed runs are hidden.</strong> Wet output values are often recorded after completion.</span>
+    <a href="{{ show_completed_url }}" class="btn btn-secondary btn-sm">Show completed runs</a>
+  </div>
+</div>
+{% endif %}
 
 <div class="table-wrap">
   <table id="runs-table">

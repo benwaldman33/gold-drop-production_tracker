@@ -169,6 +169,8 @@ The Runs page is the core production log.
 
 Use the filter bar (**Start / end date**, supplier, THCA % range, **HTE pipeline**) and **Search** to narrow the list; **sort** by clicking column headers (e.g. **Date**). Your choices are **saved for your session**—see **Saved filters, sorts, and list state** above. **Apply filters** / search returns you to **page 1** of results when pagination is in use.
 
+If `Hide completed` is enabled, completed runs are excluded. Because wet THCA / wet HTE values are often captured after run completion, use the in-page **Show completed runs** shortcut when you need to verify those outputs quickly.
+
 ### What a run records
 Typical fields include:
 - Run date, reactor number, rollover flag, run type
@@ -350,6 +352,7 @@ The page now also includes a reactor-oriented extraction queue:
   - **Charged / waiting**
   - **Run linked**
 - each reactor card shows the latest lot, charged lbs, charge time, queue depth, and the operator label when present
+- when the reactor card has a linked run, it also shows wet output values (**Wet HTE** / **Wet THCA**) for quick extraction-dashboard checks
 - when a reactor already has a saved run linked, the card exposes **Open Run**
 - the current reactor card can also expose direct lifecycle actions:
   - **Mark In Reactor**

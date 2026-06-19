@@ -133,6 +133,15 @@
           <div class="text-sm cell-muted" style="margin-top:4px;">operator: {{ card.current.operator_name }}</div>
           {% endif %}
           {% if card.current.run_id %}
+          <div class="text-sm cell-muted" style="margin-top:4px;">
+            wet outputs &middot; HTE
+            {% if card.current.wet_hte_g is not none %}{{ "{:,.0f}".format(card.current.wet_hte_g) }}{% else %}&mdash;{% endif %}
+            g &middot; THCA
+            {% if card.current.wet_thca_g is not none %}{{ "{:,.0f}".format(card.current.wet_thca_g) }}{% else %}&mdash;{% endif %}
+            g
+          </div>
+          {% endif %}
+          {% if card.current.run_id %}
           <div class="form-actions" style="justify-content:flex-start;margin-top:8px;">
             <a href="{{ url_for('run_edit', run_id=card.current.run_id, return_to=request.full_path.rstrip('?')) }}" class="btn btn-secondary btn-sm">Open Run</a>
           </div>

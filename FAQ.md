@@ -534,6 +534,10 @@ You must first start the post-extraction session and enter both `Wet THCA (g)` a
 
 After you tap `Start Post-Extraction`, scroll to the **Guided downstream workflow** section and open **Step 3 — Initial wet outputs**. That step is marked **Current** once the session has started. Enter both weights there, then tap `Confirm Initial Outputs` (or `Save Updates` to persist the edit without confirming yet).
 
+## I entered wet outputs, but I do not see them in Runs. What should I check?
+
+First check whether `Hide completed` is enabled on the `Runs` page. Wet outputs are commonly entered after the run is marked complete, so they can be hidden by that filter. Use the in-page `Show completed runs` shortcut (or turn off `Hide completed`) to reveal those records.
+
 ## Can I undo a post-extraction session start?
 
 Yes, but only before initial outputs are confirmed. On **Step 2 — Post-extraction session**, use **Undo Session Start** if you started too early or chose the wrong pathway. After Step 3 is confirmed, the handoff is treated as established and you should correct it from the main app supervisor run form instead.
