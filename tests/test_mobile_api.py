@@ -287,6 +287,159 @@ def test_mobile_extraction_progression_locks_future_steps_and_supports_manager_b
         assert applied.get_json()["data"]["run"]["progression"]["stage_key"] == "ready_to_check_chiller_temp"
 
 
+def test_mobile_extraction_step_back_requires_supervisor_for_non_admin():
+    app = app_module.create_app()
+    _set_mobile_workflows(app)
+    with app.test_client() as client:
+        _login_mobile(client)
+        with app.app_context():
+            supplier = Supplier(name=f"Step Back Supplier {gen_uuid()[:6]}", is_active=True)
+            db.session.add(supplier)
+            db.session.flush()
+            purchase = Purchase(
+                supplier_id=supplier.id,
+                purchase_date=app_module.date.today(),
+                status="delivered",
+                stated_weight_lbs=100,
+                actual_weight_lbs=100,
+                purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            )
+            db.session.add(purchase)
+            db.session.flush()
+            lot = app_module.PurchaseLot(
+                purchase_id=purchase.id,
+                strain_name="Step Back Dream",
+                weight_lbs=100,
+                remaining_weight_lbs=100,
+            )
+            db.session.add(lot)
+            db.session.flush()
+            charge = ExtractionCharge(
+                purchase_lot_id=lot.id,
+                reactor_number=2,
+                charged_weight_lbs=25,
+                source_mode="standalone_extraction",
+            )
+            db.session.add(charge)
+            db.session.commit()
+            charge_id = charge.id
+
+        biomass = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={"progression_action": "confirm_biomass_loaded"},
+        )
+        assert biomass.status_code == 200
+        assert biomass.get_json()["data"]["run"]["progression"]["stage_key"] == "ready_to_check_chiller_temp"
+
+        unapproved = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={"progression_action": "apply_step_back"},
+        )
+        assert unapproved.status_code == 400
+        assert "locked" in unapproved.get_json()["error"]["message"].lower()
+
+        missing_reason = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={"progression_action": "request_step_back"},
+        )
+        assert missing_reason.status_code == 400
+
+        requested = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={"progression_action": "request_step_back", "step_back_reason": "Need to re-check biomass confirmation."},
+        )
+        assert requested.status_code == 200
+        requested_run = requested.get_json()["data"]["run"]
+        assert requested_run["progression"]["step_back"]["status"] == "pending"
+
+        with app.app_context():
+            run = db.session.get(ExtractionCharge, charge_id).run
+            row = app_module.SupervisorNotification.query.filter_by(
+                run_id=run.id,
+                dedupe_key="booth_step_back:ready_to_check_chiller_temp",
+            ).first()
+            assert row is not None
+            row.override_decision = "approved_deviation"
+            row.override_reason = "Supervisor approved one-step rollback."
+            row.override_at = app_module.datetime.now(app_module.timezone.utc)
+            row.status = "resolved"
+            db.session.commit()
+
+        applied = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={"progression_action": "apply_step_back"},
+        )
+        assert applied.status_code == 200
+        applied_run = applied.get_json()["data"]["run"]
+        assert applied_run["progression"]["stage_key"] == "ready_to_confirm_biomass"
+
+
+def test_mobile_extraction_step_back_admin_can_apply_without_supervisor():
+    app = app_module.create_app()
+    _set_mobile_workflows(app)
+    original_role = None
+    with app.app_context():
+        ops_user = User.query.filter_by(username="ops").first()
+        assert ops_user is not None
+        original_role = ops_user.role
+        ops_user.role = "super_admin"
+        db.session.commit()
+    try:
+        with app.test_client() as client:
+            _login_mobile(client)
+            with app.app_context():
+                supplier = Supplier(name=f"Admin Step Back Supplier {gen_uuid()[:6]}", is_active=True)
+                db.session.add(supplier)
+                db.session.flush()
+                purchase = Purchase(
+                    supplier_id=supplier.id,
+                    purchase_date=app_module.date.today(),
+                    status="delivered",
+                    stated_weight_lbs=100,
+                    actual_weight_lbs=100,
+                    purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+                )
+                db.session.add(purchase)
+                db.session.flush()
+                lot = app_module.PurchaseLot(
+                    purchase_id=purchase.id,
+                    strain_name="Admin Step Back Dream",
+                    weight_lbs=100,
+                    remaining_weight_lbs=100,
+                )
+                db.session.add(lot)
+                db.session.flush()
+                charge = ExtractionCharge(
+                    purchase_lot_id=lot.id,
+                    reactor_number=3,
+                    charged_weight_lbs=25,
+                    source_mode="standalone_extraction",
+                )
+                db.session.add(charge)
+                db.session.commit()
+                charge_id = charge.id
+
+            biomass = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={"progression_action": "confirm_biomass_loaded"},
+            )
+            assert biomass.status_code == 200
+            assert biomass.get_json()["data"]["run"]["progression"]["stage_key"] == "ready_to_check_chiller_temp"
+
+            applied = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={"progression_action": "apply_step_back"},
+            )
+            assert applied.status_code == 200
+            assert applied.get_json()["data"]["run"]["progression"]["stage_key"] == "ready_to_confirm_biomass"
+    finally:
+        with app.app_context():
+            ops_user = User.query.filter_by(username="ops").first()
+            if ops_user is not None and original_role is not None:
+                ops_user.role = original_role
+                db.session.commit()
+
+
 def test_mobile_extraction_requires_biomass_and_chiller_before_vacuum():
     app = app_module.create_app()
     _set_mobile_workflows(app)

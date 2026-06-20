@@ -209,6 +209,8 @@ ACTION_STAGE_BY_ID = {
 
 BYPASS_REQUEST_ACTION = "request_stage_bypass"
 BYPASS_APPLY_ACTION = "apply_stage_bypass"
+STEP_BACK_REQUEST_ACTION = "request_step_back"
+STEP_BACK_APPLY_ACTION = "apply_step_back"
 BYPASSABLE_STAGE_KEYS = {
     stage_key
     for stage_key, next_stage_key in RUN_STAGE_SEQUENCE.items()
@@ -681,6 +683,23 @@ def _required_reason(payload: dict, field_name: str, prompt: str) -> str:
     return reason
 
 
+def _admin_step_back_allowed(root) -> bool:
+    user = getattr(root, "current_user", None)
+    if user is None:
+        return False
+    role = str(getattr(user, "role", "") or "").strip().lower()
+    return bool(getattr(user, "is_super_admin", False)) or role in {"admin", "super_admin"}
+
+
+def _previous_stage_key(current_stage_key: str) -> str | None:
+    if current_stage_key == "completed":
+        return None
+    for stage_key, next_stage_key in RUN_STAGE_SEQUENCE.items():
+        if next_stage_key == current_stage_key:
+            return stage_key
+    return None
+
+
 def _notification_override_approved(root, run, dedupe_key: str) -> bool:
     if run is None or getattr(run, "id", None) is None:
         return False
@@ -725,6 +744,53 @@ def _stage_bypass_payload(root, run, stage_key: str) -> dict | None:
     }
 
 
+def _step_back_dedupe_key(stage_key: str) -> str:
+    return f"booth_step_back:{stage_key}"
+
+
+def _step_back_notification(root, run, stage_key: str):
+    if run is None or getattr(run, "id", None) is None:
+        return None
+    return root.SupervisorNotification.query.filter(
+        root.SupervisorNotification.run_id == run.id,
+        root.SupervisorNotification.dedupe_key == _step_back_dedupe_key(stage_key),
+    ).order_by(root.SupervisorNotification.created_at.desc()).first()
+
+
+def _step_back_payload(root, run, stage_key: str) -> dict | None:
+    if stage_key == "completed":
+        return None
+    target_stage_key = _previous_stage_key(stage_key)
+    if not target_stage_key:
+        return None
+    if _admin_step_back_allowed(root):
+        return {
+            "status": "admin_allowed",
+            "request_action_id": STEP_BACK_REQUEST_ACTION,
+            "apply_action_id": STEP_BACK_APPLY_ACTION,
+            "notification_id": None,
+            "from_stage_key": stage_key,
+            "to_stage_key": target_stage_key,
+        }
+    row = _step_back_notification(root, run, stage_key)
+    status = "available"
+    if row is not None:
+        if (row.override_decision or "") == "approved_deviation":
+            status = "approved"
+        elif (row.override_decision or "") == "require_rework":
+            status = "rework_required"
+        elif (row.status or "") in {"open", "acknowledged"}:
+            status = "pending"
+    return {
+        "status": status,
+        "request_action_id": STEP_BACK_REQUEST_ACTION,
+        "apply_action_id": STEP_BACK_APPLY_ACTION,
+        "notification_id": getattr(row, "id", None),
+        "from_stage_key": stage_key,
+        "to_stage_key": target_stage_key,
+    }
+
+
 def _current_progression_stage_key(root, run) -> str:
     return run_progression_payload(root, run).get("stage_key", "ready_to_confirm_biomass")
 
@@ -735,6 +801,14 @@ def _allowed_progression_actions_for_stage(root, run, stage_key: str) -> set[str
         actions.add(BYPASS_REQUEST_ACTION)
         if (_stage_bypass_payload(root, run, stage_key) or {}).get("status") == "approved":
             actions.add(BYPASS_APPLY_ACTION)
+    step_back = _step_back_payload(root, run, stage_key)
+    if step_back is not None:
+        if step_back.get("status") == "admin_allowed":
+            actions.add(STEP_BACK_APPLY_ACTION)
+        elif step_back.get("status") == "approved":
+            actions.add(STEP_BACK_APPLY_ACTION)
+        elif step_back.get("status") in {"available", "rework_required"}:
+            actions.add(STEP_BACK_REQUEST_ACTION)
     return actions
 
 
@@ -849,6 +923,16 @@ def run_progression_payload(root, run) -> dict:
             bypass_actions.append({"action_id": BYPASS_APPLY_ACTION, "label": "Use Approved Bypass"})
         elif bypass["status"] == "available":
             bypass_actions.append({"action_id": BYPASS_REQUEST_ACTION, "label": "Request Manager Bypass"})
+    step_back = _step_back_payload(root, run, stage_key)
+    step_back_actions = []
+    if step_back is not None:
+        status = step_back.get("status")
+        if status == "admin_allowed":
+            step_back_actions.append({"action_id": STEP_BACK_APPLY_ACTION, "label": "Step Back One Checkpoint"})
+        elif status == "approved":
+            step_back_actions.append({"action_id": STEP_BACK_APPLY_ACTION, "label": "Step Back (Supervisor Approved)"})
+        elif status in {"available", "rework_required"}:
+            step_back_actions.append({"action_id": STEP_BACK_REQUEST_ACTION, "label": "Request Step Back Approval"})
     return {
         "stage_key": stage_key,
         "stage_label": config["label"],
@@ -856,6 +940,8 @@ def run_progression_payload(root, run) -> dict:
         "actions": list(config["actions"]),
         "bypass_actions": bypass_actions,
         "bypass": bypass,
+        "step_back_actions": step_back_actions,
+        "step_back": step_back,
         "completed_at": display_local_datetime(run.run_completed_at),
         "policy_block": block,
     }
@@ -957,6 +1043,65 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
             },
         )
         session.current_stage_key = next_stage_key
+        return
+    if action == STEP_BACK_REQUEST_ACTION:
+        if current_stage_key == "completed" or run.run_completed_at:
+            raise ValueError("Completed runs cannot step backward.")
+        step_back = _step_back_payload(root, run, current_stage_key)
+        if not step_back or not step_back.get("to_stage_key"):
+            raise ValueError("No previous booth step is available from here.")
+        reason = _required_reason(payload, "step_back_reason", "Enter a reason to request stepping back.")
+        current_label = RUN_PROGRESSION.get(current_stage_key, {}).get("label", current_stage_key)
+        target_label = RUN_PROGRESSION.get(step_back["to_stage_key"], {}).get("label", step_back["to_stage_key"])
+        title = f"Step back requested: {current_label}"
+        message = f"Operator requested approval to step back from {current_label} to {target_label}."
+        create_notification(
+            root,
+            run=run,
+            booth_session=session,
+            event_key="booth_step_back_requested",
+            dedupe_key=_step_back_dedupe_key(current_stage_key),
+            notification_class="warnings",
+            severity="critical",
+            title=title,
+            message=message,
+            operator_reason=reason,
+        )
+        _record_booth_event(
+            root,
+            session,
+            event_key="booth_step_back_requested",
+            event_label="Step back approval requested",
+            text_value=reason,
+            payload={
+                "from_stage_key": current_stage_key,
+                "to_stage_key": step_back["to_stage_key"],
+                "reason": reason,
+            },
+        )
+        return
+    if action == STEP_BACK_APPLY_ACTION:
+        if current_stage_key == "completed" or run.run_completed_at:
+            raise ValueError("Completed runs cannot step backward.")
+        step_back = _step_back_payload(root, run, current_stage_key)
+        if not step_back or not step_back.get("to_stage_key"):
+            raise ValueError("No previous booth step is available from here.")
+        allowed_without_approval = step_back.get("status") == "admin_allowed"
+        if not allowed_without_approval and step_back.get("status") != "approved":
+            raise ValueError("Supervisor approval is required before stepping back.")
+        _record_booth_event(
+            root,
+            session,
+            event_key="booth_step_back_applied",
+            event_label="Stepped back one booth checkpoint",
+            payload={
+                "from_stage_key": current_stage_key,
+                "to_stage_key": step_back["to_stage_key"],
+                "notification_id": step_back.get("notification_id"),
+                "approval_required": not allowed_without_approval,
+            },
+        )
+        session.current_stage_key = step_back["to_stage_key"]
         return
     active_block = (
         _policy_block_payload(root, run, "primary_soak", "timing_short_primary_soak", "Primary soak timing deviation")

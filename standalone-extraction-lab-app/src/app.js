@@ -776,6 +776,8 @@ function renderRunProgression(run) {
   const actions = progression.actions || [];
   const bypassActions = progression.bypass_actions || [];
   const bypass = progression.bypass || null;
+  const stepBackActions = progression.step_back_actions || [];
+  const stepBack = progression.step_back || null;
   return `
     <section class="card">
       <div class="section-head">
@@ -811,6 +813,21 @@ function renderRunProgression(run) {
           ? `<div class="bypass-box" style="margin-top:14px;">
               ${bypassActions.some((action) => action.action_id === "request_stage_bypass") ? `<div class="field"><label for="bypass_reason">Bypass Reason</label><textarea id="bypass_reason" name="bypass_reason" rows="2" placeholder="Explain what failed and why manager approval is needed">${escapeHtml(run.bypass_reason || "")}</textarea></div>` : ""}
               <div class="action-grid">${bypassActions
+                .map((action) => `<button class="btn btn-secondary" type="button" data-action="run-progression" data-run-action="${escapeHtml(action.action_id)}">${escapeHtml(action.label)}</button>`)
+                .join("")}</div>
+            </div>`
+          : ""
+      }
+      ${
+        stepBack?.status === "pending"
+          ? `<div class="notice warning" style="margin-top:14px;">Step-back approval requested. Continue after supervisor approval appears here.</div>`
+          : ""
+      }
+      ${
+        stepBackActions.length
+          ? `<div class="bypass-box" style="margin-top:14px;">
+              ${stepBackActions.some((action) => action.action_id === "request_step_back") ? `<div class="field"><label for="step_back_reason">Step-Back Reason</label><textarea id="step_back_reason" name="step_back_reason" rows="2" placeholder="Explain why this run needs to move back one checkpoint">${escapeHtml(run.step_back_reason || "")}</textarea></div>` : ""}
+              <div class="action-grid">${stepBackActions
                 .map((action) => `<button class="btn btn-secondary" type="button" data-action="run-progression" data-run-action="${escapeHtml(action.action_id)}">${escapeHtml(action.label)}</button>`)
                 .join("")}</div>
             </div>`
@@ -1580,6 +1597,8 @@ function renderRunExecutionOperator(run, lot) {
   const actions = progression.actions || [];
   const bypassActions = progression.bypass_actions || [];
   const bypass = progression.bypass || null;
+  const stepBackActions = progression.step_back_actions || [];
+  const stepBack = progression.step_back || null;
   const activePhase = classifyPhase(run);
 
   const phaseLabels = {
@@ -1663,6 +1682,32 @@ function renderRunExecutionOperator(run, lot) {
                 </div>` : ""}
               <div class="action-grid">
                 ${bypassActions.map((action) => `
+                  <button class="btn btn-secondary" type="button"
+                    data-action="run-progression"
+                    data-run-action="${escapeHtml(action.action_id)}">
+                    ${escapeHtml(action.label)}
+                  </button>`).join("")}
+              </div>
+            </div>
+          </details>` : ""}
+
+        ${stepBack?.status === "pending" ? `
+          <div class="notice warning" style="margin-top:14px;">
+            Step-back approval requested. Continue only after supervisor approval.
+          </div>` : ""}
+
+        ${stepBackActions.length ? `
+          <details class="bypass-details">
+            <summary>Step back one checkpoint</summary>
+            <div class="bypass-box">
+              ${stepBackActions.some((a) => a.action_id === "request_step_back") ? `
+                <div class="field">
+                  <label for="step_back_reason">Step-back reason</label>
+                  <textarea id="step_back_reason" name="step_back_reason" rows="2"
+                    placeholder="Explain why this run needs to move back one checkpoint">${escapeHtml(run.step_back_reason || "")}</textarea>
+                </div>` : ""}
+              <div class="action-grid">
+                ${stepBackActions.map((action) => `
                   <button class="btn btn-secondary" type="button"
                     data-action="run-progression"
                     data-run-action="${escapeHtml(action.action_id)}">
@@ -2226,6 +2271,7 @@ function buildRunPayload(form, progressionAction = "") {
     shutdown_dewax_inlet_closed: checkboxField("shutdown_dewax_inlet_closed"),
     progression_action: progressionAction || undefined,
     bypass_reason: field("bypass_reason"),
+    step_back_reason: field("step_back_reason"),
     notes: field("notes"),
   };
 }
