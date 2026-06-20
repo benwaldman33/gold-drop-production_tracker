@@ -1524,24 +1524,24 @@ function renderBoothEvidence(run) {
       <div class="booth-evidence-block">
         <div class="subtle">Use the file picker to take a camera photo on mobile devices or upload existing images.</div>
         <div class="grid-2">
-          <form class="field" data-form="run-evidence" data-evidence-type="solvent_chiller_temp_photo">
+          <div class="field" data-form="run-evidence" data-evidence-type="solvent_chiller_temp_photo">
             <label for="solvent_chiller_temp_photo">Solvent Chiller Temp Photo</label>
             <input id="solvent_chiller_temp_photo" name="photos" type="file" accept="image/*" capture="environment" multiple />
             <div class="subtle">${escapeHtml(String(counts.solvent_chiller_temp_photo || 0))} file(s) on record.</div>
-            <button class="btn btn-secondary" type="submit">Upload Chiller Photo</button>
-          </form>
-          <form class="field" data-form="run-evidence" data-evidence-type="plate_temp_photo">
+            <button class="btn btn-secondary" type="button" data-action="run-evidence-upload">Upload Chiller Photo</button>
+          </div>
+          <div class="field" data-form="run-evidence" data-evidence-type="plate_temp_photo">
             <label for="plate_temp_photo">Plate Temp Photo</label>
             <input id="plate_temp_photo" name="photos" type="file" accept="image/*" capture="environment" multiple />
             <div class="subtle">${escapeHtml(String(counts.plate_temp_photo || 0))} file(s) on record.</div>
-            <button class="btn btn-secondary" type="submit">Upload Plate Photo</button>
-          </form>
-          <form class="field" data-form="run-evidence" data-evidence-type="other">
+            <button class="btn btn-secondary" type="button" data-action="run-evidence-upload">Upload Plate Photo</button>
+          </div>
+          <div class="field" data-form="run-evidence" data-evidence-type="other">
             <label for="other_booth_photo">Other Booth Photo</label>
             <input id="other_booth_photo" name="photos" type="file" accept="image/*" capture="environment" multiple />
             <div class="subtle">${escapeHtml(String(counts.other || 0))} file(s) on record.</div>
-            <button class="btn btn-secondary" type="submit">Upload Other Photo</button>
-          </form>
+            <button class="btn btn-secondary" type="button" data-action="run-evidence-upload">Upload Other Photo</button>
+          </div>
         </div>
         ${evidenceRows.length
           ? `<div class="stack" style="margin-top:12px;">${evidenceRows.map((row) => `
@@ -1863,7 +1863,7 @@ function bind() {
   app?.querySelector("form[data-form='run-execution']")?.addEventListener("submit", handleRunSubmit);
   app?.querySelector("form[data-form='settings']")?.addEventListener("submit", handleSettingsSubmit);
   app?.querySelector("form[data-form='downstream-workflow']")?.addEventListener("submit", handleDownstreamSubmit);
-  app?.querySelectorAll("form[data-form='run-evidence']").forEach((form) => form.addEventListener("submit", handleRunEvidenceSubmit));
+  app?.querySelectorAll("[data-action='run-evidence-upload']").forEach((button) => button.addEventListener("click", handleRunEvidenceUpload));
   app?.querySelectorAll("[data-action='adjust-weight']").forEach((button) => button.addEventListener("click", handleWeightAdjust));
   app?.querySelectorAll("[data-action='adjust-count']").forEach((button) => button.addEventListener("click", handleCountAdjust));
   app?.querySelectorAll("[data-action='set-field']").forEach((button) => button.addEventListener("click", handleSetFieldValue));
@@ -2364,10 +2364,11 @@ async function handleDownstreamSubmit(event) {
   }
 }
 
-async function handleRunEvidenceSubmit(event) {
-  event.preventDefault();
+async function handleRunEvidenceUpload(event) {
   if (!state.route.chargeId) return;
-  const formEl = event.currentTarget;
+  const trigger = event.currentTarget;
+  const formEl = trigger?.closest("[data-form='run-evidence']");
+  if (!formEl) return;
   const input = formEl.querySelector("input[type='file'][name='photos']");
   const files = Array.from(input?.files || []);
   if (!files.length) {

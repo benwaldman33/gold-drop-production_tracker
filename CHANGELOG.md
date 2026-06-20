@@ -8,6 +8,7 @@
 
 ### Fixed
 - Standalone extraction timer cards no longer show stale minute summaries (for example `0 min elapsed`) while live elapsed/over-target clocks are ticking; status and summary now derive from the same live timing source.
+- Standalone post-extraction Step 3 confirmation now reliably receives typed wet THCA/HTE values; evidence upload controls were moved out of nested form markup that could interfere with `Confirm Initial Outputs` submission in some browsers.
 
 ### Added
 - The standalone extraction run screen now keeps a collapsible **Evidence Photos** panel available across run phases, including support for solvent chiller, plate temperature, and other booth photo uploads with camera/file picker behavior on mobile devices.

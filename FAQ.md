@@ -548,6 +548,8 @@ The handoff is gated. You must first complete the extraction run, then select th
 
 You must first start the post-extraction session and enter both `Wet THCA (g)` and `Wet HTE (g)` in **Step 3 — Initial wet outputs** inside the guided downstream workflow. Phase 1 is only the downstream handoff foundation; later THCA / HTE-specific orchestration is planned on top of it.
 
+If you entered values and still see a missing-values warning, refresh to the latest build and retry. The Step 3 submit path now sends wet-output fields reliably with `Confirm Initial Outputs` (previous nested evidence-form markup could interfere with submission in some browsers).
+
 ## Where do I enter the wet THCA and wet HTE outputs on the iPad?
 
 After you tap `Start Post-Extraction`, scroll to the **Guided downstream workflow** section and open **Step 3 — Initial wet outputs**. That step is marked **Current** once the session has started. Enter both weights there, then tap `Confirm Initial Outputs` (or `Save Updates` to persist the edit without confirming yet).

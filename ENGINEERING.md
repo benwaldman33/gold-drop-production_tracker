@@ -320,6 +320,8 @@ Pilot-hardening additions:
   - `ready_to_confirm_filter_clear` stage exposes `Restart Mixer` (`start_mixer`) plus `Confirm Filter Clear`, allowing controlled re-agitation before continuing.
 - Timer presentation:
   - `renderTimingControlCard(...)` in the standalone frontend now derives status/summary from live clock calculations, preventing stale `0 min elapsed` summaries while elapsed/over-target clocks are still ticking.
+- Form-safety hardening:
+  - Booth evidence upload UI in `standalone-extraction-lab-app/src/app.js` now uses button-driven containers (not nested `<form>` tags inside `data-form="run-execution"`), preventing browser form-scope ambiguity that could drop Step 3 wet-output fields during `confirm_initial_outputs`.
 - Manager bypass uses existing `SupervisorNotification` override columns:
   - `request_stage_bypass` requires an operator reason and writes `dedupe_key="booth_stage_bypass:<stage_key>"`.
   - supervisors approve through the existing `Approve Deviation` path, setting `override_decision="approved_deviation"`.

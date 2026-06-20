@@ -643,6 +643,7 @@ After **Mark Run Complete**, scroll to the **Guided downstream workflow** sectio
    - Enter `Wet HTE (g)` and `Wet THCA (g)`
    - Tap **Confirm Initial Outputs** (or **Save Updates** to persist changes before confirmation)
    - Both wet output fields are required before confirmation.
+   - If values are present but confirmation still warns they are missing, refresh to the latest build and retry; Step 3 submission now uses a hardened form path so wet values are sent reliably with the confirm action.
    - The run stores the downstream start time and the initial-output confirmation time.
 
 This is the natural end of the opening post-extraction handoff. After Step 3 is confirmed, continue into the branch-specific downstream steps on the same screen.
