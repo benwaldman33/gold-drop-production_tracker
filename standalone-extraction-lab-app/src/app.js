@@ -954,9 +954,10 @@ function renderGuidedDownstreamWorkflow(run) {
     "Post-extraction session",
     "Start the downstream handoff once the extraction run is complete.",
     `
-      <div class="field">
-        <label for="post_extraction_started_at">Started At</label>
-        <input id="post_extraction_started_at" name="post_extraction_started_at" type="datetime-local" value="${escapeHtml(run.post_extraction_started_at || "")}" />
+      <div class="notice" style="margin-bottom:10px;">
+        ${run.post_extraction_started_at
+          ? `Started at <strong>${escapeHtml(run.post_extraction_started_at)}</strong>.`
+          : "Timestamp is recorded automatically when you tap Start Post-Extraction."}
       </div>
       ${run.post_extraction_started_at
           ? `<div class="subtle">Downstream handoff has already started.</div>`
@@ -983,12 +984,10 @@ function renderGuidedDownstreamWorkflow(run) {
           <input id="wet_thca_g" name="wet_thca_g" type="number" value="${escapeHtml(String(run.wet_thca_g ?? ""))}" min="0" step="0.1" placeholder="Initial wet THCA output" />
         </div>
       </div>
-      <div class="field">
-        <label for="post_extraction_initial_outputs_recorded_at">Confirmed At</label>
-        <input id="post_extraction_initial_outputs_recorded_at" name="post_extraction_initial_outputs_recorded_at" type="datetime-local" value="${escapeHtml(run.post_extraction_initial_outputs_recorded_at || "")}" />
-      </div>
       <div class="notice" style="margin-top:10px;">
-        Wet output edits are not saved until you tap <strong>Save Updates</strong> or <strong>Confirm Initial Outputs</strong>.
+        ${run.post_extraction_initial_outputs_recorded_at
+          ? `Confirmed at <strong>${escapeHtml(run.post_extraction_initial_outputs_recorded_at)}</strong>.`
+          : "Wet output values are recorded when you tap Confirm Initial Outputs."}
       </div>
       ${confirmAction ? `<button class="btn btn-primary" type="button" data-action="post-extraction-progression" data-post-action="${escapeHtml(confirmAction.action_id)}">${escapeHtml(confirmAction.label)}</button>` : `<div class="subtle">Initial outputs are already confirmed.</div>`}
     `,
@@ -1071,6 +1070,9 @@ function renderGuidedDownstreamWorkflow(run) {
             <label>THCA Destination</label>
             ${renderChoiceButtons("thca_destination", run.thca_destination, run.thca_destination_options || [])}
           </div>
+          <button class="btn btn-secondary" type="submit" style="margin-top:6px;">
+            Save THCA Branch
+          </button>
         `,
       ),
       renderWorkflowStep(
@@ -1110,6 +1112,9 @@ function renderGuidedDownstreamWorkflow(run) {
             <label>Queue Destination</label>
             ${renderChoiceButtons("hte_queue_destination", run.hte_queue_destination, run.hte_queue_destination_options || [])}
           </div>
+          <button class="btn btn-secondary" type="submit" style="margin-top:6px;">
+            Save HTE Branch
+          </button>
         `,
       ),
     );
@@ -1120,7 +1125,7 @@ function renderGuidedDownstreamWorkflow(run) {
       <div class="section-head">
         <div>
           <div class="eyebrow">Guided downstream workflow</div>
-          <h3>Work top to bottom and save as you move.</h3>
+          <h3>Complete each step in order.</h3>
         </div>
       </div>
       <div class="workflow-grid">${steps.join("")}</div>
@@ -1626,7 +1631,7 @@ function renderRunExecutionSupervisor(run, lot) {
         <div class="actions sticky-actions">
           <a class="btn btn-secondary" href="#/reactors">Back to Reactors</a>
           <a class="btn btn-secondary" href="${escapeHtml(run.open_main_app_url || "#")}">Open in Main App</a>
-          <button class="btn btn-primary" type="submit">${state.loading ? "Saving..." : run.run_completed_at ? "Save Updates" : "Save Run"}</button>
+          ${run.run_completed_at ? "" : `<button class="btn btn-primary" type="submit">${state.loading ? "Saving..." : "Save Run"}</button>`}
         </div>
       </form>
       ${renderBoothEvidence(run)}
@@ -1775,9 +1780,6 @@ function renderRunExecutionOperator(run, lot) {
         ${run.run_completed_at ? `
           <div class="card" style="padding:20px;margin-top:14px;">
             ${renderGuidedDownstreamWorkflow(run)}
-            <div class="actions" style="margin-top:14px;">
-              <button class="btn btn-secondary" type="submit">${state.loading ? "Saving..." : "Save Updates"}</button>
-            </div>
           </div>
           ${renderReactorEmptiedAction(state.charge)}` : `
           <div class="operator-save-bar">
@@ -2509,13 +2511,23 @@ function withPostExtractionFallbacks(payload) {
   return next;
 }
 
+function sanitizePostExtractionProgressionPayload(payload, postAction) {
+  const next = { ...payload };
+  if (postAction === "start_post_extraction" || postAction === "confirm_initial_outputs") {
+    delete next.post_extraction_started_at;
+    delete next.post_extraction_initial_outputs_recorded_at;
+  }
+  return next;
+}
+
 async function handlePostExtractionProgression(event) {
   if (!state.route.chargeId) return;
   const formEl = app?.querySelector("form[data-form='run-execution']");
   if (!formEl) return;
+  const postAction = event.currentTarget.dataset.postAction || "";
   const payload = withPostExtractionFallbacks({
-    ...buildRunPayload(new FormData(formEl)),
-    post_extraction_action: event.currentTarget.dataset.postAction || "",
+    ...sanitizePostExtractionProgressionPayload(buildRunPayload(new FormData(formEl)), postAction),
+    post_extraction_action: postAction,
   });
   state.loading = true;
   render();

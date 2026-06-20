@@ -15,7 +15,7 @@ Touch-first operator app for the extraction lab workflow. It mirrors the main ap
   - managers / supervisors / admins: broader supervisor review screen with full timing cards
 - settings-driven defaults for common run fields so the screen opens with the site's usual blend, aggregate weight, and count assumptions
 - guided downstream workflow on the same `Open Run` screen after extraction completion, with pathway-driven steps for post-extraction handoff plus pot-pour or minor-run downstream decisions
-- post-extraction quick fix: single run form after completion, immediate pathway save, step buttons for progression, and `Save Updates` to persist post-extraction edits before confirmation
+- post-extraction guided handoff: single run form after completion, immediate pathway save, server-stamped `Start Post-Extraction` / `Confirm Initial Outputs`, and step-local save buttons for branch fields
 - form draft sync: checkpoint numeric/text fields retain typed values across toasts and screen refreshes until the step action or Save submits them
 - **Reactor Emptied** after pour-out on completed charges (shared board API + Floor Ops + Open Run)
 - gated post-extraction handoff: pathway selection before start, wet-output entry in Step 3, undo-before-confirm on Step 2
@@ -50,10 +50,10 @@ By default the dev server runs at `http://127.0.0.1:4175` and proxies `/api/*` t
     - `Admin` and `Super Admin`: apply one-step back directly
     - other roles: request step-back approval with a reason, then apply after supervisor approval
     - all step-back actions are written to booth history and are blocked once the run is complete
-12. After `Mark Run Complete`, continue into the **Guided downstream workflow** on the same screen:
+12. After `Mark Run Complete`, continue into the **Guided downstream workflow** on the same screen and complete each step in order:
     - Step 1: choose the downstream pathway
-    - Step 2: start post-extraction (`Undo Session Start` is available here until initial outputs are confirmed)
-    - Step 3: enter wet THCA / wet HTE and confirm initial outputs
-    - Step 4+: follow the pot-pour or minor-run branch steps top to bottom
+    - Step 2: start post-extraction (`Undo Session Start` is available here until initial outputs are confirmed; timestamp is recorded from the action)
+    - Step 3: enter wet THCA / wet HTE and confirm initial outputs (confirmation timestamp is recorded from the action)
+    - Step 4+: follow the pot-pour or minor-run branch steps top to bottom, using the step-local save buttons where shown
 
 Pending and completed downstream steps collapse to headers only so the active step stays obvious.
