@@ -183,7 +183,7 @@ Recommended fields:
 
 System behavior:
 
-- operator sees `Confirm Vacuum Down`
+- operator sees `Confirm Under Vacuum`
 - action records:
   - timestamp
   - operator
@@ -814,7 +814,7 @@ If work starts immediately, the first slice should be:
 1. add `ExtractionBoothSession`
 2. add `ExtractionBoothEvent`
 3. replace the current coarse progression with:
-   - `Confirm Vacuum Down`
+   - `Confirm Under Vacuum`
    - `Record Solvent Charge`
    - `Start Primary Soak`
    - `Start / Stop Mixer`

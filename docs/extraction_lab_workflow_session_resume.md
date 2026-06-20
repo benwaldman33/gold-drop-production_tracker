@@ -38,7 +38,7 @@ Additional workflow PDFs/images were later added by the user:
 
 The current code-backed extraction progression in `services/extraction_run.py` is:
 
-1. `Confirm Vacuum Down`
+1. `Confirm Under Vacuum`
 2. `Record Solvent Charge`
 3. `Start Primary Soak`
 4. `Start Mixer`

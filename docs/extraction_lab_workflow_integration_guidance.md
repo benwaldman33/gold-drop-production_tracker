@@ -22,7 +22,7 @@ This phase model should be used as the product structure for the operator workfl
 
 The core sequence matches the implemented extraction progression in `services/extraction_run.py`:
 
-1. Confirm vacuum down
+1. Confirm under vacuum
 2. Record primary solvent charge
 3. Start primary soak
 4. Start mixer
@@ -188,7 +188,7 @@ Recommended usage:
 
 The laminated/process documents should use the same labels as the app buttons wherever possible:
 
-- Confirm Vacuum Down
+- Confirm Under Vacuum
 - Record Solvent Charge
 - Start Primary Soak
 - Start Mixer

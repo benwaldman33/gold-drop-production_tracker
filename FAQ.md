@@ -484,7 +484,7 @@ Extractors see a focused operator layout with the current stage, one primary act
 
 The normal progression is:
 
-- `Confirm Vacuum Down`
+- `Confirm Under Vacuum`
 - `Record Solvent Charge`
 - `Confirm 50 PSI`
 - `Start Primary Soak`

@@ -51,7 +51,7 @@
 - biomass blend slider updates milled / unmilled percentages to total `100`
 - saved extraction defaults from `Settings -> Operational Parameters` prepopulate the standalone run screen for new charge-linked runs, including aggregate fill / flush weights when configured
 - fill, flush, and stringer basket counters respond to `- / +`
-- the run screen shows only the current checkpoint inputs and advances correctly through the booth progression from `Confirm Vacuum Down` through `Mark Run Complete`
+- the run screen shows only the current checkpoint inputs and advances correctly through the booth progression from `Confirm Under Vacuum` through `Mark Run Complete`
 - future booth-step fields are not visible before their checkpoint is active
 - final clarity requires choosing `Clear enough` or `Not yet`, keeps the selected choice visibly active, and submits that choice with `Confirm Final Clarity`
 - attempting to jump ahead through a future progression action is rejected by the API

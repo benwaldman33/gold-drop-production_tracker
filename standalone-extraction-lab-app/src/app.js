@@ -1156,7 +1156,7 @@ function isAdmin() {
 const STAGE_SEQUENCE = [
   { key: "ready_to_confirm_biomass",         label: "Confirm biomass loaded",        phase: "primary", timer: null },
   { key: "ready_to_check_chiller_temp",      label: "Check chiller temperature",     phase: "primary", timer: null },
-  { key: "ready_to_confirm_vacuum",          label: "Confirm vacuum down",          phase: "primary", timer: null },
+  { key: "ready_to_confirm_vacuum",          label: "Confirm under vacuum",         phase: "primary", timer: null },
   { key: "ready_to_record_solvent_charge",   label: "Record solvent load",           phase: "primary", timer: null },
   { key: "ready_to_confirm_pressurized_50psi", label: "Confirm reactor at 50 PSI",   phase: "primary", timer: null },
   { key: "ready_to_start_primary_soak",      label: "Start primary soak",            phase: "primary", timer: null },
@@ -1200,7 +1200,7 @@ const BLOCKER_MAP = [
   // More specific strings must come before broader ones.
   { match: "biomass",                                  stageKey: "ready_to_confirm_biomass",              label: "Confirm Biomass Loaded",        actionId: "confirm_biomass_loaded" },
   { match: "chiller temperature",                      stageKey: "ready_to_check_chiller_temp",            label: "Check Chiller Temperature",     actionId: "confirm_chiller_temp_met" },
-  { match: "vacuum",                                   stageKey: "ready_to_confirm_vacuum",               label: "Confirm Vacuum Down",          actionId: "confirm_vacuum_down" },
+  { match: "vacuum",                                   stageKey: "ready_to_confirm_vacuum",               label: "Confirm Under Vacuum",         actionId: "confirm_vacuum_down" },
   { match: "primary solvent charge before",            stageKey: "ready_to_record_solvent_charge",        label: "Record Solvent Load",          actionId: "record_solvent_charge" },
   { match: "primary solvent load before",              stageKey: "ready_to_record_solvent_charge",        label: "Record Solvent Load",          actionId: "record_solvent_charge" },
   { match: "enter the primary solvent charge",         stageKey: "ready_to_record_solvent_charge",        label: "Record Solvent Load",          actionId: "record_solvent_charge" },

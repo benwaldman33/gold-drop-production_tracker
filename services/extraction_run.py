@@ -52,16 +52,16 @@ RUN_PROGRESSION = {
     },
     "ready_to_check_chiller_temp": {
         "label": "Check chiller temperature",
-        "description": "Record the actual chiller temperature and confirm it meets the required threshold before vacuum down.",
+        "description": "Record the actual chiller temperature and confirm it meets the required threshold before confirming under vacuum.",
         "actions": [
             {"action_id": "confirm_chiller_temp_met", "label": "Confirm Temperature Met"},
             {"action_id": "acknowledge_chiller_out_of_spec", "label": "Acknowledge and Proceed Out of Spec"},
         ],
     },
     "ready_to_confirm_vacuum": {
-        "label": "Confirm vacuum down",
-        "description": "Confirm the reactor was vacuumed down before solvent loading begins.",
-        "actions": [{"action_id": "confirm_vacuum_down", "label": "Confirm Vacuum Down"}],
+        "label": "Confirm under vacuum",
+        "description": "Confirm the reactor is under vacuum before solvent loading begins.",
+        "actions": [{"action_id": "confirm_vacuum_down", "label": "Confirm Under Vacuum"}],
     },
     "ready_to_record_solvent_charge": {
         "label": "Record solvent load",
@@ -1144,14 +1144,14 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
         return
     if action == "confirm_vacuum_down":
         if _booth_event(root, session, "chiller_temperature_checked") is None:
-            raise ValueError("Confirm the chiller temperature step before vacuum down.")
+            raise ValueError("Confirm the chiller temperature step before confirming under vacuum.")
         if _booth_event(root, session, "reactor_vacuum_confirmed") is None:
             _record_booth_event(root, session, event_key="reactor_vacuum_confirmed", event_label="Reactor vacuum confirmed")
         session.current_stage_key = "ready_to_record_solvent_charge"
         return
     if action == "record_solvent_charge":
         if _booth_event(root, session, "reactor_vacuum_confirmed") is None:
-            raise ValueError("Confirm vacuum down before recording solvent load.")
+            raise ValueError("Confirm under vacuum before recording solvent load.")
         try:
             solvent_lbs = float(payload.get("primary_solvent_charge_lbs") or 0)
         except (TypeError, ValueError):

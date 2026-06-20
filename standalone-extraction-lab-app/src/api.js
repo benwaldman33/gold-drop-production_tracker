@@ -184,9 +184,9 @@ function progressionForRun(run) {
       ],
     },
     ready_to_confirm_vacuum: {
-      stage_label: "Confirm vacuum down",
-      description: "Confirm the reactor was vacuumed down before solvent loading begins.",
-      actions: [{ action_id: "confirm_vacuum_down", label: "Confirm Vacuum Down" }],
+      stage_label: "Confirm under vacuum",
+      description: "Confirm the reactor is under vacuum before solvent loading begins.",
+      actions: [{ action_id: "confirm_vacuum_down", label: "Confirm Under Vacuum" }],
     },
     ready_to_record_solvent_charge: {
       stage_label: "Record solvent load",

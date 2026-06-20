@@ -110,7 +110,7 @@ Implemented and live:
 
 - the standalone run screen now shows the current stage and the next allowed actions
 - progression is now guided through:
-  - `Confirm Vacuum Down`
+  - `Confirm Under Vacuum`
   - `Record Solvent Charge`
   - `Start Primary Soak`
   - `Start Mixer`
@@ -958,7 +958,7 @@ Current review conclusion:
   - `Flush / Purge`
   - `Pour / Handoff`
 - the code-backed app progression remains:
-  - `Confirm Vacuum Down`
+  - `Confirm Under Vacuum`
   - `Record Solvent Charge`
   - `Start Primary Soak`
   - `Start Mixer`
@@ -986,7 +986,7 @@ Current review conclusion:
   - `Final Clarity Confirmed?`
 - `Flush Temps Acceptable?` should be treated as a hard stop in the app because the current code blocks progression if solvent chiller temperature is above `-40F`
 - `Select Post-Extraction Pathway` should be described as ready-for-handoff, not ownership transfer; the handoff starts at `Start Post-Extraction` and is confirmed only after both wet HTE and wet THCA are recorded
-- `extraction flow chart original.png` is useful as equipment-level SOP detail, but it is not the app workflow source of truth because it starts at vacuum down and ends at booth shutdown
+- `extraction flow chart original.png` is useful as equipment-level SOP detail, but it is not the app workflow source of truth because it starts at under vacuum and ends at booth shutdown
 
 Recommended next implementation step:
 

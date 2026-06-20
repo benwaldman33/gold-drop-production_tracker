@@ -84,7 +84,7 @@ Journey revenue projections:
 - It mirrors the same charge and lifecycle workflow the main app uses on `Floor Ops`.
 - After recording a charge, it can now open a dedicated standalone run-execution screen for the extractor workflow, and it can still open the main run form when deeper admin editing is needed.
 - On the `Reactors` board, use the large `Open Run` button on the reactor card before `Mark Running` when the current policy requires a linked run.
-- Inside the standalone run screen, use the guided progression buttons to move through the booth procedure with minimal typing: confirm vacuum, record solvent charge, confirm reactor at 50 PSI, start soak, run the mixer, confirm filter clear, start pressurization, begin recovery, move into flush, verify temperatures, record flush solvent charge, confirm flow resumed, run final purge, confirm final clarity, complete shutdown, then mark the run complete. The screen now shows only the current checkpoint inputs and the next allowed action; later booth steps remain hidden/locked until the current step is satisfied.
+- Inside the standalone run screen, use the guided progression buttons to move through the booth procedure with minimal typing: confirm under vacuum, record solvent charge, confirm reactor at 50 PSI, start soak, run the mixer, confirm filter clear, start pressurization, begin recovery, move into flush, verify temperatures, record flush solvent charge, confirm flow resumed, run final purge, confirm final clarity, complete shutdown, then mark the run complete. The screen now shows only the current checkpoint inputs and the next allowed action; later booth steps remain hidden/locked until the current step is satisfied.
 - The same screen now stores booth-specific proof fields such as primary solvent charge, flush chiller temperature, plate temperature, flush solvent charge, final purge timing, flow-resumed / clarity decisions, and the shutdown checklist. Typed values stay in the field while you work — finish entering a number, then tap the step action button to save and advance. Future-step values submitted early are ignored by the operator API until that checkpoint is active.
 - Use the `Booth evidence` section on the run screen to upload the required solvent chiller and plate temperature photos when your SOP calls for photo proof.
 - The `Booth timing controls` section shows the live or recorded duration for primary soak, mixer, flush soak, and final purge, along with the configured target for each step.
@@ -433,7 +433,7 @@ The timer-heavy fields use touch-first buttons instead of keyboard entry:
 
 The top of the run screen now shows the current stage and the next action buttons. The operator screen is intentionally lockstep: it only renders the active checkpoint inputs plus a compact summary of prior booth proof. The normal booth sequence is:
 
-- **Confirm Vacuum Down**
+- **Confirm Under Vacuum**
 - **Record Solvent Charge**
 - **Confirm 50 PSI**
 - **Start Primary Soak**
