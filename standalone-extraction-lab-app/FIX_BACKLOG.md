@@ -51,6 +51,7 @@ Post-extraction still mixes patterns: some fields use manual datetime entry, som
 - Removed post-extraction page-level **Save Updates** buttons from operator and supervisor run views.
 - Added step-local branch save buttons (`Save THCA Branch`, `Save HTE Branch`) so downstream branch edits stay local to active steps.
 - Updated copy from “Work top to bottom and save as you move” to “Complete each step in order.”
+- Added a visible phase rail (Primary / Flush / Purge / Post-Extraction) plus prep/reset visibility checklist on `Open Run`.
 
 ### Acceptance criteria
 

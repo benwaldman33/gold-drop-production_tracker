@@ -461,6 +461,10 @@ Mixer timing controls now have explicit safety alerts during primary extraction:
 
 After **Mark Run Complete**, the **Guided downstream workflow** section appears on the same screen inside the run form. During post-extraction, complete each guided step in order from the active step card.
 
+The same run screen also keeps two visibility surfaces on-screen for operators:
+- **Workflow phases** rail (Primary, Flush, Final Purge, Post-Extraction) with Done / Current / Pending status
+- **Prep and reset visibility** card so setup and cleaning checks stay visible through execution and handoff
+
 ### Guided downstream workflow on the iPad
 
 The standalone extraction app turns the downstream portion of **Open Run** into a guided sequence instead of leaving operators on one flat form.

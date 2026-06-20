@@ -10,6 +10,8 @@ Touch-first operator app for the extraction lab workflow. It mirrors the main ap
 - chargeable lot search
 - touch-friendly extraction charge form with `100 lbs`, `Half lot`, `Full lot`, and `Last used` presets plus last-reactor recall
 - standalone run-execution screen with lockstep booth progression, active-checkpoint inputs, timer status, blend capture, fill / flush fields, CRC blend, baskets, and notes
+- visible four-phase rail on `Open Run` so operators can track Primary -> Flush -> Purge -> Post-Extraction at a glance
+- prep/reset visibility card on `Open Run` highlighting setup checks (biomass/chiller/vacuum) and cleaning handoff checks (shutdown/complete/outputs/reactor emptied)
 - role-based run layouts:
   - extractors / assistant extractors: focused operator screen with one primary action at a time
   - managers / supervisors / admins: broader supervisor review screen with full timing cards
@@ -42,6 +44,8 @@ By default the dev server runs at `http://127.0.0.1:4175` and proxies `/api/*` t
 5. On the charge form, use the default `100 lbs` preset or tap `Half lot`, `Full lot`, or `Last used`. The app also preselects the last reactor used when possible.
 6. Record the charge, then choose `Open Run`, `Open Run in Main App`, `Back to Reactors`, or `Charge Another Lot`.
 7. In `Open Run`, use the current checkpoint card and progression buttons in order (`Confirm Under Vacuum` through `Mark Run Complete`). After `Record Solvent Charge`, the next required checkpoint is `Confirm 50 PSI` before `Start Primary Soak`. During primary extraction, use `Start Mixer` and `End Mixer`; if needed before filter clear, `Restart Mixer` is available to re-enter the mixing stage. The tablet shows only the active booth-step inputs and the next allowed action; later checkpoint fields stay hidden until the predicate is satisfied. Active timers now show live ticking elapsed/remaining (or over-target) time.
+   - The **Workflow phases** rail stays visible so the crew can see which phase is done/current/pending.
+   - The **Prep and reset visibility** card keeps setup and cleaning checks visible while the run progresses.
 8. Use the collapsible **Evidence Photos** panel whenever you need proof capture. It stays available throughout run execution and supports camera/upload input for chiller, plate, and other booth photos.
    - The upload controls are isolated from the main run form so they do not interfere with Step 3 wet-output confirmation.
 9. At final clarity, select `Clear enough` or `Not yet` before tapping `Confirm Final Clarity`; the selected decision is stored with that progression action.

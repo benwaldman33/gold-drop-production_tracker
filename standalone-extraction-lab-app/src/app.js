@@ -1290,6 +1290,161 @@ function classifyPhase(run) {
   return "primary";
 }
 
+const PHASE_RAIL = [
+  {
+    key: "primary",
+    title: "Charge + Primary",
+    detail: "Load checks through recovery handoff",
+  },
+  {
+    key: "flush",
+    title: "Flush",
+    detail: "Verify temps, solvent load, and flow resume",
+  },
+  {
+    key: "purge",
+    title: "Final Purge",
+    detail: "Clarity decision, shutdown, and complete run",
+  },
+  {
+    key: "post_extraction",
+    title: "Post-Extraction",
+    detail: "Pathway, wet outputs, and downstream branch",
+  },
+];
+
+function phaseStatusFor(run, charge, phaseKey) {
+  const order = PHASE_RAIL.map((phase) => phase.key);
+  const activeKey = classifyPhase(run);
+  const activeIndex = Math.max(0, order.indexOf(activeKey));
+  const phaseIndex = order.indexOf(phaseKey);
+  if (phaseKey === "post_extraction" && charge?.status === "cleared") return "done";
+  if (phaseIndex < activeIndex) return "done";
+  if (phaseIndex === activeIndex) return "current";
+  return "pending";
+}
+
+function renderPhaseRail(run, charge) {
+  const statusLabel = {
+    done: "Done",
+    current: "Current",
+    pending: "Pending",
+  };
+  return `
+    <section class="card phase-rail-card">
+      <div class="section-head compact">
+        <div>
+          <div class="eyebrow">Workflow phases</div>
+          <h3>Charge -> Primary -> Flush -> Purge -> Post-Extraction</h3>
+        </div>
+      </div>
+      <div class="phase-rail">
+        ${PHASE_RAIL.map((phase, index) => {
+          const stateKey = phaseStatusFor(run, charge, phase.key);
+          return `
+            <article class="phase-rail-step state-${escapeHtml(stateKey)}">
+              <div class="phase-rail-index">${escapeHtml(String(index + 1))}</div>
+              <div class="phase-rail-copy">
+                <strong>${escapeHtml(phase.title)}</strong>
+                <div class="subtle">${escapeHtml(phase.detail)}</div>
+              </div>
+              <div class="phase-rail-state">${escapeHtml(statusLabel[stateKey] || "Pending")}</div>
+            </article>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function hasBoothHistoryEvent(run, pattern) {
+  return (run.booth?.history || []).some((row) => pattern.test(String(row?.event_label || "")));
+}
+
+function renderPrepResetChecklist(run, charge) {
+  const prepItems = [
+    {
+      label: "Reactor biomass loaded",
+      done: Boolean(run.biomass_confirmed_at) || hasBoothHistoryEvent(run, /biomass confirmed/i),
+      pending: "Confirm biomass loaded checkpoint before solvent work.",
+      complete: `Confirmed at ${run.biomass_confirmed_at || "checkpoint event recorded"}.`,
+    },
+    {
+      label: "Solvent path chilled + verified",
+      done: Boolean(run.chiller_check_confirmed_at) || hasBoothHistoryEvent(run, /chiller temp checked/i),
+      pending: "Record actual chiller temperature and confirm threshold.",
+      complete: `Verified at ${run.chiller_check_confirmed_at || "checkpoint event recorded"}.`,
+    },
+    {
+      label: "Vacuum confirmed before solvent load",
+      done: hasBoothHistoryEvent(run, /vacuum confirmed/i),
+      pending: "Confirm reactor vacuum before recording solvent charge.",
+      complete: "Vacuum confirmation event is logged in booth history.",
+    },
+  ];
+  const resetItems = [
+    {
+      label: "Shutdown checklist completed",
+      done: Boolean(run.booth_process_completed_at),
+      pending: "Finish shutdown checklist before completing run.",
+      complete: `Completed at ${run.booth_process_completed_at}.`,
+    },
+    {
+      label: "Run marked complete",
+      done: Boolean(run.run_completed_at),
+      pending: "Mark run complete to unlock post-extraction handoff.",
+      complete: `Completed at ${run.run_completed_at}.`,
+    },
+    {
+      label: "Initial wet outputs confirmed",
+      done: Boolean(run.post_extraction_initial_outputs_recorded_at),
+      pending: "Confirm wet THCA + wet HTE in post-extraction step 3.",
+      complete: `Confirmed at ${run.post_extraction_initial_outputs_recorded_at}.`,
+    },
+    {
+      label: "Reactor emptied and available",
+      done: charge?.status === "cleared",
+      pending: "Tap Reactor Emptied after physical pour-out.",
+      complete: "Reactor is marked empty and available on the board.",
+    },
+  ];
+  const renderItems = (items) =>
+    items
+      .map((item) => {
+        const done = Boolean(item.done);
+        return `
+          <li class="prep-check-item ${done ? "done" : "pending"}">
+            <div class="prep-check-head">
+              <strong>${escapeHtml(item.label)}</strong>
+              <span class="prep-check-state">${done ? "Done" : "Pending"}</span>
+            </div>
+            <div class="subtle">${escapeHtml(done ? item.complete : item.pending)}</div>
+          </li>
+        `;
+      })
+      .join("");
+  return `
+    <section class="card prep-reset-card">
+      <div class="section-head compact">
+        <div>
+          <div class="eyebrow">Prep and reset visibility</div>
+          <h3>Keep setup and cleaning steps visible</h3>
+        </div>
+      </div>
+      <div class="prep-reset-grid">
+        <div>
+          <div class="prep-check-heading">Prep checks</div>
+          <ul class="prep-check-list">${renderItems(prepItems)}</ul>
+        </div>
+        <div>
+          <div class="prep-check-heading">Cleaning / reset checks</div>
+          <ul class="prep-check-list">${renderItems(resetItems)}</ul>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
 function resolvedStageKey(run) {
   const progressionActions = (run.progression?.actions || []).map((a) => a.action_id);
   let stageKey = run.progression?.stage_key || "";
@@ -1617,6 +1772,9 @@ function renderRunExecutionSupervisor(run, lot) {
         </div>
       </section>
 
+      ${renderPhaseRail(run, state.charge)}
+      ${renderPrepResetChecklist(run, state.charge)}
+
       <form class="card charge-form" data-form="run-execution">
         <input type="hidden" name="run_completed_at" value="${escapeHtml(run.run_completed_at || "")}" />
         <input type="hidden" name="post_extraction_pathway" value="${escapeHtml(run.post_extraction_pathway || "")}" />
@@ -1700,6 +1858,8 @@ function renderRunExecutionOperator(run, lot) {
         ${renderBlockerCard(state.blockingError)}
 
         <div class="operator-phase-label">${escapeHtml(phaseLabels[activePhase] || "")}</div>
+        ${renderPhaseRail(run, state.charge)}
+        ${renderPrepResetChecklist(run, state.charge)}
 
         <h2 class="operator-step-title">${escapeHtml(progression.stage_label || "")}</h2>
 
