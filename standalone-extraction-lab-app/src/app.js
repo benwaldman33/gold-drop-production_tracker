@@ -1208,8 +1208,10 @@ const BLOCKER_MAP = [
   { match: "confirm reactor at 50 psi",                stageKey: "ready_to_confirm_pressurized_50psi",    label: "Confirm 50 PSI",               actionId: "confirm_pressurized_50psi" },
   { match: "confirm reactor pressurized to 50 psi",    stageKey: "ready_to_confirm_pressurized_50psi",    label: "Confirm 50 PSI",               actionId: "confirm_pressurized_50psi" },
   { match: "primary soak before starting the mixer",   stageKey: "ready_to_start_primary_soak",           label: "Start Primary Soak",           actionId: "start_primary_soak" },
-  { match: "stop the mixer before",                    stageKey: "mixing",                                label: "Stop Mixer",                   actionId: "stop_mixer" },
+  { match: "stop the mixer before",                    stageKey: "mixing",                                label: "End Mixer",                    actionId: "stop_mixer" },
+  { match: "end mixer before",                         stageKey: "mixing",                                label: "End Mixer",                    actionId: "stop_mixer" },
   { match: "mixer before stopping",                    stageKey: "mixing",                                label: "Start Mixer",                  actionId: "start_mixer" },
+  { match: "mixer before ending",                      stageKey: "mixing",                                label: "Start Mixer",                  actionId: "start_mixer" },
   { match: "start the mixer before",                   stageKey: "ready_to_start_mixer",                  label: "Start Mixer",                  actionId: "start_mixer" },
   { match: "both flush temperatures",                  stageKey: "ready_to_verify_flush_temps",           label: "Verify Flush Temps",           actionId: "verify_flush_temps" },
   { match: "chiller temperature must be",              stageKey: "ready_to_verify_flush_temps",           label: "Verify Flush Temps",           actionId: "verify_flush_temps" },
@@ -1302,24 +1304,37 @@ function resolvedStageKey(run) {
 
 function renderTimingControlCard(timing, liveClock = null) {
   if (!timing) return "";
+  const liveMetrics = computeLiveTimingMetrics(liveClock);
+  const statusKey = liveMetrics?.status || timing.status;
   const statusLabels = {
     not_started: "Not started", active: "Active",
     active_on_track: "Active / on track", active_target_reached: "Active / target reached",
     recorded: "Recorded", on_target: "On target", short: "Short",
   };
+  const actualMinutes = liveMetrics?.actualMinutes ?? timing.actual_minutes;
+  const activeMinutes = liveMetrics?.activeMinutes ?? timing.active_minutes;
+  const summaryLabel = liveMetrics?.summaryLabel || (
+    actualMinutes != null ? `${actualMinutes} min recorded`
+    : activeMinutes != null ? `${activeMinutes} min elapsed`
+    : "Not started"
+  );
+  const targetMinutes = liveMetrics?.targetMinutes ?? timing.target_minutes;
+  const deltaMinutes = (
+    targetMinutes == null
+      ? null
+      : liveMetrics?.deltaMinutes ?? timing.delta_minutes
+  );
   const summary =
-    timing.actual_minutes != null ? `${timing.actual_minutes} min recorded`
-    : timing.active_minutes != null ? `${timing.active_minutes} min elapsed`
-    : "Not started";
-  const target = timing.target_minutes != null ? `${timing.target_minutes} min target` : "";
+    summaryLabel;
+  const target = targetMinutes != null ? `${targetMinutes} min target` : "";
   const delta =
-    timing.delta_minutes == null ? ""
-    : timing.delta_minutes >= 0 ? `${timing.delta_minutes} min over`
-    : `${Math.abs(timing.delta_minutes)} min under`;
+    deltaMinutes == null ? ""
+    : deltaMinutes >= 0 ? `${deltaMinutes} min over`
+    : `${Math.abs(deltaMinutes)} min under`;
   return `
     <div class="timing-chip">
       <span class="timing-chip-label">${escapeHtml(timing.label || "Timer")}</span>
-      <strong>${escapeHtml(statusLabels[timing.status] || "Pending")}</strong>
+      <strong>${escapeHtml(statusLabels[statusKey] || "Pending")}</strong>
       ${renderLiveClock(liveClock || {
         label: timing.label || "Timer",
         startAt: null,
@@ -1354,7 +1369,7 @@ function renderCheckpointInputs(run) {
       <div class="field"><label for="primary_soak_short_reason">Reason if starting mixer early</label>
       <textarea id="primary_soak_short_reason" name="primary_soak_short_reason" rows="2">${escapeHtml(run.primary_soak_short_reason || "")}</textarea></div>`,
     mixing: `
-      <div class="field"><label for="mixer_short_reason">Reason if stopping mixer early</label>
+      <div class="field"><label for="mixer_short_reason">Reason if ending mixer early</label>
       <textarea id="mixer_short_reason" name="mixer_short_reason" rows="2">${escapeHtml(run.mixer_short_reason || "")}</textarea></div>`,
     flushing: `
       <div class="field"><label for="flush_short_reason">Reason if stopping flush early</label>
@@ -1879,6 +1894,14 @@ function parseClockDate(value) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function clockDurationMs(startAt, endAt) {
+  const startDate = parseClockDate(startAt);
+  if (!startDate) return null;
+  const endDate = parseClockDate(endAt);
+  const referenceMs = endDate ? endDate.getTime() : Date.now();
+  return Math.max(0, referenceMs - startDate.getTime());
+}
+
 function formatClockDuration(ms) {
   if (!Number.isFinite(ms) || ms < 0) return "00:00:00";
   const totalSeconds = Math.floor(ms / 1000);
@@ -1891,12 +1914,40 @@ function formatClockDuration(ms) {
   return `${hh}:${mm}:${ss}`;
 }
 
+function computeLiveTimingMetrics(liveClock) {
+  if (!liveClock) return null;
+  const elapsedMs = clockDurationMs(liveClock.startAt, liveClock.endAt);
+  const targetMinutes = Number.isFinite(Number(liveClock.targetMinutes)) ? Number(liveClock.targetMinutes) : null;
+  if (elapsedMs == null) {
+    return {
+      status: "not_started",
+      actualMinutes: null,
+      activeMinutes: null,
+      summaryLabel: "Not started",
+      targetMinutes,
+      deltaMinutes: null,
+    };
+  }
+  const elapsedMinutes = Math.floor(elapsedMs / 60000);
+  const hasEnded = !!parseClockDate(liveClock.endAt);
+  const status = hasEnded
+    ? (targetMinutes == null ? "recorded" : elapsedMinutes >= targetMinutes ? "on_target" : "short")
+    : (targetMinutes == null ? "active" : elapsedMinutes >= targetMinutes ? "active_target_reached" : "active_on_track");
+  const deltaMinutes = targetMinutes == null ? null : (elapsedMinutes - targetMinutes);
+  return {
+    status,
+    actualMinutes: hasEnded ? elapsedMinutes : null,
+    activeMinutes: hasEnded ? null : elapsedMinutes,
+    summaryLabel: `${formatClockDuration(elapsedMs)} ${hasEnded ? "recorded" : "elapsed"}`,
+    targetMinutes,
+    deltaMinutes,
+  };
+}
+
 function computeLiveClockText(startAt, endAt, targetMinutes) {
-  const startDate = parseClockDate(startAt);
-  if (!startDate) return "Clock: not started";
+  const elapsedMs = clockDurationMs(startAt, endAt);
+  if (elapsedMs == null) return "Clock: not started";
   const endDate = parseClockDate(endAt);
-  const referenceMs = endDate ? endDate.getTime() : Date.now();
-  const elapsedMs = Math.max(0, referenceMs - startDate.getTime());
   const elapsedLabel = `Elapsed ${formatClockDuration(elapsedMs)}`;
   if (!Number.isFinite(targetMinutes) || targetMinutes == null) {
     return endDate ? `${elapsedLabel} (recorded)` : `${elapsedLabel} (live)`;

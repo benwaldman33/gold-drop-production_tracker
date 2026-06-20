@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-06-19
+
+### Changed
+- Extraction checkpoint language now consistently uses **Confirm Under Vacuum** in place of prior **Confirm Vacuum Down** wording across standalone run UI, backend progression labels/messages, and extraction workflow documentation.
+- Mixer controls in the standalone extraction progression now use **Start Mixer / End Mixer**, with a controlled **Restart Mixer** action available before filter-clear confirmation.
+
+### Fixed
+- Standalone extraction timer cards no longer show stale minute summaries (for example `0 min elapsed`) while live elapsed/over-target clocks are ticking; status and summary now derive from the same live timing source.
+
+### Added
+- The standalone extraction run screen now keeps a collapsible **Evidence Photos** panel available across run phases, including support for solvent chiller, plate temperature, and other booth photo uploads with camera/file picker behavior on mobile devices.
+
 ## 2026-06-14
 
 ### Fixed

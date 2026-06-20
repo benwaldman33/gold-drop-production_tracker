@@ -85,13 +85,16 @@ RUN_PROGRESSION = {
     },
     "mixing": {
         "label": "Mixer running",
-        "description": "Mixer timing is active during primary extraction. Stop it when agitation is done.",
-        "actions": [{"action_id": "stop_mixer", "label": "Stop Mixer"}],
+        "description": "Mixer timing is active during primary extraction. End mixer when agitation is done.",
+        "actions": [{"action_id": "stop_mixer", "label": "End Mixer"}],
     },
     "ready_to_confirm_filter_clear": {
         "label": "Confirm filter clear",
-        "description": "Mixer timing is complete. Confirm the basket filter is cleared before pressurization.",
-        "actions": [{"action_id": "confirm_filter_clear", "label": "Confirm Filter Clear"}],
+        "description": "Mixer timing is complete. Restart mixer if needed, then confirm the basket filter is cleared before pressurization.",
+        "actions": [
+            {"action_id": "start_mixer", "label": "Restart Mixer"},
+            {"action_id": "confirm_filter_clear", "label": "Confirm Filter Clear"},
+        ],
     },
     "ready_to_start_pressurization": {
         "label": "Start pressurization",
@@ -1241,15 +1244,19 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
                 policy=primary_soak_policy,
                 operator_reason=primary_reason,
             )
-        if run.mixer_started_at is None:
+        restarting_mixer = run.mixer_started_at is not None and run.mixer_ended_at is not None
+        if run.mixer_started_at is None or restarting_mixer:
             run.mixer_started_at = now
-        if _booth_event(root, session, "primary_mixer_started") is None:
+        if restarting_mixer:
+            run.mixer_ended_at = None
+            _record_booth_event(root, session, event_key="primary_mixer_restarted", event_label="Primary mixer restarted")
+        elif _booth_event(root, session, "primary_mixer_started") is None:
             _record_booth_event(root, session, event_key="primary_mixer_started", event_label="Primary mixer started")
         session.current_stage_key = "mixing"
         return
     if action == "stop_mixer":
         if run.mixer_started_at is None:
-            raise ValueError("Start the mixer before stopping it.")
+            raise ValueError("Start the mixer before ending it.")
         prospective_mixer_minutes = duration_minutes(run.mixer_started_at, now)
         mixer_target = extraction_timing_targets(root).get("mixer_minutes")
         mixer_policy = extraction_timing_policies(root).get("mixer", "warning")
@@ -1289,7 +1296,7 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
         return
     if action == "confirm_filter_clear":
         if run.mixer_ended_at is None:
-            raise ValueError("Stop the mixer before confirming the filter-clear step.")
+            raise ValueError("End mixer before confirming the filter-clear step.")
         if _booth_event(root, session, "basket_filter_cleared") is None:
             _record_booth_event(root, session, event_key="basket_filter_cleared", event_label="Basket filter cleared")
         session.current_stage_key = "ready_to_start_pressurization"

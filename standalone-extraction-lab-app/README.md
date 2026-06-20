@@ -41,14 +41,15 @@ By default the dev server runs at `http://127.0.0.1:4175` and proxies `/api/*` t
 4. Open `Lots` when you need browser-style search by tracking id, supplier, strain, or batch id.
 5. On the charge form, use the default `100 lbs` preset or tap `Half lot`, `Full lot`, or `Last used`. The app also preselects the last reactor used when possible.
 6. Record the charge, then choose `Open Run`, `Open Run in Main App`, `Back to Reactors`, or `Charge Another Lot`.
-7. In `Open Run`, use the current checkpoint card and progression buttons in order. After `Record Solvent Charge`, the next required checkpoint is `Confirm 50 PSI` before `Start Primary Soak`. The tablet shows only the active booth-step inputs and the next allowed action; later checkpoint fields stay hidden until the predicate is satisfied. During primary soak, start mixer within 3 minutes and stop around 5 minutes; delayed start (>3 min) or overrun (>6 min) triggers supervisor alerts with emergency escalation if unacknowledged.
-8. At final clarity, select `Clear enough` or `Not yet` before tapping `Confirm Final Clarity`; the selected decision is stored with that progression action.
-9. If the active checkpoint cannot be completed because equipment or process conditions are blocking it, use `Request Manager Bypass` with a reason. Continue only after manager approval exposes `Use Approved Bypass`.
-10. If you need to return to the immediately previous booth checkpoint, use the one-step back controls:
+7. In `Open Run`, use the current checkpoint card and progression buttons in order (`Confirm Under Vacuum` through `Mark Run Complete`). After `Record Solvent Charge`, the next required checkpoint is `Confirm 50 PSI` before `Start Primary Soak`. During primary extraction, use `Start Mixer` and `End Mixer`; if needed before filter clear, `Restart Mixer` is available to re-enter the mixing stage. The tablet shows only the active booth-step inputs and the next allowed action; later checkpoint fields stay hidden until the predicate is satisfied. Active timers now show live ticking elapsed/remaining (or over-target) time.
+8. Use the collapsible **Evidence Photos** panel whenever you need proof capture. It stays available throughout run execution and supports camera/upload input for chiller, plate, and other booth photos.
+9. At final clarity, select `Clear enough` or `Not yet` before tapping `Confirm Final Clarity`; the selected decision is stored with that progression action.
+10. If the active checkpoint cannot be completed because equipment or process conditions are blocking it, use `Request Manager Bypass` with a reason. Continue only after manager approval exposes `Use Approved Bypass`.
+11. If you need to return to the immediately previous booth checkpoint, use the one-step back controls:
     - `Admin` and `Super Admin`: apply one-step back directly
     - other roles: request step-back approval with a reason, then apply after supervisor approval
     - all step-back actions are written to booth history and are blocked once the run is complete
-11. After `Mark Run Complete`, continue into the **Guided downstream workflow** on the same screen:
+12. After `Mark Run Complete`, continue into the **Guided downstream workflow** on the same screen:
     - Step 1: choose the downstream pathway
     - Step 2: start post-extraction (`Undo Session Start` is available here until initial outputs are confirmed)
     - Step 3: enter wet THCA / wet HTE and confirm initial outputs

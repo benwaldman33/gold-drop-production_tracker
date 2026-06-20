@@ -470,7 +470,15 @@ For run / fill time, mixer time, and flush time, use:
 - `Start / Now`
 - `Stop / Now`
 
-The app stores the actual timestamps and also shows the derived duration in minutes when both endpoints are present.
+The app stores the actual timestamps and now shows a live ticking clock (`Elapsed`, plus `Remaining` or `Over target` when targets exist) so operators can track time without manual refresh.
+
+## Where can operators upload photos during extraction?
+
+The run screen now keeps a collapsible **Evidence Photos** panel available throughout execution, not only on a single phase.
+
+- Operators can upload `Solvent Chiller Temp Photo`, `Plate Temp Photo`, or `Other Booth Photo`.
+- On iPad/mobile devices, the picker can invoke the camera directly.
+- When not needed, the panel collapses to a compact header with the current file count.
 
 ## Why did my typed number disappear from a checkpoint field?
 
@@ -489,7 +497,8 @@ The normal progression is:
 - `Confirm 50 PSI`
 - `Start Primary Soak`
 - `Start Mixer`
-- `Stop Mixer`
+- `End Mixer`
+- `Restart Mixer` (optional, if additional agitation is needed before filter clear)
 - `Confirm Filter Clear`
 - `Start Pressurization`
 - `Begin Recovery`

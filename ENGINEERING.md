@@ -261,7 +261,7 @@ Pilot-hardening additions:
 - the standalone receiving app also consumes mobile `capabilities` plus per-record `receiving_editable` / `locked_reason` fields so the UI can expose `Edit Receipt` only while no downstream lot usage exists
 - the standalone extraction app now consumes the same mobile surface for booth-SOP execution, including run progression state and booth evidence uploads
 - the standalone extraction frontend (`standalone-extraction-lab-app/src/app.js`) now renders two run-execution surfaces from the same mobile payload:
-  - **operator view** for extractor / assistant-extractor roles: one primary progression action, phase label, compact checkpoint inputs, optional evidence upload, and the guided downstream workflow inside the same `data-form="run-execution"` form
+  - **operator view** for extractor / assistant-extractor roles: one primary progression action, phase label, compact checkpoint inputs, always-available collapsible evidence panel, and the guided downstream workflow inside the same `data-form="run-execution"` form
   - **supervisor view** for manager / supervisor / admin / VP Operations roles: full timing cards, checkpoint inputs, progression actions, booth evidence, and the same guided downstream workflow stack
 - guided downstream workflow rendering is client-side in `standalone-extraction-lab-app/src/app.js`:
   - Step 1: `post_extraction_pathway`
@@ -315,6 +315,11 @@ Pilot-hardening additions:
   - `run_progression_payload(...)` returns only the current stage's standard actions plus optional bypass/step-back actions.
   - `apply_progression_action(...)` rejects actions that do not belong to the current stage.
   - `operator_allowed_execution_fields(...)` filters mobile operator writes so future booth fields cannot be saved before their checkpoint is active.
+- Mixer control details:
+  - `mixing` stage exposes `End Mixer` (`stop_mixer` action).
+  - `ready_to_confirm_filter_clear` stage exposes `Restart Mixer` (`start_mixer`) plus `Confirm Filter Clear`, allowing controlled re-agitation before continuing.
+- Timer presentation:
+  - `renderTimingControlCard(...)` in the standalone frontend now derives status/summary from live clock calculations, preventing stale `0 min elapsed` summaries while elapsed/over-target clocks are still ticking.
 - Manager bypass uses existing `SupervisorNotification` override columns:
   - `request_stage_bypass` requires an operator reason and writes `dedupe_key="booth_stage_bypass:<stage_key>"`.
   - supervisors approve through the existing `Approve Deviation` path, setting `override_decision="approved_deviation"`.

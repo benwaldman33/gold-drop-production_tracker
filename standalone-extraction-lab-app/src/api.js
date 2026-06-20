@@ -210,13 +210,16 @@ function progressionForRun(run) {
     },
     mixing: {
       stage_label: "Mixer running",
-      description: "Mixer timing is active during primary extraction. Stop it when agitation is done.",
-      actions: [{ action_id: "stop_mixer", label: "Stop Mixer" }],
+      description: "Mixer timing is active during primary extraction. End mixer when agitation is done.",
+      actions: [{ action_id: "stop_mixer", label: "End Mixer" }],
     },
     ready_to_confirm_filter_clear: {
       stage_label: "Confirm filter clear",
-      description: "Mixer timing is complete. Confirm the basket filter is cleared before pressurization.",
-      actions: [{ action_id: "confirm_filter_clear", label: "Confirm Filter Clear" }],
+      description: "Mixer timing is complete. Restart mixer if needed, then confirm the basket filter is cleared before pressurization.",
+      actions: [
+        { action_id: "start_mixer", label: "Restart Mixer" },
+        { action_id: "confirm_filter_clear", label: "Confirm Filter Clear" },
+      ],
     },
     ready_to_start_pressurization: {
       stage_label: "Start pressurization",
@@ -455,18 +458,19 @@ function applyMockProgressionAction(run, action) {
   }
   if (action === "start_mixer") {
     if (!run.run_fill_started_at) throw new Error("Start the primary soak before starting the mixer.");
-    if (!run.mixer_started_at) run.mixer_started_at = now;
+    if (!run.mixer_started_at || run.mixer_ended_at) run.mixer_started_at = now;
+    run.mixer_ended_at = "";
     run.booth_stage_key = "mixing";
     return;
   }
   if (action === "stop_mixer") {
-    if (!run.mixer_started_at) throw new Error("Start the mixer before stopping it.");
+    if (!run.mixer_started_at) throw new Error("Start the mixer before ending it.");
     run.mixer_ended_at = now;
     run.booth_stage_key = "ready_to_confirm_filter_clear";
     return;
   }
   if (action === "confirm_filter_clear") {
-    if (!run.mixer_ended_at) throw new Error("Stop the mixer before confirming the filter-clear step.");
+    if (!run.mixer_ended_at) throw new Error("End mixer before confirming the filter-clear step.");
     run.booth_stage_key = "ready_to_start_pressurization";
     return;
   }
