@@ -1277,7 +1277,11 @@
         </div>
         <div class="form-group">
           <label>Protocol type</label>
-          <input type="text" name="protocol_type" value="ascii" placeholder="ascii">
+          <select name="protocol_type">
+            {% for protocol_type in scale_protocol_types %}
+            <option value="{{ protocol_type }}" {% if protocol_type == 'ascii' %}selected{% endif %}>{{ protocol_type }}</option>
+            {% endfor %}
+          </select>
         </div>
         <div class="form-group">
           <label>Connection target</label>
@@ -1336,7 +1340,11 @@
                     <option value="{{ interface_type }}" {% if device.interface_type == interface_type %}selected{% endif %}>{{ interface_type }}</option>
                     {% endfor %}
                   </select>
-                  <input type="text" name="protocol_type" value="{{ device.protocol_type or 'ascii' }}" placeholder="Protocol">
+                  <select name="protocol_type">
+                    {% for protocol_type in scale_protocol_types %}
+                    <option value="{{ protocol_type }}" {% if (device.protocol_type or 'ascii') == protocol_type %}selected{% endif %}>{{ protocol_type }}</option>
+                    {% endfor %}
+                  </select>
                 </div>
                 <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;margin-top:8px;align-items:start;">
                   <input type="text" name="notes" value="{{ device.notes or '' }}" placeholder="Notes">

@@ -5,7 +5,8 @@ from datetime import datetime, timezone
 from flask_login import current_user
 from models import ScaleDevice, WeightCapture
 
-SCALE_INTERFACE_TYPES = ("rs232", "usb_serial", "tcp", "modbus_rtu", "modbus_tcp")
+SCALE_INTERFACE_TYPES = ("rs232", "usb_serial")
+SCALE_PROTOCOL_TYPES = ("ascii", "plain_text", "generic_ascii")
 SCALE_SOURCE_MODES = ("manual", "device")
 WEIGHT_CAPTURE_TYPES = ("intake", "allocation", "output", "adjustment")
 
@@ -68,7 +69,7 @@ def parse_ascii_scale_payload(raw_payload: str) -> dict:
 
 def parse_scale_payload(*, protocol_type: str | None, raw_payload: str) -> dict:
     protocol = (protocol_type or "ascii").strip().lower()
-    if protocol in {"ascii", "plain_text", "generic_ascii"}:
+    if protocol in set(SCALE_PROTOCOL_TYPES):
         return parse_ascii_scale_payload(raw_payload)
     raise ValueError(f"Unsupported scale protocol: {protocol}")
 
