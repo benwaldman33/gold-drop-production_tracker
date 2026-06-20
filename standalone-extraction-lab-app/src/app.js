@@ -54,6 +54,7 @@ let cameraStream = null;
 let barcodeDetector = null;
 let scanTimer = null;
 let lastScannedValue = null;
+let liveClockTimer = null;
 
 window.addEventListener("hashchange", onRouteChange);
 window.addEventListener("beforeunload", stopCamera);
@@ -757,6 +758,7 @@ function renderChargeForm() {
 }
 
 function renderTimerField(name, label, value, durationLabel, stopField = "", stopValue = "") {
+  const targetMinutes = durationLabel ? extractMinutes(durationLabel) : null;
   return `
     <div class="field timer-card">
       <label for="${escapeHtml(name)}">${escapeHtml(label)}</label>
@@ -766,6 +768,12 @@ function renderTimerField(name, label, value, durationLabel, stopField = "", sto
         <button class="btn btn-secondary" type="button" data-action="timer-stamp" data-field="${escapeHtml(name)}">Start / Now</button>
         <button class="btn btn-secondary" type="button" data-action="timer-stop" data-field="${escapeHtml(name)}">Stop / Now</button>
       </div>
+      ${renderLiveClock({
+        label,
+        startAt: value,
+        endAt: stopValue,
+        targetMinutes,
+      })}
       ${durationLabel ? `<div class="subtle">${escapeHtml(durationLabel)}</div>` : ""}
     </div>
   `;
@@ -1292,7 +1300,7 @@ function resolvedStageKey(run) {
 // TIMING CONTROL CARD — unchanged helper
 // ---------------------------------------------------------------------------
 
-function renderTimingControlCard(timing) {
+function renderTimingControlCard(timing, liveClock = null) {
   if (!timing) return "";
   const statusLabels = {
     not_started: "Not started", active: "Active",
@@ -1312,6 +1320,12 @@ function renderTimingControlCard(timing) {
     <div class="timing-chip">
       <span class="timing-chip-label">${escapeHtml(timing.label || "Timer")}</span>
       <strong>${escapeHtml(statusLabels[timing.status] || "Pending")}</strong>
+      ${renderLiveClock(liveClock || {
+        label: timing.label || "Timer",
+        startAt: null,
+        endAt: null,
+        targetMinutes: timing.target_minutes ?? null,
+      })}
       <span class="subtle">${escapeHtml(summary)}${target ? ` · ${target}` : ""}${delta ? ` · ${delta}` : ""}</span>
     </div>
   `;
@@ -1417,7 +1431,15 @@ function renderRelevantTimer(run) {
   };
   const timing = timerMap[stageKey];
   if (!timing) return "";
-  return `<div class="current-timer">${renderTimingControlCard(timing)}</div>`;
+  const liveMap = {
+    ready_to_start_mixer: { label: "Primary soak", startAt: run.run_fill_started_at, endAt: run.run_fill_ended_at, targetMinutes: timings.primary_soak?.target_minutes ?? null },
+    mixing: { label: "Mixer", startAt: run.mixer_started_at, endAt: run.mixer_ended_at, targetMinutes: timings.mixer?.target_minutes ?? null },
+    flushing: { label: "Flush soak", startAt: run.flush_started_at, endAt: run.flush_ended_at, targetMinutes: timings.flush?.target_minutes ?? null },
+    ready_to_confirm_flow_resumed: { label: "Flush soak", startAt: run.flush_started_at, endAt: run.flush_ended_at, targetMinutes: timings.flush?.target_minutes ?? null },
+    purging: { label: "Final purge", startAt: run.final_purge_started_at, endAt: run.final_purge_completed_at, targetMinutes: timings.final_purge?.target_minutes ?? null },
+    ready_to_confirm_clarity: { label: "Final purge", startAt: run.final_purge_started_at, endAt: run.final_purge_completed_at, targetMinutes: timings.final_purge?.target_minutes ?? null },
+  };
+  return `<div class="current-timer">${renderTimingControlCard(timing, liveMap[stageKey] || null)}</div>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1470,31 +1492,45 @@ function renderBoothEvidence(run) {
   const booth = run.booth || {};
   const counts = booth.evidence_counts || {};
   const evidenceRows = Array.isArray(state.runEvidence) ? state.runEvidence : [];
+  const totalEvidence = Number(counts.solvent_chiller_temp_photo || 0) + Number(counts.plate_temp_photo || 0) + Number(counts.other || 0);
   return `
-    <div class="booth-evidence-block">
-      <div class="grid-2">
-        <form class="field" data-form="run-evidence" data-evidence-type="solvent_chiller_temp_photo">
-          <label for="solvent_chiller_temp_photo">Solvent Chiller Temp Photo</label>
-          <input id="solvent_chiller_temp_photo" name="photos" type="file" accept="image/*" multiple />
-          <div class="subtle">${escapeHtml(String(counts.solvent_chiller_temp_photo || 0))} file(s) on record.</div>
-          <button class="btn btn-secondary" type="submit">Upload Chiller Photo</button>
-        </form>
-        <form class="field" data-form="run-evidence" data-evidence-type="plate_temp_photo">
-          <label for="plate_temp_photo">Plate Temp Photo</label>
-          <input id="plate_temp_photo" name="photos" type="file" accept="image/*" multiple />
-          <div class="subtle">${escapeHtml(String(counts.plate_temp_photo || 0))} file(s) on record.</div>
-          <button class="btn btn-secondary" type="submit">Upload Plate Photo</button>
-        </form>
+    <details class="evidence-panel" ${totalEvidence > 0 ? "" : "open"}>
+      <summary>
+        Evidence Photos
+        <small>${escapeHtml(String(totalEvidence))} file(s) on record</small>
+      </summary>
+      <div class="booth-evidence-block">
+        <div class="subtle">Use the file picker to take a camera photo on mobile devices or upload existing images.</div>
+        <div class="grid-2">
+          <form class="field" data-form="run-evidence" data-evidence-type="solvent_chiller_temp_photo">
+            <label for="solvent_chiller_temp_photo">Solvent Chiller Temp Photo</label>
+            <input id="solvent_chiller_temp_photo" name="photos" type="file" accept="image/*" capture="environment" multiple />
+            <div class="subtle">${escapeHtml(String(counts.solvent_chiller_temp_photo || 0))} file(s) on record.</div>
+            <button class="btn btn-secondary" type="submit">Upload Chiller Photo</button>
+          </form>
+          <form class="field" data-form="run-evidence" data-evidence-type="plate_temp_photo">
+            <label for="plate_temp_photo">Plate Temp Photo</label>
+            <input id="plate_temp_photo" name="photos" type="file" accept="image/*" capture="environment" multiple />
+            <div class="subtle">${escapeHtml(String(counts.plate_temp_photo || 0))} file(s) on record.</div>
+            <button class="btn btn-secondary" type="submit">Upload Plate Photo</button>
+          </form>
+          <form class="field" data-form="run-evidence" data-evidence-type="other">
+            <label for="other_booth_photo">Other Booth Photo</label>
+            <input id="other_booth_photo" name="photos" type="file" accept="image/*" capture="environment" multiple />
+            <div class="subtle">${escapeHtml(String(counts.other || 0))} file(s) on record.</div>
+            <button class="btn btn-secondary" type="submit">Upload Other Photo</button>
+          </form>
+        </div>
+        ${evidenceRows.length
+          ? `<div class="stack" style="margin-top:12px;">${evidenceRows.map((row) => `
+              <div class="card" style="padding:12px 14px;">
+                <div><strong>${escapeHtml(String(row.evidence_type || "").replaceAll("_", " "))}</strong></div>
+                <div class="subtle">${escapeHtml(row.captured_at || "")}</div>
+                <div class="subtle">${escapeHtml(row.file_path || row.url || "")}</div>
+              </div>`).join("")}</div>`
+          : `<div class="subtle" style="margin-top:4px;">No booth evidence uploaded yet.</div>`}
       </div>
-      ${evidenceRows.length
-        ? `<div class="stack" style="margin-top:16px;">${evidenceRows.map((row) => `
-            <div class="card" style="padding:12px 14px;">
-              <div><strong>${escapeHtml(String(row.evidence_type || "").replaceAll("_", " "))}</strong></div>
-              <div class="subtle">${escapeHtml(row.captured_at || "")}</div>
-              <div class="subtle">${escapeHtml(row.file_path || row.url || "")}</div>
-            </div>`).join("")}</div>`
-        : `<div class="subtle" style="margin-top:12px;">No booth evidence uploaded yet.</div>`}
-    </div>
+    </details>
   `;
 }
 
@@ -1547,10 +1583,10 @@ function renderRunExecutionSupervisor(run, lot) {
       <section class="card">
         <div class="section-head"><div><div class="eyebrow">All Timers</div><h3>Booth timing against SOP targets</h3></div></div>
         <div class="grid-2">
-          ${renderTimingControlCard(timings.primary_soak)}
-          ${renderTimingControlCard(timings.mixer)}
-          ${renderTimingControlCard(timings.flush)}
-          ${renderTimingControlCard(timings.final_purge)}
+          ${renderTimingControlCard(timings.primary_soak, { label: "Primary soak", startAt: run.run_fill_started_at, endAt: run.run_fill_ended_at, targetMinutes: timings.primary_soak?.target_minutes ?? null })}
+          ${renderTimingControlCard(timings.mixer, { label: "Mixer", startAt: run.mixer_started_at, endAt: run.mixer_ended_at, targetMinutes: timings.mixer?.target_minutes ?? null })}
+          ${renderTimingControlCard(timings.flush, { label: "Flush soak", startAt: run.flush_started_at, endAt: run.flush_ended_at, targetMinutes: timings.flush?.target_minutes ?? null })}
+          ${renderTimingControlCard(timings.final_purge, { label: "Final purge", startAt: run.final_purge_started_at, endAt: run.final_purge_completed_at, targetMinutes: timings.final_purge?.target_minutes ?? null })}
         </div>
       </section>
 
@@ -1610,7 +1646,6 @@ function renderRunExecutionOperator(run, lot) {
 
   const checkpointInputs = renderCheckpointInputs(run);
   const relevantTimer = renderRelevantTimer(run);
-  const needsEvidenceUpload = activePhase === "flush";
 
   return `
     <div class="layout-grid operator-layout">
@@ -1647,11 +1682,9 @@ function renderRunExecutionOperator(run, lot) {
 
         ${checkpointInputs ? `<div class="operator-inputs">${checkpointInputs}</div>` : ""}
 
-        ${needsEvidenceUpload ? `
-          <div class="operator-evidence">
-            <div class="eyebrow" style="margin-bottom:8px;">Required Evidence</div>
-            ${renderBoothEvidence(run)}
-          </div>` : ""}
+        <div class="operator-evidence">
+          ${renderBoothEvidence(run)}
+        </div>
 
         ${actions.length ? `
           <div class="operator-actions">
@@ -1828,8 +1861,85 @@ function bind() {
   app?.querySelectorAll("[data-action='confirm-cancel']").forEach((button) => button.addEventListener("click", handleConfirmCancel));
   app?.querySelector("input[type='range'][name='charged_weight_lbs']")?.addEventListener("input", syncWeightDisplay);
   app?.querySelector("input[type='range'][name='biomass_blend_milled_pct']")?.addEventListener("input", syncBlendDisplay);
+  startLiveClockTicker();
   focusScanInput();
   syncBlendDisplay();
+}
+
+function extractMinutes(text) {
+  const match = String(text || "").match(/(\d+)\s*minute/i);
+  return match ? Number(match[1]) : null;
+}
+
+function parseClockDate(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatClockDuration(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return "00:00:00";
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const hh = String(hours).padStart(2, "0");
+  const mm = String(minutes).padStart(2, "0");
+  const ss = String(seconds).padStart(2, "0");
+  return `${hh}:${mm}:${ss}`;
+}
+
+function computeLiveClockText(startAt, endAt, targetMinutes) {
+  const startDate = parseClockDate(startAt);
+  if (!startDate) return "Clock: not started";
+  const endDate = parseClockDate(endAt);
+  const referenceMs = endDate ? endDate.getTime() : Date.now();
+  const elapsedMs = Math.max(0, referenceMs - startDate.getTime());
+  const elapsedLabel = `Elapsed ${formatClockDuration(elapsedMs)}`;
+  if (!Number.isFinite(targetMinutes) || targetMinutes == null) {
+    return endDate ? `${elapsedLabel} (recorded)` : `${elapsedLabel} (live)`;
+  }
+  const remainingMs = targetMinutes * 60_000 - elapsedMs;
+  const remainingLabel = remainingMs > 0
+    ? `Remaining ${formatClockDuration(remainingMs)}`
+    : `Over target ${formatClockDuration(Math.abs(remainingMs))}`;
+  return endDate
+    ? `${elapsedLabel} · Target ${targetMinutes}m`
+    : `${elapsedLabel} · ${remainingLabel}`;
+}
+
+function renderLiveClock({ label, startAt, endAt, targetMinutes }) {
+  return `
+    <div class="live-clock subtle"
+      data-live-clock="1"
+      data-live-label="${escapeHtml(String(label || "Timer"))}"
+      data-live-start-at="${escapeHtml(String(startAt || ""))}"
+      data-live-end-at="${escapeHtml(String(endAt || ""))}"
+      data-live-target-minutes="${targetMinutes == null ? "" : escapeHtml(String(targetMinutes))}">
+      ${escapeHtml(computeLiveClockText(startAt, endAt, targetMinutes))}
+    </div>
+  `;
+}
+
+function updateLiveClockNodes() {
+  app?.querySelectorAll("[data-live-clock='1']").forEach((node) => {
+    const startAt = node.getAttribute("data-live-start-at") || "";
+    const endAt = node.getAttribute("data-live-end-at") || "";
+    const rawTarget = node.getAttribute("data-live-target-minutes") || "";
+    const targetMinutes = rawTarget === "" ? null : Number(rawTarget);
+    node.textContent = computeLiveClockText(startAt, endAt, Number.isFinite(targetMinutes) ? targetMinutes : null);
+  });
+}
+
+function startLiveClockTicker() {
+  window.clearInterval(liveClockTimer);
+  liveClockTimer = null;
+  if (state.route.name !== "run") return;
+  if (!app?.querySelector("[data-live-clock='1']")) return;
+  updateLiveClockNodes();
+  liveClockTimer = window.setInterval(updateLiveClockNodes, 1000);
 }
 
 function handleRunDraftInput(event) {

@@ -833,6 +833,42 @@ input[type="range"] {
   gap: 12px;
 }
 
+.evidence-panel {
+  border-radius: 18px;
+  border: 1px solid rgba(120, 76, 35, 0.14);
+  overflow: hidden;
+  background: rgba(255, 251, 245, 0.84);
+}
+
+.evidence-panel summary {
+  padding: 12px 16px;
+  cursor: pointer;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  user-select: none;
+}
+
+.evidence-panel summary small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.evidence-panel[open] summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.evidence-panel .booth-evidence-block {
+  padding: 14px 16px 16px;
+}
+
+.live-clock {
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+
 
 /* =========================================================================
    OPERATOR FOCUSED VIEW
@@ -993,7 +1029,7 @@ input[type="range"] {
 
 /* Evidence upload embedded in flush phase */
 .operator-evidence {
-  padding: 16px;
+  padding: 12px;
   background: rgba(255, 251, 245, 0.8);
   border-radius: 18px;
   border: 1px solid var(--line);
