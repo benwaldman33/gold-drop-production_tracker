@@ -1444,8 +1444,6 @@ function renderRelevantTimer(run) {
     ready_to_confirm_flow_resumed: timings.flush,
     ready_to_confirm_clarity:      timings.final_purge,
   };
-  const timing = timerMap[stageKey];
-  if (!timing) return "";
   const liveMap = {
     ready_to_start_mixer: { label: "Primary soak", startAt: run.run_fill_started_at, endAt: run.run_fill_ended_at, targetMinutes: timings.primary_soak?.target_minutes ?? null },
     mixing: { label: "Mixer", startAt: run.mixer_started_at, endAt: run.mixer_ended_at, targetMinutes: timings.mixer?.target_minutes ?? null },
@@ -1454,6 +1452,15 @@ function renderRelevantTimer(run) {
     purging: { label: "Final purge", startAt: run.final_purge_started_at, endAt: run.final_purge_completed_at, targetMinutes: timings.final_purge?.target_minutes ?? null },
     ready_to_confirm_clarity: { label: "Final purge", startAt: run.final_purge_started_at, endAt: run.final_purge_completed_at, targetMinutes: timings.final_purge?.target_minutes ?? null },
   };
+  if (stageKey === "mixing" || stageKey === "ready_to_confirm_filter_clear") {
+    return `
+      <div class="current-timer current-timer-dual">
+        ${renderTimingControlCard(timings.mixer, { label: "Mixer", startAt: run.mixer_started_at, endAt: run.mixer_ended_at, targetMinutes: timings.mixer?.target_minutes ?? null })}
+        ${renderTimingControlCard(timings.primary_soak, { label: "Primary soak", startAt: run.run_fill_started_at, endAt: run.run_fill_ended_at, targetMinutes: timings.primary_soak?.target_minutes ?? null })}
+      </div>`;
+  }
+  const timing = timerMap[stageKey];
+  if (!timing) return "";
   return `<div class="current-timer">${renderTimingControlCard(timing, liveMap[stageKey] || null)}</div>`;
 }
 
@@ -1969,9 +1976,25 @@ function renderLiveClock({ label, startAt, endAt, targetMinutes }) {
       data-live-start-at="${escapeHtml(String(startAt || ""))}"
       data-live-end-at="${escapeHtml(String(endAt || ""))}"
       data-live-target-minutes="${targetMinutes == null ? "" : escapeHtml(String(targetMinutes))}">
-      ${escapeHtml(computeLiveClockText(startAt, endAt, targetMinutes))}
+      <span class="live-clock-analog" aria-hidden="true"></span>
+      <span class="live-clock-text">${escapeHtml(computeLiveClockText(startAt, endAt, targetMinutes))}</span>
     </div>
   `;
+}
+
+function analogClockAngles(startAt, endAt) {
+  const elapsedMs = clockDurationMs(startAt, endAt);
+  if (elapsedMs == null) {
+    return { secDeg: 0, minDeg: 0, hourDeg: 0 };
+  }
+  const totalSeconds = Math.floor(elapsedMs / 1000);
+  const totalMinutes = totalSeconds / 60;
+  const totalHours = totalMinutes / 60;
+  return {
+    secDeg: (totalSeconds % 60) * 6,
+    minDeg: (totalMinutes % 60) * 6,
+    hourDeg: (totalHours % 12) * 30,
+  };
 }
 
 function updateLiveClockNodes() {
@@ -1980,7 +2003,16 @@ function updateLiveClockNodes() {
     const endAt = node.getAttribute("data-live-end-at") || "";
     const rawTarget = node.getAttribute("data-live-target-minutes") || "";
     const targetMinutes = rawTarget === "" ? null : Number(rawTarget);
-    node.textContent = computeLiveClockText(startAt, endAt, Number.isFinite(targetMinutes) ? targetMinutes : null);
+    const clockText = computeLiveClockText(startAt, endAt, Number.isFinite(targetMinutes) ? targetMinutes : null);
+    const textNode = node.querySelector(".live-clock-text");
+    if (textNode) textNode.textContent = clockText;
+    const analogNode = node.querySelector(".live-clock-analog");
+    if (analogNode) {
+      const { secDeg, minDeg, hourDeg } = analogClockAngles(startAt, endAt);
+      analogNode.style.setProperty("--clock-sec-deg", `${secDeg}deg`);
+      analogNode.style.setProperty("--clock-min-deg", `${minDeg}deg`);
+      analogNode.style.setProperty("--clock-hour-deg", `${hourDeg}deg`);
+    }
   });
 }
 
