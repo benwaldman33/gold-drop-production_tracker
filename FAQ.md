@@ -518,6 +518,15 @@ Each action stamps the matching time/checkpoint field and advances the run to th
 
 Use `Request Manager Bypass` on the active checkpoint. The operator must enter a reason, which creates a supervisor notification. The run remains on the same step until a manager approves the notification. After approval, the tablet shows `Use Approved Bypass`, which advances one step and records the bypass in booth history.
 
+## Can I move backward in the booth workflow?
+
+Yes, but only one checkpoint at a time.
+
+- `Admin` and `Super Admin` roles can use the one-step back action directly.
+- Other roles must submit a step-back request with a reason and wait for supervisor approval.
+- Every request and applied step-back is written to booth history for audit.
+- Step-back is not allowed after the run is marked complete.
+
 ## What happens after I mark the extraction run complete?
 
 Phase 1 of post-extraction now begins on the same run screen. After completion, open the **Guided downstream workflow** section, choose the downstream pathway (`100 lb pot pour` or `200 lb minor run`), tap `Start Post-Extraction`, enter wet THCA / wet HTE in **Step 3 — Initial wet outputs**, then tap `Confirm Initial Outputs` (or `Save Updates` if you need to save edits before confirming).

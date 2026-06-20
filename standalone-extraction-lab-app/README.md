@@ -44,7 +44,11 @@ By default the dev server runs at `http://127.0.0.1:4175` and proxies `/api/*` t
 7. In `Open Run`, use the current checkpoint card and progression buttons in order. After `Record Solvent Charge`, the next required checkpoint is `Confirm 50 PSI` before `Start Primary Soak`. The tablet shows only the active booth-step inputs and the next allowed action; later checkpoint fields stay hidden until the predicate is satisfied. During primary soak, start mixer within 3 minutes and stop around 5 minutes; delayed start (>3 min) or overrun (>6 min) triggers supervisor alerts with emergency escalation if unacknowledged.
 8. At final clarity, select `Clear enough` or `Not yet` before tapping `Confirm Final Clarity`; the selected decision is stored with that progression action.
 9. If the active checkpoint cannot be completed because equipment or process conditions are blocking it, use `Request Manager Bypass` with a reason. Continue only after manager approval exposes `Use Approved Bypass`.
-10. After `Mark Run Complete`, continue into the **Guided downstream workflow** on the same screen:
+10. If you need to return to the immediately previous booth checkpoint, use the one-step back controls:
+    - `Admin` and `Super Admin`: apply one-step back directly
+    - other roles: request step-back approval with a reason, then apply after supervisor approval
+    - all step-back actions are written to booth history and are blocked once the run is complete
+11. After `Mark Run Complete`, continue into the **Guided downstream workflow** on the same screen:
     - Step 1: choose the downstream pathway
     - Step 2: start post-extraction (`Undo Session Start` is available here until initial outputs are confirmed)
     - Step 3: enter wet THCA / wet HTE and confirm initial outputs

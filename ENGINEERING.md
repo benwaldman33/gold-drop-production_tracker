@@ -284,10 +284,13 @@ Pilot-hardening additions:
   - `ExtractionBoothSession`
   - `ExtractionBoothEvent`
   - `ExtractionBoothEvidence`
-- `services/extraction_run.py` owns booth-session creation, progression transitions, active-stage locking, booth event writes, validations, manager-bypass metadata, and payload shaping.
+- `services/extraction_run.py` owns booth-session creation, progression transitions, active-stage locking, booth event writes, validations, manager-bypass/step-back metadata, and payload shaping.
 - Current booth-stage keys are:
+  - `ready_to_confirm_biomass`
+  - `ready_to_check_chiller_temp`
   - `ready_to_confirm_vacuum`
   - `ready_to_record_solvent_charge`
+  - `ready_to_confirm_pressurized_50psi`
   - `ready_to_start_primary_soak`
   - `ready_to_start_mixer`
   - `mixing`
@@ -299,21 +302,28 @@ Pilot-hardening additions:
   - `ready_to_record_flush_solvent_charge`
   - `ready_to_flush`
   - `flushing`
+  - `flow_adjustment_required`
   - `ready_to_confirm_flow_resumed`
   - `ready_to_start_final_purge`
   - `purging`
+  - `clarity_adjustment_required`
   - `ready_to_confirm_clarity`
   - `ready_to_complete_shutdown`
   - `ready_to_complete`
   - `completed`
 - Operator progression is lockstep:
-  - `run_progression_payload(...)` returns only the current stage's standard actions plus optional bypass actions.
+  - `run_progression_payload(...)` returns only the current stage's standard actions plus optional bypass/step-back actions.
   - `apply_progression_action(...)` rejects actions that do not belong to the current stage.
   - `operator_allowed_execution_fields(...)` filters mobile operator writes so future booth fields cannot be saved before their checkpoint is active.
 - Manager bypass uses existing `SupervisorNotification` override columns:
   - `request_stage_bypass` requires an operator reason and writes `dedupe_key="booth_stage_bypass:<stage_key>"`.
   - supervisors approve through the existing `Approve Deviation` path, setting `override_decision="approved_deviation"`.
   - `apply_stage_bypass` is available only after approval and advances one stage while writing a `booth_stage_bypassed` event.
+- Step-back uses the same notification/override mechanism with step-specific dedupe keys:
+  - `request_step_back` requires an operator reason for non-admin users and writes `dedupe_key="booth_step_back:<stage_key>"`.
+  - `apply_step_back` moves back exactly one stage and writes `booth_step_back_applied`.
+  - `admin` and `super_admin` roles can apply one-step rollback without waiting for supervisor approval.
+  - once a run is completed (`run_completed_at` or `stage_key=completed`), step-back is blocked.
 - The standalone app renders stage-scoped checkpoint fields above progression actions. Choice controls such as flow resumed and final clarity update the active form in place so the selected value is included when the progression button is submitted.
 - Booth evidence uploads currently accept:
   - `solvent_chiller_temp_photo`

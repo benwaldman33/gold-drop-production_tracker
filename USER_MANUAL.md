@@ -454,7 +454,7 @@ The top of the run screen now shows the current stage and the next action button
 - **Complete Shutdown**
 - **Mark Run Complete**
 
-Those actions write the matching timestamps and booth checkpoints automatically. Operators cannot jump ahead to later booth actions from the tablet or by submitting future-step API fields; the current step must be completed, looped, or bypassed with manager approval first. At the final clarity checkpoint, choose `Clear enough` or `Not yet` before tapping `Confirm Final Clarity`; `Not yet` keeps the run in the final-purge loop and should include the reason/context in the reason field. When the run is marked complete, the run stores a completed timestamp and the linked extraction charge moves to completed as well when that charge is still the active reactor event.
+Those actions write the matching timestamps and booth checkpoints automatically. Operators cannot jump ahead to later booth actions from the tablet or by submitting future-step API fields; the current step must be completed, looped, bypassed with manager approval, or stepped back one checkpoint under the step-back approval rules. At the final clarity checkpoint, choose `Clear enough` or `Not yet` before tapping `Confirm Final Clarity`; `Not yet` keeps the run in the final-purge loop and should include the reason/context in the reason field. When the run is marked complete, the run stores a completed timestamp and the linked extraction charge moves to completed as well when that charge is still the active reactor event.
 
 Mixer timing controls now have explicit safety alerts during primary extraction: start the mixer within 3 minutes after `Start Primary Soak`, run for approximately 5 minutes, and stop with `Stop Mixer`. If mixer start is delayed beyond 3 minutes or runtime exceeds 6 minutes, supervisors receive a critical alert. If that critical alert is still unacknowledged after another 3 minutes, the system raises an emergency-class escalation notification for Slack emergency-channel delivery.
 
@@ -486,6 +486,16 @@ If a booth step cannot be completed because an instrument, sensor, or physical c
 A bypass request requires a reason and creates a supervisor notification tied to the run and booth session. Until a supervisor approves it, the operator remains on the same booth step. After approval, the tablet shows `Use Approved Bypass`, which advances only one stage and writes a booth event showing the skipped stage and linked notification.
 
 Use bypass for exception handling only. It is not a shortcut around normal SOP predicates.
+
+### Step back one checkpoint
+
+If the run needs to return to the immediately prior booth checkpoint, use the step-back controls on the run progression card.
+
+- `Admin` and `Super Admin` users can apply one-step rollback directly.
+- Other roles must request step-back approval with a reason, then apply the rollback after supervisor approval.
+- Each step-back request and applied step-back is logged in booth history with the related stage keys and notification reference.
+- Step-back is disabled after `Mark Run Complete`.
+
 ### Supervisor booth review
 
 On the main app `Run` edit screen, supervisors now have a `Booth Review` block above the editable extraction fields.
@@ -512,6 +522,7 @@ Use it to review:
 - booth exceptions such as `Flow adjustment required`
 - booth exceptions such as `Final clarity still out of scope`
 - booth-stage bypass requests that need manager approval
+- booth step-back requests that need supervisor approval
 - reminder notifications when warning or critical booth alerts have stayed unresolved past the configured delay
 
 Each notification shows:
