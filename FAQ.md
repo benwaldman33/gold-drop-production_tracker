@@ -545,7 +545,7 @@ Yes, but only one checkpoint at a time.
 
 ## What happens after I mark the extraction run complete?
 
-Phase 1 of post-extraction now begins on the same run screen. After completion, open the **Guided downstream workflow** section, choose the downstream pathway (`100 lb pot pour` or `200 lb minor run`), tap `Start Post-Extraction`, enter wet THCA / wet HTE in **Step 3 — Initial wet outputs**, then tap `Confirm Initial Outputs`.
+After completion, the reactor-focused run screen now points you to the standalone app **Downstream** tab. Open the run card there, then complete the guided downstream steps: choose pathway (`100 lb pot pour` or `200 lb minor run`), tap `Start Post-Extraction`, enter wet THCA / wet HTE in **Step 3 — Initial wet outputs**, then tap `Confirm Initial Outputs`.
 
 ## Why won’t the app let me start post-extraction yet?
 
@@ -559,7 +559,7 @@ If you entered values and still see a missing-values warning, refresh to the lat
 
 ## Where do I enter the wet THCA and wet HTE outputs on the iPad?
 
-After you tap `Start Post-Extraction`, scroll to the **Guided downstream workflow** section and open **Step 3 — Initial wet outputs**. That step is marked **Current** once the session has started. Enter both weights there, then tap `Confirm Initial Outputs`.
+Open the run from the standalone app **Downstream** tab, then in **Step 3 — Initial wet outputs** enter both weights and tap `Confirm Initial Outputs`. Step 3 is marked **Current** once the post-extraction session has started.
 
 ## I entered wet outputs, but I do not see them in Runs. What should I check?
 
@@ -571,7 +571,7 @@ Yes, but only before initial outputs are confirmed. On **Step 2 — Post-extract
 
 ## Why does the standalone run screen look different for supervisors?
 
-Extractors and assistant extractors get the focused operator layout with one primary action at a time. Managers, supervisors, admins, and VP Operations get the broader supervisor layout with full timing cards and review surfaces. Both layouts continue into the same guided downstream workflow after run completion.
+Extractors and assistant extractors get the focused operator layout with one primary action at a time. Managers, supervisors, admins, and VP Operations get the broader supervisor layout with full timing cards and review surfaces. After run completion, both layouts hand off into the same **Downstream** queue/workflow.
 
 ## Can we record downstream THCA / HTE state yet?
 
@@ -580,11 +580,11 @@ Yes, on the same run record. The current Phase 2 fields cover:
 - THCA oven timing, milling time, and THCA destination
 - HTE off-gas timing, clean / dirty decision, Prescott decision, potency disposition, and queue destination
 
-There is not a separate downstream app screen yet. For now, those fields live on the main run form and the standalone extraction run screen.
+There is still one standalone extraction app, but downstream now has its own dedicated tab/queue inside it. The fields remain on the same canonical run record and are also available on the main run form.
 
 ## Is the downstream workflow still just a long form?
 
-No on the tablet side. The standalone extraction app now turns the downstream part of `Open Run` into a guided sequence:
+No on the tablet side. The standalone extraction app now turns downstream into a dedicated queue + guided flow:
 - choose pathway
 - start post-extraction
 - enter wet outputs in Step 3 and confirm initial outputs

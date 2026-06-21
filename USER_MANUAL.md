@@ -6,7 +6,7 @@ This guide explains how to use the Gold Drop web app day-to-day. It intentionall
 
 **Current release note:** the app has now been split internally across dedicated route modules for dashboard, field intake, runs, purchases, biomass, costs, inventory, batch edit, suppliers/photos, purchase import, strains, settings, and Slack integration. The workflows in this manual are still the ones you should test: routes, page names, approvals, list screens, and Slack import behavior are intended to work the same as before.
 
-**Operator-facing additions in the current release:** Purchases and Inventory are more status-first, the Journey page is richer, Slack imports now includes inbox buckets, lot labels now print with scannable barcodes, `Floor Ops` gives operators a recent activity surface, the standalone receiving app can now correct a confirmed receipt before downstream lot consumption, the standalone extraction app now uses a focused operator run screen plus a numbered post-extraction workflow on iPad, and the data model supports live smart-scale capture.
+**Operator-facing additions in the current release:** Purchases and Inventory are more status-first, the Journey page is richer, Slack imports now includes inbox buckets, lot labels now print with scannable barcodes, `Floor Ops` gives operators a recent activity surface, the standalone receiving app can now correct a confirmed receipt before downstream lot consumption, the standalone extraction app now uses a focused operator run screen plus a dedicated **Downstream** tab/queue for post-extraction workflow on iPad, and the data model supports live smart-scale capture.
 
 **Manager-facing note for the current release:** the app now includes the first usable derivative-lot genealogy layer. Current day-to-day workflows still use Purchases, Inventory, Runs, and Downstream Queues the same way, but the system can now bridge biomass lots into first-class material genealogy records, auto-create dry HTE / dry THCA derivative lots from eligible extraction runs, extend genealogy into accountable downstream child lots like GoldDrop / wholesale THCA / terp strip / HP base oil / distillate, expose manager-facing ancestry / descendant journey endpoints through the internal API, record correction-forward genealogy fixes instead of silently overwriting bad lineage, summarize open derivative cost basis through the internal API, surface linked derivative lots directly on downstream queue cards, provide a dedicated `Genealogy Report` page for manager reporting, open those lots or runs in a real HTML `Material Journey Viewer` with `By Lot` and `By Run` path tracing, and record actual revenue events against material lots for actual-vs-projected margin review.
 
@@ -417,6 +417,7 @@ Saving the charge opens **New Run** with the lot allocation already attached. Th
 ### Standalone run execution
 
 Inside the standalone extraction app, use **Open Run** after a charge is recorded.
+After `Mark Run Complete`, switch to the standalone **Downstream** tab and open that run card there to continue post-extraction steps.
 
 That screen inherits:
 - reactor
