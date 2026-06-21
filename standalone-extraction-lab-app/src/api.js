@@ -996,6 +996,46 @@ function buildMockBoard(state, boardView = "all") {
   };
 }
 
+function buildMockDownstreamQueue(state) {
+  const items = (state.charges || [])
+    .map((charge) => {
+      if (!charge?.run_id) return null;
+      const run = (state.runs || []).find((row) => row.id === charge.run_id);
+      if (!run || !run.run_completed_at) return null;
+      const lot = (state.lots || []).find((row) => row.id === charge.purchase_lot_id || row.tracking_id === charge.tracking_id) || null;
+      const post = postExtractionForRun(run);
+      return {
+        charge_id: charge.id,
+        run_id: run.id,
+        reactor_number: Number(run.reactor_number || charge.reactor_number || 0),
+        charge_status: charge.status || "",
+        tracking_id: lot?.tracking_id || charge.tracking_id || "",
+        supplier_name: lot?.supplier_name || charge.supplier_name || "Unknown supplier",
+        strain_name: lot?.strain_name || charge.strain_name || "Unknown strain",
+        charged_weight_lbs: Number(charge.charged_weight_lbs || 0),
+        run_completed_at: run.run_completed_at || "",
+        post_extraction_stage_key: post.stage_key || "",
+        post_extraction_stage_label: post.stage_label || "Downstream",
+        post_extraction_description: post.description || "",
+        post_extraction_started_at: run.post_extraction_started_at || "",
+        post_extraction_initial_outputs_recorded_at: run.post_extraction_initial_outputs_recorded_at || "",
+        post_extraction_pathway: run.post_extraction_pathway || "",
+        pathway_label: post.pathway_label || "",
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => String(right.run_completed_at || "").localeCompare(String(left.run_completed_at || "")));
+  return {
+    summary: {
+      queue_count: items.length,
+      ready_to_start_count: items.filter((row) => row.post_extraction_stage_key === "ready_to_start").length,
+      outputs_pending_count: items.filter((row) => row.post_extraction_stage_key === "ready_to_confirm_initial_outputs").length,
+      handoff_started_count: items.filter((row) => !!row.post_extraction_started_at).length,
+    },
+    items,
+  };
+}
+
 function mockChargePayload(state, charge) {
   const lot = state.lots.find((row) => row.id === charge.purchase_lot_id) || state.lots[0];
   return {
@@ -1059,6 +1099,13 @@ export function createApiClient({ mode = "mock", apiBaseUrl = "", fetchImpl = fe
       }
       ensureMockSession();
       return buildMockBoard(loadState(), boardView);
+    },
+    async getDownstreamQueue() {
+      if (mode === "live") {
+        return unwrapData(await liveRequest(apiBaseUrl, fetchImpl, "/api/mobile/v1/extraction/downstream"));
+      }
+      ensureMockSession();
+      return buildMockDownstreamQueue(loadState());
     },
     async listLots(query = "") {
       if (mode === "live") {

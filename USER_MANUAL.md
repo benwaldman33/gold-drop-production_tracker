@@ -465,7 +465,7 @@ Those actions write the matching timestamps and booth checkpoints automatically.
 
 Mixer timing controls now have explicit safety alerts during primary extraction: start the mixer within 3 minutes after `Start Primary Soak`, run for approximately 5 minutes, and end with `End Mixer`. If mixer start is delayed beyond 3 minutes or runtime exceeds 6 minutes, supervisors receive a critical alert. If that critical alert is still unacknowledged after another 3 minutes, the system raises an emergency-class escalation notification for Slack emergency-channel delivery.
 
-After **Mark Run Complete**, the **Guided downstream workflow** section appears on the same screen inside the run form. During post-extraction, complete each guided step in order from the active step card.
+After **Mark Run Complete**, the reactor-focused run view now points operators to the standalone app **Downstream** tab. Open the run from that queue to continue the guided post-extraction steps.
 
 The same run screen also keeps two visibility surfaces on-screen for operators:
 - **Workflow phases** rail (Primary, Flush, Final Purge, Post-Extraction) with Done / Current / Pending status
@@ -473,7 +473,11 @@ The same run screen also keeps two visibility surfaces on-screen for operators:
 
 ### Guided downstream workflow on the iPad
 
-The standalone extraction app turns the downstream portion of **Open Run** into a guided sequence instead of leaving operators on one flat form.
+The standalone extraction app now separates reactor operations from post-pour work:
+- **Reactors** stays focused on vessel lifecycle actions
+- **Downstream** is the queue for completed runs that need post-extraction handling
+
+Open the run from the **Downstream** tab to enter the guided downstream sequence.
 
 Complete each step in order:
 
@@ -635,7 +639,7 @@ Those reasons are stored in the booth event trail and shown to supervisors in th
 
 ### Post-extraction handoff (Phase 1)
 
-After **Mark Run Complete**, scroll to the **Guided downstream workflow** section on the same standalone run screen.
+After **Mark Run Complete**, open the standalone app **Downstream** tab and choose the run card there.
 
 1. **Step 1 — Choose the downstream pathway**
    - `100 lb pot pour`
@@ -655,11 +659,11 @@ After **Mark Run Complete**, scroll to the **Guided downstream workflow** sectio
    - If values are present but confirmation still warns they are missing, refresh to the latest build and retry; Step 3 submission now uses a hardened form path so wet values are sent reliably with the confirm action.
    - The run stores the downstream start time and the initial-output confirmation time from the step actions.
 
-This is the natural end of the opening post-extraction handoff. After Step 3 is confirmed, continue into the branch-specific downstream steps on the same screen.
+This is the natural end of the opening post-extraction handoff. After Step 3 is confirmed, continue into the branch-specific downstream steps on the downstream run screen.
 
 ### Downstream state tracking (Phase 2)
 
-The same run screen now stores the first structured downstream fields instead of leaving that state in Slack or free-text notes.
+The downstream run screen stores the first structured downstream fields instead of leaving that state in Slack or free-text notes.
 
 #### Pot pour path
 

@@ -442,6 +442,57 @@ def _mobile_extraction_board_payload(root) -> dict[str, Any]:
     }
 
 
+def _mobile_extraction_downstream_payload(root) -> dict[str, Any]:
+    rows = (
+        root.ExtractionCharge.query.join(root.Run, root.ExtractionCharge.run_id == root.Run.id)
+        .join(root.PurchaseLot, root.ExtractionCharge.purchase_lot_id == root.PurchaseLot.id)
+        .filter(
+            root.PurchaseLot.deleted_at.is_(None),
+            root.Run.deleted_at.is_(None),
+            root.Run.run_completed_at.is_not(None),
+            root.ExtractionCharge.status.in_(("completed", "cleared")),
+        )
+        .order_by(root.Run.run_completed_at.desc(), root.ExtractionCharge.charged_at.desc())
+        .limit(80)
+        .all()
+    )
+    items: list[dict[str, Any]] = []
+    for charge in rows:
+        run = charge.run
+        if run is None:
+            continue
+        run_payload = mobile_run_payload(root, run, charge)
+        post = run_payload.get("post_extraction") or {}
+        lot = charge.lot
+        items.append({
+            "charge_id": charge.id,
+            "run_id": run.id,
+            "reactor_number": int(run.reactor_number or charge.reactor_number or 0),
+            "charge_status": (charge.status or "").strip() or "completed",
+            "tracking_id": lot.tracking_id if lot else None,
+            "supplier_name": lot.supplier_name if lot else None,
+            "strain_name": lot.strain_name if lot else None,
+            "charged_weight_lbs": float(charge.charged_weight_lbs or 0),
+            "run_completed_at": run_payload.get("run_completed_at"),
+            "post_extraction_stage_key": post.get("stage_key") or "",
+            "post_extraction_stage_label": post.get("stage_label") or "Downstream",
+            "post_extraction_description": post.get("description") or "",
+            "post_extraction_started_at": run_payload.get("post_extraction_started_at"),
+            "post_extraction_initial_outputs_recorded_at": run_payload.get("post_extraction_initial_outputs_recorded_at"),
+            "post_extraction_pathway": run_payload.get("post_extraction_pathway") or "",
+            "pathway_label": post.get("pathway_label") or "",
+        })
+    return {
+        "summary": {
+            "queue_count": len(items),
+            "ready_to_start_count": sum(1 for row in items if row["post_extraction_stage_key"] == "ready_to_start"),
+            "outputs_pending_count": sum(1 for row in items if row["post_extraction_stage_key"] == "ready_to_confirm_initial_outputs"),
+            "handoff_started_count": sum(1 for row in items if row["post_extraction_started_at"]),
+        },
+        "items": items,
+    }
+
+
 def _mobile_purchase_has_downstream_usage(root, purchase: Purchase) -> bool:
     return root.RunInput.query.join(
         root.PurchaseLot, root.RunInput.lot_id == root.PurchaseLot.id
@@ -698,6 +749,9 @@ def register_routes(app, root):
     def mobile_extraction_lots():
         return mobile_extraction_lots_view(root)
 
+    def mobile_extraction_downstream():
+        return mobile_extraction_downstream_view(root)
+
     def mobile_extraction_lot_detail(lot_id):
         return mobile_extraction_lot_detail_view(root, lot_id)
 
@@ -743,6 +797,7 @@ def register_routes(app, root):
     app.add_url_rule("/api/mobile/v1/receiving/queue/<opportunity_id>/receive", endpoint="mobile_receiving_receive", view_func=mobile_receiving_receive, methods=["POST"])
     app.add_url_rule("/api/mobile/v1/receiving/queue/<opportunity_id>/photos", endpoint="mobile_receiving_photos", view_func=mobile_receiving_photos, methods=["POST"])
     app.add_url_rule("/api/mobile/v1/extraction/board", endpoint="mobile_extraction_board", view_func=mobile_extraction_board, methods=["GET"])
+    app.add_url_rule("/api/mobile/v1/extraction/downstream", endpoint="mobile_extraction_downstream", view_func=mobile_extraction_downstream, methods=["GET"])
     app.add_url_rule("/api/mobile/v1/extraction/lots", endpoint="mobile_extraction_lots", view_func=mobile_extraction_lots, methods=["GET"])
     app.add_url_rule("/api/mobile/v1/extraction/lots/<lot_id>", endpoint="mobile_extraction_lot_detail", view_func=mobile_extraction_lot_detail, methods=["GET"])
     app.add_url_rule("/api/mobile/v1/extraction/lookup/<tracking_id>", endpoint="mobile_extraction_lookup", view_func=mobile_extraction_lookup, methods=["GET"])
@@ -1362,6 +1417,17 @@ def mobile_extraction_lots_view(root):
         root.PurchaseLot.id.desc(),
     ).limit(40).all()
     return jsonify({"meta": build_meta(extra={"workflow": "extraction", "query": query_text}), "data": [_mobile_extraction_lot_payload(root, lot) for lot in rows]})
+
+
+def mobile_extraction_downstream_view(root):
+    if not current_user.is_authenticated:
+        return _json_error("Authentication required.", status_code=401, code="unauthorized")
+    if not workflow_enabled(root, "extraction"):
+        return _json_error("This standalone workflow is disabled for the site.", status_code=403, code="workflow_disabled")
+    permissions = _mobile_permissions(root, current_user)
+    if not permissions["can_extract_lab"]:
+        return _json_error("Extraction workflow access required.", status_code=403, code="forbidden")
+    return jsonify({"meta": build_meta(extra={"workflow": "extraction"}), "data": _mobile_extraction_downstream_payload(root)})
 
 
 def mobile_extraction_lot_detail_view(root, lot_id: str):

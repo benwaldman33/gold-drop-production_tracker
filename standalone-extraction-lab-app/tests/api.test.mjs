@@ -161,6 +161,11 @@ test("mock api login, board, charge, and transition flow", async () => {
   assert.equal(confirmedOutputs.run.hte_clean_decision, "dirty");
   assert.equal(confirmedOutputs.run.hte_filter_outcome, "needs_prescott");
   assert.equal(confirmedOutputs.run.hte_queue_destination, "liquid_loud_hold");
+
+  const downstreamQueue = await api.getDownstreamQueue();
+  assert.equal(downstreamQueue.summary.queue_count, 1);
+  assert.equal(downstreamQueue.items[0].charge_id, created.charge.id);
+  assert.equal(downstreamQueue.items[0].post_extraction_stage_key, "session_started");
 });
 
 test("mock api supports extraction exception-handling loops", async () => {
@@ -270,6 +275,37 @@ test("live api unwraps extraction mobile envelopes", async () => {
               board_view_options: [{ value: "all", label: "All reactors" }],
               reactor_cards: [],
               reactor_history: [],
+            },
+          };
+        },
+      };
+    }
+    if (url.endsWith("/api/mobile/v1/extraction/downstream")) {
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return {
+            meta: {},
+            data: {
+              summary: {
+                queue_count: 1,
+                ready_to_start_count: 0,
+                outputs_pending_count: 1,
+                handoff_started_count: 1,
+              },
+              items: [
+                {
+                  charge_id: "chg-1",
+                  run_id: "run-1",
+                  reactor_number: 1,
+                  tracking_id: "LOT-ABC",
+                  supplier_name: "Forest Farms",
+                  strain_name: "Blue Dream",
+                  post_extraction_stage_key: "ready_to_confirm_initial_outputs",
+                  post_extraction_stage_label: "Ready to confirm initial outputs",
+                },
+              ],
             },
           };
         },
@@ -388,6 +424,10 @@ test("live api unwraps extraction mobile envelopes", async () => {
 
   const board = await api.getBoard("all");
   assert.equal(board.summary.reactor_count, 3);
+
+  const downstream = await api.getDownstreamQueue();
+  assert.equal(downstream.summary.queue_count, 1);
+  assert.equal(downstream.items[0].charge_id, "chg-1");
 
   const lots = await api.listLots("Blue");
   assert.equal(lots[0].ready_for_charge, true);
