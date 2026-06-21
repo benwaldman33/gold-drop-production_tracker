@@ -6,7 +6,7 @@ This guide explains how to use the Gold Drop web app day-to-day. It intentionall
 
 **Current release note:** the app has now been split internally across dedicated route modules for dashboard, field intake, runs, purchases, biomass, costs, inventory, batch edit, suppliers/photos, purchase import, strains, settings, and Slack integration. The workflows in this manual are still the ones you should test: routes, page names, approvals, list screens, and Slack import behavior are intended to work the same as before.
 
-**Operator-facing additions in the current release:** Purchases and Inventory are more status-first, the Journey page is richer, Slack imports now includes inbox buckets, lot labels now print with scannable barcodes, `Floor Ops` gives operators a recent activity surface, the standalone receiving app can now correct a confirmed receipt before downstream lot consumption, the standalone extraction app now uses a focused operator run screen plus a numbered post-extraction workflow on iPad, and the data model supports live smart-scale capture.
+**Operator-facing additions in the current release:** Purchases and Inventory are more status-first, the Journey page is richer, Slack imports now includes inbox buckets, lot labels now print with scannable barcodes, `Floor Ops` gives operators a recent activity surface, the standalone receiving app can now correct a confirmed receipt before downstream lot consumption, the standalone extraction app now uses a focused operator run screen plus a dedicated **Downstream** tab/queue for post-extraction workflow on iPad, and the data model supports live smart-scale capture.
 
 **Manager-facing note for the current release:** the app now includes the first usable derivative-lot genealogy layer. Current day-to-day workflows still use Purchases, Inventory, Runs, and Downstream Queues the same way, but the system can now bridge biomass lots into first-class material genealogy records, auto-create dry HTE / dry THCA derivative lots from eligible extraction runs, extend genealogy into accountable downstream child lots like GoldDrop / wholesale THCA / terp strip / HP base oil / distillate, expose manager-facing ancestry / descendant journey endpoints through the internal API, record correction-forward genealogy fixes instead of silently overwriting bad lineage, summarize open derivative cost basis through the internal API, surface linked derivative lots directly on downstream queue cards, provide a dedicated `Genealogy Report` page for manager reporting, open those lots or runs in a real HTML `Material Journey Viewer` with `By Lot` and `By Run` path tracing, and record actual revenue events against material lots for actual-vs-projected margin review.
 
@@ -417,6 +417,7 @@ Saving the charge opens **New Run** with the lot allocation already attached. Th
 ### Standalone run execution
 
 Inside the standalone extraction app, use **Open Run** after a charge is recorded.
+After `Mark Run Complete`, switch to the standalone **Downstream** tab and open that run card there to continue post-extraction steps.
 
 That screen inherits:
 - reactor
@@ -465,7 +466,7 @@ Those actions write the matching timestamps and booth checkpoints automatically.
 
 Mixer timing controls now have explicit safety alerts during primary extraction: start the mixer within 3 minutes after `Start Primary Soak`, run for approximately 5 minutes, and end with `End Mixer`. If mixer start is delayed beyond 3 minutes or runtime exceeds 6 minutes, supervisors receive a critical alert. If that critical alert is still unacknowledged after another 3 minutes, the system raises an emergency-class escalation notification for Slack emergency-channel delivery.
 
-After **Mark Run Complete**, the **Guided downstream workflow** section appears on the same screen inside the run form. During post-extraction, complete each guided step in order from the active step card.
+After **Mark Run Complete**, the reactor-focused run view now points operators to the standalone app **Downstream** tab. Open the run from that queue to continue the guided post-extraction steps.
 
 The same run screen also keeps two visibility surfaces on-screen for operators:
 - **Workflow phases** rail (Primary, Flush, Final Purge, Post-Extraction) with Done / Current / Pending status
@@ -473,7 +474,11 @@ The same run screen also keeps two visibility surfaces on-screen for operators:
 
 ### Guided downstream workflow on the iPad
 
-The standalone extraction app turns the downstream portion of **Open Run** into a guided sequence instead of leaving operators on one flat form.
+The standalone extraction app now separates reactor operations from post-pour work:
+- **Reactors** stays focused on vessel lifecycle actions
+- **Downstream** is the queue for completed runs that need post-extraction handling
+
+Open the run from the **Downstream** tab to enter the guided downstream sequence.
 
 Complete each step in order:
 
@@ -635,7 +640,7 @@ Those reasons are stored in the booth event trail and shown to supervisors in th
 
 ### Post-extraction handoff (Phase 1)
 
-After **Mark Run Complete**, scroll to the **Guided downstream workflow** section on the same standalone run screen.
+After **Mark Run Complete**, open the standalone app **Downstream** tab and choose the run card there.
 
 1. **Step 1 — Choose the downstream pathway**
    - `100 lb pot pour`
@@ -655,11 +660,11 @@ After **Mark Run Complete**, scroll to the **Guided downstream workflow** sectio
    - If values are present but confirmation still warns they are missing, refresh to the latest build and retry; Step 3 submission now uses a hardened form path so wet values are sent reliably with the confirm action.
    - The run stores the downstream start time and the initial-output confirmation time from the step actions.
 
-This is the natural end of the opening post-extraction handoff. After Step 3 is confirmed, continue into the branch-specific downstream steps on the same screen.
+This is the natural end of the opening post-extraction handoff. After Step 3 is confirmed, continue into the branch-specific downstream steps on the downstream run screen.
 
 ### Downstream state tracking (Phase 2)
 
-The same run screen now stores the first structured downstream fields instead of leaving that state in Slack or free-text notes.
+The downstream run screen stores the first structured downstream fields instead of leaving that state in Slack or free-text notes.
 
 #### Pot pour path
 

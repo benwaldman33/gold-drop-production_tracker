@@ -2079,6 +2079,101 @@ def test_mobile_extraction_run_execution_flow():
             db.session.commit()
 
 
+def test_mobile_extraction_downstream_queue_lists_completed_runs():
+    app = app_module.create_app()
+    _set_mobile_workflows(app)
+    supplier_id = _create_supplier(app, f"Downstream Supplier {gen_uuid()[:6]}")
+    purchase_id = None
+    lot_id = None
+    run_id = None
+    charge_id = None
+    try:
+        with app.app_context():
+            ops_user = app_module.User.query.filter_by(username="ops").first()
+            purchase = Purchase(
+                supplier_id=supplier_id,
+                purchase_date=app_module.date(2026, 6, 20),
+                delivery_date=app_module.date(2026, 6, 20),
+                status="delivered",
+                stated_weight_lbs=120,
+                actual_weight_lbs=120,
+                purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+                testing_status="completed",
+                clean_or_dirty="clean",
+                created_by_user_id=ops_user.id if ops_user else None,
+            )
+            db.session.add(purchase)
+            db.session.flush()
+            purchase_id = purchase.id
+
+            lot = app_module.PurchaseLot(
+                purchase_id=purchase.id,
+                strain_name="Downstream Dream",
+                weight_lbs=120,
+                remaining_weight_lbs=80,
+                floor_state="reactor_staging",
+                milled=True,
+            )
+            db.session.add(lot)
+            db.session.flush()
+            lot_id = lot.id
+
+            run = app_module.Run(
+                run_date=app_module.date(2026, 6, 20),
+                reactor_number=1,
+                bio_in_reactor_lbs=40,
+                run_completed_at=app_module.datetime.now(app_module.timezone.utc),
+                post_extraction_pathway="minor_run_200",
+                post_extraction_started_at=app_module.datetime.now(app_module.timezone.utc),
+            )
+            db.session.add(run)
+            db.session.flush()
+            run_id = run.id
+
+            charge = ExtractionCharge(
+                purchase_lot_id=lot.id,
+                run_id=run.id,
+                charged_weight_lbs=40,
+                reactor_number=1,
+                charged_at=app_module.datetime.now(app_module.timezone.utc),
+                source_mode="standalone_extraction",
+                status="completed",
+                created_by=ops_user.id if ops_user else None,
+            )
+            db.session.add(charge)
+            db.session.commit()
+            charge_id = charge.id
+
+        with app.test_client() as client:
+            _login_mobile(client)
+            response = client.get("/api/mobile/v1/extraction/downstream")
+            assert response.status_code == 200
+            payload = response.get_json()["data"]
+            assert payload["summary"]["queue_count"] >= 1
+            row = next(item for item in payload["items"] if item["charge_id"] == charge_id)
+            assert row["run_id"] == run_id
+            assert row["post_extraction_stage_key"] == "ready_to_confirm_initial_outputs"
+            assert row["post_extraction_pathway"] == "minor_run_200"
+    finally:
+        with app.app_context():
+            charge = db.session.get(ExtractionCharge, charge_id) if charge_id else None
+            if charge:
+                db.session.delete(charge)
+            run = db.session.get(app_module.Run, run_id) if run_id else None
+            if run:
+                db.session.delete(run)
+            lot = db.session.get(app_module.PurchaseLot, lot_id) if lot_id else None
+            if lot:
+                db.session.delete(lot)
+            purchase = db.session.get(Purchase, purchase_id) if purchase_id else None
+            if purchase:
+                db.session.delete(purchase)
+            supplier = db.session.get(Supplier, supplier_id)
+            if supplier:
+                db.session.delete(supplier)
+            db.session.commit()
+
+
 def test_mobile_extraction_board_view_filtering():
     app = app_module.create_app()
     _set_mobile_workflows(app)

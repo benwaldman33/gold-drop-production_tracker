@@ -10,7 +10,10 @@ export function parseRoute(hash) {
   if (parts[0] === "home") return { name: "home" };
   if (parts[0] === "scan") return { name: "scan" };
   if (parts[0] === "reactors") return { name: "reactors", boardView: query.get("board_view") || "all" };
-  if (parts[0] === "runs" && parts[1] === "charge" && parts[2]) return { name: "run", chargeId: parts[2] };
+  if (parts[0] === "downstream") return { name: "downstream" };
+  if (parts[0] === "runs" && parts[1] === "charge" && parts[2]) {
+    return { name: "run", chargeId: parts[2], flow: query.get("flow") === "downstream" ? "downstream" : "reactor" };
+  }
   if (parts[0] === "lots" && parts[1] && parts[2] === "charge") return { name: "charge", id: parts[1] };
   if (parts[0] === "lots" && parts[1]) return { name: "lot", id: parts[1] };
   if (parts[0] === "lots") return { name: "lots", query: query.get("q") || "" };

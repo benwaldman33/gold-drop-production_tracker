@@ -261,14 +261,18 @@ Pilot-hardening additions:
 - the standalone receiving app also consumes mobile `capabilities` plus per-record `receiving_editable` / `locked_reason` fields so the UI can expose `Edit Receipt` only while no downstream lot usage exists
 - the standalone extraction app now consumes the same mobile surface for booth-SOP execution, including run progression state and booth evidence uploads
 - the standalone extraction frontend (`standalone-extraction-lab-app/src/app.js`) now renders two run-execution surfaces from the same mobile payload:
-  - **operator view** for extractor / assistant-extractor roles: one primary progression action, phase label, compact checkpoint inputs, always-available collapsible evidence panel, and the guided downstream workflow inside the same `data-form="run-execution"` form
-  - **supervisor view** for manager / supervisor / admin / VP Operations roles: full timing cards, checkpoint inputs, progression actions, booth evidence, and the same guided downstream workflow stack
-- guided downstream workflow rendering is client-side in `standalone-extraction-lab-app/src/app.js`:
+  - **operator view** for extractor / assistant-extractor roles: one primary progression action, phase label, compact checkpoint inputs, always-available collapsible evidence panel, and downstream handoff CTA once the run is complete
+  - **supervisor view** for manager / supervisor / admin / VP Operations roles: full timing cards, checkpoint inputs, progression actions, booth evidence, and the same downstream handoff behavior after run completion
+- standalone downstream queue routing is now explicit in the frontend:
+  - `#/downstream` renders downstream-ready completed runs
+  - `#/runs/charge/:chargeId?flow=downstream` renders the guided downstream workflow mode
+- guided downstream workflow rendering remains client-side in `standalone-extraction-lab-app/src/app.js`:
   - Step 1: `post_extraction_pathway`
   - Step 2: start post-extraction (`start_post_extraction`) with optional **Undo Session Start** before initial outputs are confirmed
   - Step 3: wet THCA / wet HTE plus `confirm_initial_outputs`; Step 2/3 timestamps are written from action submits instead of manual datetime fields
   - Steps 4+: pathway-specific pot-pour or minor-run fields saved through the same run payload
   - pending and completed steps collapse to headers only; current / ready steps expose their bodies
+- mobile extraction API now includes `GET /api/mobile/v1/extraction/downstream`, which returns downstream queue summary + run cards for completed/cleared charge contexts
 - choice-button fields that gate later UI (`post_extraction_pathway`, `flow_resumed_decision`, `final_clarity_decision`, THCA / HTE decision fields) trigger an immediate re-render so dependent buttons appear without a separate save
 - `post_extraction_pathway` also auto-saves on choice so Start Post-Extraction works after Step 1 collapses; deferred uniform step-only UX is tracked in `standalone-extraction-lab-app/FIX_BACKLOG.md`
 - form draft sync in `standalone-extraction-lab-app/src/app.js`: `captureFormDrafts()` runs before every `render()`, `input`/`change` listeners mirror live field values into `state.run`, `showToast()` updates only the toast node (no full re-render), duplicate named fields resolve via `lastNamedFormValue()` in `ui-helpers.js`, and Enter is blocked from submitting run/charge/settings forms accidentally

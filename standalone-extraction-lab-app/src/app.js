@@ -23,6 +23,7 @@ const state = {
   route: parseRoute(window.location.hash || "#/login"),
   auth: { authenticated: false, user: null, permissions: {}, site: null },
   board: null,
+  downstreamQueue: null,
   lots: [],
   lot: null,
   run: null,
@@ -106,6 +107,9 @@ async function loadRoute() {
   if (!state.auth.authenticated) return;
   if (["home", "reactors"].includes(state.route.name)) {
     state.board = await api.getBoard(state.route.boardView || "all");
+  }
+  if (state.route.name === "downstream") {
+    state.downstreamQueue = await api.getDownstreamQueue();
   }
   if (state.route.name === "lots") {
     state.lots = await api.listLots(state.route.query || "");
@@ -258,7 +262,8 @@ function shell(content) {
           <nav class="nav">
             <a href="#/home" class="${state.route.name === "home" ? "active" : ""}">Home <small>Snapshot</small></a>
             <a href="#/scan" class="${state.route.name === "scan" ? "active" : ""}">Scan / Enter Lot <small>Fast entry</small></a>
-            <a href="#/reactors" class="${state.route.name === "reactors" ? "active" : ""}">Reactors <small>Control board</small></a>
+            <a href="#/reactors" class="${state.route.name === "reactors" || (state.route.name === "run" && state.route.flow !== "downstream") ? "active" : ""}">Reactors <small>Control board</small></a>
+            <a href="#/downstream" class="${state.route.name === "downstream" || (state.route.name === "run" && state.route.flow === "downstream") ? "active" : ""}">Downstream <small>Post-pour queue</small></a>
             <a href="#/lots" class="${["lots", "lot", "charge"].includes(state.route.name) ? "active" : ""}">Lots <small>Load queue</small></a>
             <a href="${isAdmin() ? "#/settings" : "javascript:void(0)"}" class="${state.route.name === "settings" ? "active" : ""}" style="${isAdmin() ? "" : "opacity:0.45;pointer-events:none;"}">Settings <small>${isAdmin() ? "Admin" : "Locked"}</small></a>
           </nav>
@@ -310,6 +315,7 @@ function renderContent() {
   if (state.route.name === "home") return renderHome();
   if (state.route.name === "scan") return renderScan();
   if (state.route.name === "reactors") return renderReactors();
+  if (state.route.name === "downstream") return renderDownstreamQueue();
   if (state.route.name === "lots") return renderLots();
   if (state.route.name === "lot") return renderLotDetail();
   if (state.route.name === "charge") return renderChargeForm();
@@ -353,6 +359,7 @@ function renderHome() {
         <div class="actions">
           <a class="btn btn-primary" href="#/scan">Scan / Enter Lot</a>
           <a class="btn btn-secondary" href="#/reactors">Open board</a>
+          <a class="btn btn-secondary" href="#/downstream">Downstream queue</a>
           <a class="btn btn-secondary" href="#/lots">Browse lots</a>
         </div>
       </div>
@@ -515,6 +522,80 @@ function renderReactors() {
           </div>
         </div>
         <div class="history-grid">${(state.board?.reactor_history || []).map(renderHistoryCard).join("")}</div>
+      </section>
+      ${renderLastChargeCard()}
+    </div>
+  `;
+}
+
+function renderDownstreamStagePill(item) {
+  const stageKey = String(item.post_extraction_stage_key || "");
+  const tone =
+    stageKey === "ready_to_start"
+      ? "warning"
+      : stageKey === "ready_to_confirm_initial_outputs"
+        ? "neutral"
+        : "good";
+  return `<span class="status-pill ${tone === "good" ? "good" : ""}">${escapeHtml(item.post_extraction_stage_label || "Downstream")}</span>`;
+}
+
+function renderDownstreamCard(item) {
+  return `
+    <article class="lot-card">
+      <div class="section-head compact">
+        <div>
+          <div class="eyebrow">Reactor ${escapeHtml(String(item.reactor_number || ""))}</div>
+          <h3>${escapeHtml(`${item.supplier_name || "Unknown supplier"} - ${item.strain_name || "Unknown strain"}`)}</h3>
+        </div>
+        ${renderDownstreamStagePill(item)}
+      </div>
+      <div class="metric-row">
+        <div><span>Tracking</span><strong>${escapeHtml(item.tracking_id || "—")}</strong></div>
+        <div><span>Load</span><strong>${escapeHtml(String(item.charged_weight_lbs || 0))} lbs</strong></div>
+        <div><span>Run complete</span><strong>${escapeHtml(item.run_completed_at || "—")}</strong></div>
+        <div><span>Pathway</span><strong>${escapeHtml(item.pathway_label || "Not chosen yet")}</strong></div>
+      </div>
+      <p class="subtle">${escapeHtml(item.post_extraction_description || "Open the downstream workflow to continue this handoff.")}</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="#/runs/charge/${encodeURIComponent(item.charge_id)}?flow=downstream">Open Downstream Workflow</a>
+        <a class="btn btn-secondary" href="#/reactors">Open Reactors</a>
+      </div>
+    </article>
+  `;
+}
+
+function renderDownstreamQueue() {
+  const queue = state.downstreamQueue || { summary: {}, items: [] };
+  const summary = queue.summary || {};
+  const items = Array.isArray(queue.items) ? queue.items : [];
+  return `
+    <div class="layout-grid">
+      <div class="topbar">
+        <div>
+          <h2>Downstream Queue</h2>
+          <div class="meta">Post-pour steps are managed here so the Reactors tab stays focused on vessel operations.</div>
+        </div>
+        <div class="actions">
+          <a class="btn btn-secondary" href="#/reactors">Reactors</a>
+          <a class="btn btn-primary" href="#/scan">Scan / Enter Lot</a>
+        </div>
+      </div>
+      <section class="stat-grid">
+        <div class="metric-card"><span class="label">Queue count</span><strong>${escapeHtml(String(summary.queue_count || 0))}</strong><span>Completed runs awaiting downstream handling</span></div>
+        <div class="metric-card"><span class="label">Ready to start</span><strong>${escapeHtml(String(summary.ready_to_start_count || 0))}</strong><span>Pathway must be selected and started</span></div>
+        <div class="metric-card"><span class="label">Outputs pending</span><strong>${escapeHtml(String(summary.outputs_pending_count || 0))}</strong><span>Initial wet THCA / HTE split still needed</span></div>
+      </section>
+      <section class="card">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Future-proofing boundary</div>
+            <h3>Downstream work now has its own lane</h3>
+          </div>
+        </div>
+        <p class="subtle">This queue keeps post-extraction workflow separate from reactor lifecycle management so the downstream lane can evolve into a standalone app later without changing run data contracts.</p>
+      </section>
+      <section class="lot-grid">
+        ${items.length ? items.map(renderDownstreamCard).join("") : `<div class="empty">No runs are waiting in downstream right now.</div>`}
       </section>
       ${renderLastChargeCard()}
     </div>
@@ -1133,6 +1214,33 @@ function renderGuidedDownstreamWorkflow(run) {
   `;
 }
 
+function isDownstreamRunFlow() {
+  return state.route.name === "run" && state.route.flow === "downstream";
+}
+
+function runBackHref() {
+  return isDownstreamRunFlow() ? "#/downstream" : "#/reactors";
+}
+
+function runBackLabel() {
+  return isDownstreamRunFlow() ? "Back to Downstream" : "Back to Reactors";
+}
+
+function renderDownstreamHandoffCard(run) {
+  const post = run.post_extraction || {};
+  return `
+    <section class="card" style="padding:20px;margin-top:14px;">
+      <div class="eyebrow">Downstream handoff moved</div>
+      <h3 style="margin-top:6px;">Post-extraction is managed in Downstream</h3>
+      <p class="subtle">${escapeHtml(post.description || "Open the Downstream tab to continue post-pour workflow.")}</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="#/runs/charge/${encodeURIComponent(state.route.chargeId || "")}?flow=downstream">Open in Downstream Flow</a>
+        <a class="btn btn-secondary" href="#/downstream">Open Downstream Queue</a>
+      </div>
+    </section>
+  `;
+}
+
 
 // ---------------------------------------------------------------------------
 // ROLE HELPERS
@@ -1725,6 +1833,7 @@ function renderRunExecutionSupervisor(run, lot) {
   const inherited = run.inherited || {};
   const booth = run.booth || {};
   const timings = run.timing_controls || {};
+  const downstreamFlow = isDownstreamRunFlow();
   const summaryRows = [
     ["Primary solvent", booth.primary_solvent_charge_lbs != null ? `${booth.primary_solvent_charge_lbs} lbs` : "—"],
     ["Flush temps", booth.flush_temp_verified_at ? `${booth.flush_solvent_chiller_temp_f}°F / ${booth.flush_plate_temp_f}°F` : "—"],
@@ -1741,7 +1850,7 @@ function renderRunExecutionSupervisor(run, lot) {
           <div class="meta">${escapeHtml(inherited.tracking_id || "")} — Reactor ${escapeHtml(String(run.reactor_number || ""))}</div>
         </div>
         <div class="actions">
-          <a class="btn btn-secondary" href="#/reactors">Back to Reactors</a>
+          <a class="btn btn-secondary" href="${runBackHref()}">${runBackLabel()}</a>
           <a class="btn btn-secondary" href="${escapeHtml(run.open_main_app_url || "#")}">Open in Main App</a>
         </div>
       </div>
@@ -1783,11 +1892,11 @@ function renderRunExecutionSupervisor(run, lot) {
         <p class="subtle">${escapeHtml(run.progression?.description || "")}</p>
         ${renderCheckpointInputs(run)}
         ${renderRunProgression(run)}
-        ${run.run_completed_at ? renderPostExtractionProgression(run) : ""}
-        ${run.run_completed_at ? renderGuidedDownstreamWorkflow(run) : ""}
+        ${run.run_completed_at && downstreamFlow ? renderGuidedDownstreamWorkflow(run) : ""}
+        ${run.run_completed_at && !downstreamFlow ? renderDownstreamHandoffCard(run) : ""}
         ${run.run_completed_at ? renderReactorEmptiedAction(state.charge) : ""}
         <div class="actions sticky-actions">
-          <a class="btn btn-secondary" href="#/reactors">Back to Reactors</a>
+          <a class="btn btn-secondary" href="${runBackHref()}">${runBackLabel()}</a>
           <a class="btn btn-secondary" href="${escapeHtml(run.open_main_app_url || "#")}">Open in Main App</a>
           ${run.run_completed_at ? "" : `<button class="btn btn-primary" type="submit">${state.loading ? "Saving..." : "Save Run"}</button>`}
         </div>
@@ -1815,6 +1924,7 @@ function renderRunExecutionSupervisor(run, lot) {
 function renderRunExecutionOperator(run, lot) {
   const inherited = run.inherited || {};
   const progression = run.progression || {};
+  const downstreamFlow = isDownstreamRunFlow();
   const actions = progression.actions || [];
   const bypassActions = progression.bypass_actions || [];
   const bypass = progression.bypass || null;
@@ -1844,7 +1954,7 @@ function renderRunExecutionOperator(run, lot) {
           <span>${escapeHtml(inherited.strain_name || lotTitle(lot || {}))}</span>
         </div>
         <div class="actions">
-          <a class="btn btn-secondary" href="#/reactors">Reactors</a>
+          <a class="btn btn-secondary" href="${runBackHref()}">${runBackLabel()}</a>
           <a class="btn btn-secondary" href="${escapeHtml(run.open_main_app_url || "#")}">Main App</a>
         </div>
       </div>
@@ -1939,7 +2049,7 @@ function renderRunExecutionOperator(run, lot) {
 
         ${run.run_completed_at ? `
           <div class="card" style="padding:20px;margin-top:14px;">
-            ${renderGuidedDownstreamWorkflow(run)}
+            ${downstreamFlow ? renderGuidedDownstreamWorkflow(run) : renderDownstreamHandoffCard(run)}
           </div>
           ${renderReactorEmptiedAction(state.charge)}` : `
           <div class="operator-save-bar">
@@ -2738,7 +2848,7 @@ async function submitTransition(chargeId, targetState, cancelResolution = undefi
     }
     if (targetState === "cleared") {
       showToast("Reactor marked empty and available.");
-      navigate("#/reactors");
+      navigate(isDownstreamRunFlow() ? "#/downstream" : "#/reactors");
       return;
     }
     showToast(`Load moved to ${targetState.replaceAll("_", " ")}.`);
