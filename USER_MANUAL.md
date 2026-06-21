@@ -301,6 +301,8 @@ When you submit a lot charge in the main app, the form now asks for confirmation
 - **Record Load** (save only; stay in the main app and update reactor boards), or
 - **Record Load and Open Run** (save and open the run form immediately).
 
+On scan-entry charge forms, the default remains **Record Load and Open Run** so floor operators can continue directly into run execution.
+
 Use **Inventory -> Import spreadsheet** when you need to update many existing lots at once from Excel or CSV.
 
 That importer:
