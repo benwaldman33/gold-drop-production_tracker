@@ -1467,7 +1467,7 @@ def test_scan_charge_creates_extraction_charge_and_prefills_run():
 
             run_new = client.get(resp.headers["Location"])
             assert run_new.status_code == 200
-            assert b"Extraction charge recorded:" in run_new.data
+            assert b"Extraction load recorded:" in run_new.data
             assert b"42.5 lbs into Reactor 2" in run_new.data
 
             with app.app_context():
@@ -1537,6 +1537,7 @@ def test_main_app_lot_charge_links_charge_to_saved_run():
                     "reactor_number": "1",
                     "charged_at": "2026-04-14T12:00",
                     "notes": "desktop charge",
+                    "submit_action": "open_run",
                 },
                 follow_redirects=False,
             )
@@ -1583,6 +1584,81 @@ def test_main_app_lot_charge_links_charge_to_saved_run():
                 run_obj = db.session.get(app_module.Run, run_id)
                 if run_obj:
                     db.session.delete(run_obj)
+            lot_obj = db.session.get(PurchaseLot, lot_id)
+            if lot_obj:
+                db.session.delete(lot_obj)
+            purchase_obj = db.session.get(Purchase, purchase_id)
+            if purchase_obj:
+                db.session.delete(purchase_obj)
+            supplier_obj = db.session.get(Supplier, supplier_id)
+            if supplier_obj:
+                db.session.delete(supplier_obj)
+            db.session.commit()
+
+
+def test_main_app_lot_charge_defaults_to_record_only_redirect():
+    app = app_module.app
+    charge_id = None
+    with app.app_context():
+        supplier = Supplier(name="Charge Redirect Supplier", is_active=True)
+        db.session.add(supplier)
+        db.session.flush()
+        purchase = Purchase(
+            supplier_id=supplier.id,
+            purchase_date=date(2026, 4, 14),
+            delivery_date=date(2026, 4, 14),
+            status="delivered",
+            stated_weight_lbs=55,
+            purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            clean_or_dirty="clean",
+            testing_status="completed",
+            batch_id=f"CHGRED-{app_module.gen_uuid()[:6]}",
+        )
+        db.session.add(purchase)
+        db.session.flush()
+        lot = PurchaseLot(
+            purchase_id=purchase.id,
+            strain_name="Redirect Dream",
+            weight_lbs=55,
+            remaining_weight_lbs=55,
+        )
+        db.session.add(lot)
+        db.session.commit()
+        lot_id = lot.id
+        purchase_id = purchase.id
+        supplier_id = supplier.id
+
+    try:
+        with app.test_client() as client:
+            _login(client, "admin")
+            charge_resp = client.post(
+                f"/lots/{lot_id}/charge",
+                data={
+                    "charged_weight_lbs": "20",
+                    "reactor_number": "2",
+                    "charged_at": "2026-04-14T13:00",
+                    "notes": "record only charge",
+                },
+                follow_redirects=False,
+            )
+            assert charge_resp.status_code in (302, 303)
+            assert f"/purchases/{purchase_id}/edit" in charge_resp.headers["Location"]
+            with client.session_transaction() as sess:
+                prefill = sess.get(app_module.SCAN_RUN_PREFILL_SESSION_KEY)
+                assert prefill is not None
+                charge_id = prefill["charge_id"]
+                assert prefill["planned_weight_lbs"] == 20.0
+                assert prefill["reactor_number"] == 2
+
+            with app.app_context():
+                charge = db.session.get(ExtractionCharge, charge_id)
+                assert charge is not None
+                assert charge.status == "pending"
+                assert charge.run_id is None
+    finally:
+        with app.app_context():
+            if charge_id:
+                ExtractionCharge.query.filter_by(id=charge_id).delete(synchronize_session=False)
             lot_obj = db.session.get(PurchaseLot, lot_id)
             if lot_obj:
                 db.session.delete(lot_obj)

@@ -297,6 +297,10 @@ Each on-hand row now also gives direct action buttons:
 - `Barcode` opens the compact barcode-only print sheet for label printers
 - `Journey` opens the purchase journey filtered to that lot
 
+When you submit a lot charge in the main app, the form now asks for confirmation (`X lbs from LOT-... into Reactor ...`) before saving. From that same confirmation flow you can either:
+- **Record Load** (save only; stay in the main app and update reactor boards), or
+- **Record Load and Open Run** (save and open the run form immediately).
+
 Use **Inventory -> Import spreadsheet** when you need to update many existing lots at once from Excel or CSV.
 
 That importer:

@@ -803,12 +803,7 @@ def _render_charge_form(root, lot, *, entry_mode: str, back_url: str):
     )
 
 
-def _submit_charge_form(root, lot, *, entry_mode: str):
-    back_url = (
-        root.url_for("scan_lot", tracking_id=lot.tracking_id)
-        if entry_mode == "scan"
-        else root.url_for("purchase_edit", purchase_id=lot.purchase.id)
-    )
+def _submit_charge_form(root, lot, *, entry_mode: str, back_url: str):
     charged_weight_raw = (root.request.form.get("charged_weight_lbs") or "").strip()
     reactor_raw = (root.request.form.get("reactor_number") or "").strip()
     charged_at_raw = (root.request.form.get("charged_at") or "").strip()
@@ -854,11 +849,20 @@ def _submit_charge_form(root, lot, *, entry_mode: str):
             scale_device_id=scale_device_id,
         )
         root.db.session.commit()
+        submit_action = (root.request.form.get("submit_action") or "").strip().lower()
+        open_run_after_save = entry_mode == "scan" or submit_action == "open_run"
+        if open_run_after_save:
+            root.flash(
+                f"Extraction load recorded for {charged_weight_lbs:.1f} lbs into Reactor {reactor_number}. Finish the run details next.",
+                "success",
+            )
+            return root.redirect(root.url_for("run_new", return_to=back_url))
         root.flash(
-            f"Extraction load recorded for {charged_weight_lbs:.1f} lbs into Reactor {reactor_number}. Finish the run details next.",
+            f"Extraction load recorded for {charged_weight_lbs:.1f} lbs into Reactor {reactor_number}. Reactor boards are updated.",
             "success",
         )
-        return root.redirect(root.url_for("run_new", return_to=back_url))
+        root.flash("Open Runs later when you're ready to save full run details.", "success")
+        return root.redirect(back_url)
     except Exception as exc:
         root.db.session.rollback()
         root.flash(str(exc), "error")
@@ -948,9 +952,12 @@ def lot_charge_view(root, lot_id):
     except ValueError as exc:
         root.flash(str(exc), "error")
         return root.redirect(root.url_for("purchase_edit", purchase_id=lot.purchase.id if lot.purchase else None))
+    back_url = (root.request.values.get("return_to") or "").strip()
+    if not back_url.startswith("/") or back_url.startswith("//"):
+        back_url = root.url_for("purchase_edit", purchase_id=lot.purchase.id)
     if root.request.method == "POST":
-        return _submit_charge_form(root, lot, entry_mode="main_app")
-    return _render_charge_form(root, lot, entry_mode="main_app", back_url=root.url_for("purchase_edit", purchase_id=lot.purchase.id))
+        return _submit_charge_form(root, lot, entry_mode="main_app", back_url=back_url)
+    return _render_charge_form(root, lot, entry_mode="main_app", back_url=back_url)
 
 
 def scan_lot_charge_view(root, tracking_id):
@@ -963,9 +970,10 @@ def scan_lot_charge_view(root, tracking_id):
     except ValueError as exc:
         root.flash(str(exc), "error")
         return root.redirect(root.url_for("scan_lot", tracking_id=tracking_id))
+    back_url = root.url_for("scan_lot", tracking_id=tracking_id)
     if root.request.method == "POST":
-        return _submit_charge_form(root, lot, entry_mode="scan")
-    return _render_charge_form(root, lot, entry_mode="scan", back_url=root.url_for("scan_lot", tracking_id=tracking_id))
+        return _submit_charge_form(root, lot, entry_mode="scan", back_url=back_url)
+    return _render_charge_form(root, lot, entry_mode="scan", back_url=back_url)
 
 
 def scan_lot_confirm_movement_view(root, tracking_id):
