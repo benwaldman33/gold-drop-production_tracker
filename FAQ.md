@@ -381,6 +381,13 @@ Those choices open a dedicated extraction-charge form. After the operator record
 **Can I start extraction without scanning a label?**
 Yes. On **Purchases -> Edit**, each active lot now has a **Charge Lot** action that opens the same extraction-charge workflow from the main app.
 
+**Can I record a load without opening Runs right away?**
+Yes. On the main-app lot charge form, after confirming lot/reactor/weight details, you can choose:
+- `Record Load` to save only the extraction load event and return to your main-app context.
+- `Record Load and Open Run` to save and immediately open the run form.
+
+`Record Load` updates reactor boards immediately. A row appears in `Runs` only after the run form is saved.
+
 **How do I get from Inventory to the actual lot actions?**
 On **Inventory -> Biomass On Hand**, each lot row now includes direct buttons for:
 - `Edit` to open a dedicated lot editor for strain, potency, location, floor state, prep state, and notes
@@ -538,7 +545,7 @@ Yes, but only one checkpoint at a time.
 
 ## What happens after I mark the extraction run complete?
 
-Phase 1 of post-extraction now begins on the same run screen. After completion, open the **Guided downstream workflow** section, choose the downstream pathway (`100 lb pot pour` or `200 lb minor run`), tap `Start Post-Extraction`, enter wet THCA / wet HTE in **Step 3 — Initial wet outputs**, then tap `Confirm Initial Outputs` (or `Save Updates` if you need to save edits before confirming).
+Phase 1 of post-extraction now begins on the same run screen. After completion, open the **Guided downstream workflow** section, choose the downstream pathway (`100 lb pot pour` or `200 lb minor run`), tap `Start Post-Extraction`, enter wet THCA / wet HTE in **Step 3 — Initial wet outputs**, then tap `Confirm Initial Outputs`.
 
 ## Why won’t the app let me start post-extraction yet?
 
@@ -552,7 +559,7 @@ If you entered values and still see a missing-values warning, refresh to the lat
 
 ## Where do I enter the wet THCA and wet HTE outputs on the iPad?
 
-After you tap `Start Post-Extraction`, scroll to the **Guided downstream workflow** section and open **Step 3 — Initial wet outputs**. That step is marked **Current** once the session has started. Enter both weights there, then tap `Confirm Initial Outputs` (or `Save Updates` to persist the edit without confirming yet).
+After you tap `Start Post-Extraction`, scroll to the **Guided downstream workflow** section and open **Step 3 — Initial wet outputs**. That step is marked **Current** once the session has started. Enter both weights there, then tap `Confirm Initial Outputs`.
 
 ## I entered wet outputs, but I do not see them in Runs. What should I check?
 

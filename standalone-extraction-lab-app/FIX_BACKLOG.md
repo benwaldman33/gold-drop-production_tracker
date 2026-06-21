@@ -27,7 +27,7 @@ Tracked UX and workflow fixes for `standalone-extraction-lab-app/`, plus **cross
 
 ## Full fix — Post-extraction uniform step workflow
 
-**Status:** `open`  
+**Status:** `in_progress`  
 **Priority:** High (operator clarity)  
 **Deferred after:** post-extraction quick fix (single form, auto-save pathway, hide global Save)
 
@@ -43,6 +43,15 @@ Post-extraction still mixes patterns: some fields use manual datetime entry, som
 4. **Supervisor parity** — same step-action model on the supervisor run screen (not only operator view).
 5. **Copy update** — replace “Work top to bottom and save as you move” with “Complete each step in order.”
 6. **Regression tests** — add frontend or API tests for pathway persist + Start Post-Extraction + Confirm Initial Outputs without a global Save.
+
+### Progress (2026-06-20)
+
+- Removed manual datetime entry for Step 2 (`Started At`) and Step 3 (`Confirmed At`) in the standalone app workflow card.
+- Step 2 and Step 3 now communicate server-stamped timestamps captured by action buttons.
+- Removed post-extraction page-level **Save Updates** buttons from operator and supervisor run views.
+- Added step-local branch save buttons (`Save THCA Branch`, `Save HTE Branch`) so downstream branch edits stay local to active steps.
+- Updated copy from “Work top to bottom and save as you move” to “Complete each step in order.”
+- Added a visible phase rail (Primary / Flush / Purge / Post-Extraction) plus prep/reset visibility checklist on `Open Run`.
 
 ### Acceptance criteria
 

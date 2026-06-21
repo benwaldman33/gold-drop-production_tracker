@@ -24,7 +24,11 @@ from services.extraction_charge import REACTOR_LIFECYCLE_DEFAULTS, reactor_lifec
 from services.extraction_run import EXTRACTION_RUN_DEFAULTS, TIMING_POLICY_OPTIONS, TIMING_POLICY_DEFAULTS
 from services.material_genealogy import MATERIAL_REVENUE_LOT_TYPES, material_revenue_setting_key
 from services.site_aggregation import normalize_remote_base_url, pull_all_remote_sites, pull_remote_site
-from services.scale_ingest import SCALE_INTERFACE_TYPES, capture_weight_from_device_payload
+from services.scale_ingest import (
+    SCALE_INTERFACE_TYPES,
+    SCALE_PROTOCOL_TYPES,
+    capture_weight_from_device_payload,
+)
 from services.access_control import (
     ALL_PERMISSIONS,
     PERMISSION_GROUPS,
@@ -1011,6 +1015,7 @@ def settings_view(root, page="operational"):
         scale_devices=scale_devices,
         recent_weight_captures=recent_weight_captures,
         scale_interface_types=SCALE_INTERFACE_TYPES,
+        scale_protocol_types=SCALE_PROTOCOL_TYPES,
         field_submissions=pending_field_submissions,
         reviewed_field_submissions=reviewed_field_submissions,
         submission_return_to="#settings-field-intake",
@@ -1041,12 +1046,16 @@ def scale_device_create_view(root):
     if interface_type and interface_type not in set(SCALE_INTERFACE_TYPES):
         root.flash("Unsupported scale interface type.", "error")
         return settings_redirect(root)
+    protocol_type = (root.request.form.get("protocol_type") or "").strip().lower() or "ascii"
+    if protocol_type not in set(SCALE_PROTOCOL_TYPES):
+        root.flash("Unsupported scale protocol type.", "error")
+        return settings_redirect(root)
     device = root.ScaleDevice(
         name=name,
         location=(root.request.form.get("location") or "").strip() or None,
         make_model=(root.request.form.get("make_model") or "").strip() or None,
         interface_type=interface_type,
-        protocol_type=(root.request.form.get("protocol_type") or "").strip() or "ascii",
+        protocol_type=protocol_type,
         connection_target=(root.request.form.get("connection_target") or "").strip() or None,
         notes=(root.request.form.get("notes") or "").strip() or None,
         is_active=True,
@@ -1066,6 +1075,11 @@ def scale_device_update_view(root, device_id):
     if interface_type and interface_type not in set(SCALE_INTERFACE_TYPES):
         root.flash("Unsupported scale interface type.", "error")
         return settings_redirect(root)
+    protocol_type = (root.request.form.get("protocol_type") or "").strip().lower() or "ascii"
+    current_protocol_type = (device.protocol_type or "").strip().lower()
+    if protocol_type not in set(SCALE_PROTOCOL_TYPES) and protocol_type != current_protocol_type:
+        root.flash("Unsupported scale protocol type.", "error")
+        return settings_redirect(root)
     name = (root.request.form.get("name") or "").strip()
     if not name:
         root.flash("Scale device name is required.", "error")
@@ -1074,7 +1088,7 @@ def scale_device_update_view(root, device_id):
     device.location = (root.request.form.get("location") or "").strip() or None
     device.make_model = (root.request.form.get("make_model") or "").strip() or None
     device.interface_type = interface_type
-    device.protocol_type = (root.request.form.get("protocol_type") or "").strip() or "ascii"
+    device.protocol_type = protocol_type
     device.connection_target = (root.request.form.get("connection_target") or "").strip() or None
     device.notes = (root.request.form.get("notes") or "").strip() or None
     root.db.session.commit()

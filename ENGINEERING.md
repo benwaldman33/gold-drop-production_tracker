@@ -266,7 +266,7 @@ Pilot-hardening additions:
 - guided downstream workflow rendering is client-side in `standalone-extraction-lab-app/src/app.js`:
   - Step 1: `post_extraction_pathway`
   - Step 2: start post-extraction (`start_post_extraction`) with optional **Undo Session Start** before initial outputs are confirmed
-  - Step 3: wet THCA / wet HTE plus `confirm_initial_outputs`; operators can also use `Save Updates` to persist typed wet-output edits without confirming the step yet
+  - Step 3: wet THCA / wet HTE plus `confirm_initial_outputs`; Step 2/3 timestamps are written from action submits instead of manual datetime fields
   - Steps 4+: pathway-specific pot-pour or minor-run fields saved through the same run payload
   - pending and completed steps collapse to headers only; current / ready steps expose their bodies
 - choice-button fields that gate later UI (`post_extraction_pathway`, `flow_resumed_decision`, `final_clarity_decision`, THCA / HTE decision fields) trigger an immediate re-render so dependent buttons appear without a separate save
@@ -523,7 +523,10 @@ This keeps each deployed facility self-identifying for future aggregation withou
   - Run save fails unless selected lot allocations equal `bio_in_reactor_lbs` exactly.
 - **Label / scan surfaces**
   - `GET /lots/<lot_id>/label` (`mode=barcode` renders compact barcode-only labels)
-  - `GET|POST /lots/<lot_id>/charge`
+  - `GET|POST /lots/<lot_id>/charge`:
+    - main-app submit now confirms lot/reactor/weight client-side before POST
+    - `submit_action=record_only` saves `ExtractionCharge` and returns to `return_to` context
+    - `submit_action=open_run` saves `ExtractionCharge` and redirects to `runs/new`
   - `GET /purchases/<purchase_id>/labels` (`mode=barcode` renders compact barcode-only labels for all active lots on the purchase)
   - `GET /scan/lot/<tracking_id>` -> dedicated scanned-lot workflow page
   - `GET|POST /scan/lot/<tracking_id>/charge` -> records an extraction charge from the scanned lot and then redirects into `runs/new`

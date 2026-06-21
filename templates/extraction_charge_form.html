@@ -58,12 +58,17 @@
 {% endif %}
 
 <div class="card">
-  <form method="POST">
+  <form method="POST" id="extraction-charge-form">
     <input type="hidden" name="scale_device_id" value="{{ charge_defaults.scale_device_id or '' }}">
     <div class="form-section">
       <h4>Load Details</h4>
       <p class="text-sm cell-muted" style="margin-top:0;">
-        Record the source lot, pounds, reactor, and load time here. Saving this step opens the run form with the lot allocation already attached.
+        Record the source lot, pounds, reactor, and load time here.
+        {% if entry_mode == 'scan' %}
+        Saving this step opens the run form with the lot allocation already attached.
+        {% else %}
+        Saving this step records a load event and updates reactor boards.
+        {% endif %}
       </p>
       <div class="form-row-3">
         <div class="form-group">
@@ -97,8 +102,45 @@
 
     <div class="form-actions">
       <a href="{{ back_url }}" class="btn btn-secondary">Cancel</a>
-      <button type="submit" class="btn btn-primary">Record Load And Open Run</button>
+      {% if entry_mode == 'scan' %}
+      <button type="submit" name="submit_action" value="open_run" class="btn btn-primary">Record Load And Open Run</button>
+      {% else %}
+      <button type="submit" name="submit_action" value="record_only" class="btn btn-primary">Record Load</button>
+      <button type="submit" name="submit_action" value="open_run" class="btn btn-secondary">Record Load And Open Run</button>
+      {% endif %}
+    </div>
+    <div class="text-sm cell-muted" style="margin-top:8px;">
+      <strong>What this saves:</strong> recording a load moves pounds into the selected reactor and updates reactor boards.
+      A run record is only created when you save the run form.
     </div>
   </form>
 </div>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  var form = document.getElementById("extraction-charge-form");
+  if (!form) return;
+  form.addEventListener("submit", function (event) {
+    var submitter = event.submitter || document.activeElement;
+    var submitAction = (submitter && submitter.value) || "record_only";
+    var weight = (form.elements["charged_weight_lbs"] && form.elements["charged_weight_lbs"].value) || "?";
+    var reactorSelect = form.elements["reactor_number"];
+    var reactorLabel = "the selected reactor";
+    if (reactorSelect && reactorSelect.selectedIndex >= 0) {
+      reactorLabel = reactorSelect.options[reactorSelect.selectedIndex].text || reactorLabel;
+    }
+    var lotLabel = {{ (lot.tracking_id or lot.id[:8]) | tojson }};
+    var message =
+      "Confirm extraction load\\n\\n" +
+      "Take " + weight + " lbs from lot " + lotLabel + " and load into " + reactorLabel + ".\\n\\n";
+    if (submitAction === "open_run") {
+      message += "This will record the load and open the run form.";
+    } else {
+      message += "This will record the load event and update reactor boards. You can open Runs later when ready.";
+    }
+    if (!window.confirm(message)) {
+      event.preventDefault();
+    }
+  });
+});
+</script>
 {% endblock %}

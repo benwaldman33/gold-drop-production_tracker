@@ -981,7 +981,7 @@ class ScaleDevice(db.Model):
     name = db.Column(db.String(120), nullable=False)
     location = db.Column(db.String(120))
     make_model = db.Column(db.String(200))
-    interface_type = db.Column(db.String(40))  # rs232, usb_serial, tcp, modbus_rtu, modbus_tcp
+    interface_type = db.Column(db.String(40))  # rs232, usb_serial
     protocol_type = db.Column(db.String(40))  # vendor protocol / parser key
     connection_target = db.Column(db.String(200))
     is_active = db.Column(db.Boolean, default=True, nullable=False)
