@@ -1711,6 +1711,42 @@ function renderTimingControlCard(timing, liveClock = null) {
   `;
 }
 
+function soakElapsedMinutes(run) {
+  const start = parseSiteClockDate(run?.run_fill_started_at, boothClockTimeZone());
+  if (!start) return null;
+  const elapsedMs = Date.now() - start.getTime();
+  if (!Number.isFinite(elapsedMs) || elapsedMs < 0) return null;
+  return Math.floor(elapsedMs / 60000);
+}
+
+function mixerStartReasonRequirements(run) {
+  const soakMinutes = soakElapsedMinutes(run);
+  const targets = run?.booth?.timing_targets || {};
+  const mixerConstraints = run?.timing_controls?.mixer?.constraints || {};
+  const earliest = Number(
+    targets.mixer_start_earliest_minutes ?? mixerConstraints.start_earliest_minutes ?? 3,
+  );
+  const latest = Number(
+    targets.mixer_start_latest_minutes ?? mixerConstraints.start_latest_minutes ?? 6,
+  );
+  const soakTarget = Number(
+    targets.primary_soak_minutes ?? run?.timing_controls?.primary_soak?.target_minutes ?? 30,
+  );
+  const needsWindowReason = soakMinutes != null && (soakMinutes < earliest || soakMinutes > latest);
+  const needsShortSoakReason = soakMinutes != null && soakMinutes < soakTarget;
+  return { soakMinutes, earliest, latest, soakTarget, needsWindowReason, needsShortSoakReason };
+}
+
+function renderReasonTextarea(name, label, value, { visible = true } = {}) {
+  if (!visible) return "";
+  return `
+      <div class="field"><label for="${escapeHtml(name)}">${escapeHtml(label)}</label>
+      <textarea id="${escapeHtml(name)}" name="${escapeHtml(name)}" rows="2"
+        autocomplete="off" autocapitalize="off" spellcheck="false"
+        data-lpignore="true" data-1p-ignore="true"
+        placeholder="Required only when this timing rule applies">${escapeHtml(value || "")}</textarea></div>`;
+}
+
 // ---------------------------------------------------------------------------
 // CHECKPOINT INPUTS — same logic, now a clean helper
 // ---------------------------------------------------------------------------
@@ -1730,14 +1766,35 @@ function renderCheckpointInputs(run) {
       </div>
       ${run.chiller_out_of_spec ? `
         <div class="notice warning">⚠ This run proceeded out of spec. Supervisor has been notified.</div>` : ""}`,
-    ready_to_start_mixer: `
-      <div class="field"><label for="mixer_start_timing_reason">Reason if starting mixer outside the allowed window</label>
-      <textarea id="mixer_start_timing_reason" name="mixer_start_timing_reason" rows="2">${escapeHtml(run.mixer_start_timing_reason || "")}</textarea></div>
-      <div class="field"><label for="primary_soak_short_reason">Reason if starting mixer before primary soak target</label>
-      <textarea id="primary_soak_short_reason" name="primary_soak_short_reason" rows="2">${escapeHtml(run.primary_soak_short_reason || "")}</textarea></div>`,
-    mixing: `
-      <div class="field"><label for="mixer_short_reason">Reason if ending mixer before minimum runtime</label>
-      <textarea id="mixer_short_reason" name="mixer_short_reason" rows="2">${escapeHtml(run.mixer_short_reason || "")}</textarea></div>`,
+    ready_to_start_mixer: (() => {
+      const mixerReasons = mixerStartReasonRequirements(run);
+      const fields = [
+        renderReasonTextarea(
+          "mixer_start_timing_reason",
+          "Reason if starting mixer outside the allowed window",
+          run.mixer_start_timing_reason,
+          { visible: mixerReasons.needsWindowReason },
+        ),
+        renderReasonTextarea(
+          "primary_soak_short_reason",
+          "Reason if starting mixer before primary soak target",
+          run.primary_soak_short_reason,
+          { visible: mixerReasons.needsShortSoakReason },
+        ),
+      ].filter(Boolean).join("");
+      const hint = mixerReasons.soakMinutes == null
+        ? ""
+        : `<div class="subtle" style="margin-bottom:8px;">
+            Primary soak elapsed: ${mixerReasons.soakMinutes} min
+            (mixer window ${mixerReasons.earliest}–${mixerReasons.latest} min, soak target ${mixerReasons.soakTarget} min).
+          </div>`;
+      return `${hint}${fields || `<div class="subtle">Mixer timing is within the configured window. Tap Start Mixer to continue.</div>`}`;
+    })(),
+    mixing: renderReasonTextarea(
+      "mixer_short_reason",
+      "Reason if ending mixer before minimum runtime",
+      run.mixer_short_reason,
+    ),
     flushing: `
       <div class="field"><label for="flush_short_reason">Reason if stopping flush early</label>
       <textarea id="flush_short_reason" name="flush_short_reason" rows="2">${escapeHtml(run.flush_short_reason || "")}</textarea></div>`,
@@ -3190,12 +3247,18 @@ function buildRunPayload(form, progressionAction = "") {
 }
 
 async function handleRunProgression(event) {
+  event.preventDefault();
+  event.stopPropagation();
   if (!state.route.chargeId) return;
   const formEl = app?.querySelector("form[data-form='run-execution']");
   if (!formEl) return;
   const payload = buildRunPayload(new FormData(formEl), event.currentTarget.dataset.runAction || "");
+  applyRunDraftPayload(payload);
+  const progressionButtons = formEl.querySelectorAll("[data-action='run-progression']");
+  progressionButtons.forEach((button) => {
+    button.disabled = true;
+  });
   state.loading = true;
-  render();
   try {
     const response = await api.saveChargeRun(state.route.chargeId, payload);
     state.run = response.run;

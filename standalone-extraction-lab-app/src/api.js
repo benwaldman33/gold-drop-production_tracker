@@ -1304,9 +1304,12 @@ export function createApiClient({ mode = "mock", apiBaseUrl = "", fetchImpl = fe
       ensureMockSession();
       const state = loadState();
       const { charge, run } = ensureMockRunForCharge(state, chargeId);
+      const cleanPayload = Object.fromEntries(
+        Object.entries(payload).filter(([, value]) => value !== undefined),
+      );
       Object.assign(run, {
         ...run,
-        ...payload,
+        ...cleanPayload,
       });
       if (payload.progression_action) {
         applyMockProgressionAction(run, payload.progression_action, payload, loadOperationalSettings());

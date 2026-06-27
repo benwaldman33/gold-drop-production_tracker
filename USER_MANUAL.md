@@ -467,6 +467,8 @@ Those actions write the matching timestamps and booth checkpoints automatically.
 
 Mixer timing controls have explicit safety alerts during primary extraction. By default, start the mixer between 3 and 6 minutes after `Start Primary Soak`, run for at least 5 minutes and no more than 7, then end with `End Mixer`. Super Admins can change those four values under **Settings → Operational Parameters → Extraction run defaults** (main app) or **Settings → Primary Mixer Timing Window** (standalone extraction lab app, admin only). If the start window is missed or runtime exceeds the configured maximum, supervisors receive a critical alert. If that critical alert is still unacknowledged after another 3 minutes, the system raises an emergency-class escalation notification for Slack emergency-channel delivery.
 
+At **Start Mixer**, the operator screen shows a reason field only when it applies: outside the configured mixer start window, or before the primary soak target is reached. If timing is already within range, tap **Start Mixer** without entering a reason.
+
 After **Mark Run Complete**, the reactor-focused run view now points operators to the standalone app **Downstream** tab. Open the run from that queue to continue the guided post-extraction steps.
 
 On the **operator** run screen, the **live timers panel** keeps primary soak, mixer, flush soak, and final purge visible with elapsed time and progress toward target. On a wide tablet, that panel sits beside the checkpoint column; on a phone it stacks below it.
