@@ -127,8 +127,8 @@ def validate_charge_transition(root, charge, target_state: str, *, history_entri
     history = history_entries if history_entries is not None else charge_history_entries(root, charge.id, limit=20)
     if target == "cleared":
         current = (charge.status or "pending").strip() or "pending"
-        if current != "completed":
-            raise ValueError("Mark Reactor Emptied only after the load is completed.")
+        if current not in {"completed", "cancelled"}:
+            raise ValueError("Mark Reactor Emptied only after the load is completed or cancelled.")
         return
     if target == "running" and settings["running_requires_linked_run"] and not charge.run_id:
         raise ValueError("Mark Running requires a linked run under the current Settings policy.")
@@ -195,7 +195,7 @@ def build_reactor_card_actions(settings, charge) -> list[dict]:
         actions.append({"target_state": "running", "label": "Mark Running"})
     if status in {"pending", "in_reactor", "applied", "running"} and state_settings["completed"]["enabled"]:
         actions.append({"target_state": "completed", "label": "Mark Complete"})
-    if status == "completed" and state_settings["cleared"]["enabled"]:
+    if status in {"completed", "cancelled"} and state_settings["cleared"]["enabled"]:
         actions.append({"target_state": "cleared", "label": "Reactor Emptied"})
     if status in {"pending", "in_reactor", "applied", "running"} and state_settings["cancelled"]["enabled"]:
         actions.append({"target_state": "cancelled", "label": "Cancel Load"})

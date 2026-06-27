@@ -471,3 +471,25 @@ test("mock api reactor cleared frees board slot", async () => {
   assert.equal(reactorCardAfter.state_key, "empty");
   assert.equal(reactorCardAfter.current, null);
 });
+
+test("mock api reactor cleared frees board slot from cancelled load", async () => {
+  const api = createApiClient({ mode: "mock" });
+  await api.login("extractor1", "secret");
+  const lots = await api.listLots("Blue");
+  const created = await api.createCharge(lots[0].id, {
+    charged_weight_lbs: 40,
+    reactor_number: 2,
+    charged_at: "2026-06-14T10:00",
+  });
+  await api.transitionCharge(created.charge.id, { target_state: "cancelled" });
+  const before = await api.getBoard("all");
+  const reactorCard = before.reactor_cards.find((card) => card.reactor_number === 2);
+  assert.equal(reactorCard.state_key, "cancelled");
+  assert.ok(reactorCard.current.available_actions.some((action) => action.target_state === "cleared"));
+
+  await api.transitionCharge(created.charge.id, { target_state: "cleared" });
+  const after = await api.getBoard("all");
+  const reactorCardAfter = after.reactor_cards.find((card) => card.reactor_number === 2);
+  assert.equal(reactorCardAfter.state_key, "empty");
+  assert.equal(reactorCardAfter.current, null);
+});

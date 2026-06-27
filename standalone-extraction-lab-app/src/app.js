@@ -1085,7 +1085,7 @@ function renderWorkflowStep(stepNumber, stateKey, eyebrow, title, description, b
 }
 
 function renderReactorEmptiedAction(charge) {
-  if (!charge || charge.status !== "completed" || !state.route.chargeId) return "";
+  if (!charge || !["completed", "cancelled"].includes(charge.status) || !state.route.chargeId) return "";
   return `
     <section class="card" style="padding:20px;margin-top:14px;">
       <div class="eyebrow">Reactor availability</div>

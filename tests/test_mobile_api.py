@@ -2375,6 +2375,91 @@ def test_mobile_extraction_reactor_cleared_frees_board():
             db.session.commit()
 
 
+def test_mobile_extraction_reactor_cleared_frees_board_from_cancelled():
+    app = app_module.create_app()
+    _set_mobile_workflows(app)
+    supplier_id = _create_supplier(app, f"Cancelled Clear Supplier {gen_uuid()[:6]}")
+    purchase_id = None
+    lot_id = None
+    charge_id = None
+    try:
+        with app.app_context():
+            from datetime import date
+
+            purchase = Purchase(
+                supplier_id=supplier_id,
+                purchase_date=date(2026, 6, 14),
+                delivery_date=date(2026, 6, 14),
+                status="delivered",
+                stated_weight_lbs=100,
+                purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+                testing_status="completed",
+                clean_or_dirty="clean",
+                batch_id=f"CCL-{gen_uuid()[:6]}",
+            )
+            db.session.add(purchase)
+            db.session.flush()
+            lot = PurchaseLot(
+                purchase_id=purchase.id,
+                strain_name="Cancelled Clear Strain",
+                weight_lbs=100,
+                remaining_weight_lbs=100,
+                floor_state="reactor_staging",
+                milled=True,
+            )
+            db.session.add(lot)
+            db.session.flush()
+            charge = ExtractionCharge(
+                purchase_lot_id=lot.id,
+                charged_weight_lbs=50,
+                reactor_number=2,
+                charged_at=app_module.datetime.now(app_module.timezone.utc),
+                source_mode="standalone_extraction",
+                status="cancelled",
+                created_by=User.query.filter_by(username="ops").first().id,
+            )
+            db.session.add(charge)
+            db.session.commit()
+            purchase_id = purchase.id
+            lot_id = lot.id
+            charge_id = charge.id
+
+        with app.test_client() as client:
+            _login_mobile(client)
+            before = client.get("/api/mobile/v1/extraction/board?board_view=all")
+            assert before.status_code == 200
+            reactor_two = next(card for card in before.get_json()["data"]["reactor_cards"] if card["reactor_number"] == 2)
+            assert reactor_two["state_key"] == "cancelled"
+            assert any(action["target_state"] == "cleared" for action in reactor_two["current"]["available_actions"])
+
+            cleared = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/transition",
+                json={"target_state": "cleared"},
+            )
+            assert cleared.status_code == 200
+            assert cleared.get_json()["data"]["charge"]["status"] == "cleared"
+
+            after = client.get("/api/mobile/v1/extraction/board?board_view=all")
+            reactor_two_after = next(card for card in after.get_json()["data"]["reactor_cards"] if card["reactor_number"] == 2)
+            assert reactor_two_after["state_key"] == "empty"
+            assert reactor_two_after["current"] is None
+    finally:
+        with app.app_context():
+            charge = db.session.get(ExtractionCharge, charge_id) if charge_id else None
+            if charge:
+                db.session.delete(charge)
+            lot = db.session.get(PurchaseLot, lot_id) if lot_id else None
+            if lot:
+                db.session.delete(lot)
+            purchase = db.session.get(Purchase, purchase_id) if purchase_id else None
+            if purchase:
+                db.session.delete(purchase)
+            supplier = db.session.get(Supplier, supplier_id)
+            if supplier:
+                db.session.delete(supplier)
+            db.session.commit()
+
+
 def test_mobile_write_origin_enforcement_and_audit_log():
     app = app_module.create_app()
     _set_mobile_workflows(app)

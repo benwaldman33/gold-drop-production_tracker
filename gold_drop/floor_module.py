@@ -760,8 +760,10 @@ def _build_active_reactor_board(root):
                 next_step = "Mark the load complete when the reactor cycle finishes."
             elif state_key == "completed":
                 next_step = "Mark Reactor Emptied after pour-out to free this reactor for the next load."
+            elif state_key == "cancelled":
+                next_step = "Mark Reactor Emptied after pour-out to free this reactor for the next load."
             else:
-                next_step = "Cancelled loads stay visible until the day rolls over."
+                next_step = "Review the load history or advance the lifecycle."
             history = charge_history_entries(root, current.id, limit=6) if settings["show_history"] else []
         else:
             state_key = "empty"

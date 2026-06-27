@@ -1001,7 +1001,7 @@ function mockBoardChargeVisible(charge) {
 function mockReactorCardActions(charge) {
   if (!charge) return [];
   const status = String(charge.status || "").trim();
-  if (status === "completed") {
+  if (status === "completed" || status === "cancelled") {
     return [{ target_state: "cleared", label: "Reactor Emptied" }];
   }
   if (status === "running") {
@@ -1037,7 +1037,7 @@ function buildMockBoard(state, boardView = "all") {
       state_label: charge ? chargeStateLabel(charge.status) : "Empty",
       state_badge: "badge",
       next_step: charge
-        ? charge.status === "completed"
+        ? (charge.status === "completed" || charge.status === "cancelled")
           ? "Mark Reactor Emptied after pour-out to free this reactor for the next load."
           : "Advance the lifecycle or open the linked run."
         : "Ready for the next load.",
