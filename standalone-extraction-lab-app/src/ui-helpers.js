@@ -30,6 +30,47 @@ export function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
+export function boothHistory(run) {
+  return run?.booth?.history || [];
+}
+
+export function hasBoothEvent(run, eventKey, labelPattern) {
+  const history = boothHistory(run);
+  if (eventKey && history.some((row) => row.event_key === eventKey)) return true;
+  if (labelPattern) {
+    const pattern = labelPattern instanceof RegExp ? labelPattern : new RegExp(labelPattern, "i");
+    return history.some((row) => pattern.test(String(row.event_label || "")));
+  }
+  return false;
+}
+
+export function isBiomassPrepDone(run) {
+  return hasBoothEvent(run, "biomass_loaded_confirmed", /biomass.*(loaded confirmed|confirmed loaded)/i);
+}
+
+export function isChillerPrepDone(run) {
+  return hasBoothEvent(
+    run,
+    "chiller_temperature_checked",
+    /chiller temperature confirmed|chiller temperature acknowledged|chiller temp checked/i,
+  );
+}
+
+export function isVacuumPrepDone(run) {
+  return hasBoothEvent(run, "reactor_vacuum_confirmed", /reactor vacuum confirmed|vacuum confirmed/i);
+}
+
+export function chillerReadingC(run) {
+  const temp = run?.chiller_check_actual_temp_c ?? run?.booth?.chiller_check_actual_temp_c;
+  if (temp == null || temp === "") return null;
+  const parsed = Number(temp);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function chillerOutOfSpec(run) {
+  return Boolean(run?.chiller_out_of_spec ?? run?.booth?.chiller_out_of_spec);
+}
+
 export function siteTimeZone(site) {
   return site?.site_timezone || "America/Los_Angeles";
 }

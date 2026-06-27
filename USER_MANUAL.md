@@ -439,7 +439,7 @@ The timer-heavy fields use touch-first buttons instead of keyboard entry:
 - `Start / Now`
 - `Stop / Now`
 
-The top of the run screen now shows the current stage and the next action buttons. On the **operator** screen, a **run status strip** (prep pills plus key readings) and an always-visible **live timers panel** stay on screen while you work the current checkpoint; the verbose phase rail and prep/reset checklist appear on the **supervisor** screen instead. The operator screen is intentionally lockstep: it only renders the active checkpoint inputs plus ambient status context. The normal booth sequence is:
+The top of the run screen now shows the current stage and the next action buttons. On the **operator** screen, a **run status strip** (prep pills plus key readings) and an always-visible **live timers panel** stay on screen while you work the current checkpoint; the verbose phase rail and prep/reset checklist appear on the **supervisor** screen instead. Status chips such as **Biomass**, **Chiller**, and **Loaded** turn green after their booth checkpoint is confirmed in the workflow (not merely when weight or temperature fields are visible). **Evidence Photos** starts collapsed to save space; tap the panel header to expand it when you need to upload or review images. The operator screen is intentionally lockstep: it only renders the active checkpoint inputs plus ambient status context. The normal booth sequence is:
 
 - **Confirm Under Vacuum**
 - **Record Solvent Charge**

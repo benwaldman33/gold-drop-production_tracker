@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { clampChargeWeight, halfLotChargeWeight, lotTitle, normalizeText, preferredChargeWeight, readyLotCount, stateTone } from "../src/domain.js";
-import { buildReactorActionMarkup, defaultChargeValue, defaultReactorValue, parseRoute, clockDurationMs, parseSiteClockDate, siteTimeZone } from "../src/ui-helpers.js";
+import { buildReactorActionMarkup, defaultChargeValue, defaultReactorValue, parseRoute, clockDurationMs, parseSiteClockDate, siteTimeZone, isBiomassPrepDone, isChillerPrepDone, hasBoothEvent } from "../src/ui-helpers.js";
 
 test("normalizeText trims and lowercases", () => {
   assert.equal(normalizeText("  Reactor   Bay "), "reactor bay");
@@ -80,4 +80,21 @@ test("parseSiteClockDate round trips site-local wall time", () => {
   assert.equal(parts.day, "27");
   assert.equal(parts.hour === "24" ? "00" : parts.hour, "14");
   assert.equal(parts.minute, "00");
+});
+
+test("booth prep status reads live API event keys and labels", () => {
+  const run = {
+    bio_in_reactor_lbs: 100,
+    chiller_check_actual_temp_c: -40,
+    chiller_out_of_spec: false,
+    booth: {
+      history: [
+        { event_key: "biomass_loaded_confirmed", event_label: "Biomass loaded confirmed" },
+        { event_key: "chiller_temperature_checked", event_label: "Chiller temperature confirmed in spec" },
+      ],
+    },
+  };
+  assert.equal(isBiomassPrepDone(run), true);
+  assert.equal(isChillerPrepDone(run), true);
+  assert.equal(hasBoothEvent(run, "reactor_vacuum_confirmed"), false);
 });

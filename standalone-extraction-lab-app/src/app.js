@@ -9,7 +9,13 @@ import {
   defaultReactorValue,
   escapeHtml,
   lastNamedFormValue,
+  chillerOutOfSpec,
+  chillerReadingC,
   clockDurationMs as siteClockDurationMs,
+  hasBoothEvent,
+  isBiomassPrepDone,
+  isChillerPrepDone,
+  isVacuumPrepDone,
   localDateTimeInputValue,
   namedFormCheckboxValue,
   parseRoute,
@@ -1528,7 +1534,7 @@ function renderPhaseRail(run, charge) {
 }
 
 function hasBoothHistoryEvent(run, pattern) {
-  return (run.booth?.history || []).some((row) => pattern.test(String(row?.event_label || "")));
+  return hasBoothEvent(run, null, pattern);
 }
 
 function getPrepCheckItems(run) {
@@ -1537,23 +1543,23 @@ function getPrepCheckItems(run) {
       key: "biomass",
       shortLabel: "Biomass",
       label: "Reactor biomass loaded",
-      done: Boolean(run.biomass_confirmed_at) || hasBoothHistoryEvent(run, /biomass confirmed/i),
+      done: isBiomassPrepDone(run),
       pending: "Confirm biomass loaded checkpoint before solvent work.",
-      complete: `Confirmed at ${run.biomass_confirmed_at || "checkpoint event recorded"}.`,
+      complete: "Biomass load confirmed in booth history.",
     },
     {
       key: "chiller",
       shortLabel: "Chiller",
       label: "Solvent path chilled + verified",
-      done: Boolean(run.chiller_check_confirmed_at) || hasBoothHistoryEvent(run, /chiller temp checked/i),
+      done: isChillerPrepDone(run),
       pending: "Record actual chiller temperature and confirm threshold.",
-      complete: `Verified at ${run.chiller_check_confirmed_at || "checkpoint event recorded"}.`,
+      complete: "Chiller temperature verified in booth history.",
     },
     {
       key: "vacuum",
       shortLabel: "Vacuum",
       label: "Vacuum confirmed before solvent load",
-      done: hasBoothHistoryEvent(run, /vacuum confirmed/i),
+      done: isVacuumPrepDone(run),
       pending: "Confirm reactor vacuum before recording solvent charge.",
       complete: "Vacuum confirmation event is logged in booth history.",
     },
@@ -1945,7 +1951,16 @@ function renderStatusChip(label, value, tone = "pending") {
 function renderRunStatusStrip(run, charge) {
   const booth = run.booth || {};
   const inherited = run.inherited || {};
+  const biomassDone = isBiomassPrepDone(run);
+  const chillerTemp = chillerReadingC(run);
   const prepPills = getPrepCheckItems(run).map((item) => {
+    if (item.key === "chiller") {
+      if (item.done && chillerTemp != null) {
+        const tone = chillerOutOfSpec(run) ? "warn" : "ok";
+        return renderStatusChip("Chiller", `${chillerTemp}°C`, tone);
+      }
+      return renderStatusChip("Chiller", item.done ? "Verified" : "Pending", item.done ? "ok" : "pending");
+    }
     const tone = item.done ? "ok" : "pending";
     const value = item.done ? "Done" : "Pending";
     return renderStatusChip(item.shortLabel, value, tone);
@@ -1954,17 +1969,7 @@ function renderRunStatusStrip(run, charge) {
 
   const biomassLbs = run.bio_in_reactor_lbs ?? inherited.charged_weight_lbs;
   if (biomassLbs != null && biomassLbs !== "") {
-    chips.push(renderStatusChip("Loaded", `${biomassLbs} lbs`, run.biomass_confirmed_at ? "ok" : "pending"));
-  }
-
-  if (run.chiller_check_actual_temp_c != null && run.chiller_check_actual_temp_c !== "") {
-    chips.push(renderStatusChip(
-      "Chiller",
-      `${run.chiller_check_actual_temp_c}°C`,
-      run.chiller_out_of_spec ? "warn" : run.chiller_check_confirmed_at ? "ok" : "pending",
-    ));
-  } else if (run.chiller_check_confirmed_at) {
-    chips.push(renderStatusChip("Chiller", "Verified", "ok"));
+    chips.push(renderStatusChip("Loaded", `${biomassLbs} lbs`, biomassDone ? "ok" : "pending"));
   }
 
   if (booth.primary_solvent_charge_lbs != null && booth.primary_solvent_charge_lbs !== "") {
@@ -2095,7 +2100,7 @@ function renderBoothEvidence(run) {
   const evidenceRows = Array.isArray(state.runEvidence) ? state.runEvidence : [];
   const totalEvidence = Number(counts.solvent_chiller_temp_photo || 0) + Number(counts.plate_temp_photo || 0) + Number(counts.other || 0);
   return `
-    <details class="evidence-panel" ${totalEvidence > 0 ? "" : "open"}>
+    <details class="evidence-panel">
       <summary>
         Evidence Photos
         <small>${escapeHtml(String(totalEvidence))} file(s) on record</small>

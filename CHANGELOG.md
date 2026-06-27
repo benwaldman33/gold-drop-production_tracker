@@ -18,6 +18,8 @@
 - Fixed a render crash in the operator **live timers panel** (`rows.join is not a function`) that left the run screen stuck on **Loading run...** after the API responded successfully.
 - Booth timer clocks now interpret API timestamps in the **site timezone** (`site_timezone` from login) instead of the tablet/browser timezone, preventing primary soak from jumping to ~3 hours elapsed when the device clock zone differs from the lab.
 - The large **Primary soak** elapsed display and progress bar now tick every second with the live clock row.
+- Run status chips (**Biomass**, **Chiller**, **Loaded**, etc.) now turn green from live booth checkpoint events instead of unused timestamp fields that the API never populated.
+- **Evidence Photos** on the operator run screen now starts collapsed; tap the header to expand when needed.
 
 ## 2026-06-19
 
