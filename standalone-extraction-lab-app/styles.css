@@ -1048,6 +1048,222 @@ input[type="range"] {
   margin: 0 auto;
 }
 
+.operator-layout-dashboard {
+  max-width: 1120px;
+}
+
+.run-status-strip {
+  padding: 4px 0 2px;
+}
+
+.run-status-strip-scroll {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+
+.status-chip {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 88px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  flex: 0 0 auto;
+}
+
+.status-chip-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.status-chip-value {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.status-chip--ok {
+  border-color: rgba(31, 122, 78, 0.28);
+  background: rgba(31, 122, 78, 0.08);
+}
+
+.status-chip--ok .status-chip-value {
+  color: var(--success);
+}
+
+.status-chip--warn {
+  border-color: rgba(157, 100, 0, 0.28);
+  background: rgba(157, 100, 0, 0.08);
+}
+
+.status-chip--warn .status-chip-value {
+  color: var(--warning);
+}
+
+.status-chip--pending {
+  opacity: 0.92;
+}
+
+.operator-dashboard {
+  display: grid;
+  gap: 14px;
+}
+
+.operator-dashboard-grid {
+  display: grid;
+  gap: 16px;
+  align-items: start;
+}
+
+.operator-checkpoint-column {
+  min-width: 0;
+}
+
+.live-timers-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  box-shadow: var(--shadow);
+  padding: 22px 20px;
+  display: grid;
+  gap: 14px;
+}
+
+.live-timers-panel .section-head h3 {
+  margin: 0;
+  font-size: 0.98rem;
+  line-height: 1.45;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.timer-row-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.timer-row {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 251, 245, 0.82);
+}
+
+.timer-row--focus {
+  border-color: rgba(211, 107, 17, 0.34);
+  box-shadow: 0 0 0 1px rgba(211, 107, 17, 0.12);
+}
+
+.timer-row--active {
+  border-color: rgba(31, 122, 78, 0.28);
+  background: rgba(31, 122, 78, 0.06);
+}
+
+.timer-row--warn {
+  border-color: rgba(157, 100, 0, 0.34);
+  background: rgba(157, 100, 0, 0.08);
+}
+
+.timer-row--done {
+  opacity: 0.88;
+}
+
+.timer-row--idle {
+  opacity: 0.72;
+}
+
+.timer-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.timer-row-head strong {
+  font-size: 0.95rem;
+}
+
+.timer-row-state {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.timer-row-clocks {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.timer-row-elapsed {
+  font-size: clamp(1.6rem, 4vw, 2.1rem);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--ink);
+}
+
+.timer-row-target {
+  font-size: 0.84rem;
+  text-align: right;
+}
+
+.timer-progress-track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(74, 49, 25, 0.12);
+  overflow: hidden;
+}
+
+.timer-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(31, 122, 78, 0.85), rgba(211, 107, 17, 0.85));
+  transition: width 0.35s ease;
+}
+
+.timer-row--warn .timer-progress-fill {
+  background: linear-gradient(90deg, rgba(157, 100, 0, 0.9), rgba(166, 53, 36, 0.88));
+}
+
+.timer-row-live .live-clock {
+  font-size: 0.82rem;
+}
+
+@media (min-width: 900px) {
+  .operator-dashboard-grid {
+    grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  }
+
+  .live-timers-panel {
+    position: sticky;
+    top: 16px;
+  }
+}
+
+@media (max-width: 899px) {
+  .live-timers-panel {
+    order: 2;
+  }
+
+  .operator-checkpoint-column {
+    order: 1;
+  }
+}
+
 .operator-topbar {
   display: flex;
   align-items: center;

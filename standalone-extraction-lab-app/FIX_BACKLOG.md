@@ -51,7 +51,16 @@ Post-extraction still mixes patterns: some fields use manual datetime entry, som
 - Removed post-extraction page-level **Save Updates** buttons from operator and supervisor run views.
 - Added step-local branch save buttons (`Save THCA Branch`, `Save HTE Branch`) so downstream branch edits stay local to active steps.
 - Updated copy from “Work top to bottom and save as you move” to “Complete each step in order.”
-- Added a visible phase rail (Primary / Flush / Purge / Post-Extraction) plus prep/reset visibility checklist on `Open Run`.
+- Added a visible phase rail (Primary / Flush / Purge / Post-Extraction) plus prep/reset visibility checklist on the **supervisor** run screen.
+
+### Progress (2026-06-27)
+
+- **Operator run dashboard (Phase 1)** shipped on `#/runs/charge/:chargeId` for floor-operator roles:
+  - `renderRunStatusStrip()` — prep pills plus ambient run-reading chips
+  - `renderLiveTimersPanel()` — all four booth clocks always visible with live elapsed/progress
+  - two-column checkpoint + timers layout on wide tablets; stacked on phones
+  - phase rail and prep/reset checklist removed from operator view (supervisor view unchanged)
+- Documented in `README.md`, `USER_MANUAL.md`, `FAQ.md`, `PRD.md`, `ENGINEERING.md`, and `CHANGELOG.md`.
 
 ### Acceptance criteria
 

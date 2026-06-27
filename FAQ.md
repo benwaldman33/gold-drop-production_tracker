@@ -477,7 +477,9 @@ For run / fill time, mixer time, and flush time, use:
 - `Start / Now`
 - `Stop / Now`
 
-The app stores the actual timestamps and now shows a live ticking clock (`Elapsed`, plus `Remaining` or `Over target` when targets exist) so operators can track time without manual refresh.
+The app stores the actual timestamps and shows live ticking clocks (`Elapsed`, plus `Remaining` or `Over target` when targets exist).
+
+On the **operator run dashboard**, all four booth timers — primary soak, mixer, flush soak, and final purge — stay visible while you work the current checkpoint, with large elapsed readouts and progress toward target when configured. The timer tied to the active step is highlighted. Supervisors still see the full timing-card layout on the supervisor run screen.
 
 ## Where can operators upload photos during extraction?
 
@@ -495,7 +497,7 @@ Current builds keep a live draft in memory as you type, capture the form before 
 
 ## How does the standalone extraction app guide the run after I tap Open Run?
 
-Extractors see a focused operator layout with the current stage, one primary action, and only the active checkpoint inputs. Supervisors and managers see the broader review layout with full timing cards. Both layouts are lockstep: future booth steps stay hidden until the current predicate is satisfied.
+Extractors and other floor-operator roles see a focused **operator run dashboard**: current stage, one primary action, active checkpoint inputs, a compact **run status strip**, and an always-visible **live timers panel**. Supervisors and managers see the broader review layout with full timing cards, phase rail, and prep/reset checklist. Both layouts are lockstep: future booth steps stay hidden until the current predicate is satisfied.
 
 The normal progression is:
 
@@ -571,7 +573,11 @@ Yes, but only before initial outputs are confirmed. On **Step 2 — Post-extract
 
 ## Why does the standalone run screen look different for supervisors?
 
-Extractors and assistant extractors get the focused operator layout with one primary action at a time. Managers, supervisors, admins, and VP Operations get the broader supervisor layout with full timing cards and review surfaces. After run completion, both layouts hand off into the same **Downstream** queue/workflow.
+Extractors, assistant extractors, and other floor-operator roles (`user`, etc.) get the focused **operator run dashboard** with status strip, always-visible live timers, one primary action at a time, and active checkpoint inputs. Managers, supervisors, admins, and VP Operations get the broader supervisor layout with full timing cards, phase rail, prep/reset checklist, and review surfaces. After run completion, both layouts hand off into the same **Downstream** queue/workflow.
+
+## How do I preview the operator run dashboard locally?
+
+There is no separate seeded **extractor** login. Use the default **`ops`** account (`user` role) or any user your administrator creates with the **`user`** role and standalone extraction permissions. Log into the standalone extraction app, record or open a charge, then tap **Open Run**. Accounts with `manager`, `supervisor`, `admin`, or `vp_operations` roles see the supervisor layout instead.
 
 ## Can we record downstream THCA / HTE state yet?
 

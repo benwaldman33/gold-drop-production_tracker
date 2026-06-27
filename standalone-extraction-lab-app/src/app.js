@@ -1469,27 +1469,37 @@ function hasBoothHistoryEvent(run, pattern) {
   return (run.booth?.history || []).some((row) => pattern.test(String(row?.event_label || "")));
 }
 
-function renderPrepResetChecklist(run, charge) {
-  const prepItems = [
+function getPrepCheckItems(run) {
+  return [
     {
+      key: "biomass",
+      shortLabel: "Biomass",
       label: "Reactor biomass loaded",
       done: Boolean(run.biomass_confirmed_at) || hasBoothHistoryEvent(run, /biomass confirmed/i),
       pending: "Confirm biomass loaded checkpoint before solvent work.",
       complete: `Confirmed at ${run.biomass_confirmed_at || "checkpoint event recorded"}.`,
     },
     {
+      key: "chiller",
+      shortLabel: "Chiller",
       label: "Solvent path chilled + verified",
       done: Boolean(run.chiller_check_confirmed_at) || hasBoothHistoryEvent(run, /chiller temp checked/i),
       pending: "Record actual chiller temperature and confirm threshold.",
       complete: `Verified at ${run.chiller_check_confirmed_at || "checkpoint event recorded"}.`,
     },
     {
+      key: "vacuum",
+      shortLabel: "Vacuum",
       label: "Vacuum confirmed before solvent load",
       done: hasBoothHistoryEvent(run, /vacuum confirmed/i),
       pending: "Confirm reactor vacuum before recording solvent charge.",
       complete: "Vacuum confirmation event is logged in booth history.",
     },
   ];
+}
+
+function renderPrepResetChecklist(run, charge) {
+  const prepItems = getPrepCheckItems(run);
   const resetItems = [
     {
       label: "Shutdown checklist completed",
@@ -1694,6 +1704,233 @@ function renderCheckpointInputs(run) {
       </div>`,
   };
   return map[stageKey] || "";
+}
+
+// ---------------------------------------------------------------------------
+// OPERATOR STATUS DASHBOARD — always-visible timers and ambient run chips.
+// ---------------------------------------------------------------------------
+
+const BOOTH_TIMER_SPECS = [
+  {
+    key: "primary_soak",
+    activeStages: new Set(["ready_to_start_mixer"]),
+    liveClock(run) {
+      return {
+        label: "Primary soak",
+        startAt: run.run_fill_started_at,
+        endAt: run.run_fill_ended_at,
+        targetMinutes: run.timing_controls?.primary_soak?.target_minutes ?? null,
+      };
+    },
+  },
+  {
+    key: "mixer",
+    activeStages: new Set(["mixing", "ready_to_confirm_filter_clear"]),
+    liveClock(run) {
+      return {
+        label: "Mixer",
+        startAt: run.mixer_started_at,
+        endAt: run.mixer_ended_at,
+        targetMinutes: run.timing_controls?.mixer?.target_minutes ?? null,
+      };
+    },
+  },
+  {
+    key: "flush",
+    activeStages: new Set(["flushing", "ready_to_confirm_flow_resumed"]),
+    liveClock(run) {
+      return {
+        label: "Flush soak",
+        startAt: run.flush_started_at,
+        endAt: run.flush_ended_at,
+        targetMinutes: run.timing_controls?.flush?.target_minutes ?? null,
+      };
+    },
+  },
+  {
+    key: "final_purge",
+    activeStages: new Set(["purging", "ready_to_confirm_clarity"]),
+    liveClock(run) {
+      return {
+        label: "Final purge",
+        startAt: run.final_purge_started_at,
+        endAt: run.final_purge_completed_at,
+        targetMinutes: run.timing_controls?.final_purge?.target_minutes ?? null,
+      };
+    },
+  },
+];
+
+function formatClockDurationShort(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return "00:00";
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function computeTimerProgressPct(liveClock) {
+  if (!liveClock) return null;
+  const elapsedMs = clockDurationMs(liveClock.startAt, liveClock.endAt);
+  const targetMinutes = Number(liveClock.targetMinutes);
+  if (elapsedMs == null || !Number.isFinite(targetMinutes) || targetMinutes <= 0) return null;
+  return Math.min(100, Math.max(0, (elapsedMs / (targetMinutes * 60_000)) * 100));
+}
+
+function timerDashboardStatusClass(liveMetrics, timing) {
+  const statusKey = liveMetrics?.status || timing?.status || "not_started";
+  if (statusKey === "active_target_reached" || statusKey === "short") return "timer-row--warn";
+  if (statusKey.startsWith("active")) return "timer-row--active";
+  if (statusKey === "recorded" || statusKey === "on_target") return "timer-row--done";
+  return "timer-row--idle";
+}
+
+function renderTimerDashboardRow(timing, liveClock, { active = false } = {}) {
+  if (!timing) return "";
+  const liveMetrics = computeLiveTimingMetrics(liveClock);
+  const statusKey = liveMetrics?.status || timing.status || "not_started";
+  const statusLabels = {
+    not_started: "Idle",
+    active: "Running",
+    active_on_track: "On track",
+    active_target_reached: "At target",
+    recorded: "Done",
+    on_target: "On target",
+    short: "Short",
+  };
+  const elapsedMs = clockDurationMs(liveClock?.startAt, liveClock?.endAt);
+  const elapsedShort = elapsedMs == null ? "00:00" : formatClockDurationShort(elapsedMs);
+  const targetMinutes = liveMetrics?.targetMinutes ?? timing.target_minutes;
+  const targetLabel = targetMinutes != null ? `${targetMinutes}m target` : "No target";
+  const progressPct = computeTimerProgressPct(liveClock);
+  const rowClass = [
+    "timer-row",
+    timerDashboardStatusClass(liveMetrics, timing),
+    active ? "timer-row--focus" : "",
+  ].filter(Boolean).join(" ");
+  return `
+    <article class="${rowClass}">
+      <div class="timer-row-head">
+        <strong>${escapeHtml(timing.label || liveClock?.label || "Timer")}</strong>
+        <span class="timer-row-state">${escapeHtml(statusLabels[statusKey] || "Pending")}</span>
+      </div>
+      <div class="timer-row-clocks">
+        <span class="timer-row-elapsed">${escapeHtml(elapsedShort)}</span>
+        <span class="timer-row-target subtle">${escapeHtml(targetLabel)}</span>
+      </div>
+      ${progressPct == null ? "" : `
+        <div class="timer-progress-track" aria-hidden="true">
+          <div class="timer-progress-fill" style="width:${escapeHtml(String(Math.round(progressPct)))}%"></div>
+        </div>`}
+      <div class="timer-row-live">
+        ${renderLiveClock(liveClock || {
+          label: timing.label || "Timer",
+          startAt: null,
+          endAt: null,
+          targetMinutes: timing.target_minutes ?? null,
+        })}
+      </div>
+    </article>
+  `;
+}
+
+function renderLiveTimersPanel(run) {
+  const stageKey = resolvedStageKey(run);
+  const timings = run.timing_controls || {};
+  const rows = BOOTH_TIMER_SPECS.map((spec) => {
+    const liveClock = spec.liveClock(run);
+    const timing = timings[spec.key] || {
+      label: liveClock.label,
+      status: "not_started",
+      target_minutes: liveClock.targetMinutes,
+    };
+    return renderTimerDashboardRow(timing, liveClock, { active: spec.activeStages.has(stageKey) });
+  }).join("");
+  return `
+    <section class="live-timers-panel" aria-label="Live booth timers">
+      <div class="section-head compact">
+        <div>
+          <div class="eyebrow">Live timers</div>
+          <h3>All booth clocks stay visible while you work the current step.</h3>
+        </div>
+      </div>
+      <div class="timer-row-stack">${rows.join("")}</div>
+    </section>
+  `;
+}
+
+function renderStatusChip(label, value, tone = "pending") {
+  return `
+    <span class="status-chip status-chip--${escapeHtml(tone)}">
+      <span class="status-chip-label">${escapeHtml(label)}</span>
+      <span class="status-chip-value">${escapeHtml(value)}</span>
+    </span>
+  `;
+}
+
+function renderRunStatusStrip(run, charge) {
+  const booth = run.booth || {};
+  const inherited = run.inherited || {};
+  const prepPills = getPrepCheckItems(run).map((item) => {
+    const tone = item.done ? "ok" : "pending";
+    const value = item.done ? "Done" : "Pending";
+    return renderStatusChip(item.shortLabel, value, tone);
+  });
+  const chips = [...prepPills];
+
+  const biomassLbs = run.bio_in_reactor_lbs ?? inherited.charged_weight_lbs;
+  if (biomassLbs != null && biomassLbs !== "") {
+    chips.push(renderStatusChip("Loaded", `${biomassLbs} lbs`, run.biomass_confirmed_at ? "ok" : "pending"));
+  }
+
+  if (run.chiller_check_actual_temp_c != null && run.chiller_check_actual_temp_c !== "") {
+    chips.push(renderStatusChip(
+      "Chiller",
+      `${run.chiller_check_actual_temp_c}°C`,
+      run.chiller_out_of_spec ? "warn" : run.chiller_check_confirmed_at ? "ok" : "pending",
+    ));
+  } else if (run.chiller_check_confirmed_at) {
+    chips.push(renderStatusChip("Chiller", "Verified", "ok"));
+  }
+
+  if (booth.primary_solvent_charge_lbs != null && booth.primary_solvent_charge_lbs !== "") {
+    chips.push(renderStatusChip("Primary solvent", `${booth.primary_solvent_charge_lbs} lbs`, "ok"));
+  } else if (run.primary_solvent_charge_lbs != null && run.primary_solvent_charge_lbs !== "") {
+    chips.push(renderStatusChip("Primary solvent", `${run.primary_solvent_charge_lbs} lbs`, "pending"));
+  }
+
+  if (hasBoothHistoryEvent(run, /50 psi|pressurized/i)) {
+    chips.push(renderStatusChip("50 PSI", "Confirmed", "ok"));
+  }
+
+  if (booth.flush_temp_verified_at) {
+    chips.push(renderStatusChip(
+      "Flush temps",
+      `${booth.flush_solvent_chiller_temp_f ?? "—"}°F / ${booth.flush_plate_temp_f ?? "—"}°F`,
+      "ok",
+    ));
+  }
+
+  if (booth.final_clarity_decision) {
+    const clarityTone = booth.final_clarity_decision === "yes" ? "ok" : "warn";
+    chips.push(renderStatusChip("Clarity", booth.final_clarity_decision === "yes" ? "Clear" : "Not yet", clarityTone));
+  }
+
+  if (run.run_completed_at) {
+    chips.push(renderStatusChip("Run", "Complete", "ok"));
+  } else if (run.run_fill_started_at) {
+    chips.push(renderStatusChip("Run", "In progress", "pending"));
+  }
+
+  if (charge?.status === "cleared") {
+    chips.push(renderStatusChip("Reactor", "Emptied", "ok"));
+  }
+
+  return `
+    <section class="run-status-strip" aria-label="Run status">
+      <div class="run-status-strip-scroll">${chips.join("")}</div>
+    </section>
+  `;
 }
 
 // ---------------------------------------------------------------------------
@@ -1907,18 +2144,15 @@ function renderRunExecutionSupervisor(run, lot) {
 }
 
 // ---------------------------------------------------------------------------
-// OPERATOR FOCUSED VIEW — absolute minimum visible at any moment.
+// OPERATOR FOCUSED VIEW — checkpoint-first with ambient status dashboard.
 //
 // Operator sees:
 //   1. Minimal header: lot + reactor + strain (one line)
 //   2. Other active reactors strip (ambient, compact)
-//   3. Current phase label (Primary / Flush / Final Purge / Post-Extraction)
-//   4. Relevant timer only (the one that matters right now)
-//   5. Step instruction (one sentence from progression.description)
-//   6. Checkpoint inputs if needed (e.g. solvent weight, temps)
-//   7. ONE big primary action button — full width
-//   8. "Next: ___" hint (one line)
-//   9. Bypass section collapsed by default, only visible if needed
+//   3. Status strip: prep pills + key run readings
+//   4. Two-column dashboard: current checkpoint | all live timers
+//   5. Checkpoint inputs, evidence, and progression actions on the checkpoint side
+//   6. Bypass / step-back collapsed by default
 // ---------------------------------------------------------------------------
 
 function renderRunExecutionOperator(run, lot) {
@@ -1940,10 +2174,9 @@ function renderRunExecutionOperator(run, lot) {
   };
 
   const checkpointInputs = renderCheckpointInputs(run);
-  const relevantTimer = renderRelevantTimer(run);
 
   return `
-    <div class="layout-grid operator-layout">
+    <div class="layout-grid operator-layout operator-layout-dashboard">
 
       <div class="operator-topbar">
         <div class="operator-topbar-left">
@@ -1960,101 +2193,104 @@ function renderRunExecutionOperator(run, lot) {
       </div>
 
       ${renderOtherReactorsStrip(run.reactor_number)}
+      ${renderRunStatusStrip(run, state.charge)}
 
-      <form class="operator-focus-card" data-form="run-execution">
+      <form class="operator-dashboard" data-form="run-execution">
         <input type="hidden" name="run_completed_at" value="${escapeHtml(run.run_completed_at || "")}" />
         <input type="hidden" name="post_extraction_pathway" value="${escapeHtml(run.post_extraction_pathway || "")}" />
 
         ${renderBlockerCard(state.blockingError)}
 
-        <div class="operator-phase-label">${escapeHtml(phaseLabels[activePhase] || "")}</div>
-        ${renderPhaseRail(run, state.charge)}
-        ${renderPrepResetChecklist(run, state.charge)}
+        <div class="operator-dashboard-grid">
+          <section class="operator-focus-card operator-checkpoint-column">
+            <div class="operator-phase-label">${escapeHtml(phaseLabels[activePhase] || "")}</div>
 
-        <h2 class="operator-step-title">${escapeHtml(progression.stage_label || "")}</h2>
+            <h2 class="operator-step-title">${escapeHtml(progression.stage_label || "")}</h2>
 
-        <p class="operator-step-desc">${escapeHtml(progression.description || "")}</p>
+            <p class="operator-step-desc">${escapeHtml(progression.description || "")}</p>
 
-        ${relevantTimer}
+            ${checkpointInputs ? `<div class="operator-inputs">${checkpointInputs}</div>` : ""}
 
-        ${checkpointInputs ? `<div class="operator-inputs">${checkpointInputs}</div>` : ""}
+            <div class="operator-evidence">
+              ${renderBoothEvidence(run)}
+            </div>
 
-        <div class="operator-evidence">
-          ${renderBoothEvidence(run)}
+            ${actions.length ? `
+              <div class="operator-actions">
+                ${actions.map((action) => `
+                  <button class="btn btn-primary btn-operator-action" type="button"
+                    data-action="run-progression"
+                    data-run-action="${escapeHtml(action.action_id)}">
+                    ${escapeHtml(action.label)}
+                  </button>`).join("")}
+              </div>` : `<div class="subtle">No action available right now.</div>`}
+
+            ${renderNextStepHint(run)}
+
+            ${bypass?.status === "pending" ? `
+              <div class="notice warning" style="margin-top:14px;">
+                Manager bypass requested. Continue only after approval.
+              </div>` : ""}
+
+            ${bypassActions.length ? `
+              <details class="bypass-details">
+                <summary>Request manager bypass</summary>
+                <div class="bypass-box">
+                  ${bypassActions.some((a) => a.action_id === "request_stage_bypass") ? `
+                    <div class="field">
+                      <label for="bypass_reason">Bypass reason</label>
+                      <textarea id="bypass_reason" name="bypass_reason" rows="2"
+                        placeholder="Explain what failed and why approval is needed">${escapeHtml(run.bypass_reason || "")}</textarea>
+                    </div>` : ""}
+                  <div class="action-grid">
+                    ${bypassActions.map((action) => `
+                      <button class="btn btn-secondary" type="button"
+                        data-action="run-progression"
+                        data-run-action="${escapeHtml(action.action_id)}">
+                        ${escapeHtml(action.label)}
+                      </button>`).join("")}
+                  </div>
+                </div>
+              </details>` : ""}
+
+            ${stepBack?.status === "pending" ? `
+              <div class="notice warning" style="margin-top:14px;">
+                Step-back approval requested. Continue only after supervisor approval.
+              </div>` : ""}
+
+            ${stepBackActions.length ? `
+              <details class="bypass-details">
+                <summary>Step back one checkpoint</summary>
+                <div class="bypass-box">
+                  ${stepBackActions.some((a) => a.action_id === "request_step_back") ? `
+                    <div class="field">
+                      <label for="step_back_reason">Step-back reason</label>
+                      <textarea id="step_back_reason" name="step_back_reason" rows="2"
+                        placeholder="Explain why this run needs to move back one checkpoint">${escapeHtml(run.step_back_reason || "")}</textarea>
+                    </div>` : ""}
+                  <div class="action-grid">
+                    ${stepBackActions.map((action) => `
+                      <button class="btn btn-secondary" type="button"
+                        data-action="run-progression"
+                        data-run-action="${escapeHtml(action.action_id)}">
+                        ${escapeHtml(action.label)}
+                      </button>`).join("")}
+                  </div>
+                </div>
+              </details>` : ""}
+
+            ${run.run_completed_at ? `
+              <div class="card" style="padding:20px;margin-top:14px;">
+                ${downstreamFlow ? renderGuidedDownstreamWorkflow(run) : renderDownstreamHandoffCard(run)}
+              </div>
+              ${renderReactorEmptiedAction(state.charge)}` : `
+              <div class="operator-save-bar">
+                <button class="btn btn-secondary" type="submit">${state.loading ? "Saving..." : "Save"}</button>
+              </div>`}
+          </section>
+
+          ${renderLiveTimersPanel(run)}
         </div>
-
-        ${actions.length ? `
-          <div class="operator-actions">
-            ${actions.map((action) => `
-              <button class="btn btn-primary btn-operator-action" type="button"
-                data-action="run-progression"
-                data-run-action="${escapeHtml(action.action_id)}">
-                ${escapeHtml(action.label)}
-              </button>`).join("")}
-          </div>` : `<div class="subtle">No action available right now.</div>`}
-
-        ${renderNextStepHint(run)}
-
-        ${bypass?.status === "pending" ? `
-          <div class="notice warning" style="margin-top:14px;">
-            Manager bypass requested. Continue only after approval.
-          </div>` : ""}
-
-        ${bypassActions.length ? `
-          <details class="bypass-details">
-            <summary>Request manager bypass</summary>
-            <div class="bypass-box">
-              ${bypassActions.some((a) => a.action_id === "request_stage_bypass") ? `
-                <div class="field">
-                  <label for="bypass_reason">Bypass reason</label>
-                  <textarea id="bypass_reason" name="bypass_reason" rows="2"
-                    placeholder="Explain what failed and why approval is needed">${escapeHtml(run.bypass_reason || "")}</textarea>
-                </div>` : ""}
-              <div class="action-grid">
-                ${bypassActions.map((action) => `
-                  <button class="btn btn-secondary" type="button"
-                    data-action="run-progression"
-                    data-run-action="${escapeHtml(action.action_id)}">
-                    ${escapeHtml(action.label)}
-                  </button>`).join("")}
-              </div>
-            </div>
-          </details>` : ""}
-
-        ${stepBack?.status === "pending" ? `
-          <div class="notice warning" style="margin-top:14px;">
-            Step-back approval requested. Continue only after supervisor approval.
-          </div>` : ""}
-
-        ${stepBackActions.length ? `
-          <details class="bypass-details">
-            <summary>Step back one checkpoint</summary>
-            <div class="bypass-box">
-              ${stepBackActions.some((a) => a.action_id === "request_step_back") ? `
-                <div class="field">
-                  <label for="step_back_reason">Step-back reason</label>
-                  <textarea id="step_back_reason" name="step_back_reason" rows="2"
-                    placeholder="Explain why this run needs to move back one checkpoint">${escapeHtml(run.step_back_reason || "")}</textarea>
-                </div>` : ""}
-              <div class="action-grid">
-                ${stepBackActions.map((action) => `
-                  <button class="btn btn-secondary" type="button"
-                    data-action="run-progression"
-                    data-run-action="${escapeHtml(action.action_id)}">
-                    ${escapeHtml(action.label)}
-                  </button>`).join("")}
-              </div>
-            </div>
-          </details>` : ""}
-
-        ${run.run_completed_at ? `
-          <div class="card" style="padding:20px;margin-top:14px;">
-            ${downstreamFlow ? renderGuidedDownstreamWorkflow(run) : renderDownstreamHandoffCard(run)}
-          </div>
-          ${renderReactorEmptiedAction(state.charge)}` : `
-          <div class="operator-save-bar">
-            <button class="btn btn-secondary" type="submit">${state.loading ? "Saving..." : "Save"}</button>
-          </div>`}
       </form>
 
     </div>

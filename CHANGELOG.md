@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-06-27
+
+### Changed
+- The standalone extraction **operator run screen** now uses a status-first dashboard layout: a compact **run status strip** (prep pills plus key readings such as chiller, solvent, and clarity) and an always-visible **live timers panel** for primary soak, mixer, flush soak, and final purge while the operator works the current checkpoint.
+- On wide tablet layouts, the checkpoint column and live timers panel render side by side; on phones the timers stack below the checkpoint column.
+- The verbose **workflow phases** rail and **prep/reset visibility** checklist were removed from the operator run screen and remain on the **supervisor run screen** only.
+
+### Notes
+- Operator vs supervisor run layouts are still chosen client-side from the authenticated user's `role` (`extractor` / `assistant_extractor` / `user` → operator dashboard; `manager` / `supervisor` / `admin` / `vp_operations` → supervisor layout). Local testing can use the seeded **`ops`** account (`user` role) to preview the operator dashboard on **Open Run**.
+
 ## 2026-06-19
 
 ### Changed

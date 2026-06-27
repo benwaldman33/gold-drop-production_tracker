@@ -261,8 +261,9 @@ Pilot-hardening additions:
 - the standalone receiving app also consumes mobile `capabilities` plus per-record `receiving_editable` / `locked_reason` fields so the UI can expose `Edit Receipt` only while no downstream lot usage exists
 - the standalone extraction app now consumes the same mobile surface for booth-SOP execution, including run progression state and booth evidence uploads
 - the standalone extraction frontend (`standalone-extraction-lab-app/src/app.js`) now renders two run-execution surfaces from the same mobile payload:
-  - **operator view** for extractor / assistant-extractor roles: one primary progression action, phase label, compact checkpoint inputs, always-available collapsible evidence panel, and downstream handoff CTA once the run is complete
-  - **supervisor view** for manager / supervisor / admin / VP Operations roles: full timing cards, checkpoint inputs, progression actions, booth evidence, and the same downstream handoff behavior after run completion
+  - **operator view** for extractor / assistant-extractor / `user` roles: checkpoint column plus ambient status dashboard — `renderRunStatusStrip()` (prep pills and key readings), `renderLiveTimersPanel()` (all four booth clocks with live elapsed/progress), one primary progression action, phase label, compact checkpoint inputs, always-available collapsible evidence panel, and downstream handoff CTA once the run is complete
+  - **supervisor view** for manager / supervisor / admin / VP Operations roles: full timing cards, phase rail, prep/reset checklist, checkpoint inputs, progression actions, booth evidence, and the same downstream handoff behavior after run completion
+- operator run layout helpers live in `standalone-extraction-lab-app/src/app.js` (`getPrepCheckItems`, `renderLiveTimersPanel`, `renderRunStatusStrip`, `renderTimerDashboardRow`) with styles under `.operator-layout-dashboard`, `.run-status-strip`, and `.live-timers-panel` in `standalone-extraction-lab-app/styles.css`
 - standalone downstream queue routing is now explicit in the frontend:
   - `#/downstream` renders downstream-ready completed runs
   - `#/runs/charge/:chargeId?flow=downstream` renders the guided downstream workflow mode

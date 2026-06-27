@@ -6,7 +6,7 @@ This guide explains how to use the Gold Drop web app day-to-day. It intentionall
 
 **Current release note:** the app has now been split internally across dedicated route modules for dashboard, field intake, runs, purchases, biomass, costs, inventory, batch edit, suppliers/photos, purchase import, strains, settings, and Slack integration. The workflows in this manual are still the ones you should test: routes, page names, approvals, list screens, and Slack import behavior are intended to work the same as before.
 
-**Operator-facing additions in the current release:** Purchases and Inventory are more status-first, the Journey page is richer, Slack imports now includes inbox buckets, lot labels now print with scannable barcodes, `Floor Ops` gives operators a recent activity surface, the standalone receiving app can now correct a confirmed receipt before downstream lot consumption, the standalone extraction app now uses a focused operator run screen plus a dedicated **Downstream** tab/queue for post-extraction workflow on iPad, and the data model supports live smart-scale capture.
+**Operator-facing additions in the current release:** Purchases and Inventory are more status-first, the Journey page is richer, Slack imports now includes inbox buckets, lot labels now print with scannable barcodes, `Floor Ops` gives operators a recent activity surface, the standalone receiving app can now correct a confirmed receipt before downstream lot consumption, the standalone extraction app now uses a focused **operator run dashboard** (status strip plus always-visible live timers) plus a dedicated **Downstream** tab/queue for post-extraction workflow on iPad, and the data model supports live smart-scale capture.
 
 **Manager-facing note for the current release:** the app now includes the first usable derivative-lot genealogy layer. Current day-to-day workflows still use Purchases, Inventory, Runs, and Downstream Queues the same way, but the system can now bridge biomass lots into first-class material genealogy records, auto-create dry HTE / dry THCA derivative lots from eligible extraction runs, extend genealogy into accountable downstream child lots like GoldDrop / wholesale THCA / terp strip / HP base oil / distillate, expose manager-facing ancestry / descendant journey endpoints through the internal API, record correction-forward genealogy fixes instead of silently overwriting bad lineage, summarize open derivative cost basis through the internal API, surface linked derivative lots directly on downstream queue cards, provide a dedicated `Genealogy Report` page for manager reporting, open those lots or runs in a real HTML `Material Journey Viewer` with `By Lot` and `By Run` path tracing, and record actual revenue events against material lots for actual-vs-projected margin review.
 
@@ -76,7 +76,7 @@ Journey revenue projections:
 
 - Use this app when you want a focused extraction surface without the rest of the admin UI.
 - It is built for tablet and phone use by extractors and assistant extractors.
-- During booth execution, extractors see a focused **operator run screen** with one primary action, the current phase label, and only the active checkpoint inputs. Managers, supervisors, and admins see the broader **supervisor run screen** with full timing cards and review layout.
+- During booth execution, extractors see a focused **operator run screen** with one primary action, the current phase label, only the active checkpoint inputs, a **run status strip** (prep pills plus key readings such as chiller, solvent, and clarity), and an always-visible **live timers panel** showing all four booth clocks (primary soak, mixer, flush soak, final purge) with elapsed time and progress toward target. Managers, supervisors, and admins see the broader **supervisor run screen** with full timing cards, phase rail, and prep/reset checklist.
 - The app emphasizes large buttons, weight sliders, quick `- / +` nudges, segmented reactor buttons, and minimal keyboard use.
 - It also now includes a dedicated `Scan / Enter Lot` screen so operators can use the iPad camera, a Bluetooth scanner, or manual tracking-ID entry.
 - The default charge preset is `100 lbs` per reactor whenever the lot has at least 100 lbs remaining; otherwise it defaults to the remaining lot weight.
@@ -87,7 +87,7 @@ Journey revenue projections:
 - Inside the standalone run screen, use the guided progression buttons to move through the booth procedure with minimal typing: confirm under vacuum, record solvent charge, confirm reactor at 50 PSI, start soak, run the mixer, confirm filter clear, start pressurization, begin recovery, move into flush, verify temperatures, record flush solvent charge, confirm flow resumed, run final purge, confirm final clarity, complete shutdown, then mark the run complete. The screen now shows only the current checkpoint inputs and the next allowed action; later booth steps remain hidden/locked until the current step is satisfied.
 - The same screen now stores booth-specific proof fields such as primary solvent charge, flush chiller temperature, plate temperature, flush solvent charge, final purge timing, flow-resumed / clarity decisions, and the shutdown checklist. Typed values stay in the field while you work — finish entering a number, then tap the step action button to save and advance. Future-step values submitted early are ignored by the operator API until that checkpoint is active.
 - Use the `Booth evidence` section on the run screen to upload required proof photos at any checkpoint. The panel stays available throughout execution and can collapse when not needed.
-- The `Booth timing controls` section shows live ticking elapsed time (and remaining/over-target when applicable) for primary soak, mixer, flush soak, and final purge, along with the configured target for each step.
+- The operator run screen keeps all booth timers visible while you work the current checkpoint, so you can see soak, mixer, flush, and purge progress without advancing steps. On a wide tablet layout, timers sit beside the checkpoint column; on a phone they stack below it.
 - If flow has not resumed yet, choose `Still adjusting` and use the returned `Re-check Flow` step when recovery is ready to be checked again.
 - If final clarity is not acceptable yet, choose `Not yet` and use `Resume Final Purge` to loop back through another purge pass before shutdown.
 - `Settings -> Operational Parameters -> Extraction run defaults` controls the initial values the standalone run screen opens with for blend, fill count, total fill weight, flush count, total flush weight, stringer baskets, CRC blend, booth timing targets, and the per-step timing policy for primary soak, mixer, flush soak, and final purge.
@@ -438,7 +438,7 @@ The timer-heavy fields use touch-first buttons instead of keyboard entry:
 - `Start / Now`
 - `Stop / Now`
 
-The top of the run screen now shows the current stage and the next action buttons. The operator screen is intentionally lockstep: it only renders the active checkpoint inputs plus a compact summary of prior booth proof. The normal booth sequence is:
+The top of the run screen now shows the current stage and the next action buttons. On the **operator** screen, a **run status strip** (prep pills plus key readings) and an always-visible **live timers panel** stay on screen while you work the current checkpoint; the verbose phase rail and prep/reset checklist appear on the **supervisor** screen instead. The operator screen is intentionally lockstep: it only renders the active checkpoint inputs plus ambient status context. The normal booth sequence is:
 
 - **Confirm Under Vacuum**
 - **Record Solvent Charge**
@@ -468,9 +468,9 @@ Mixer timing controls now have explicit safety alerts during primary extraction:
 
 After **Mark Run Complete**, the reactor-focused run view now points operators to the standalone app **Downstream** tab. Open the run from that queue to continue the guided post-extraction steps.
 
-The same run screen also keeps two visibility surfaces on-screen for operators:
-- **Workflow phases** rail (Primary, Flush, Final Purge, Post-Extraction) with Done / Current / Pending status
-- **Prep and reset visibility** card so setup and cleaning checks stay visible through execution and handoff
+On the **operator** run screen, the **live timers panel** keeps primary soak, mixer, flush soak, and final purge visible with elapsed time and progress toward target. On a wide tablet, that panel sits beside the checkpoint column; on a phone it stacks below it.
+
+Supervisors and managers still see the **workflow phases** rail (Primary, Flush, Final Purge, Post-Extraction) and the **prep and reset visibility** card on the broader supervisor run layout.
 
 ### Guided downstream workflow on the iPad
 
