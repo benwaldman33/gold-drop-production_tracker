@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { clampChargeWeight, halfLotChargeWeight, lotTitle, normalizeText, preferredChargeWeight, readyLotCount, stateTone } from "../src/domain.js";
-import { buildReactorActionMarkup, defaultChargeValue, defaultReactorValue, parseRoute, clockDurationMs, parseSiteClockDate, siteTimeZone, isBiomassPrepDone, isChillerPrepDone, hasBoothEvent } from "../src/ui-helpers.js";
+import { buildReactorActionMarkup, defaultChargeValue, defaultReactorValue, parseRoute, clockDurationMs, parseSiteClockDate, siteTimeZone, isBiomassPrepDone, isChillerPrepDone, hasBoothEvent, finalPurgeStartedAt, finalPurgeCompletedAt } from "../src/ui-helpers.js";
 
 test("normalizeText trims and lowercases", () => {
   assert.equal(normalizeText("  Reactor   Bay "), "reactor bay");
@@ -97,4 +97,20 @@ test("booth prep status reads live API event keys and labels", () => {
   assert.equal(isBiomassPrepDone(run), true);
   assert.equal(isChillerPrepDone(run), true);
   assert.equal(hasBoothEvent(run, "reactor_vacuum_confirmed"), false);
+});
+
+test("final purge timestamps resolve from run root or booth session", () => {
+  assert.equal(finalPurgeStartedAt({ final_purge_started_at: "2026-06-27T14:00" }), "2026-06-27T14:00");
+  assert.equal(
+    finalPurgeStartedAt({ booth: { final_purge_started_at: "2026-06-27T14:05" } }),
+    "2026-06-27T14:05",
+  );
+  assert.equal(
+    finalPurgeCompletedAt({ final_purge_completed_at: "2026-06-27T14:30" }),
+    "2026-06-27T14:30",
+  );
+  assert.equal(
+    finalPurgeCompletedAt({ booth: { final_purge_completed_at: "2026-06-27T14:35" } }),
+    "2026-06-27T14:35",
+  );
 });

@@ -71,6 +71,14 @@ export function chillerOutOfSpec(run) {
   return Boolean(run?.chiller_out_of_spec ?? run?.booth?.chiller_out_of_spec);
 }
 
+export function finalPurgeStartedAt(run) {
+  return run?.final_purge_started_at || run?.booth?.final_purge_started_at || "";
+}
+
+export function finalPurgeCompletedAt(run) {
+  return run?.final_purge_completed_at || run?.booth?.final_purge_completed_at || "";
+}
+
 export function siteTimeZone(site) {
   return site?.site_timezone || "America/Los_Angeles";
 }

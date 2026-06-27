@@ -11,6 +11,8 @@ import {
   lastNamedFormValue,
   chillerOutOfSpec,
   chillerReadingC,
+  finalPurgeCompletedAt,
+  finalPurgeStartedAt,
   clockDurationMs as siteClockDurationMs,
   hasBoothEvent,
   isBiomassPrepDone,
@@ -1903,8 +1905,8 @@ const BOOTH_TIMER_SPECS = [
     liveClock(run) {
       return {
         label: "Final purge",
-        startAt: run.final_purge_started_at,
-        endAt: run.final_purge_completed_at,
+        startAt: finalPurgeStartedAt(run),
+        endAt: finalPurgeCompletedAt(run),
         targetMinutes: run.timing_controls?.final_purge?.target_minutes ?? null,
       };
     },
@@ -2111,8 +2113,8 @@ function renderRelevantTimer(run) {
     mixing: { label: "Mixer", startAt: run.mixer_started_at, endAt: run.mixer_ended_at, targetMinutes: timings.mixer?.target_minutes ?? null },
     flushing: { label: "Flush soak", startAt: run.flush_started_at, endAt: run.flush_ended_at, targetMinutes: timings.flush?.target_minutes ?? null },
     ready_to_confirm_flow_resumed: { label: "Flush soak", startAt: run.flush_started_at, endAt: run.flush_ended_at, targetMinutes: timings.flush?.target_minutes ?? null },
-    purging: { label: "Final purge", startAt: run.final_purge_started_at, endAt: run.final_purge_completed_at, targetMinutes: timings.final_purge?.target_minutes ?? null },
-    ready_to_confirm_clarity: { label: "Final purge", startAt: run.final_purge_started_at, endAt: run.final_purge_completed_at, targetMinutes: timings.final_purge?.target_minutes ?? null },
+    purging: { label: "Final purge", startAt: finalPurgeStartedAt(run), endAt: finalPurgeCompletedAt(run), targetMinutes: timings.final_purge?.target_minutes ?? null },
+    ready_to_confirm_clarity: { label: "Final purge", startAt: finalPurgeStartedAt(run), endAt: finalPurgeCompletedAt(run), targetMinutes: timings.final_purge?.target_minutes ?? null },
   };
   if (stageKey === "mixing" || stageKey === "ready_to_confirm_filter_clear") {
     return `
@@ -2271,7 +2273,7 @@ function renderRunExecutionSupervisor(run, lot) {
           ${renderTimingControlCard(timings.primary_soak, { label: "Primary soak", startAt: run.run_fill_started_at, endAt: run.run_fill_ended_at, targetMinutes: timings.primary_soak?.target_minutes ?? null })}
           ${renderTimingControlCard(timings.mixer, { label: "Mixer", startAt: run.mixer_started_at, endAt: run.mixer_ended_at, targetMinutes: timings.mixer?.target_minutes ?? null })}
           ${renderTimingControlCard(timings.flush, { label: "Flush soak", startAt: run.flush_started_at, endAt: run.flush_ended_at, targetMinutes: timings.flush?.target_minutes ?? null })}
-          ${renderTimingControlCard(timings.final_purge, { label: "Final purge", startAt: run.final_purge_started_at, endAt: run.final_purge_completed_at, targetMinutes: timings.final_purge?.target_minutes ?? null })}
+          ${renderTimingControlCard(timings.final_purge, { label: "Final purge", startAt: finalPurgeStartedAt(run), endAt: finalPurgeCompletedAt(run), targetMinutes: timings.final_purge?.target_minutes ?? null })}
         </div>
       </section>
 

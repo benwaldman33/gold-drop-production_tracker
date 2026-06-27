@@ -23,6 +23,7 @@
 - The large **Primary soak** elapsed display and progress bar now tick every second with the live clock row.
 - Run status chips (**Biomass**, **Chiller**, **Loaded**, etc.) now turn green from live booth checkpoint events instead of unused timestamp fields that the API never populated.
 - **Evidence Photos** on the operator run screen now starts collapsed; tap the header to expand when needed.
+- **Final purge timer** on the operator run screen now reads purge start/stop timestamps from the booth session (live API) instead of empty run-root fields, so the clock starts when **Start Final Purge** is tapped.
 - **Start Mixer** no longer rebuilds the checkpoint form before the save finishes, which prevented stray browser autofill characters from appearing in reason fields. Reason textareas at that step now appear only when the applicable timing rule requires one (outside the mixer start window, or before the primary soak target).
 
 ## 2026-06-19

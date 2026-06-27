@@ -719,6 +719,11 @@ def test_mobile_extraction_run_exception_handling_loops():
             json={"progression_action": "start_final_purge"},
         )
         assert start_purge.status_code == 200
+        purge_run = start_purge.get_json()["data"]["run"]
+        assert purge_run["progression"]["stage_key"] == "purging"
+        assert purge_run["booth"]["final_purge_started_at"]
+        assert purge_run["final_purge_started_at"] == purge_run["booth"]["final_purge_started_at"]
+        assert purge_run["timing_controls"]["final_purge"]["status"] == "active"
         stop_purge = client.post(
             f"/api/mobile/v1/extraction/charges/{charge_id}/run",
             json={"progression_action": "stop_final_purge", "final_purge_short_reason": "Stopped early to inspect clarity and vessel response."},

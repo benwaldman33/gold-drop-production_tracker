@@ -720,6 +720,9 @@ function buildMockRunPayload(state, charge, run) {
     flush_ended_at: run.flush_ended_at || "",
     flush_duration_minutes: minutesBetween(run.flush_started_at, run.flush_ended_at),
     run_completed_at: run.run_completed_at || "",
+    final_purge_started_at: run.final_purge_started_at || "",
+    final_purge_completed_at: run.final_purge_completed_at || "",
+    final_purge_duration_minutes: minutesBetween(run.final_purge_started_at, run.final_purge_completed_at),
     progression: progressionForRun(run, settings),
     booth: {
       status: run.run_completed_at ? "completed" : "in_progress",
