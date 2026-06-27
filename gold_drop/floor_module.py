@@ -823,6 +823,7 @@ def _build_reactor_history(root, cards):
         current = card.get("current") or {}
         entries = list(current.get("history") or [])
         if current:
+            charge_id = current.get("charge_id")
             if current.get("run_id"):
                 entries.insert(
                     0,
@@ -830,6 +831,7 @@ def _build_reactor_history(root, cards):
                         "label": "Run linked",
                         "timestamp_label": current.get("charged_at_label") or "",
                         "run_id": current.get("run_id"),
+                        "charge_id": charge_id,
                     },
                 )
             entries.insert(
@@ -838,6 +840,7 @@ def _build_reactor_history(root, cards):
                         "label": f"Load recorded ({current.get('state_label')})",
                     "timestamp_label": current.get("charged_at_label") or "",
                     "run_id": current.get("run_id"),
+                    "charge_id": charge_id,
                 },
             )
         history_cards.append(

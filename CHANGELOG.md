@@ -10,6 +10,12 @@
 ### Notes
 - Operator vs supervisor run layouts are still chosen client-side from the authenticated user's `role` (`extractor` / `assistant_extractor` / `user` → operator dashboard; `manager` / `supervisor` / `admin` / `vp_operations` → supervisor layout). Local testing can use the seeded **`ops`** account (`user` role) to preview the operator dashboard on **Open Run**.
 
+### Fixed
+- **Open Run** in the standalone extraction app no longer fails silently when the run API returns an error: the app shows a toast and an on-screen message instead of staying on the reactor board.
+- Clicking **Open Run** again after a failed navigation now reloads the run screen (same hash links re-trigger route loading).
+- Reactor history **Open Run** shortcuts now include the charge id needed for navigation.
+- Read-only **GET** access to run and evidence endpoints now uses extraction read permissions instead of requiring purchase edit access (writes still require the full mobile writer gate).
+
 ## 2026-06-19
 
 ### Changed

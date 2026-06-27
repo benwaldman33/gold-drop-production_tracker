@@ -14,6 +14,7 @@ test("parseRoute understands charge screen and board filter", () => {
   assert.deepEqual(parseRoute("#/downstream"), { name: "downstream" });
   assert.deepEqual(parseRoute("#/runs/charge/chg-123"), { name: "run", chargeId: "chg-123", flow: "reactor" });
   assert.deepEqual(parseRoute("#/runs/charge/chg-123?flow=downstream"), { name: "run", chargeId: "chg-123", flow: "downstream" });
+  assert.deepEqual(parseRoute("#/runs/charge/"), { name: "home" });
 });
 
 test("clampChargeWeight respects bounds and tenth-pound rounding", () => {

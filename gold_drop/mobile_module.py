@@ -697,6 +697,18 @@ def _require_mobile_workflow(root, workflow: str):
     return None
 
 
+def _require_mobile_extraction_reader(root):
+    auth_error = _require_mobile_user()
+    if auth_error:
+        return auth_error
+    if not workflow_enabled(root, "extraction"):
+        return _json_error("This standalone workflow is disabled for the site.", status_code=403, code="workflow_disabled")
+    permissions = _mobile_permissions(root, current_user)
+    if not permissions["can_extract_lab"]:
+        return _json_error("Extraction workflow access required.", status_code=403, code="forbidden")
+    return None
+
+
 def register_routes(app, root):
     def mobile_auth_login():
         return mobile_auth_login_view(root)
@@ -1542,9 +1554,14 @@ def mobile_extraction_transition_view(root, charge_id: str):
 
 
 def mobile_extraction_run_view(root, charge_id: str):
-    write_error = _require_mobile_workflow(root, "extraction")
-    if write_error:
-        return write_error
+    if request.method == "GET":
+        read_error = _require_mobile_extraction_reader(root)
+        if read_error:
+            return read_error
+    else:
+        write_error = _require_mobile_workflow(root, "extraction")
+        if write_error:
+            return write_error
     charge = root.db.session.get(root.ExtractionCharge, charge_id)
     if charge is None:
         return _json_error("Extraction load not found.", status_code=404, code="not_found")
@@ -1598,9 +1615,14 @@ def mobile_extraction_run_view(root, charge_id: str):
 
 
 def mobile_extraction_run_evidence_view(root, charge_id: str):
-    write_error = _require_mobile_workflow(root, "extraction")
-    if write_error:
-        return write_error
+    if request.method == "GET":
+        read_error = _require_mobile_extraction_reader(root)
+        if read_error:
+            return read_error
+    else:
+        write_error = _require_mobile_workflow(root, "extraction")
+        if write_error:
+            return write_error
     charge = root.db.session.get(root.ExtractionCharge, charge_id)
     if charge is None:
         return _json_error("Extraction load not found.", status_code=404, code="not_found")

@@ -417,6 +417,7 @@ Saving the charge opens **New Run** with the lot allocation already attached. Th
 ### Standalone run execution
 
 Inside the standalone extraction app, use **Open Run** after a charge is recorded.
+If the run screen cannot load (for example the backend is unreachable, the workflow is disabled in Settings, or your account lacks extraction access), the app shows an error message and toast instead of staying on the reactor board with no feedback.
 After `Mark Run Complete`, switch to the standalone **Downstream** tab and open that run card there to continue post-extraction steps.
 
 That screen inherits:

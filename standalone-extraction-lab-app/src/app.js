@@ -36,6 +36,8 @@ const state = {
   scanStatus: "",
   recentLookup: null,
   blockingError: null, // { message, blockerStageKey, blockerLabel, blockerActionId }
+  routeError: null,
+  routeLoading: false,
   chargeDraft: null,
   lotSearchDraft: "",
 };
@@ -56,6 +58,8 @@ let barcodeDetector = null;
 let scanTimer = null;
 let lastScannedValue = null;
 let liveClockTimer = null;
+let routeChangeGeneration = 0;
+let skipNextHashChange = false;
 
 window.addEventListener("hashchange", onRouteChange);
 window.addEventListener("beforeunload", stopCamera);
@@ -90,6 +94,11 @@ async function bootstrapAuth() {
 }
 
 async function onRouteChange() {
+  if (skipNextHashChange) {
+    skipNextHashChange = false;
+    return;
+  }
+  const generation = ++routeChangeGeneration;
   const nextRoute = parseRoute(window.location.hash || "#/login");
   if (state.route.name === "scan" && nextRoute.name !== "scan") {
     stopCamera();
@@ -99,8 +108,23 @@ async function onRouteChange() {
     state.blockingError = null;
   }
   state.route = nextRoute;
-  await loadRoute();
+  state.routeLoading = true;
+  state.routeError = null;
   render();
+  try {
+    await loadRoute();
+    if (generation !== routeChangeGeneration) return;
+    state.routeError = null;
+  } catch (error) {
+    if (generation !== routeChangeGeneration) return;
+    console.error(error);
+    state.routeError = formatApiError(error, "Unable to open this screen.");
+    showToast(state.routeError);
+  } finally {
+    if (generation !== routeChangeGeneration) return;
+    state.routeLoading = false;
+    render();
+  }
 }
 
 async function loadRoute() {
@@ -123,12 +147,20 @@ async function loadRoute() {
     }
   }
   if (state.route.name === "run") {
+    state.run = null;
+    state.charge = null;
+    state.runEvidence = [];
     const payload = await api.getChargeRun(state.route.chargeId);
     state.run = payload.run;
     state.lot = payload.lot;
     state.charge = payload.charge || null;
-    const evidencePayload = await api.getChargeRunEvidence(state.route.chargeId);
-    state.runEvidence = Array.isArray(evidencePayload?.evidence) ? evidencePayload.evidence : [];
+    try {
+      const evidencePayload = await api.getChargeRunEvidence(state.route.chargeId);
+      state.runEvidence = Array.isArray(evidencePayload?.evidence) ? evidencePayload.evidence : [];
+    } catch (error) {
+      console.warn(error);
+      state.runEvidence = [];
+    }
     if (!state.board) state.board = await api.getBoard("all");
   }
   if (state.route.name === "scan") {
@@ -136,7 +168,15 @@ async function loadRoute() {
   }
 }
 
+function formatApiError(error, fallback = "Request failed.") {
+  return error?.payload?.error?.message || error?.message || fallback;
+}
+
 function navigate(hash) {
+  if (window.location.hash === hash) {
+    onRouteChange();
+    return;
+  }
   window.location.hash = hash;
 }
 
@@ -385,6 +425,7 @@ function renderHome() {
 
 function renderLastChargeCard() {
   if (!state.lastCharge) return "";
+  const chargeId = state.lastCharge.charge?.id || "";
   return `
     <section class="card accent">
       <div class="section-head">
@@ -395,7 +436,7 @@ function renderLastChargeCard() {
       </div>
       <p class="subtle">${escapeHtml(String(state.lastCharge.charge?.charged_weight_lbs || 0))} lbs to Reactor ${escapeHtml(String(state.lastCharge.charge?.reactor_number || ""))}</p>
       <div class="actions">
-        <a class="btn btn-primary" href="#/runs/charge/${escapeHtml(state.lastCharge.charge?.id || "")}">Open Run</a>
+        ${chargeId ? `<a class="btn btn-primary" href="#/runs/charge/${escapeHtml(chargeId)}">Open Run</a>` : ""}
         <a class="btn btn-secondary" href="${escapeHtml(state.lastCharge.next_run_url || "#")}">Open Run in Main App</a>
         <a class="btn btn-secondary" href="#/reactors">Back to Reactors</a>
         <a class="btn btn-secondary" href="#/scan">Load Another Lot</a>
@@ -2347,6 +2388,21 @@ function renderSettings() {
 // ---------------------------------------------------------------------------
 
 function renderRunExecution() {
+  if (state.routeLoading) {
+    return `<div class="empty">Loading run...</div>`;
+  }
+  if (state.routeError) {
+    return `
+      <div class="layout-grid">
+        <div class="empty">
+          <p>${escapeHtml(state.routeError)}</p>
+          <div class="actions">
+            <a class="btn btn-secondary" href="#/reactors">Back to Reactors</a>
+          </div>
+        </div>
+      </div>
+    `;
+  }
   const run = state.run;
   const lot = state.lot;
   if (!run || !state.route.chargeId) return `<div class="empty">Run not found.</div>`;
@@ -2363,6 +2419,15 @@ function bind() {
   app?.querySelector("form[data-form='settings']")?.addEventListener("input", handleSettingsDraftInput);
   app?.querySelector("form[data-form='settings']")?.addEventListener("change", handleSettingsDraftInput);
   app?.querySelector("form[data-form='lot-search']")?.addEventListener("input", handleLotSearchDraftInput);
+  app?.querySelectorAll('a[href^="#/"]').forEach((link) => {
+    link.addEventListener("click", (event) => {
+      const href = link.getAttribute("href");
+      if (!href || href === window.location.hash) {
+        event.preventDefault();
+        navigate(href || "#/home");
+      }
+    });
+  });
   app?.querySelectorAll("[data-action='logout']").forEach((button) => button.addEventListener("click", handleLogout));
   app?.querySelector("form[data-form='login']")?.addEventListener("submit", handleLogin);
   app?.querySelector("form[data-form='lot-search']")?.addEventListener("submit", handleLotSearch);
@@ -2581,9 +2646,13 @@ async function handleLogin(event) {
       permissions: session.permissions || {},
       site: session.site || null,
     };
-    navigate("#/home");
+    state.route = parseRoute("#/home");
+    skipNextHashChange = true;
+    window.location.hash = "#/home";
+    await loadRoute();
+    state.routeError = null;
   } catch (error) {
-    showToast(error.payload?.error?.message || error.message || "Unable to log in");
+    showToast(formatApiError(error, "Unable to log in"));
   } finally {
     state.loading = false;
     render();

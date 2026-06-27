@@ -99,6 +99,7 @@ def charge_history_entries(root, charge_id: str, *, limit: int = 8) -> list[dict
                 "label": label,
                 "timestamp_label": display_charge_datetime_local(log.timestamp),
                 "details": payload,
+                "charge_id": charge_id,
             }
         )
     return entries
