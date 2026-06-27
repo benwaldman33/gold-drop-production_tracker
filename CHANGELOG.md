@@ -15,6 +15,7 @@
 - Clicking **Open Run** again after a failed navigation now reloads the run screen (same hash links re-trigger route loading).
 - Reactor history **Open Run** shortcuts now include the charge id needed for navigation.
 - Read-only **GET** access to run and evidence endpoints now uses extraction read permissions instead of requiring purchase edit access (writes still require the full mobile writer gate).
+- Fixed a render crash in the operator **live timers panel** (`rows.join is not a function`) that left the run screen stuck on **Loading run...** after the API responded successfully.
 
 ## 2026-06-19
 

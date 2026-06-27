@@ -346,8 +346,26 @@ function renderDialog() {
 function render() {
   if (!app) return;
   captureFormDrafts();
-  app.innerHTML = shell(renderContent());
-  bind();
+  try {
+    app.innerHTML = shell(renderContent());
+    bind();
+  } catch (error) {
+    console.error(error);
+    state.routeLoading = false;
+    state.routeError = error?.message || "Unable to render this screen.";
+    app.innerHTML = shell(`
+      <div class="layout-grid">
+        <div class="empty">
+          <p>${escapeHtml(state.routeError)}</p>
+          <div class="actions">
+            <a class="btn btn-secondary" href="#/reactors">Back to Reactors</a>
+          </div>
+        </div>
+      </div>
+    `);
+    bind();
+    showToast(state.routeError);
+  }
 }
 
 function renderContent() {
@@ -1895,7 +1913,7 @@ function renderLiveTimersPanel(run) {
           <h3>All booth clocks stay visible while you work the current step.</h3>
         </div>
       </div>
-      <div class="timer-row-stack">${rows.join("")}</div>
+      <div class="timer-row-stack">${rows}</div>
     </section>
   `;
 }
@@ -2422,9 +2440,10 @@ function bind() {
   app?.querySelectorAll('a[href^="#/"]').forEach((link) => {
     link.addEventListener("click", (event) => {
       const href = link.getAttribute("href");
-      if (!href || href === window.location.hash) {
+      if (!href) return;
+      if (href === window.location.hash) {
         event.preventDefault();
-        navigate(href || "#/home");
+        onRouteChange();
       }
     });
   });
