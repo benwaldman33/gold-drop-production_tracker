@@ -123,6 +123,28 @@
       </div>
       <div class="form-row-3" style="margin-top:8px;">
         <div class="form-group">
+          <label>Mixer start earliest (min into soak)</label>
+          <input type="number" name="extraction_mixer_start_earliest_minutes" value="{{ system_settings.get('extraction_mixer_start_earliest_minutes', '3') }}" step="1" min="0">
+        </div>
+        <div class="form-group">
+          <label>Mixer start latest (min into soak)</label>
+          <input type="number" name="extraction_mixer_start_latest_minutes" value="{{ system_settings.get('extraction_mixer_start_latest_minutes', '6') }}" step="1" min="0">
+        </div>
+        <div class="form-group">
+          <label>Mixer run minimum (min)</label>
+          <input type="number" name="extraction_mixer_run_min_minutes" value="{{ system_settings.get('extraction_mixer_run_min_minutes', '5') }}" step="1" min="0">
+        </div>
+      </div>
+      <div class="form-row-3" style="margin-top:8px;">
+        <div class="form-group">
+          <label>Mixer run maximum (min)</label>
+          <input type="number" name="extraction_mixer_run_max_minutes" value="{{ system_settings.get('extraction_mixer_run_max_minutes', '7') }}" step="1" min="0">
+        </div>
+        <div class="form-group"></div>
+        <div class="form-group"></div>
+      </div>
+      <div class="form-row-3" style="margin-top:8px;">
+        <div class="form-group">
           <label>Primary soak policy</label>
           <select name="extraction_policy_primary_soak">
             {% for value, label in timing_policy_options %}
@@ -461,6 +483,28 @@
           <div class="text-sm" style="color:var(--text-muted); margin-top:4px;">
             Leave blank if the final purge should be timed but not scored against a default target.
           </div>
+        </div>
+        <div class="form-group"></div>
+        <div class="form-group"></div>
+      </div>
+      <div class="form-row-3" style="margin-top:8px;">
+        <div class="form-group">
+          <label>Mixer start earliest (min into soak)</label>
+          <input type="number" name="extraction_mixer_start_earliest_minutes" value="{{ system_settings.get('extraction_mixer_start_earliest_minutes', '3') }}" step="1" min="0">
+        </div>
+        <div class="form-group">
+          <label>Mixer start latest (min into soak)</label>
+          <input type="number" name="extraction_mixer_start_latest_minutes" value="{{ system_settings.get('extraction_mixer_start_latest_minutes', '6') }}" step="1" min="0">
+        </div>
+        <div class="form-group">
+          <label>Mixer run minimum (min)</label>
+          <input type="number" name="extraction_mixer_run_min_minutes" value="{{ system_settings.get('extraction_mixer_run_min_minutes', '5') }}" step="1" min="0">
+        </div>
+      </div>
+      <div class="form-row-3" style="margin-top:8px;">
+        <div class="form-group">
+          <label>Mixer run maximum (min)</label>
+          <input type="number" name="extraction_mixer_run_max_minutes" value="{{ system_settings.get('extraction_mixer_run_max_minutes', '7') }}" step="1" min="0">
         </div>
         <div class="form-group"></div>
         <div class="form-group"></div>

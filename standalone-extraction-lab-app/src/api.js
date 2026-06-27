@@ -16,9 +16,52 @@ const MOCK_RUN_DEFAULTS = {
 const MOCK_TIMING_TARGETS = {
   primary_soak_minutes: 30,
   mixer_minutes: 5,
+  mixer_start_earliest_minutes: 3,
+  mixer_start_latest_minutes: 6,
+  mixer_run_min_minutes: 5,
+  mixer_run_max_minutes: 7,
   flush_minutes: 10,
   final_purge_minutes: null,
 };
+
+const SETTINGS_KEY = "gold-drop-extraction-lab-settings-v1";
+
+function defaultOperationalSettings() {
+  return {
+    chiller_temp_threshold_c: -40,
+    mixer_start_earliest_minutes: MOCK_TIMING_TARGETS.mixer_start_earliest_minutes,
+    mixer_start_latest_minutes: MOCK_TIMING_TARGETS.mixer_start_latest_minutes,
+    mixer_run_min_minutes: MOCK_TIMING_TARGETS.mixer_run_min_minutes,
+    mixer_run_max_minutes: MOCK_TIMING_TARGETS.mixer_run_max_minutes,
+  };
+}
+
+function loadOperationalSettings() {
+  return { ...defaultOperationalSettings(), ...readJson(SETTINGS_KEY, {}) };
+}
+
+function saveOperationalSettings(settings) {
+  writeJson(SETTINGS_KEY, settings);
+}
+
+function operationalSettingsFromSession(session) {
+  const site = session?.site || {};
+  return {
+    chiller_temp_threshold_c: site.chiller_temp_threshold_c ?? defaultOperationalSettings().chiller_temp_threshold_c,
+    mixer_start_earliest_minutes: site.mixer_start_earliest_minutes ?? defaultOperationalSettings().mixer_start_earliest_minutes,
+    mixer_start_latest_minutes: site.mixer_start_latest_minutes ?? defaultOperationalSettings().mixer_start_latest_minutes,
+    mixer_run_min_minutes: site.mixer_run_min_minutes ?? defaultOperationalSettings().mixer_run_min_minutes,
+    mixer_run_max_minutes: site.mixer_run_max_minutes ?? defaultOperationalSettings().mixer_run_max_minutes,
+  };
+}
+
+function mixerStageDescription(settings) {
+  return (
+    `Primary soak is active. Start the mixer between ${settings.mixer_start_earliest_minutes} and `
+    + `${settings.mixer_start_latest_minutes} minutes into soak and run it for `
+    + `${settings.mixer_run_min_minutes} to ${settings.mixer_run_max_minutes} minutes.`
+  );
+}
 
 function loadState() {
   return readJson(STATE_KEY, cloneSeedState());
@@ -149,7 +192,7 @@ function timingControl(label, targetMinutes, startValue, endValue) {
   };
 }
 
-function progressionForRun(run) {
+function progressionForRun(run, settings = defaultOperationalSettings()) {
   if (run.run_completed_at) {
     return {
       stage_key: "completed",
@@ -205,7 +248,7 @@ function progressionForRun(run) {
     },
     ready_to_start_mixer: {
       stage_label: "Ready to start mixer",
-      description: "Primary soak is active. Start the mixer at the beginning of soak (within 3 minutes) and run it for 5 minutes.",
+      description: mixerStageDescription(defaultOperationalSettings()),
       actions: [{ action_id: "start_mixer", label: "Start Mixer" }],
     },
     mixing: {
@@ -293,10 +336,18 @@ function progressionForRun(run) {
     },
   }[stageKey];
   if (config) {
+    let description = config.description;
+    if (stageKey === "ready_to_start_mixer") description = mixerStageDescription(settings);
+    if (stageKey === "mixing") {
+      description = (
+        `Mixer timing is active during primary extraction. End mixer after at least ${settings.mixer_run_min_minutes} minute(s) `
+        + `and before ${settings.mixer_run_max_minutes} minute(s) of runtime.`
+      );
+    }
     return {
       stage_key: stageKey,
       stage_label: config.stage_label,
-      description: config.description,
+      description,
       actions: config.actions,
       completed_at: "",
     };
@@ -389,10 +440,9 @@ function downstreamForRun(run) {
   };
 }
 
-function applyMockProgressionAction(run, action) {
+function applyMockProgressionAction(run, action, payload = {}, settings = loadOperationalSettings()) {
   const now = nowLocalInputValue();
-  // Default chiller threshold used in mock — matches main app default
-  const CHILLER_TEMP_THRESHOLD_C = -40;
+  const CHILLER_TEMP_THRESHOLD_C = Number(settings.chiller_temp_threshold_c ?? -40);
 
   if (action === "confirm_biomass_loaded") {
     if (!run.biomass_confirmed_at) run.biomass_confirmed_at = now;
@@ -458,6 +508,25 @@ function applyMockProgressionAction(run, action) {
   }
   if (action === "start_mixer") {
     if (!run.run_fill_started_at) throw new Error("Start the primary soak before starting the mixer.");
+    const restarting = run.mixer_started_at && run.mixer_ended_at;
+    const soakMinutes = activeMinutesSince(run.run_fill_started_at);
+    if (!restarting && soakMinutes != null) {
+      if (soakMinutes < settings.mixer_start_earliest_minutes) {
+        const reason = String(payload.mixer_start_timing_reason || "").trim();
+        if (!reason) {
+          throw new Error(
+            `Mixer cannot start until minute ${settings.mixer_start_earliest_minutes} of primary soak (currently ${soakMinutes} minute(s)). Enter a reason to continue.`,
+          );
+        }
+      } else if (soakMinutes > settings.mixer_start_latest_minutes) {
+        const reason = String(payload.mixer_start_timing_reason || "").trim();
+        if (!reason) {
+          throw new Error(
+            `Mixer should have started by minute ${settings.mixer_start_latest_minutes} of primary soak (currently ${soakMinutes} minute(s)). Enter a reason to continue.`,
+          );
+        }
+      }
+    }
     if (!run.mixer_started_at || run.mixer_ended_at) run.mixer_started_at = now;
     run.mixer_ended_at = "";
     run.booth_stage_key = "mixing";
@@ -465,6 +534,15 @@ function applyMockProgressionAction(run, action) {
   }
   if (action === "stop_mixer") {
     if (!run.mixer_started_at) throw new Error("Start the mixer before ending it.");
+    const runtimeMinutes = activeMinutesSince(run.mixer_started_at);
+    if (runtimeMinutes != null && runtimeMinutes < settings.mixer_run_min_minutes) {
+      const reason = String(payload.mixer_short_reason || "").trim();
+      if (!reason) {
+        throw new Error(
+          `Mixer must run at least ${settings.mixer_run_min_minutes} minute(s). Enter a reason when ending early.`,
+        );
+      }
+    }
     run.mixer_ended_at = now;
     run.booth_stage_key = "ready_to_confirm_filter_clear";
     return;
@@ -602,9 +680,19 @@ function applyMockPostExtractionAction(run, action) {
 
 function buildMockRunPayload(state, charge, run) {
   const lot = state.lots.find((row) => row.id === charge.purchase_lot_id) || state.lots.find((row) => row.tracking_id === charge.tracking_id) || state.lots[0];
+  const settings = loadOperationalSettings();
+  const timingTargets = { ...MOCK_TIMING_TARGETS };
   const timingControls = {
-    primary_soak: timingControl("Primary soak", MOCK_TIMING_TARGETS.primary_soak_minutes, run.run_fill_started_at, run.run_fill_ended_at),
-    mixer: timingControl("Mixer", MOCK_TIMING_TARGETS.mixer_minutes, run.mixer_started_at, run.mixer_ended_at),
+    primary_soak: timingControl("Primary soak", timingTargets.primary_soak_minutes, run.run_fill_started_at, run.run_fill_ended_at),
+    mixer: {
+      ...timingControl("Mixer", timingTargets.mixer_minutes, run.mixer_started_at, run.mixer_ended_at),
+      constraints: {
+        start_earliest_minutes: settings.mixer_start_earliest_minutes,
+        start_latest_minutes: settings.mixer_start_latest_minutes,
+        run_min_minutes: settings.mixer_run_min_minutes,
+        run_max_minutes: settings.mixer_run_max_minutes,
+      },
+    },
     flush: timingControl("Flush soak", MOCK_TIMING_TARGETS.flush_minutes, run.flush_started_at, run.flush_ended_at),
     final_purge: timingControl("Final purge", MOCK_TIMING_TARGETS.final_purge_minutes, run.final_purge_started_at, run.final_purge_completed_at),
   };
@@ -632,7 +720,7 @@ function buildMockRunPayload(state, charge, run) {
     flush_ended_at: run.flush_ended_at || "",
     flush_duration_minutes: minutesBetween(run.flush_started_at, run.flush_ended_at),
     run_completed_at: run.run_completed_at || "",
-    progression: progressionForRun(run),
+    progression: progressionForRun(run, settings),
     booth: {
       status: run.run_completed_at ? "completed" : "in_progress",
       current_stage_key: run.booth_stage_key || "ready_to_confirm_vacuum",
@@ -657,7 +745,7 @@ function buildMockRunPayload(state, charge, run) {
       nitrogen_turned_off_at: run.nitrogen_turned_off_at || "",
       dewax_inlet_closed_at: run.dewax_inlet_closed_at || "",
       booth_process_completed_at: run.booth_process_completed_at || "",
-      timing_targets: { ...MOCK_TIMING_TARGETS },
+      timing_targets: { ...timingTargets },
       evidence_counts: {
         solvent_chiller_temp_photo: (run.booth_evidence || []).filter((row) => row.evidence_type === "solvent_chiller_temp_photo").length,
         plate_temp_photo: (run.booth_evidence || []).filter((row) => row.evidence_type === "plate_temp_photo").length,
@@ -1221,7 +1309,7 @@ export function createApiClient({ mode = "mock", apiBaseUrl = "", fetchImpl = fe
         ...payload,
       });
       if (payload.progression_action) {
-        applyMockProgressionAction(run, payload.progression_action);
+        applyMockProgressionAction(run, payload.progression_action, payload, loadOperationalSettings());
       }
       if (payload.post_extraction_action) {
         applyMockPostExtractionAction(run, payload.post_extraction_action);
@@ -1281,6 +1369,28 @@ export function createApiClient({ mode = "mock", apiBaseUrl = "", fetchImpl = fe
         evidence_type: evidenceType,
         files: created.map((row) => ({ file_path: row.file_path, url: row.url })),
       };
+    },
+    async getExtractionSettings() {
+      if (mode === "live") {
+        return unwrapData(await liveRequest(apiBaseUrl, fetchImpl, "/api/mobile/v1/extraction/settings"));
+      }
+      ensureMockSession();
+      return loadOperationalSettings();
+    },
+    async saveExtractionSettings(payload) {
+      if (mode === "live") {
+        return unwrapData(await liveRequest(apiBaseUrl, fetchImpl, "/api/mobile/v1/extraction/settings", {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        }));
+      }
+      ensureMockSession();
+      const next = { ...loadOperationalSettings(), ...payload };
+      saveOperationalSettings(next);
+      const session = loadSession() || {};
+      session.site = { ...(session.site || {}), ...next };
+      saveSession(session);
+      return next;
     },
   };
 }

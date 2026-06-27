@@ -523,11 +523,11 @@ The normal progression is:
 - `Complete Shutdown`
 - `Mark Run Complete`
 
-Mixer timing safety behavior in this sequence:
+Mixer timing safety behavior in this sequence (defaults shown; all four limits are configurable in Settings):
 
-- After `Start Primary Soak`, the mixer should be started within 3 minutes.
-- If mixer start is delayed beyond 3 minutes, a critical supervisor notification is created.
-- Once started, the mixer target is 5 minutes; if runtime exceeds 6 minutes, a critical supervisor notification is created.
+- After `Start Primary Soak`, the mixer should start no sooner than 3 minutes and no later than 6 minutes into the soak.
+- If the mixer has not started by the configured latest start time, a critical supervisor notification is created.
+- Once started, the mixer should run at least 5 minutes and no more than 7; if runtime exceeds the configured maximum, a critical supervisor notification is created.
 - If either critical mixer alert remains unacknowledged for 3 additional minutes, the system creates an emergency-class escalation notification for Slack emergency-channel delivery.
 
 Each action stamps the matching time/checkpoint field and advances the run to the next stage. The API also rejects future progression actions and ignores future-step booth fields submitted early from the operator app. At `Confirm Final Clarity`, the operator must first select `Clear enough` or `Not yet`; the selected choice stays active on the page and is submitted with the confirm action. When the run is marked complete, the screen shows that completed state and the linked extraction charge is also marked complete when that charge is still the active reactor event.

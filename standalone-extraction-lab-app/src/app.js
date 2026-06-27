@@ -27,6 +27,13 @@ const config = getAppConfig();
 const api = createApiClient(config);
 const app = document.getElementById("app");
 const UI_PREFS_KEY = "gold-drop-extraction-lab-ui-prefs-v1";
+const DEFAULT_EXTRACTION_SETTINGS = {
+  chiller_temp_threshold_c: -40,
+  mixer_start_earliest_minutes: 3,
+  mixer_start_latest_minutes: 6,
+  mixer_run_min_minutes: 5,
+  mixer_run_max_minutes: 7,
+};
 
 const state = {
   route: parseRoute(window.location.hash || "#/login"),
@@ -175,6 +182,14 @@ async function loadRoute() {
   if (state.route.name === "scan") {
     state.scanStatus = browserScanSupportMessage();
   }
+  if (state.route.name === "settings" && isAdmin()) {
+    try {
+      state.settings = { ...DEFAULT_EXTRACTION_SETTINGS, ...(await api.getExtractionSettings()) };
+    } catch (error) {
+      console.warn(error);
+      state.settings = { ...DEFAULT_EXTRACTION_SETTINGS, ...(state.settings || {}) };
+    }
+  }
 }
 
 function formatApiError(error, fallback = "Request failed.") {
@@ -273,10 +288,14 @@ function captureFormDrafts() {
   }
   const settingsForm = app.querySelector("form[data-form='settings']");
   if (settingsForm) {
-    const raw = String(new FormData(settingsForm).get("chiller_temp_threshold_c") || "").trim();
+    const form = new FormData(settingsForm);
     state.settings = {
-      ...(state.settings || {}),
-      chiller_temp_threshold_c: raw === "" ? (state.settings?.chiller_temp_threshold_c ?? -40) : raw,
+      ...(state.settings || DEFAULT_EXTRACTION_SETTINGS),
+      chiller_temp_threshold_c: String(form.get("chiller_temp_threshold_c") || "").trim() || (state.settings?.chiller_temp_threshold_c ?? -40),
+      mixer_start_earliest_minutes: String(form.get("mixer_start_earliest_minutes") || "").trim() || (state.settings?.mixer_start_earliest_minutes ?? 3),
+      mixer_start_latest_minutes: String(form.get("mixer_start_latest_minutes") || "").trim() || (state.settings?.mixer_start_latest_minutes ?? 6),
+      mixer_run_min_minutes: String(form.get("mixer_run_min_minutes") || "").trim() || (state.settings?.mixer_run_min_minutes ?? 5),
+      mixer_run_max_minutes: String(form.get("mixer_run_max_minutes") || "").trim() || (state.settings?.mixer_run_max_minutes ?? 7),
     };
   }
   const lotSearchForm = app.querySelector("form[data-form='lot-search']");
@@ -1712,10 +1731,12 @@ function renderCheckpointInputs(run) {
       ${run.chiller_out_of_spec ? `
         <div class="notice warning">⚠ This run proceeded out of spec. Supervisor has been notified.</div>` : ""}`,
     ready_to_start_mixer: `
-      <div class="field"><label for="primary_soak_short_reason">Reason if starting mixer early</label>
+      <div class="field"><label for="mixer_start_timing_reason">Reason if starting mixer outside the allowed window</label>
+      <textarea id="mixer_start_timing_reason" name="mixer_start_timing_reason" rows="2">${escapeHtml(run.mixer_start_timing_reason || "")}</textarea></div>
+      <div class="field"><label for="primary_soak_short_reason">Reason if starting mixer before primary soak target</label>
       <textarea id="primary_soak_short_reason" name="primary_soak_short_reason" rows="2">${escapeHtml(run.primary_soak_short_reason || "")}</textarea></div>`,
     mixing: `
-      <div class="field"><label for="mixer_short_reason">Reason if ending mixer early</label>
+      <div class="field"><label for="mixer_short_reason">Reason if ending mixer before minimum runtime</label>
       <textarea id="mixer_short_reason" name="mixer_short_reason" rows="2">${escapeHtml(run.mixer_short_reason || "")}</textarea></div>`,
     flushing: `
       <div class="field"><label for="flush_short_reason">Reason if stopping flush early</label>
@@ -2390,7 +2411,7 @@ function renderSettings() {
         </div>
       </div>`;
   }
-  const threshold = state.settings?.chiller_temp_threshold_c ?? -40;
+  const settings = { ...DEFAULT_EXTRACTION_SETTINGS, ...(state.settings || {}) };
   const saved = state.settings?.saved;
   return `
     <div class="layout-grid">
@@ -2405,12 +2426,42 @@ function renderSettings() {
             <label for="chiller_temp_threshold_c">Chiller Temperature Threshold (°C)</label>
             <input id="chiller_temp_threshold_c" name="chiller_temp_threshold_c"
               type="number" step="0.5" placeholder="-40"
-              value="${escapeHtml(String(threshold))}" />
+              value="${escapeHtml(String(settings.chiller_temp_threshold_c))}" />
             <div class="subtle" style="margin-top:6px;">
               Operators must confirm the chiller is at or below this temperature before solvent loading.
               Default: −40°C. If an operator proceeds above this threshold, a critical supervisor
               notification is sent automatically via Slack.
             </div>
+          </div>
+        </section>
+        <section style="display:grid;gap:14px;">
+          <div class="eyebrow">Primary Mixer Timing Window</div>
+          <div class="form-row-2" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+            <div class="field">
+              <label for="mixer_start_earliest_minutes">Start no sooner than (min into soak)</label>
+              <input id="mixer_start_earliest_minutes" name="mixer_start_earliest_minutes" type="number" step="1" min="0"
+                value="${escapeHtml(String(settings.mixer_start_earliest_minutes))}" />
+            </div>
+            <div class="field">
+              <label for="mixer_start_latest_minutes">Start no later than (min into soak)</label>
+              <input id="mixer_start_latest_minutes" name="mixer_start_latest_minutes" type="number" step="1" min="0"
+                value="${escapeHtml(String(settings.mixer_start_latest_minutes))}" />
+            </div>
+            <div class="field">
+              <label for="mixer_run_min_minutes">Run no less than (min)</label>
+              <input id="mixer_run_min_minutes" name="mixer_run_min_minutes" type="number" step="1" min="0"
+                value="${escapeHtml(String(settings.mixer_run_min_minutes))}" />
+            </div>
+            <div class="field">
+              <label for="mixer_run_max_minutes">Run no more than (min)</label>
+              <input id="mixer_run_max_minutes" name="mixer_run_max_minutes" type="number" step="1" min="0"
+                value="${escapeHtml(String(settings.mixer_run_max_minutes))}" />
+            </div>
+          </div>
+          <div class="subtle">
+            During primary soak, operators should start the mixer within this window and run it for the configured duration.
+            Supervisor alerts fire when the start window is missed or runtime exceeds the maximum. Mixer timing policy
+            (warning, override, or hard stop) is configured in the main app under Operational Parameters.
           </div>
         </section>
         <div class="actions">
@@ -2671,10 +2722,14 @@ function handleChargeDraftInput(event) {
 function handleSettingsDraftInput(event) {
   const formEl = event.currentTarget;
   if (!formEl) return;
-  const raw = String(new FormData(formEl).get("chiller_temp_threshold_c") || "").trim();
+  const form = new FormData(formEl);
   state.settings = {
-    ...(state.settings || {}),
-    chiller_temp_threshold_c: raw === "" ? (state.settings?.chiller_temp_threshold_c ?? -40) : raw,
+    ...(state.settings || DEFAULT_EXTRACTION_SETTINGS),
+    chiller_temp_threshold_c: String(form.get("chiller_temp_threshold_c") || "").trim() || (state.settings?.chiller_temp_threshold_c ?? -40),
+    mixer_start_earliest_minutes: String(form.get("mixer_start_earliest_minutes") || "").trim() || (state.settings?.mixer_start_earliest_minutes ?? 3),
+    mixer_start_latest_minutes: String(form.get("mixer_start_latest_minutes") || "").trim() || (state.settings?.mixer_start_latest_minutes ?? 6),
+    mixer_run_min_minutes: String(form.get("mixer_run_min_minutes") || "").trim() || (state.settings?.mixer_run_min_minutes ?? 5),
+    mixer_run_max_minutes: String(form.get("mixer_run_max_minutes") || "").trim() || (state.settings?.mixer_run_max_minutes ?? 7),
   };
 }
 
@@ -2941,13 +2996,48 @@ async function handleSettingsSubmit(event) {
     showToast("Threshold must be 0°C or below (chiller temperatures are negative).");
     return;
   }
-  // Persist in state.settings — in production this calls an API endpoint
-  // that updates SystemSetting('extraction_chiller_temp_threshold_c').
-  state.settings = { ...(state.settings || {}), chiller_temp_threshold_c: threshold, saved: true };
-  // Also update auth.site so the mock api.js picks it up
-  if (state.auth.site) state.auth.site.chiller_temp_threshold_c = threshold;
-  showToast(`Chiller threshold set to ${threshold}°C.`);
+  const parseMinutes = (name, label) => {
+    const raw = String(form.get(name) || "").trim();
+    const value = parseInt(raw, 10);
+    if (!Number.isFinite(value) || value < 0) {
+      throw new Error(`Enter a valid ${label}.`);
+    }
+    return value;
+  };
+  let payload;
+  try {
+    payload = {
+      chiller_temp_threshold_c: threshold,
+      mixer_start_earliest_minutes: parseMinutes("mixer_start_earliest_minutes", "mixer start earliest time"),
+      mixer_start_latest_minutes: parseMinutes("mixer_start_latest_minutes", "mixer start latest time"),
+      mixer_run_min_minutes: parseMinutes("mixer_run_min_minutes", "mixer minimum runtime"),
+      mixer_run_max_minutes: parseMinutes("mixer_run_max_minutes", "mixer maximum runtime"),
+    };
+  } catch (error) {
+    showToast(error.message);
+    return;
+  }
+  if (payload.mixer_start_latest_minutes < payload.mixer_start_earliest_minutes) {
+    showToast("Mixer start latest must be at or after the earliest start time.");
+    return;
+  }
+  if (payload.mixer_run_max_minutes < payload.mixer_run_min_minutes) {
+    showToast("Mixer maximum runtime must be at or above the minimum runtime.");
+    return;
+  }
+  state.loading = true;
   render();
+  try {
+    const saved = await api.saveExtractionSettings(payload);
+    state.settings = { ...saved, saved: true };
+    if (state.auth.site) state.auth.site = { ...state.auth.site, ...saved };
+    showToast("Extraction settings saved.");
+  } catch (error) {
+    showToast(error.payload?.error?.message || error.message || "Unable to save settings.");
+  } finally {
+    state.loading = false;
+    render();
+  }
 }
 
 async function handleRunSubmit(event) {
@@ -3083,6 +3173,7 @@ function buildRunPayload(form, progressionAction = "") {
     final_clarity_reason: field("final_clarity_reason"),
     primary_soak_short_reason: field("primary_soak_short_reason"),
     mixer_short_reason: field("mixer_short_reason"),
+    mixer_start_timing_reason: field("mixer_start_timing_reason"),
     flush_short_reason: field("flush_short_reason"),
     final_purge_short_reason: field("final_purge_short_reason"),
     final_purge_started_at: field("final_purge_started_at"),

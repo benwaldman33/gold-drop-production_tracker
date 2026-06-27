@@ -22,6 +22,10 @@ EXTRACTION_RUN_DEFAULTS = {
     "extraction_default_crc_blend": ("", "Default CRC blend note for extraction run drafts"),
     "extraction_target_primary_soak_minutes": ("30", "Target minutes for the primary soak window"),
     "extraction_target_mixer_minutes": ("5", "Target minutes for the primary mixer window"),
+    "extraction_mixer_start_earliest_minutes": ("3", "Earliest minute of primary soak when the mixer may start"),
+    "extraction_mixer_start_latest_minutes": ("6", "Latest minute of primary soak when the mixer must start by"),
+    "extraction_mixer_run_min_minutes": ("5", "Minimum minutes the primary mixer must run"),
+    "extraction_mixer_run_max_minutes": ("7", "Maximum minutes the primary mixer should run"),
     "extraction_target_flush_minutes": ("10", "Target minutes for the flush soak window"),
     "extraction_target_final_purge_minutes": ("", "Optional target minutes for the final purge window"),
 }
@@ -40,9 +44,9 @@ TIMING_POLICY_DEFAULTS = {
     "extraction_policy_final_purge": ("informational", "Policy for final purge timing deviations"),
 }
 
-MIXER_START_ALERT_MINUTES = 3
-MIXER_MAX_RUNTIME_ALERT_MINUTES = 6
 MIXER_EMERGENCY_ESCALATION_MINUTES = 3
+MIXER_NOT_STARTED_DEDUPE_KEY = "mixer_not_started_past_start_window"
+MIXER_RUNTIME_EXCEEDED_DEDUPE_KEY = "mixer_runtime_exceeded_run_max"
 
 RUN_PROGRESSION = {
     "ready_to_confirm_biomass": {
@@ -292,10 +296,32 @@ def extraction_run_defaults(root) -> dict[str, float | int | str]:
     }
 
 
+def extraction_mixer_constraints(root) -> dict[str, int]:
+    earliest = max(0, int(root.SystemSetting.get_float("extraction_mixer_start_earliest_minutes", 3) or 3))
+    latest = max(0, int(root.SystemSetting.get_float("extraction_mixer_start_latest_minutes", 6) or 6))
+    run_min = max(0, int(root.SystemSetting.get_float("extraction_mixer_run_min_minutes", 5) or 5))
+    run_max = max(0, int(root.SystemSetting.get_float("extraction_mixer_run_max_minutes", 7) or 7))
+    if latest < earliest:
+        earliest, latest = latest, earliest
+    if run_max < run_min:
+        run_min, run_max = run_max, run_min
+    return {
+        "start_earliest_minutes": earliest,
+        "start_latest_minutes": latest,
+        "run_min_minutes": run_min,
+        "run_max_minutes": run_max,
+    }
+
+
 def extraction_timing_targets(root) -> dict[str, int | None]:
+    mixer_constraints = extraction_mixer_constraints(root)
     return {
         "primary_soak_minutes": int(root.SystemSetting.get_float("extraction_target_primary_soak_minutes", 30) or 30),
         "mixer_minutes": int(root.SystemSetting.get_float("extraction_target_mixer_minutes", 5) or 5),
+        "mixer_start_earliest_minutes": mixer_constraints["start_earliest_minutes"],
+        "mixer_start_latest_minutes": mixer_constraints["start_latest_minutes"],
+        "mixer_run_min_minutes": mixer_constraints["run_min_minutes"],
+        "mixer_run_max_minutes": mixer_constraints["run_max_minutes"],
         "flush_minutes": int(root.SystemSetting.get_float("extraction_target_flush_minutes", 10) or 10),
         "final_purge_minutes": _opt_int(root.SystemSetting.get("extraction_target_final_purge_minutes", "") or "", field="Final purge target"),
     }
@@ -378,6 +404,95 @@ def _event_payload_dict(root, event) -> dict:
     except Exception:
         return {}
     return parsed if isinstance(parsed, dict) else {}
+
+
+def save_mixer_constraint_settings(root, form, *, partial: bool = False) -> None:
+    """Persist mixer start/run window settings from an HTML form mapping."""
+    existing = extraction_mixer_constraints(root)
+    specs = (
+        ("extraction_mixer_start_earliest_minutes", existing["start_earliest_minutes"]),
+        ("extraction_mixer_start_latest_minutes", existing["start_latest_minutes"]),
+        ("extraction_mixer_run_min_minutes", existing["run_min_minutes"]),
+        ("extraction_mixer_run_max_minutes", existing["run_max_minutes"]),
+    )
+    parsed: dict[str, int] = {}
+    for key, fallback in specs:
+        if partial and key not in form:
+            parsed[key] = fallback
+            continue
+        raw = (form.get(key) or "").strip()
+        value = fallback
+        if raw:
+            try:
+                value = max(0, int(float(raw)))
+            except ValueError:
+                value = fallback
+        parsed[key] = value
+    earliest = parsed["extraction_mixer_start_earliest_minutes"]
+    latest = parsed["extraction_mixer_start_latest_minutes"]
+    run_min = parsed["extraction_mixer_run_min_minutes"]
+    run_max = parsed["extraction_mixer_run_max_minutes"]
+    if latest < earliest:
+        earliest, latest = latest, earliest
+    if run_max < run_min:
+        run_min, run_max = run_max, run_min
+    normalized = {
+        "extraction_mixer_start_earliest_minutes": earliest,
+        "extraction_mixer_start_latest_minutes": latest,
+        "extraction_mixer_run_min_minutes": run_min,
+        "extraction_mixer_run_max_minutes": run_max,
+    }
+    for key, value in normalized.items():
+        desc = EXTRACTION_RUN_DEFAULTS[key][1]
+        existing = root.db.session.get(root.SystemSetting, key)
+        stored = str(value)
+        if existing:
+            existing.value = stored
+        else:
+            root.db.session.add(root.SystemSetting(key=key, value=stored, description=desc))
+
+
+def save_extraction_operational_settings(root, payload: dict) -> None:
+    if "chiller_temp_threshold_c" in payload and payload["chiller_temp_threshold_c"] is not None:
+        try:
+            threshold = float(payload["chiller_temp_threshold_c"])
+        except (TypeError, ValueError):
+            raise ValueError("Chiller temperature threshold must be a number.")
+        existing = root.db.session.get(root.SystemSetting, "extraction_chiller_temp_threshold_c")
+        stored = str(threshold)
+        if existing:
+            existing.value = stored
+        else:
+            root.db.session.add(
+                root.SystemSetting(
+                    key="extraction_chiller_temp_threshold_c",
+                    value=stored,
+                    description="Chiller temperature threshold (°C) for extraction pre-check",
+                )
+            )
+    form_mapping = {}
+    for api_key, setting_key in (
+        ("mixer_start_earliest_minutes", "extraction_mixer_start_earliest_minutes"),
+        ("mixer_start_latest_minutes", "extraction_mixer_start_latest_minutes"),
+        ("mixer_run_min_minutes", "extraction_mixer_run_min_minutes"),
+        ("mixer_run_max_minutes", "extraction_mixer_run_max_minutes"),
+    ):
+        if api_key in payload and payload[api_key] is not None:
+            form_mapping[setting_key] = str(payload[api_key])
+    if form_mapping:
+        save_mixer_constraint_settings(root, form_mapping, partial=True)
+
+
+def extraction_operational_settings_payload(root) -> dict:
+    constraints = extraction_mixer_constraints(root)
+    return {
+        "chiller_temp_threshold_c": extraction_chiller_threshold_c(root),
+        "mixer_start_earliest_minutes": constraints["start_earliest_minutes"],
+        "mixer_start_latest_minutes": constraints["start_latest_minutes"],
+        "mixer_run_min_minutes": constraints["run_min_minutes"],
+        "mixer_run_max_minutes": constraints["run_max_minutes"],
+        "timing_targets": extraction_timing_targets(root),
+    }
 
 
 def extraction_chiller_threshold_c(root) -> float:
@@ -507,21 +622,89 @@ def _created_over_minutes_ago(row, minutes: int, *, now: datetime) -> bool:
     return now >= created + timedelta(minutes=max(0, int(minutes)))
 
 
+def _mixer_stage_description(root) -> str:
+    constraints = extraction_mixer_constraints(root)
+    return (
+        "Primary soak is active. Start the mixer between "
+        f"{constraints['start_earliest_minutes']} and {constraints['start_latest_minutes']} minutes into soak "
+        f"and run it for {constraints['run_min_minutes']} to {constraints['run_max_minutes']} minutes."
+    )
+
+
+def _mixer_running_stage_description(root) -> str:
+    constraints = extraction_mixer_constraints(root)
+    return (
+        "Mixer timing is active during primary extraction. "
+        f"End mixer after at least {constraints['run_min_minutes']} minute(s) "
+        f"and before {constraints['run_max_minutes']} minute(s) of runtime."
+    )
+
+
+def _apply_mixer_timing_violation(
+    root,
+    run,
+    session,
+    payload: dict,
+    *,
+    label: str,
+    message: str,
+    event_key: str,
+    dedupe_key: str,
+    reason_field: str,
+) -> None:
+    policy = extraction_timing_policies(root).get("mixer", "warning")
+    if policy == "informational":
+        return
+    if policy == "hard_stop":
+        raise ValueError(message)
+    reason = _required_reason(payload, reason_field, message)
+    if policy == "supervisor_override" and not _notification_override_approved(root, run, dedupe_key):
+        create_notification(
+            root,
+            run=run,
+            booth_session=session,
+            event_key=event_key,
+            dedupe_key=dedupe_key,
+            notification_class="warnings",
+            severity="critical",
+            title=label,
+            message=message,
+            operator_reason=reason,
+        )
+        raise ValueError(_timing_policy_message("Mixer", "supervisor_override"))
+    if policy == "warning":
+        create_notification(
+            root,
+            run=run,
+            booth_session=session,
+            event_key=event_key,
+            dedupe_key=dedupe_key,
+            notification_class="warnings",
+            severity="warning",
+            title=label,
+            message=message,
+            operator_reason=reason,
+        )
+
+
 def _maybe_emit_mixer_supervisor_alerts(root, run, session) -> None:
     if run is None or session is None:
         return
     now = _utc_now_localized()
+    constraints = extraction_mixer_constraints(root)
+    start_latest = constraints["start_latest_minutes"]
+    run_max = constraints["run_max_minutes"]
 
-    start_dedupe = "mixer_not_started_within_3m"
+    start_dedupe = MIXER_NOT_STARTED_DEDUPE_KEY
     start_emergency_dedupe = f"{start_dedupe}_emergency_unacknowledged"
-    runtime_dedupe = "mixer_runtime_exceeded_6m"
+    runtime_dedupe = MIXER_RUNTIME_EXCEEDED_DEDUPE_KEY
     runtime_emergency_dedupe = f"{runtime_dedupe}_emergency_unacknowledged"
 
     soak_elapsed = _elapsed_minutes_since(getattr(run, "run_fill_started_at", None), now=now)
     mixer_started_at = getattr(run, "mixer_started_at", None)
     mixer_ended_at = getattr(run, "mixer_ended_at", None)
 
-    if soak_elapsed is not None and mixer_started_at is None and soak_elapsed >= MIXER_START_ALERT_MINUTES:
+    if soak_elapsed is not None and mixer_started_at is None and soak_elapsed > start_latest:
         create_notification(
             root,
             run=run,
@@ -530,10 +713,10 @@ def _maybe_emit_mixer_supervisor_alerts(root, run, session) -> None:
             dedupe_key=start_dedupe,
             notification_class="warnings",
             severity="critical",
-            title="Mixer start delayed beyond soak threshold",
+            title="Mixer start delayed beyond soak window",
             message=(
                 f"The primary soak started {soak_elapsed} minute(s) ago and the mixer has not started. "
-                f"Target is to begin mixing within {MIXER_START_ALERT_MINUTES} minutes of soak start."
+                f"The mixer must begin by minute {start_latest} of primary soak."
             ),
         )
         start_row = _open_notification_for_dedupe(root, run, start_dedupe)
@@ -553,7 +736,7 @@ def _maybe_emit_mixer_supervisor_alerts(root, run, session) -> None:
                 severity="critical",
                 title="EMERGENCY: Mixer start alert unacknowledged",
                 message=(
-                    "Mixer start delay alert remained unacknowledged for 3 additional minutes. "
+                    f"Mixer start delay alert remained unacknowledged for {MIXER_EMERGENCY_ESCALATION_MINUTES} additional minutes. "
                     "Escalate immediately on the Emergency Alert channel."
                 ),
             )
@@ -562,11 +745,11 @@ def _maybe_emit_mixer_supervisor_alerts(root, run, session) -> None:
             root,
             run=run,
             dedupe_keys=[start_dedupe, start_emergency_dedupe],
-            note="Mixer start threshold condition cleared.",
+            note="Mixer start window condition cleared.",
         )
 
     mixer_runtime = _elapsed_minutes_since(mixer_started_at, now=now) if mixer_started_at is not None and mixer_ended_at is None else None
-    if mixer_runtime is not None and mixer_runtime > MIXER_MAX_RUNTIME_ALERT_MINUTES:
+    if mixer_runtime is not None and mixer_runtime > run_max:
         create_notification(
             root,
             run=run,
@@ -575,10 +758,10 @@ def _maybe_emit_mixer_supervisor_alerts(root, run, session) -> None:
             dedupe_key=runtime_dedupe,
             notification_class="warnings",
             severity="critical",
-            title="Mixer runtime exceeded threshold",
+            title="Mixer runtime exceeded maximum",
             message=(
                 f"Mixer has been running for {mixer_runtime} minute(s). "
-                f"Supervisor alert threshold is >{MIXER_MAX_RUNTIME_ALERT_MINUTES} minutes."
+                f"Maximum configured runtime is {run_max} minute(s)."
             ),
         )
         runtime_row = _open_notification_for_dedupe(root, run, runtime_dedupe)
@@ -598,7 +781,7 @@ def _maybe_emit_mixer_supervisor_alerts(root, run, session) -> None:
                 severity="critical",
                 title="EMERGENCY: Mixer runtime alert unacknowledged",
                 message=(
-                    "Mixer runtime alert remained unacknowledged for 3 additional minutes. "
+                    f"Mixer runtime alert remained unacknowledged for {MIXER_EMERGENCY_ESCALATION_MINUTES} additional minutes. "
                     "Escalate immediately on the Emergency Alert channel."
                 ),
             )
@@ -607,7 +790,7 @@ def _maybe_emit_mixer_supervisor_alerts(root, run, session) -> None:
             root,
             run=run,
             dedupe_keys=[runtime_dedupe, runtime_emergency_dedupe],
-            note="Mixer runtime threshold condition cleared.",
+            note="Mixer runtime maximum condition cleared.",
         )
 
 
@@ -860,12 +1043,20 @@ def run_timing_controls_payload(root, run) -> dict:
             start_at=getattr(run, "run_fill_started_at", None),
             end_at=getattr(run, "run_fill_ended_at", None),
         ),
-        "mixer": timing_control_payload(
-            label="Mixer",
-            target_minutes=timing_targets.get("mixer_minutes"),
-            start_at=getattr(run, "mixer_started_at", None),
-            end_at=getattr(run, "mixer_ended_at", None),
-        ),
+        "mixer": {
+            **timing_control_payload(
+                label="Mixer",
+                target_minutes=timing_targets.get("mixer_minutes"),
+                start_at=getattr(run, "mixer_started_at", None),
+                end_at=getattr(run, "mixer_ended_at", None),
+            ),
+            "constraints": {
+                "start_earliest_minutes": timing_targets.get("mixer_start_earliest_minutes"),
+                "start_latest_minutes": timing_targets.get("mixer_start_latest_minutes"),
+                "run_min_minutes": timing_targets.get("mixer_run_min_minutes"),
+                "run_max_minutes": timing_targets.get("mixer_run_max_minutes"),
+            },
+        },
         "flush": timing_control_payload(
             label="Flush soak",
             target_minutes=timing_targets.get("flush_minutes"),
@@ -902,6 +1093,10 @@ def run_progression_payload(root, run) -> dict:
     else:
         stage_key = "ready_to_confirm_biomass"
     config = dict(RUN_PROGRESSION[stage_key])
+    if stage_key == "ready_to_start_mixer":
+        config["description"] = _mixer_stage_description(root)
+    elif stage_key == "mixing":
+        config["description"] = _mixer_running_stage_description(root)
     block = None
     if root is not None and run is not None:
         if stage_key in {"ready_to_start_mixer"}:
@@ -1245,6 +1440,38 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
                 operator_reason=primary_reason,
             )
         restarting_mixer = run.mixer_started_at is not None and run.mixer_ended_at is not None
+        if not restarting_mixer and primary_soak_minutes is not None:
+            constraints = extraction_mixer_constraints(root)
+            if primary_soak_minutes < constraints["start_earliest_minutes"]:
+                _apply_mixer_timing_violation(
+                    root,
+                    run,
+                    session,
+                    payload,
+                    label="Mixer started before allowed window",
+                    message=(
+                        f"Mixer cannot start until minute {constraints['start_earliest_minutes']} "
+                        f"of primary soak (currently {primary_soak_minutes} minute(s))."
+                    ),
+                    event_key="mixer_start_before_window",
+                    dedupe_key="mixer_start_before_window",
+                    reason_field="mixer_start_timing_reason",
+                )
+            elif primary_soak_minutes > constraints["start_latest_minutes"]:
+                _apply_mixer_timing_violation(
+                    root,
+                    run,
+                    session,
+                    payload,
+                    label="Mixer started after allowed window",
+                    message=(
+                        f"Mixer should have started by minute {constraints['start_latest_minutes']} "
+                        f"of primary soak (currently {primary_soak_minutes} minute(s))."
+                    ),
+                    event_key="mixer_start_after_window",
+                    dedupe_key="mixer_start_after_window",
+                    reason_field="mixer_start_timing_reason",
+                )
         if run.mixer_started_at is None or restarting_mixer:
             run.mixer_started_at = now
         if restarting_mixer:
@@ -1258,13 +1485,17 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
         if run.mixer_started_at is None:
             raise ValueError("Start the mixer before ending it.")
         prospective_mixer_minutes = duration_minutes(run.mixer_started_at, now)
-        mixer_target = extraction_timing_targets(root).get("mixer_minutes")
+        mixer_constraints = extraction_mixer_constraints(root)
+        mixer_run_min = mixer_constraints["run_min_minutes"]
         mixer_policy = extraction_timing_policies(root).get("mixer", "warning")
-        if prospective_mixer_minutes is not None and mixer_target is not None and prospective_mixer_minutes < mixer_target and mixer_policy == "hard_stop":
-            raise ValueError(_timing_policy_message("Mixer", "hard_stop"))
+        if prospective_mixer_minutes is not None and prospective_mixer_minutes < mixer_run_min and mixer_policy == "hard_stop":
+            raise ValueError(
+                f"Mixer must run at least {mixer_run_min} minute(s). "
+                f"Current runtime is {prospective_mixer_minutes} minute(s)."
+            )
         run.mixer_ended_at = now
         mixer_minutes = duration_minutes(run.mixer_started_at, run.mixer_ended_at)
-        mixer_short = mixer_minutes is not None and mixer_target is not None and mixer_minutes < mixer_target
+        mixer_short = mixer_minutes is not None and mixer_minutes < mixer_run_min
         mixer_reason = None
         if mixer_short:
             mixer_reason = _required_reason(
@@ -1288,7 +1519,7 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
             event_key="timing_short_mixer",
             label="Mixer",
             actual_minutes=mixer_minutes,
-            target_minutes=mixer_target,
+            target_minutes=mixer_run_min,
             policy=mixer_policy,
             operator_reason=mixer_reason,
         )

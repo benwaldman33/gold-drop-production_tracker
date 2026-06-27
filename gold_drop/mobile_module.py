@@ -43,8 +43,10 @@ from services.extraction_run import (
     draft_run_payload,
     ensure_booth_session,
     ensure_run_for_charge,
+    extraction_operational_settings_payload,
     mobile_run_payload,
     operator_allowed_execution_fields,
+    save_extraction_operational_settings,
 )
 from gold_drop.floor_module import (
     BOARD_VIEW_OPTIONS,
@@ -782,6 +784,9 @@ def register_routes(app, root):
     def mobile_extraction_run_evidence(charge_id):
         return mobile_extraction_run_evidence_view(root, charge_id)
 
+    def mobile_extraction_settings():
+        return mobile_extraction_settings_view(root)
+
     def mobile_opportunity_create():
         return mobile_opportunity_create_view(root)
 
@@ -817,6 +822,41 @@ def register_routes(app, root):
     app.add_url_rule("/api/mobile/v1/extraction/charges/<charge_id>/transition", endpoint="mobile_extraction_transition", view_func=mobile_extraction_transition, methods=["POST"])
     app.add_url_rule("/api/mobile/v1/extraction/charges/<charge_id>/run", endpoint="mobile_extraction_run", view_func=mobile_extraction_run, methods=["GET", "POST"])
     app.add_url_rule("/api/mobile/v1/extraction/charges/<charge_id>/run/evidence", endpoint="mobile_extraction_run_evidence", view_func=mobile_extraction_run_evidence, methods=["GET", "POST"])
+    app.add_url_rule("/api/mobile/v1/extraction/settings", endpoint="mobile_extraction_settings", view_func=mobile_extraction_settings, methods=["GET", "PATCH"])
+
+
+def _mobile_extraction_admin_allowed(user) -> bool:
+    if user is None:
+        return False
+    role = str(getattr(user, "role", "") or "").strip().lower()
+    return bool(getattr(user, "is_super_admin", False)) or role in {"admin", "super_admin", "vp_operations"}
+
+
+def _mobile_extraction_settings_data(root) -> dict:
+    return extraction_operational_settings_payload(root)
+
+
+def mobile_extraction_settings_view(root):
+    auth_error = _require_mobile_user()
+    if auth_error:
+        return auth_error
+    if request.method == "GET":
+        if not _mobile_extraction_admin_allowed(current_user):
+            return _json_error("Admin access required.", status_code=403, code="forbidden")
+        return mobile_json(_mobile_extraction_settings_data(root))
+    origin_error = enforce_same_origin_for_write(root)
+    if origin_error:
+        return origin_error
+    if not _mobile_extraction_admin_allowed(current_user):
+        return _json_error("Admin access required.", status_code=403, code="forbidden")
+    payload = _mobile_payload()
+    try:
+        save_extraction_operational_settings(root, payload)
+        root.db.session.commit()
+    except ValueError as exc:
+        root.db.session.rollback()
+        return _json_error(str(exc), status_code=400, code="bad_request")
+    return mobile_json(_mobile_extraction_settings_data(root))
 
 
 def _mobile_supplier_payload(root, supplier: Supplier) -> dict[str, Any]:

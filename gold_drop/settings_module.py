@@ -21,7 +21,7 @@ from services.field_submissions import (
 from services.api_auth import generate_api_token, hash_api_token
 from services.api_registry import API_V1_SCOPES
 from services.extraction_charge import REACTOR_LIFECYCLE_DEFAULTS, reactor_lifecycle_settings
-from services.extraction_run import EXTRACTION_RUN_DEFAULTS, TIMING_POLICY_OPTIONS, TIMING_POLICY_DEFAULTS
+from services.extraction_run import EXTRACTION_RUN_DEFAULTS, TIMING_POLICY_OPTIONS, TIMING_POLICY_DEFAULTS, save_mixer_constraint_settings
 from services.material_genealogy import MATERIAL_REVENUE_LOT_TYPES, material_revenue_setting_key
 from services.site_aggregation import normalize_remote_base_url, pull_all_remote_sites, pull_remote_site
 from services.scale_ingest import (
@@ -514,6 +514,7 @@ def settings_view(root, page="operational"):
                     existing.value = policy_value
                 else:
                     root.db.session.add(root.SystemSetting(key=key, value=policy_value, description=description))
+            save_mixer_constraint_settings(root, root.request.form)
             running_linked_val = "1" if root.request.form.get("reactor_running_requires_linked_run") else "0"
             show_history_val = "1" if root.request.form.get("reactor_show_state_history") else "0"
             for key, val, desc in (
@@ -801,6 +802,7 @@ def settings_view(root, page="operational"):
                     existing.value = policy_value
                 else:
                     root.db.session.add(root.SystemSetting(key=key, value=policy_value, description=description))
+            save_mixer_constraint_settings(root, root.request.form)
             running_linked_val = "1" if root.request.form.get("reactor_running_requires_linked_run") else "0"
             show_history_val = "1" if root.request.form.get("reactor_show_state_history") else "0"
             for key, val, desc in (

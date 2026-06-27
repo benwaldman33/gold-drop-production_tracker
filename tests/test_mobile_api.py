@@ -559,7 +559,7 @@ def test_mobile_extraction_mixer_alerts_and_emergency_escalation():
 
         with app.app_context():
             run = db.session.get(ExtractionCharge, charge_id).run
-            run.run_fill_started_at = app_module.datetime.now(app_module.timezone.utc) - app_module.timedelta(minutes=4)
+            run.run_fill_started_at = app_module.datetime.now(app_module.timezone.utc) - app_module.timedelta(minutes=7)
             db.session.commit()
 
         run_get = client.post(f"/api/mobile/v1/extraction/charges/{charge_id}/run", json={})
@@ -568,7 +568,7 @@ def test_mobile_extraction_mixer_alerts_and_emergency_escalation():
             run = db.session.get(ExtractionCharge, charge_id).run
             delayed = app_module.SupervisorNotification.query.filter_by(
                 run_id=run.id,
-                dedupe_key="mixer_not_started_within_3m",
+                dedupe_key="mixer_not_started_past_start_window",
             ).order_by(app_module.SupervisorNotification.created_at.desc()).first()
             assert delayed is not None
             assert delayed.status in {"open", "acknowledged"}
@@ -582,7 +582,7 @@ def test_mobile_extraction_mixer_alerts_and_emergency_escalation():
             run = db.session.get(ExtractionCharge, charge_id).run
             emergency = app_module.SupervisorNotification.query.filter_by(
                 run_id=run.id,
-                dedupe_key="mixer_not_started_within_3m_emergency_unacknowledged",
+                dedupe_key="mixer_not_started_past_start_window_emergency_unacknowledged",
             ).order_by(app_module.SupervisorNotification.created_at.desc()).first()
             assert emergency is not None
             assert emergency.notification_class == "emergency"
@@ -593,13 +593,14 @@ def test_mobile_extraction_mixer_alerts_and_emergency_escalation():
             json={
                 "progression_action": "start_mixer",
                 "primary_soak_short_reason": "Mixer threshold alert scenario test.",
+                "mixer_start_timing_reason": "Mixer threshold alert scenario test.",
             },
         )
         assert started.status_code == 200
 
         with app.app_context():
             run = db.session.get(ExtractionCharge, charge_id).run
-            run.mixer_started_at = app_module.datetime.now(app_module.timezone.utc) - app_module.timedelta(minutes=7)
+            run.mixer_started_at = app_module.datetime.now(app_module.timezone.utc) - app_module.timedelta(minutes=8)
             run.mixer_ended_at = None
             db.session.commit()
 
@@ -609,7 +610,7 @@ def test_mobile_extraction_mixer_alerts_and_emergency_escalation():
             run = db.session.get(ExtractionCharge, charge_id).run
             runtime_alert = app_module.SupervisorNotification.query.filter_by(
                 run_id=run.id,
-                dedupe_key="mixer_runtime_exceeded_6m",
+                dedupe_key="mixer_runtime_exceeded_run_max",
             ).order_by(app_module.SupervisorNotification.created_at.desc()).first()
             assert runtime_alert is not None
             assert runtime_alert.status in {"open", "acknowledged"}

@@ -37,7 +37,7 @@ This PRD describes the problem, users, workflows, data requirements, calculation
 - a filterable **reactor board** and same-day **reactor history** view so extractors can focus on the work that matters right now without opening every run
 - a dedicated **standalone extraction run execution** flow so extractors can capture execution details (timers, blend, fills, flushes, CRC, baskets, notes) without leaving the tablet workflow
 - a lockstep **standalone extraction run progression** flow so extractors can advance only the current booth checkpoint on the iPad instead of relying on Slack timestamps or the admin form
-- a mixer-safety **supervisor alert escalation** rule so soak/mixer timing deviations trigger critical supervisor notifications and escalate to emergency-channel Slack alerts when unacknowledged
+- a mixer-safety **supervisor alert escalation** rule so soak/mixer timing deviations (against configurable start and runtime windows) trigger critical supervisor notifications and escalate to emergency-channel Slack alerts when unacknowledged
 - **settings-driven extraction defaults** so repeated run inputs (blend, counts, aggregate weights, baskets, CRC note) can prepopulate the tablet workflow, while booth-control fields remain locked to their active checkpoint
 - a manager-approved **booth-stage bypass** path so an operator can request one-step progression when equipment or process conditions prevent a checkpoint from functioning, while the run stays locked until a supervisor approves or requires rework
 - a controlled **booth step-back** path so operators can move back exactly one checkpoint with a full audit trail, requiring supervisor approval for non-admin users and blocking any rollback after run completion
