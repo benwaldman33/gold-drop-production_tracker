@@ -1099,9 +1099,7 @@ def run_progression_payload(root, run) -> dict:
         config["description"] = _mixer_running_stage_description(root)
     block = None
     if root is not None and run is not None:
-        if stage_key in {"ready_to_start_mixer"}:
-            block = _policy_block_payload(root, run, "primary_soak", "timing_short_primary_soak", "Primary soak timing deviation")
-        elif stage_key in {"ready_to_confirm_filter_clear", "ready_to_start_pressurization", "ready_to_begin_recovery", "ready_to_begin_flush_cycle"}:
+        if stage_key in {"ready_to_confirm_filter_clear", "ready_to_start_pressurization", "ready_to_begin_recovery", "ready_to_begin_flush_cycle"}:
             block = _policy_block_payload(root, run, "mixer", "timing_short_mixer", "Mixer timing deviation")
         elif stage_key in {"ready_to_confirm_flow_resumed", "flow_adjustment_required", "ready_to_start_final_purge"}:
             block = _policy_block_payload(root, run, "flush", "timing_short_flush", "Flush timing deviation")
@@ -1302,8 +1300,7 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
         session.current_stage_key = step_back["to_stage_key"]
         return
     active_block = (
-        _policy_block_payload(root, run, "primary_soak", "timing_short_primary_soak", "Primary soak timing deviation")
-        or _policy_block_payload(root, run, "mixer", "timing_short_mixer", "Mixer timing deviation")
+        _policy_block_payload(root, run, "mixer", "timing_short_mixer", "Mixer timing deviation")
         or _policy_block_payload(root, run, "flush", "timing_short_flush", "Flush timing deviation")
         or _policy_block_payload(root, run, "final_purge", "timing_short_final_purge", "Final purge timing deviation")
     )
@@ -1394,51 +1391,6 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
         if run.run_fill_started_at is None:
             raise ValueError("Start the primary soak before starting the mixer.")
         primary_soak_minutes = _active_duration_minutes(run.run_fill_started_at)
-        primary_soak_target = extraction_timing_targets(root).get("primary_soak_minutes")
-        primary_soak_policy = extraction_timing_policies(root).get("primary_soak", "warning")
-        primary_soak_short = (
-            primary_soak_minutes is not None
-            and primary_soak_target is not None
-            and primary_soak_minutes < primary_soak_target
-        )
-        if primary_soak_short and primary_soak_policy == "hard_stop":
-            raise ValueError(_timing_policy_message("Primary soak", "hard_stop"))
-        if primary_soak_short and primary_soak_policy == "supervisor_override" and not _notification_override_approved(root, run, "timing_short_primary_soak"):
-            primary_reason = _required_reason(
-                payload,
-                "primary_soak_short_reason",
-                "Enter a reason when the primary soak finishes short of target.",
-            )
-            create_notification(
-                root,
-                run=run,
-                booth_session=session,
-                event_key="timing_short_primary_soak",
-                dedupe_key="timing_short_primary_soak",
-                notification_class="warnings",
-                severity="critical",
-                title="Primary soak finished short of target",
-                message=f"Primary soak reached {primary_soak_minutes} minute(s) against a {primary_soak_target}-minute target and requires supervisor override.",
-                operator_reason=primary_reason,
-            )
-            raise ValueError(_timing_policy_message("Primary soak", "supervisor_override"))
-        if primary_soak_short and primary_soak_policy == "warning":
-            primary_reason = _required_reason(
-                payload,
-                "primary_soak_short_reason",
-                "Enter a reason when the primary soak finishes short of target.",
-            )
-            _notify_short_timing(
-                root,
-                run,
-                session,
-                event_key="timing_short_primary_soak",
-                label="Primary soak",
-                actual_minutes=primary_soak_minutes,
-                target_minutes=primary_soak_target,
-                policy=primary_soak_policy,
-                operator_reason=primary_reason,
-            )
         restarting_mixer = run.mixer_started_at is not None and run.mixer_ended_at is not None
         if not restarting_mixer and primary_soak_minutes is not None:
             constraints = extraction_mixer_constraints(root)

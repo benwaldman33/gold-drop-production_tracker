@@ -1731,12 +1731,8 @@ function mixerStartReasonRequirements(run) {
   const latest = Number(
     targets.mixer_start_latest_minutes ?? mixerConstraints.start_latest_minutes ?? 6,
   );
-  const soakTarget = Number(
-    targets.primary_soak_minutes ?? run?.timing_controls?.primary_soak?.target_minutes ?? 30,
-  );
   const needsWindowReason = soakMinutes != null && (soakMinutes < earliest || soakMinutes > latest);
-  const needsShortSoakReason = soakMinutes != null && soakMinutes < soakTarget;
-  return { soakMinutes, earliest, latest, soakTarget, needsWindowReason, needsShortSoakReason };
+  return { soakMinutes, earliest, latest, needsWindowReason };
 }
 
 function renderReasonTextarea(name, label, value, { visible = true } = {}) {
@@ -1777,18 +1773,12 @@ function renderCheckpointInputs(run) {
           run.mixer_start_timing_reason,
           { visible: mixerReasons.needsWindowReason },
         ),
-        renderReasonTextarea(
-          "primary_soak_short_reason",
-          "Reason if starting mixer before primary soak target",
-          run.primary_soak_short_reason,
-          { visible: mixerReasons.needsShortSoakReason },
-        ),
       ].filter(Boolean).join("");
       const hint = mixerReasons.soakMinutes == null
         ? ""
         : `<div class="subtle" style="margin-bottom:8px;">
             Primary soak elapsed: ${mixerReasons.soakMinutes} min
-            (mixer window ${mixerReasons.earliest}–${mixerReasons.latest} min, soak target ${mixerReasons.soakTarget} min).
+            (mixer start window ${mixerReasons.earliest}–${mixerReasons.latest} min; mixer runs during soak).
           </div>`;
       return `${hint}${fields || `<div class="subtle">Mixer timing is within the configured window. Tap Start Mixer to continue.</div>`}`;
     })(),

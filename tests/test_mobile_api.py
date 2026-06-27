@@ -592,7 +592,6 @@ def test_mobile_extraction_mixer_alerts_and_emergency_escalation():
             f"/api/mobile/v1/extraction/charges/{charge_id}/run",
             json={
                 "progression_action": "start_mixer",
-                "primary_soak_short_reason": "Mixer threshold alert scenario test.",
                 "mixer_start_timing_reason": "Mixer threshold alert scenario test.",
             },
         )
@@ -614,6 +613,79 @@ def test_mobile_extraction_mixer_alerts_and_emergency_escalation():
             ).order_by(app_module.SupervisorNotification.created_at.desc()).first()
             assert runtime_alert is not None
             assert runtime_alert.status in {"open", "acknowledged"}
+
+
+def test_mobile_extraction_start_mixer_within_window_without_soak_short_reason():
+    app = app_module.create_app()
+    _set_mobile_workflows(app)
+    with app.app_context():
+        for key, value in (
+            ("extraction_policy_primary_soak", "warning"),
+            ("extraction_target_primary_soak_minutes", "30"),
+        ):
+            row = db.session.get(SystemSetting, key)
+            if row is None:
+                row = SystemSetting(key=key, value=value)
+                db.session.add(row)
+            row.value = value
+        db.session.commit()
+    with app.test_client() as client:
+        _login_mobile(client)
+        with app.app_context():
+            supplier = Supplier(name=f"Mixer Window Supplier {gen_uuid()[:6]}", is_active=True)
+            db.session.add(supplier)
+            db.session.flush()
+            purchase = Purchase(
+                supplier_id=supplier.id,
+                purchase_date=app_module.date.today(),
+                status="delivered",
+                stated_weight_lbs=100,
+                actual_weight_lbs=100,
+                purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            )
+            db.session.add(purchase)
+            db.session.flush()
+            lot = app_module.PurchaseLot(
+                purchase_id=purchase.id,
+                strain_name="Mixer Window Dream",
+                weight_lbs=100,
+                remaining_weight_lbs=100,
+            )
+            db.session.add(lot)
+            db.session.flush()
+            charge = ExtractionCharge(
+                purchase_lot_id=lot.id,
+                reactor_number=1,
+                charged_weight_lbs=20,
+                source_mode="standalone_extraction",
+            )
+            db.session.add(charge)
+            db.session.commit()
+            charge_id = charge.id
+
+        for payload in (
+            {"progression_action": "confirm_biomass_loaded"},
+            {"chiller_check_actual_temp_c": -40, "progression_action": "confirm_chiller_temp_met"},
+            {"progression_action": "confirm_vacuum_down"},
+            {"primary_solvent_charge_lbs": 500, "progression_action": "record_solvent_charge"},
+            {"progression_action": "confirm_pressurized_50psi"},
+            {"progression_action": "start_primary_soak"},
+        ):
+            response = client.post(f"/api/mobile/v1/extraction/charges/{charge_id}/run", json=payload)
+            assert response.status_code == 200
+
+        with app.app_context():
+            run = db.session.get(ExtractionCharge, charge_id).run
+            run.run_fill_started_at = app_module.datetime.now(app_module.timezone.utc) - app_module.timedelta(minutes=3)
+            db.session.commit()
+
+        started = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={"progression_action": "start_mixer"},
+        )
+        assert started.status_code == 200
+        assert started.get_json()["data"]["run"]["progression"]["stage_key"] == "mixing"
+        assert started.get_json()["data"]["run"]["mixer_started_at"]
 
 
 def test_mobile_extraction_run_exception_handling_loops():
@@ -668,7 +740,7 @@ def test_mobile_extraction_run_exception_handling_loops():
             {"primary_solvent_charge_lbs": 500, "progression_action": "record_solvent_charge"},
             {"progression_action": "confirm_pressurized_50psi"},
             {"progression_action": "start_primary_soak"},
-            {"progression_action": "start_mixer", "primary_soak_short_reason": "Test sequence advances the soak timer immediately."},
+            {"progression_action": "start_mixer"},
             {"progression_action": "stop_mixer", "mixer_short_reason": "Test sequence advances the mixer timer immediately."},
             {"progression_action": "confirm_filter_clear"},
             {"progression_action": "start_pressurization"},
@@ -1833,7 +1905,7 @@ def test_mobile_extraction_run_execution_flow():
 
             start_mixer = client.post(
                 f"/api/mobile/v1/extraction/charges/{charge_id}/run",
-                json={"progression_action": "start_mixer", "primary_soak_short_reason": "QA flow advances the timer immediately."},
+                json={"progression_action": "start_mixer"},
             )
             assert start_mixer.status_code == 200
             stop_mixer = client.post(
