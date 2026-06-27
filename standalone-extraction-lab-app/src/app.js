@@ -9,9 +9,12 @@ import {
   defaultReactorValue,
   escapeHtml,
   lastNamedFormValue,
+  clockDurationMs as siteClockDurationMs,
   localDateTimeInputValue,
   namedFormCheckboxValue,
   parseRoute,
+  parseSiteClockDate,
+  siteTimeZone,
 } from "./ui-helpers.js";
 
 const config = getAppConfig();
@@ -806,7 +809,7 @@ function renderChargeForm() {
   const defaultWeight = draft?.charged_weight_lbs
     ? clampChargeWeight(Number(draft.charged_weight_lbs), maxWeight)
     : clampChargeWeight(chargeDefaults.charged_weight_lbs || presetWeight, maxWeight) || presetWeight;
-  const defaultTime = draft?.charged_at || chargeDefaults.charged_at || localDateTimeInputValue();
+  const defaultTime = draft?.charged_at || chargeDefaults.charged_at || localDateTimeInputValue(new Date(), boothClockTimeZone());
   const lookupContext = state.recentLookup && state.recentLookup.lot_id === lot.id ? state.recentLookup : null;
   return `
     <div class="layout-grid">
@@ -1769,10 +1772,14 @@ function renderCheckpointInputs(run) {
 // OPERATOR STATUS DASHBOARD — always-visible timers and ambient run chips.
 // ---------------------------------------------------------------------------
 
+function boothClockTimeZone() {
+  return siteTimeZone(state.auth.site);
+}
+
 const BOOTH_TIMER_SPECS = [
   {
     key: "primary_soak",
-    activeStages: new Set(["ready_to_start_mixer"]),
+    activeStages: new Set(["ready_to_start_primary_soak", "ready_to_start_mixer"]),
     liveClock(run) {
       return {
         label: "Primary soak",
@@ -1823,6 +1830,7 @@ const BOOTH_TIMER_SPECS = [
 function formatClockDurationShort(ms) {
   if (!Number.isFinite(ms) || ms < 0) return "00:00";
   const totalSeconds = Math.floor(ms / 1000);
+  if (totalSeconds >= 3600) return formatClockDuration(ms);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
@@ -1874,11 +1882,18 @@ function renderTimerDashboardRow(timing, liveClock, { active = false } = {}) {
         <span class="timer-row-state">${escapeHtml(statusLabels[statusKey] || "Pending")}</span>
       </div>
       <div class="timer-row-clocks">
-        <span class="timer-row-elapsed">${escapeHtml(elapsedShort)}</span>
+        <span class="timer-row-elapsed"
+          data-live-elapsed="1"
+          data-live-start-at="${escapeHtml(String(liveClock?.startAt || ""))}"
+          data-live-end-at="${escapeHtml(String(liveClock?.endAt || ""))}">${escapeHtml(elapsedShort)}</span>
         <span class="timer-row-target subtle">${escapeHtml(targetLabel)}</span>
       </div>
       ${progressPct == null ? "" : `
-        <div class="timer-progress-track" aria-hidden="true">
+        <div class="timer-progress-track" aria-hidden="true"
+          data-live-progress="1"
+          data-live-start-at="${escapeHtml(String(liveClock?.startAt || ""))}"
+          data-live-end-at="${escapeHtml(String(liveClock?.endAt || ""))}"
+          data-live-target-minutes="${targetMinutes == null ? "" : escapeHtml(String(targetMinutes))}">
           <div class="timer-progress-fill" style="width:${escapeHtml(String(Math.round(progressPct)))}%"></div>
         </div>`}
       <div class="timer-row-live">
@@ -2486,19 +2501,11 @@ function extractMinutes(text) {
 }
 
 function parseClockDate(value) {
-  const raw = String(value || "").trim();
-  if (!raw) return null;
-  const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
-  const date = new Date(normalized);
-  return Number.isNaN(date.getTime()) ? null : date;
+  return parseSiteClockDate(value, boothClockTimeZone());
 }
 
 function clockDurationMs(startAt, endAt) {
-  const startDate = parseClockDate(startAt);
-  if (!startDate) return null;
-  const endDate = parseClockDate(endAt);
-  const referenceMs = endDate ? endDate.getTime() : Date.now();
-  return Math.max(0, referenceMs - startDate.getTime());
+  return siteClockDurationMs(startAt, endAt, { timeZone: boothClockTimeZone() });
 }
 
 function formatClockDuration(ms) {
@@ -2590,6 +2597,26 @@ function analogClockAngles(startAt, endAt) {
 }
 
 function updateLiveClockNodes() {
+  app?.querySelectorAll("[data-live-elapsed='1']").forEach((node) => {
+    const startAt = node.getAttribute("data-live-start-at") || "";
+    const endAt = node.getAttribute("data-live-end-at") || "";
+    const elapsedMs = clockDurationMs(startAt, endAt);
+    node.textContent = elapsedMs == null ? "00:00" : formatClockDurationShort(elapsedMs);
+  });
+  app?.querySelectorAll("[data-live-progress='1']").forEach((node) => {
+    const startAt = node.getAttribute("data-live-start-at") || "";
+    const endAt = node.getAttribute("data-live-end-at") || "";
+    const rawTarget = node.getAttribute("data-live-target-minutes") || "";
+    const targetMinutes = rawTarget === "" ? null : Number(rawTarget);
+    const liveClock = {
+      startAt,
+      endAt,
+      targetMinutes: Number.isFinite(targetMinutes) ? targetMinutes : null,
+    };
+    const progressPct = computeTimerProgressPct(liveClock);
+    const fill = node.querySelector(".timer-progress-fill");
+    if (fill && progressPct != null) fill.style.width = `${Math.round(progressPct)}%`;
+  });
   app?.querySelectorAll("[data-live-clock='1']").forEach((node) => {
     const startAt = node.getAttribute("data-live-start-at") || "";
     const endAt = node.getAttribute("data-live-end-at") || "";
@@ -2612,7 +2639,7 @@ function startLiveClockTicker() {
   window.clearInterval(liveClockTimer);
   liveClockTimer = null;
   if (state.route.name !== "run") return;
-  if (!app?.querySelector("[data-live-clock='1']")) return;
+  if (!app?.querySelector("[data-live-clock='1'], [data-live-elapsed='1']")) return;
   updateLiveClockNodes();
   liveClockTimer = window.setInterval(updateLiveClockNodes, 1000);
 }
@@ -2807,7 +2834,7 @@ function handlePresetWeight(event) {
 
 function handleSetNow() {
   const input = app?.querySelector("input[name='charged_at']");
-  if (input) input.value = localDateTimeInputValue();
+  if (input) input.value = localDateTimeInputValue(new Date(), boothClockTimeZone());
 }
 
 function syncBlendDisplay() {
@@ -2825,7 +2852,7 @@ function syncBlendDisplay() {
 
 async function handleTimerStamp(event) {
   const field = event.currentTarget.dataset.field;
-  const value = localDateTimeInputValue();
+  const value = localDateTimeInputValue(new Date(), boothClockTimeZone());
   if (!field || !state.run || !state.route.chargeId) return;
   // Save immediately so the server record reflects the timestamp.
   // If we only update state.run in memory, any subsequent form save
@@ -2856,7 +2883,7 @@ function timerStopField(field) {
 
 async function handleTimerStop(event) {
   const targetField = timerStopField(event.currentTarget.dataset.field || "");
-  const value = localDateTimeInputValue();
+  const value = localDateTimeInputValue(new Date(), boothClockTimeZone());
   if (!targetField || !state.run || !state.route.chargeId) return;
   // Save immediately so the server record reflects the stop timestamp.
   // Without an immediate save, subsequent form submits return a server

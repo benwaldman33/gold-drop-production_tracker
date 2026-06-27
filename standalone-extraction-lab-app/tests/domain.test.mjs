@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { clampChargeWeight, halfLotChargeWeight, lotTitle, normalizeText, preferredChargeWeight, readyLotCount, stateTone } from "../src/domain.js";
-import { buildReactorActionMarkup, defaultChargeValue, defaultReactorValue, parseRoute } from "../src/ui-helpers.js";
+import { buildReactorActionMarkup, defaultChargeValue, defaultReactorValue, parseRoute, clockDurationMs, parseSiteClockDate, siteTimeZone } from "../src/ui-helpers.js";
 
 test("normalizeText trims and lowercases", () => {
   assert.equal(normalizeText("  Reactor   Bay "), "reactor bay");
@@ -49,4 +49,35 @@ test("reactor action markup promotes open run to a primary button", () => {
   assert.match(markup, /class="btn btn-primary" href="#\/runs\/charge\/chg-123">Open Run<\/a>/);
   assert.match(markup, /Mark Running/);
   assert.match(markup, /Cancel Charge/);
+});
+
+test("parseSiteClockDate interprets API timestamps in site timezone", () => {
+  const timeZone = "America/Los_Angeles";
+  const start = parseSiteClockDate("2026-06-27T14:00", timeZone);
+  assert.ok(start);
+  const end = parseSiteClockDate("2026-06-27T14:05", timeZone);
+  const elapsedMs = clockDurationMs("2026-06-27T14:00", "2026-06-27T14:05", { timeZone, now: end.getTime() });
+  assert.equal(elapsedMs, 5 * 60_000);
+});
+
+test("parseSiteClockDate round trips site-local wall time", () => {
+  const timeZone = "America/Los_Angeles";
+  const parsed = parseSiteClockDate("2026-06-27T14:00", timeZone);
+  assert.ok(parsed);
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hour12: false,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).formatToParts(parsed).map((part) => [part.type, part.value]),
+  );
+  assert.equal(parts.year, "2026");
+  assert.equal(parts.month, "06");
+  assert.equal(parts.day, "27");
+  assert.equal(parts.hour === "24" ? "00" : parts.hour, "14");
+  assert.equal(parts.minute, "00");
 });

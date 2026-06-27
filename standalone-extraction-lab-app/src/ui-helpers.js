@@ -30,11 +30,82 @@ export function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
-export function localDateTimeInputValue(value = new Date()) {
+export function siteTimeZone(site) {
+  return site?.site_timezone || "America/Los_Angeles";
+}
+
+export function parseSiteClockDate(value, timeZone = "America/Los_Angeles") {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  if (/[zZ]|[+-]\d{2}:\d{2}$/.test(raw)) {
+    const date = new Date(raw);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
+  const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (!match) {
+    const date = new Date(normalized);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6] || "0");
+  let utcMs = Date.UTC(year, month - 1, day, hour, minute, second);
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const parts = Object.fromEntries(formatter.formatToParts(new Date(utcMs)).map((part) => [part.type, part.value]));
+    const displayedHour = Number(parts.hour === "24" ? "0" : parts.hour);
+    const displayedUtc = Date.UTC(
+      Number(parts.year),
+      Number(parts.month) - 1,
+      Number(parts.day),
+      displayedHour,
+      Number(parts.minute),
+      Number(parts.second),
+    );
+    const desiredUtc = Date.UTC(year, month - 1, day, hour, minute, second);
+    const delta = desiredUtc - displayedUtc;
+    if (delta === 0) break;
+    utcMs += delta;
+  }
+  return new Date(utcMs);
+}
+
+export function clockDurationMs(startAt, endAt, { timeZone = "America/Los_Angeles", now = Date.now() } = {}) {
+  const startDate = parseSiteClockDate(startAt, timeZone);
+  if (!startDate) return null;
+  const endDate = parseSiteClockDate(endAt, timeZone);
+  const referenceMs = endDate ? endDate.getTime() : now;
+  return Math.max(0, referenceMs - startDate.getTime());
+}
+
+export function localDateTimeInputValue(value = new Date(), timeZone = "America/Los_Angeles") {
   const dt = new Date(value);
-  const offset = dt.getTimezoneOffset();
-  const shifted = new Date(dt.getTime() - offset * 60_000);
-  return shifted.toISOString().slice(0, 16);
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hour12: false,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).formatToParts(dt).map((part) => [part.type, part.value]),
+  );
+  const hour = parts.hour === "24" ? "00" : parts.hour;
+  return `${parts.year}-${parts.month}-${parts.day}T${hour}:${parts.minute}`;
 }
 
 export function shortDateTime(value) {
