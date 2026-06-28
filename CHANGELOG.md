@@ -29,7 +29,7 @@
 - **Final purge timer** on the operator run screen now reads purge start/stop timestamps from the booth session (live API) instead of empty run-root fields, so the clock starts when **Start Final Purge** is tapped.
 - **Reactor Emptied** now works for **cancelled** loads as well as completed ones, so a reactor shows **Empty** on the board after pour-out instead of staying stuck on today's cancelled charge.
 - **Start Mixer** no longer requires a primary-soak-short reason when the soak timer is still counting toward its full target. Mixer start is gated only by the configured start window (defaults: 3–6 minutes into soak); the mixer runs during primary soak.
-- **Confirm Primary Soak Ended** now always shows the short-soak reason field when elapsed soak time is below target (including when the client cannot compute elapsed minutes locally), matching backend enforcement.
+- **Confirm Primary Soak Ended** reason field was hidden when a soak stop timestamp was already recorded but the soak was still short of target; the reason textarea now always appears at that checkpoint and short-soak detection uses the live soak clock instead of stale timing snapshots.
 - **Start Mixer** no longer rebuilds the checkpoint form before the save finishes, which prevented stray browser autofill characters from appearing in reason fields. Reason textareas at that step now appear only when the applicable timing rule requires one (outside the mixer start window, or before the primary soak target).
 
 ## 2026-06-19

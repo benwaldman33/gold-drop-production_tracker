@@ -22,6 +22,7 @@ import {
   namedFormCheckboxValue,
   parseRoute,
   parseSiteClockDate,
+  primarySoakEndReasonRequirements,
   siteTimeZone,
 } from "./ui-helpers.js";
 
@@ -1725,25 +1726,9 @@ function renderTimingControlCard(timing, liveClock = null) {
 }
 
 function soakElapsedMinutes(run) {
-  if (!run?.run_fill_ended_at) {
-    const activeMinutes = run?.timing_controls?.primary_soak?.active_minutes;
-    if (activeMinutes != null) return Number(activeMinutes);
-  }
-  const elapsedMs = clockDurationMs(run?.run_fill_started_at, run?.run_fill_ended_at);
+  const elapsedMs = clockDurationMs(run?.run_fill_started_at, run?.run_fill_ended_at || null);
   if (elapsedMs == null) return null;
   return Math.floor(elapsedMs / 60000);
-}
-
-function primarySoakEndReasonRequirements(run) {
-  if (run?.run_fill_ended_at) return { needsShortSoakReason: false, soakMinutes: null, soakTarget: null };
-  const soakMinutes = soakElapsedMinutes(run);
-  const targets = run?.booth?.timing_targets || {};
-  const soakTarget = Number(
-    targets.primary_soak_minutes ?? run?.timing_controls?.primary_soak?.target_minutes ?? 30,
-  );
-  const needsShortSoakReason =
-    soakMinutes == null || soakMinutes < soakTarget;
-  return { soakMinutes, soakTarget, needsShortSoakReason };
 }
 
 function mixerStartReasonRequirements(run) {
@@ -1830,12 +1815,11 @@ function renderCheckpointInputs(run) {
       return `${hint}${fields || `<div class="subtle">Mixer timing is within the configured window. Tap Start Mixer to continue.</div>`}`;
     })(),
     ready_to_confirm_primary_soak_ended: (() => {
-      const soakReasons = primarySoakEndReasonRequirements(run);
+      const soakReasons = primarySoakEndReasonRequirements(run, { timeZone: boothClockTimeZone() });
       const fields = renderReasonTextarea(
         "primary_soak_short_reason",
         "Reason if primary soak finished short of target",
         run.primary_soak_short_reason,
-        { visible: soakReasons.needsShortSoakReason },
       );
       const hint = soakReasons.soakMinutes == null
         ? `<div class="subtle" style="margin-bottom:8px;">

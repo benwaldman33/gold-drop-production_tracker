@@ -194,6 +194,23 @@ export function defaultReactorValue(preferredReactor, reactorCount) {
   return preferredReactorNumber(preferredReactor, reactorCount);
 }
 
+export function primarySoakEndSoakMinutes(run, { timeZone = "America/Los_Angeles", now = Date.now() } = {}) {
+  if (!run?.run_fill_started_at) return null;
+  const elapsedMs = clockDurationMs(run.run_fill_started_at, run.run_fill_ended_at || null, { timeZone, now });
+  if (elapsedMs == null) return null;
+  return Math.round(elapsedMs / 60000);
+}
+
+export function primarySoakEndReasonRequirements(run, options = {}) {
+  const targets = run?.booth?.timing_targets || {};
+  const soakTarget = Number(
+    targets.primary_soak_minutes ?? run?.timing_controls?.primary_soak?.target_minutes ?? 30,
+  );
+  const soakMinutes = primarySoakEndSoakMinutes(run, options);
+  const needsShortSoakReason = soakMinutes == null || soakMinutes < soakTarget;
+  return { soakMinutes, soakTarget, needsShortSoakReason };
+}
+
 export function buildReactorActionMarkup(current, escape = escapeHtml) {
   const actions = current?.available_actions || [];
   const hasOpenRun = Boolean(current?.charge_id);

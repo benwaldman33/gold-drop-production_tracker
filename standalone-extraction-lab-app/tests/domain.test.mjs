@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { clampChargeWeight, halfLotChargeWeight, lotTitle, normalizeText, preferredChargeWeight, readyLotCount, stateTone } from "../src/domain.js";
-import { buildReactorActionMarkup, defaultChargeValue, defaultReactorValue, parseRoute, clockDurationMs, parseSiteClockDate, siteTimeZone, isBiomassPrepDone, isChillerPrepDone, hasBoothEvent, finalPurgeStartedAt, finalPurgeCompletedAt } from "../src/ui-helpers.js";
+import { buildReactorActionMarkup, defaultChargeValue, defaultReactorValue, parseRoute, clockDurationMs, parseSiteClockDate, siteTimeZone, isBiomassPrepDone, isChillerPrepDone, hasBoothEvent, finalPurgeStartedAt, finalPurgeCompletedAt, primarySoakEndReasonRequirements } from "../src/ui-helpers.js";
 
 test("normalizeText trims and lowercases", () => {
   assert.equal(normalizeText("  Reactor   Bay "), "reactor bay");
@@ -113,4 +113,28 @@ test("final purge timestamps resolve from run root or booth session", () => {
     finalPurgeCompletedAt({ booth: { final_purge_completed_at: "2026-06-27T14:35" } }),
     "2026-06-27T14:35",
   );
+});
+
+test("primary soak end reason required when soak ended early via timestamp", () => {
+  const timeZone = "America/Los_Angeles";
+  const run = {
+    run_fill_started_at: "2026-06-27T14:00",
+    run_fill_ended_at: "2026-06-27T14:15",
+    timing_controls: { primary_soak: { target_minutes: 30, active_minutes: 30 } },
+  };
+  const req = primarySoakEndReasonRequirements(run, { timeZone });
+  assert.equal(req.soakMinutes, 15);
+  assert.equal(req.needsShortSoakReason, true);
+});
+
+test("primary soak end reason not required when soak reached target", () => {
+  const timeZone = "America/Los_Angeles";
+  const run = {
+    run_fill_started_at: "2026-06-27T14:00",
+    run_fill_ended_at: "2026-06-27T14:35",
+    timing_controls: { primary_soak: { target_minutes: 30 } },
+  };
+  const req = primarySoakEndReasonRequirements(run, { timeZone });
+  assert.equal(req.soakMinutes, 35);
+  assert.equal(req.needsShortSoakReason, false);
 });
