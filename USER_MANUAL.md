@@ -471,7 +471,7 @@ Mixer timing controls have explicit safety alerts during primary extraction. By 
 
 At **Start Mixer**, the operator screen shows a reason field only when starting outside the configured mixer start window (defaults: before 3 minutes or after 6 minutes into primary soak). If timing is already within that window, tap **Start Mixer** without entering a reason. The mixer runs during primary soak; primary soak target time is separate from the mixer start window.
 
-At **Confirm Primary Soak Ended**, the operator screen shows a reason field only when the soak finishes short of its configured target. Confirming this step records `run_fill_ended_at` and stops the primary soak timer. Pressurization remains locked until this checkpoint and **Confirm Reactor Bottom Burped** are complete.
+At **Confirm Primary Soak Ended**, enter a reason if the soak is finishing before its configured target (defaults: 30 minutes). The reason field appears at this checkpoint whenever the soak is still short of target. Confirming this step records the soak stop time and ends the primary soak timer. Pressurization remains locked until this checkpoint and **Confirm Reactor Bottom Burped** are complete.
 
 After **Mark Run Complete**, the reactor-focused run view now points operators to the standalone app **Downstream** tab. Open the run from that queue to continue the guided post-extraction steps.
 

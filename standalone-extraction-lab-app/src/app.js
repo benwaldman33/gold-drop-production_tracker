@@ -1720,10 +1720,12 @@ function renderTimingControlCard(timing, liveClock = null) {
 }
 
 function soakElapsedMinutes(run) {
-  const start = parseSiteClockDate(run?.run_fill_started_at, boothClockTimeZone());
-  if (!start) return null;
-  const elapsedMs = Date.now() - start.getTime();
-  if (!Number.isFinite(elapsedMs) || elapsedMs < 0) return null;
+  if (!run?.run_fill_ended_at) {
+    const activeMinutes = run?.timing_controls?.primary_soak?.active_minutes;
+    if (activeMinutes != null) return Number(activeMinutes);
+  }
+  const elapsedMs = clockDurationMs(run?.run_fill_started_at, run?.run_fill_ended_at);
+  if (elapsedMs == null) return null;
   return Math.floor(elapsedMs / 60000);
 }
 
@@ -1734,7 +1736,8 @@ function primarySoakEndReasonRequirements(run) {
   const soakTarget = Number(
     targets.primary_soak_minutes ?? run?.timing_controls?.primary_soak?.target_minutes ?? 30,
   );
-  const needsShortSoakReason = soakMinutes != null && soakMinutes < soakTarget;
+  const needsShortSoakReason =
+    soakMinutes == null || soakMinutes < soakTarget;
   return { soakMinutes, soakTarget, needsShortSoakReason };
 }
 
@@ -1808,11 +1811,19 @@ function renderCheckpointInputs(run) {
         { visible: soakReasons.needsShortSoakReason },
       );
       const hint = soakReasons.soakMinutes == null
-        ? `<div class="subtle" style="margin-bottom:8px;">Confirm primary soak ended to stop the soak timer before burping the reactor bottom.</div>`
-        : `<div class="subtle" style="margin-bottom:8px;">
-            Primary soak elapsed: ${soakReasons.soakMinutes} min
-            (target ${soakReasons.soakTarget} min). Tap Confirm Primary Soak Ended to record the stop time.
-          </div>`;
+        ? `<div class="subtle" style="margin-bottom:8px;">
+            Confirm primary soak ended to stop the soak timer before burping the reactor bottom.
+            Enter a reason below if finishing before the ${soakReasons.soakTarget} minute target.
+          </div>`
+        : soakReasons.needsShortSoakReason
+          ? `<div class="subtle" style="margin-bottom:8px;">
+              Primary soak elapsed: ${soakReasons.soakMinutes} min
+              (target ${soakReasons.soakTarget} min). Enter a reason below, then tap Confirm Primary Soak Ended.
+            </div>`
+          : `<div class="subtle" style="margin-bottom:8px;">
+              Primary soak elapsed: ${soakReasons.soakMinutes} min
+              (target ${soakReasons.soakTarget} min). Tap Confirm Primary Soak Ended to record the stop time.
+            </div>`;
       return `${hint}${fields}`;
     })(),
     ready_to_confirm_reactor_bottom_burped: `
