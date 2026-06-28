@@ -3,11 +3,13 @@
 ## 2026-06-27
 
 ### Added
+- **Flush soak mixer cycle** — during flush soak, operators can **Start Flush Mixer** in the last 5 minutes of soak (defaults: minute 5 of a 10-minute flush) and **End Flush Mixer** after a 5-minute run. Timestamps on `Run.flush_mixer_started_at` / `flush_mixer_ended_at`; live timer and timing controls in the standalone app; admin settings for flush-mixer window in standalone **Settings**.
 - **Configurable primary mixer timing window** — four admin settings control when the mixer may start during primary soak (earliest/latest, defaults 3–6 min) and how long it must run (minimum/maximum, defaults 5–7 min). Available in the main app **Operational Parameters** form and the standalone extraction lab **Settings** panel (admin). Alerts and enforcement use the configured values.
 - **Primary soak end and reactor bottom burp checkpoints** — after **End Mixer**, operators must **Confirm Primary Soak Ended** (stops and records the primary soak timer) and **Confirm Reactor Bottom Burped** before **Confirm Filter Clear** and **Start Pressurization**.
 
 ### Changed
-- The standalone extraction **operator run screen** now uses a status-first dashboard layout: a compact **run status strip** (prep pills plus key readings such as chiller, solvent, and clarity) and an always-visible **live timers panel** for primary soak, mixer, flush soak, and final purge while the operator works the current checkpoint.
+- Updated README, FAQ, PRD, ENGINEERING, USER_MANUAL, API_REFERENCE, SOP alignment plan, workflow integration/session-resume notes, current-state workflow docs, standalone app README/DEPLOYMENT/FIX_BACKLOG, and `/docs` workflow HTML assets for the flush-mixer cycle and five-timer operator dashboard.
+- The standalone extraction **operator run screen** now uses a status-first dashboard layout: a compact **run status strip** (prep pills plus key readings such as chiller, solvent, and clarity) and an always-visible **live timers panel** for primary soak, mixer, flush soak, flush mixer, and final purge while the operator works the current checkpoint.
 - On wide tablet layouts, the checkpoint column and live timers panel render side by side; on phones the timers stack below the checkpoint column.
 - The verbose **workflow phases** rail and **prep/reset visibility** checklist were removed from the operator run screen and remain on the **supervisor run screen** only.
 

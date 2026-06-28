@@ -688,6 +688,89 @@ def test_mobile_extraction_start_mixer_within_window_without_soak_short_reason()
         assert started.get_json()["data"]["run"]["mixer_started_at"]
 
 
+def test_mobile_extraction_start_flush_mixer_within_window():
+    app = app_module.create_app()
+    _set_mobile_workflows(app)
+    with app.test_client() as client:
+        _login_mobile(client)
+        with app.app_context():
+            supplier = Supplier(name=f"Flush Mixer Supplier {gen_uuid()[:6]}", is_active=True)
+            db.session.add(supplier)
+            db.session.flush()
+            purchase = Purchase(
+                supplier_id=supplier.id,
+                purchase_date=app_module.date.today(),
+                status="delivered",
+                stated_weight_lbs=100,
+                actual_weight_lbs=100,
+                purchase_approved_at=app_module.datetime.now(app_module.timezone.utc),
+            )
+            db.session.add(purchase)
+            db.session.flush()
+            lot = app_module.PurchaseLot(
+                purchase_id=purchase.id,
+                strain_name="Flush Mixer Dream",
+                weight_lbs=100,
+                remaining_weight_lbs=100,
+            )
+            db.session.add(lot)
+            db.session.flush()
+            charge = ExtractionCharge(
+                purchase_lot_id=lot.id,
+                reactor_number=1,
+                charged_weight_lbs=20,
+                source_mode="standalone_extraction",
+            )
+            db.session.add(charge)
+            db.session.commit()
+            charge_id = charge.id
+
+        sequence = [
+            {"progression_action": "confirm_biomass_loaded"},
+            {"chiller_check_actual_temp_c": -40, "progression_action": "confirm_chiller_temp_met"},
+            {"progression_action": "confirm_vacuum_down"},
+            {"primary_solvent_charge_lbs": 500, "progression_action": "record_solvent_charge"},
+            {"progression_action": "confirm_pressurized_50psi"},
+            {"progression_action": "start_primary_soak"},
+            {"progression_action": "start_mixer"},
+            {"progression_action": "stop_mixer", "mixer_short_reason": "Advance flush mixer test path."},
+            {"progression_action": "confirm_primary_soak_ended", "primary_soak_short_reason": "Advance flush mixer test path."},
+            {"progression_action": "confirm_reactor_bottom_burped"},
+            {"progression_action": "confirm_filter_clear"},
+            {"progression_action": "start_pressurization"},
+            {"progression_action": "begin_recovery"},
+            {"progression_action": "begin_flush_cycle"},
+            {"flush_solvent_chiller_temp_f": -45, "flush_plate_temp_f": -41, "progression_action": "verify_flush_temps"},
+            {"flush_solvent_charge_lbs": 500, "progression_action": "record_flush_solvent_charge"},
+            {"progression_action": "start_flush"},
+        ]
+        for payload in sequence:
+            response = client.post(f"/api/mobile/v1/extraction/charges/{charge_id}/run", json=payload)
+            assert response.status_code == 200
+
+        with app.app_context():
+            run = db.session.get(ExtractionCharge, charge_id).run
+            run.flush_started_at = app_module.datetime.now(app_module.timezone.utc) - app_module.timedelta(minutes=5)
+            db.session.commit()
+
+        started = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={"progression_action": "start_flush_mixer"},
+        )
+        assert started.status_code == 200
+        body = started.get_json()["data"]["run"]
+        assert body["progression"]["stage_key"] == "flush_mixing"
+        assert body["flush_mixer_started_at"]
+        assert body["timing_controls"]["flush_mixer"]["status"] == "active"
+
+        stopped_mixer = client.post(
+            f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+            json={"progression_action": "stop_flush_mixer", "flush_mixer_short_reason": "Advance flush mixer test path."},
+        )
+        assert stopped_mixer.status_code == 200
+        assert stopped_mixer.get_json()["data"]["run"]["progression"]["stage_key"] == "flushing"
+
+
 def test_mobile_extraction_run_exception_handling_loops():
     app = app_module.create_app()
     _set_mobile_workflows(app)

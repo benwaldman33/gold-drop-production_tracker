@@ -170,13 +170,9 @@ This version organizes the current shipped workflow by role so teams can review 
 ### 9. Run progression advanced
 
 **Extractor / Assistant Extractor**
-- advances the run through the current guided progression:
-  - `Start Run`
-  - `Start Mixer`
-  - `Stop Mixer`
-  - `Start Flush`
-  - `Stop Flush`
-  - `Mark Run Complete`
+- advances the run through the current guided progression, including primary soak end confirmation, reactor bottom burp, flush soak, flush mixer cycle, flow-resumed decision, final purge, clarity, shutdown, and run completion
+
+Representative actions: `Start Mixer`, `End Mixer`, `Confirm Primary Soak Ended`, `Confirm Reactor Bottom Burped`, `Start Flush`, `Start Flush Mixer`, `End Flush Mixer`, `Stop Flush`, `Mark Run Complete`
 
 **Current system behavior**
 - timestamps are written automatically

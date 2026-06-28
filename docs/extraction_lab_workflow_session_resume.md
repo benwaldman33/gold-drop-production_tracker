@@ -40,25 +40,30 @@ The current code-backed extraction progression in `services/extraction_run.py` i
 
 1. `Confirm Under Vacuum`
 2. `Record Solvent Charge`
-3. `Start Primary Soak`
-4. `Start Mixer`
-5. `Stop Mixer`
-6. `Confirm Filter Clear`
-7. `Start Pressurization`
-8. `Begin Recovery`
-9. `Begin Flush Cycle`
-10. `Verify Flush Temps`
-11. `Record Flush Solvent Charge`
-12. `Start Flush`
-13. `Stop Flush`
-14. `Confirm Flow Resumed`
-15. `Start Final Purge`
-16. `Stop Final Purge`
-17. `Confirm Final Clarity`
-18. `Complete Shutdown`
-19. `Mark Run Complete`
-20. `Start Post-Extraction`
-21. `Confirm Initial Outputs`
+3. `Confirm 50 PSI`
+4. `Start Primary Soak`
+5. `Start Mixer`
+6. `End Mixer`
+7. `Confirm Primary Soak Ended`
+8. `Confirm Reactor Bottom Burped`
+9. `Confirm Filter Clear`
+10. `Start Pressurization`
+11. `Begin Recovery`
+12. `Begin Flush Cycle`
+13. `Verify Flush Temps`
+14. `Record Flush Solvent Charge`
+15. `Start Flush`
+16. `Start Flush Mixer`
+17. `End Flush Mixer`
+18. `Stop Flush`
+19. `Confirm Flow Resumed`
+20. `Start Final Purge`
+21. `Stop Final Purge`
+22. `Confirm Final Clarity`
+23. `Complete Shutdown`
+24. `Mark Run Complete`
+25. `Start Post-Extraction`
+26. `Confirm Initial Outputs`
 
 Post-extraction handoff is blocked until `run_completed_at` exists. `Start Post-Extraction` requires a selected pathway. `Confirm Initial Outputs` requires both wet THCA and wet HTE values.
 
@@ -129,7 +134,7 @@ Specific differences:
 - Original has two visual decisions: `Flow Resumed?` and `Everything's Clear?`
 - Newer charts/code use four decision gates: lot readiness, flush temperature, flow resumed, final clarity.
 - Original says final burp is roughly 30 minutes. Code treats final purge target as optional/settings-driven.
-- Original says flush soak is 10 minutes and mixer runs last 5 minutes. Code has flush timing but no separate flush mixer timer.
+- Original says flush soak is 10 minutes and mixer runs last 5 minutes. Code now models both with separate flush soak and flush mixer timers (`flush_started_at` / `flush_mixer_started_at` on `Run`), defaulting to mixer start at minute 5 of a 10-minute flush soak.
 
 Best use of original PNG:
 

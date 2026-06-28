@@ -21,6 +21,10 @@ const MOCK_TIMING_TARGETS = {
   mixer_run_min_minutes: 5,
   mixer_run_max_minutes: 7,
   flush_minutes: 10,
+  flush_mixer_minutes: 5,
+  flush_mixer_start_before_end_minutes: 5,
+  flush_mixer_run_min_minutes: 5,
+  flush_mixer_run_max_minutes: 5,
   final_purge_minutes: null,
 };
 
@@ -33,6 +37,9 @@ function defaultOperationalSettings() {
     mixer_start_latest_minutes: MOCK_TIMING_TARGETS.mixer_start_latest_minutes,
     mixer_run_min_minutes: MOCK_TIMING_TARGETS.mixer_run_min_minutes,
     mixer_run_max_minutes: MOCK_TIMING_TARGETS.mixer_run_max_minutes,
+    flush_mixer_start_before_end_minutes: MOCK_TIMING_TARGETS.flush_mixer_start_before_end_minutes,
+    flush_mixer_run_min_minutes: MOCK_TIMING_TARGETS.flush_mixer_run_min_minutes,
+    flush_mixer_run_max_minutes: MOCK_TIMING_TARGETS.flush_mixer_run_max_minutes,
   };
 }
 
@@ -52,7 +59,37 @@ function operationalSettingsFromSession(session) {
     mixer_start_latest_minutes: site.mixer_start_latest_minutes ?? defaultOperationalSettings().mixer_start_latest_minutes,
     mixer_run_min_minutes: site.mixer_run_min_minutes ?? defaultOperationalSettings().mixer_run_min_minutes,
     mixer_run_max_minutes: site.mixer_run_max_minutes ?? defaultOperationalSettings().mixer_run_max_minutes,
+    flush_mixer_start_before_end_minutes: site.flush_mixer_start_before_end_minutes ?? defaultOperationalSettings().flush_mixer_start_before_end_minutes,
+    flush_mixer_run_min_minutes: site.flush_mixer_run_min_minutes ?? defaultOperationalSettings().flush_mixer_run_min_minutes,
+    flush_mixer_run_max_minutes: site.flush_mixer_run_max_minutes ?? defaultOperationalSettings().flush_mixer_run_max_minutes,
   };
+}
+
+function flushMixerStartWindow(settings = defaultOperationalSettings()) {
+  const flushTarget = MOCK_TIMING_TARGETS.flush_minutes;
+  const startBeforeEnd = settings.flush_mixer_start_before_end_minutes ?? 5;
+  const runMin = settings.flush_mixer_run_min_minutes ?? 5;
+  const runMax = settings.flush_mixer_run_max_minutes ?? 5;
+  let earliest = Math.max(0, flushTarget - startBeforeEnd);
+  let latest = Math.max(0, flushTarget - runMin);
+  if (latest < earliest) [earliest, latest] = [latest, earliest];
+  return { startBeforeEnd, runMin, runMax, earliest, latest };
+}
+
+function flushStageDescription(settings = defaultOperationalSettings()) {
+  const window = flushMixerStartWindow(settings);
+  return (
+    `Flush soak is active. Start the flush mixer between ${window.earliest} and ${window.latest} minutes into flush soak `
+    + `and run it for ${window.runMin} to ${window.runMax} minutes.`
+  );
+}
+
+function flushMixerRunningDescription(settings = defaultOperationalSettings()) {
+  const window = flushMixerStartWindow(settings);
+  return (
+    `Flush mixer timing is active during flush soak. End flush mixer after at least ${window.runMin} minute(s) `
+    + `and before ${window.runMax} minute(s) of runtime.`
+  );
 }
 
 function mixerStageDescription(settings) {
@@ -202,12 +239,27 @@ function progressionForRun(run, settings = defaultOperationalSettings()) {
       completed_at: run.run_completed_at,
     };
   }
+  if (run.flush_mixer_started_at && !run.flush_mixer_ended_at) {
+    const settings = defaultOperationalSettings();
+    return {
+      stage_key: "flush_mixing",
+      stage_label: "Flush mixer running",
+      description: flushMixerRunningDescription(settings),
+      actions: [{ action_id: "stop_flush_mixer", label: "End Flush Mixer" }],
+      completed_at: "",
+    };
+  }
   if (run.flush_started_at && !run.flush_ended_at) {
+    const settings = defaultOperationalSettings();
+    const actions = [{ action_id: "stop_flush", label: "Stop Flush" }];
+    if (!run.flush_mixer_ended_at) {
+      actions.unshift({ action_id: "start_flush_mixer", label: "Start Flush Mixer" });
+    }
     return {
       stage_key: "flushing",
-      stage_label: "Flush running",
-      description: "Flush timing is active. Stop it when the flush is done.",
-      actions: [{ action_id: "stop_flush", label: "Stop Flush" }],
+      stage_label: "Flush soak running",
+      description: flushStageDescription(settings),
+      actions,
       completed_at: "",
     };
   }
@@ -304,6 +356,11 @@ function progressionForRun(run, settings = defaultOperationalSettings()) {
       description: "The flush solvent load is recorded. Start the flush timer when the flush soak begins.",
       actions: [{ action_id: "start_flush", label: "Start Flush" }],
     },
+    flush_mixing: {
+      stage_label: "Flush mixer running",
+      description: flushMixerRunningDescription(defaultOperationalSettings()),
+      actions: [{ action_id: "stop_flush_mixer", label: "End Flush Mixer" }],
+    },
     ready_to_confirm_flow_resumed: {
       stage_label: "Confirm flow resumed",
       description: "Record whether flow resumed after flush recovery adjustments.",
@@ -354,6 +411,8 @@ function progressionForRun(run, settings = defaultOperationalSettings()) {
         + `and before ${settings.mixer_run_max_minutes} minute(s) of runtime.`
       );
     }
+    if (stageKey === "flushing") description = flushStageDescription(settings);
+    if (stageKey === "flush_mixing") description = flushMixerRunningDescription(settings);
     return {
       stage_key: stageKey,
       stage_label: config.stage_label,
@@ -618,11 +677,63 @@ function applyMockProgressionAction(run, action, payload = {}, settings = loadOp
   }
   if (action === "start_flush") {
     if (run.booth_stage_key !== "ready_to_flush") throw new Error("Begin the flush cycle before starting the flush timer.");
-    if (!run.flush_started_at) run.flush_started_at = now;
+    if (!run.flush_started_at) {
+      run.flush_started_at = now;
+      run.flush_mixer_started_at = "";
+      run.flush_mixer_ended_at = "";
+    }
+    run.booth_stage_key = "flushing";
+    return;
+  }
+  if (action === "start_flush_mixer") {
+    if (!run.flush_started_at) throw new Error("Start the flush soak before starting the flush mixer.");
+    if (run.flush_ended_at) throw new Error("Flush soak has already ended.");
+    if (run.flush_mixer_ended_at) throw new Error("Flush mixer has already completed for this soak.");
+    if (run.flush_mixer_started_at && !run.flush_mixer_ended_at) throw new Error("Flush mixer is already running.");
+    const flushMinutes = activeMinutesSince(run.flush_started_at);
+    const window = flushMixerStartWindow(settings);
+    if (flushMinutes != null) {
+      if (flushMinutes < window.earliest) {
+        const reason = String(payload.flush_mixer_start_timing_reason || "").trim();
+        if (!reason) {
+          throw new Error(
+            `Flush mixer cannot start until minute ${window.earliest} of flush soak (currently ${flushMinutes} minute(s)). Enter a reason to continue.`,
+          );
+        }
+      } else if (flushMinutes > window.latest) {
+        const reason = String(payload.flush_mixer_start_timing_reason || "").trim();
+        if (!reason) {
+          throw new Error(
+            `Flush mixer should have started by minute ${window.latest} of flush soak (currently ${flushMinutes} minute(s)). Enter a reason to continue.`,
+          );
+        }
+      }
+    }
+    run.flush_mixer_started_at = now;
+    run.flush_mixer_ended_at = "";
+    run.booth_stage_key = "flush_mixing";
+    return;
+  }
+  if (action === "stop_flush_mixer") {
+    if (!run.flush_mixer_started_at) throw new Error("Start the flush mixer before ending it.");
+    const runtimeMinutes = activeMinutesSince(run.flush_mixer_started_at);
+    if (runtimeMinutes != null && runtimeMinutes < settings.flush_mixer_run_min_minutes) {
+      const reason = String(payload.flush_mixer_short_reason || "").trim();
+      if (!reason) {
+        throw new Error(
+          `Flush mixer must run at least ${settings.flush_mixer_run_min_minutes} minute(s). Enter a reason when ending early.`,
+        );
+      }
+    }
+    run.flush_mixer_ended_at = now;
+    run.booth_stage_key = "flushing";
     return;
   }
   if (action === "stop_flush") {
     if (!run.flush_started_at) throw new Error("Start the flush before stopping it.");
+    if (run.flush_mixer_started_at && !run.flush_mixer_ended_at) {
+      throw new Error("End flush mixer before stopping the flush soak.");
+    }
     run.flush_ended_at = now;
     run.booth_stage_key = "ready_to_confirm_flow_resumed";
     return;
@@ -728,6 +839,19 @@ function buildMockRunPayload(state, charge, run) {
       },
     },
     flush: timingControl("Flush soak", MOCK_TIMING_TARGETS.flush_minutes, run.flush_started_at, run.flush_ended_at),
+    flush_mixer: {
+      ...timingControl("Flush mixer", MOCK_TIMING_TARGETS.flush_mixer_minutes, run.flush_mixer_started_at, run.flush_mixer_ended_at),
+      constraints: (() => {
+        const window = flushMixerStartWindow(settings);
+        return {
+          start_before_end_minutes: window.startBeforeEnd,
+          start_earliest_minutes: window.earliest,
+          start_latest_minutes: window.latest,
+          run_min_minutes: window.runMin,
+          run_max_minutes: window.runMax,
+        };
+      })(),
+    },
     final_purge: timingControl("Final purge", MOCK_TIMING_TARGETS.final_purge_minutes, run.final_purge_started_at, run.final_purge_completed_at),
   };
   return {
@@ -753,6 +877,9 @@ function buildMockRunPayload(state, charge, run) {
     flush_started_at: run.flush_started_at || "",
     flush_ended_at: run.flush_ended_at || "",
     flush_duration_minutes: minutesBetween(run.flush_started_at, run.flush_ended_at),
+    flush_mixer_started_at: run.flush_mixer_started_at || "",
+    flush_mixer_ended_at: run.flush_mixer_ended_at || "",
+    flush_mixer_duration_minutes: minutesBetween(run.flush_mixer_started_at, run.flush_mixer_ended_at),
     run_completed_at: run.run_completed_at || "",
     final_purge_started_at: run.final_purge_started_at || "",
     final_purge_completed_at: run.final_purge_completed_at || "",
@@ -880,6 +1007,8 @@ function buildMockDraftRun(charge) {
     mixer_ended_at: "",
     flush_started_at: "",
     flush_ended_at: "",
+    flush_mixer_started_at: "",
+    flush_mixer_ended_at: "",
     run_completed_at: "",
     booth_stage_key: "ready_to_confirm_vacuum",
     primary_solvent_charge_lbs: null,
@@ -955,6 +1084,8 @@ function ensureMockRunForCharge(state, chargeId) {
     mixer_ended_at: "",
     flush_started_at: "",
     flush_ended_at: "",
+    flush_mixer_started_at: "",
+    flush_mixer_ended_at: "",
     run_completed_at: "",
     booth_stage_key: "ready_to_confirm_vacuum",
     primary_solvent_charge_lbs: null,

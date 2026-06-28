@@ -35,6 +35,9 @@ const DEFAULT_EXTRACTION_SETTINGS = {
   mixer_start_latest_minutes: 6,
   mixer_run_min_minutes: 5,
   mixer_run_max_minutes: 7,
+  flush_mixer_start_before_end_minutes: 5,
+  flush_mixer_run_min_minutes: 5,
+  flush_mixer_run_max_minutes: 5,
 };
 
 const state = {
@@ -1373,7 +1376,8 @@ const STAGE_SEQUENCE = [
   { key: "ready_to_verify_flush_temps",      label: "Verify flush temps",            phase: "flush",   timer: null },
   { key: "ready_to_record_flush_solvent_charge", label: "Record flush solvent load", phase: "flush", timer: null },
   { key: "ready_to_flush",                   label: "Start flush soak",              phase: "flush",   timer: null },
-  { key: "flushing",                         label: "Flush running",                 phase: "flush",   timer: "flush",        targetMinutes: 10 },
+  { key: "flushing",                         label: "Flush soak running",            phase: "flush",   timer: "flush",        targetMinutes: 10 },
+  { key: "flush_mixing",                     label: "Flush mixer running",           phase: "flush",   timer: "flush_mixer",  targetMinutes: 5  },
   { key: "ready_to_confirm_flow_resumed",    label: "Confirm flow resumed",          phase: "flush",   timer: null },
   { key: "flow_adjustment_required",         label: "Flow adjustment required",      phase: "flush",   timer: null },
   { key: "ready_to_start_final_purge",       label: "Start final purge",             phase: "purge",   timer: null },
@@ -1425,6 +1429,7 @@ const BLOCKER_MAP = [
   { match: "enter the flush solvent charge",           stageKey: "ready_to_record_flush_solvent_charge",  label: "Record Flush Solvent Load",    actionId: "record_flush_solvent_charge" },
   { match: "enter the flush solvent load",             stageKey: "ready_to_record_flush_solvent_charge",  label: "Record Flush Solvent Load",    actionId: "record_flush_solvent_charge" },
   { match: "flush cycle before starting the flush",    stageKey: "ready_to_flush",                        label: "Start Flush",                  actionId: "start_flush" },
+  { match: "end flush mixer before",                 stageKey: "flush_mixing",                          label: "End Flush Mixer",              actionId: "stop_flush_mixer" },
   { match: "start the flush before",                   stageKey: "ready_to_flush",                        label: "Start Flush",                  actionId: "start_flush" },
   { match: "flow resumed",                             stageKey: "ready_to_confirm_flow_resumed",         label: "Confirm Flow Resumed",         actionId: "confirm_flow_resumed" },
   { match: "post-extraction pathway before starting",   stageKey: "post_extraction_pathway",               label: "Choose Downstream Pathway",    actionId: "" }, // no action — operator must pick from step 1
@@ -1476,7 +1481,7 @@ const PRIMARY_STAGES = new Set([
 const FLUSH_STAGES = new Set([
   "flush_setup", "ready_to_verify_flush_temps",
   "ready_to_record_flush_solvent_charge", "ready_to_flush",
-  "flushing", "ready_to_confirm_flow_resumed", "flow_adjustment_required",
+  "flushing", "flush_mixing", "ready_to_confirm_flow_resumed", "flow_adjustment_required",
 ]);
 
 const PURGE_STAGES = new Set([
@@ -1755,6 +1760,28 @@ function mixerStartReasonRequirements(run) {
   return { soakMinutes, earliest, latest, needsWindowReason };
 }
 
+function flushElapsedMinutes(run) {
+  const activeMinutes = run?.timing_controls?.flush?.active_minutes;
+  if (!run?.flush_ended_at && activeMinutes != null) return Number(activeMinutes);
+  const elapsedMs = clockDurationMs(run?.flush_started_at, run?.flush_ended_at);
+  if (elapsedMs == null) return null;
+  return Math.floor(elapsedMs / 60000);
+}
+
+function flushMixerStartReasonRequirements(run) {
+  const flushMinutes = flushElapsedMinutes(run);
+  const targets = run?.booth?.timing_targets || {};
+  const flushMixerConstraints = run?.timing_controls?.flush_mixer?.constraints || {};
+  const earliest = Number(
+    targets.flush_mixer_start_earliest_minutes ?? flushMixerConstraints.start_earliest_minutes ?? 5,
+  );
+  const latest = Number(
+    targets.flush_mixer_start_latest_minutes ?? flushMixerConstraints.start_latest_minutes ?? 5,
+  );
+  const needsWindowReason = flushMinutes != null && (flushMinutes < earliest || flushMinutes > latest);
+  return { flushMinutes, earliest, latest, needsWindowReason };
+}
+
 function renderReasonTextarea(name, label, value, { visible = true } = {}) {
   if (!visible) return "";
   return `
@@ -1835,9 +1862,36 @@ function renderCheckpointInputs(run) {
       "Reason if ending mixer before minimum runtime",
       run.mixer_short_reason,
     ),
-    flushing: `
-      <div class="field"><label for="flush_short_reason">Reason if stopping flush early</label>
-      <textarea id="flush_short_reason" name="flush_short_reason" rows="2">${escapeHtml(run.flush_short_reason || "")}</textarea></div>`,
+    flushing: (() => {
+      const flushReasons = flushMixerStartReasonRequirements(run);
+      const fields = [
+        renderReasonTextarea(
+          "flush_mixer_start_timing_reason",
+          "Reason if starting flush mixer outside the allowed window",
+          run.flush_mixer_start_timing_reason,
+          { visible: flushReasons.needsWindowReason },
+        ),
+        renderReasonTextarea(
+          "flush_short_reason",
+          "Reason if stopping flush soak early",
+          run.flush_short_reason,
+        ),
+      ].filter(Boolean).join("");
+      const hint = flushReasons.flushMinutes == null
+        ? `<div class="subtle" style="margin-bottom:8px;">
+            Start the flush mixer in the last ${flushReasons.latest === flushReasons.earliest ? flushReasons.earliest : `${flushReasons.earliest}–${flushReasons.latest}`} minutes of flush soak.
+          </div>`
+        : `<div class="subtle" style="margin-bottom:8px;">
+            Flush soak elapsed: ${flushReasons.flushMinutes} min
+            (flush mixer start window ${flushReasons.earliest}–${flushReasons.latest} min).
+          </div>`;
+      return `${hint}${fields}`;
+    })(),
+    flush_mixing: renderReasonTextarea(
+      "flush_mixer_short_reason",
+      "Reason if ending flush mixer before minimum runtime",
+      run.flush_mixer_short_reason,
+    ),
     purging: `
       <div class="field"><label for="final_purge_short_reason">Reason if stopping purge early</label>
       <textarea id="final_purge_short_reason" name="final_purge_short_reason" rows="2">${escapeHtml(run.final_purge_short_reason || "")}</textarea></div>`,
@@ -1927,13 +1981,25 @@ const BOOTH_TIMER_SPECS = [
   },
   {
     key: "flush",
-    activeStages: new Set(["flushing", "ready_to_confirm_flow_resumed"]),
+    activeStages: new Set(["flushing", "flush_mixing", "ready_to_confirm_flow_resumed"]),
     liveClock(run) {
       return {
         label: "Flush soak",
         startAt: run.flush_started_at,
         endAt: run.flush_ended_at,
         targetMinutes: run.timing_controls?.flush?.target_minutes ?? null,
+      };
+    },
+  },
+  {
+    key: "flush_mixer",
+    activeStages: new Set(["flush_mixing", "flushing"]),
+    liveClock(run) {
+      return {
+        label: "Flush mixer",
+        startAt: run.flush_mixer_started_at,
+        endAt: run.flush_mixer_ended_at,
+        targetMinutes: run.timing_controls?.flush_mixer?.target_minutes ?? null,
       };
     },
   },
@@ -2142,6 +2208,7 @@ function renderRelevantTimer(run) {
     ready_to_start_mixer:          timings.primary_soak,
     mixing:                        timings.mixer,
     flushing:                      timings.flush,
+    flush_mixing:                  timings.flush_mixer,
     purging:                       timings.final_purge,
     ready_to_confirm_flow_resumed: timings.flush,
     ready_to_confirm_clarity:      timings.final_purge,
@@ -2150,6 +2217,7 @@ function renderRelevantTimer(run) {
     ready_to_start_mixer: { label: "Primary soak", startAt: run.run_fill_started_at, endAt: run.run_fill_ended_at, targetMinutes: timings.primary_soak?.target_minutes ?? null },
     mixing: { label: "Mixer", startAt: run.mixer_started_at, endAt: run.mixer_ended_at, targetMinutes: timings.mixer?.target_minutes ?? null },
     flushing: { label: "Flush soak", startAt: run.flush_started_at, endAt: run.flush_ended_at, targetMinutes: timings.flush?.target_minutes ?? null },
+    flush_mixing: { label: "Flush mixer", startAt: run.flush_mixer_started_at, endAt: run.flush_mixer_ended_at, targetMinutes: timings.flush_mixer?.target_minutes ?? null },
     ready_to_confirm_flow_resumed: { label: "Flush soak", startAt: run.flush_started_at, endAt: run.flush_ended_at, targetMinutes: timings.flush?.target_minutes ?? null },
     purging: { label: "Final purge", startAt: finalPurgeStartedAt(run), endAt: finalPurgeCompletedAt(run), targetMinutes: timings.final_purge?.target_minutes ?? null },
     ready_to_confirm_clarity: { label: "Final purge", startAt: finalPurgeStartedAt(run), endAt: finalPurgeCompletedAt(run), targetMinutes: timings.final_purge?.target_minutes ?? null },
@@ -2159,6 +2227,13 @@ function renderRelevantTimer(run) {
       <div class="current-timer current-timer-dual">
         ${renderTimingControlCard(timings.mixer, { label: "Mixer", startAt: run.mixer_started_at, endAt: run.mixer_ended_at, targetMinutes: timings.mixer?.target_minutes ?? null })}
         ${renderTimingControlCard(timings.primary_soak, { label: "Primary soak", startAt: run.run_fill_started_at, endAt: run.run_fill_ended_at, targetMinutes: timings.primary_soak?.target_minutes ?? null })}
+      </div>`;
+  }
+  if (stageKey === "flush_mixing" || (stageKey === "flushing" && run.flush_mixer_started_at && !run.flush_mixer_ended_at)) {
+    return `
+      <div class="current-timer current-timer-dual">
+        ${renderTimingControlCard(timings.flush_mixer, { label: "Flush mixer", startAt: run.flush_mixer_started_at, endAt: run.flush_mixer_ended_at, targetMinutes: timings.flush_mixer?.target_minutes ?? null })}
+        ${renderTimingControlCard(timings.flush, { label: "Flush soak", startAt: run.flush_started_at, endAt: run.flush_ended_at, targetMinutes: timings.flush?.target_minutes ?? null })}
       </div>`;
   }
   const timing = timerMap[stageKey];
@@ -2559,6 +2634,30 @@ function renderSettings() {
             During primary soak, operators should start the mixer within this window and run it for the configured duration.
             Supervisor alerts fire when the start window is missed or runtime exceeds the maximum. Mixer timing policy
             (warning, override, or hard stop) is configured in the main app under Operational Parameters.
+          </div>
+        </section>
+        <section style="display:grid;gap:14px;">
+          <div class="eyebrow">Flush Mixer Timing Window</div>
+          <div class="form-row-2" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+            <div class="field">
+              <label for="flush_mixer_start_before_end_minutes">Start in last (min of flush soak)</label>
+              <input id="flush_mixer_start_before_end_minutes" name="flush_mixer_start_before_end_minutes" type="number" step="1" min="0"
+                value="${escapeHtml(String(settings.flush_mixer_start_before_end_minutes ?? 5))}" />
+            </div>
+            <div class="field">
+              <label for="flush_mixer_run_min_minutes">Run no less than (min)</label>
+              <input id="flush_mixer_run_min_minutes" name="flush_mixer_run_min_minutes" type="number" step="1" min="0"
+                value="${escapeHtml(String(settings.flush_mixer_run_min_minutes ?? 5))}" />
+            </div>
+            <div class="field">
+              <label for="flush_mixer_run_max_minutes">Run no more than (min)</label>
+              <input id="flush_mixer_run_max_minutes" name="flush_mixer_run_max_minutes" type="number" step="1" min="0"
+                value="${escapeHtml(String(settings.flush_mixer_run_max_minutes ?? 5))}" />
+            </div>
+          </div>
+          <div class="subtle">
+            During flush soak, operators should start the mixer in the last configured minutes and run it for the configured duration.
+            For a 10-minute flush with defaults, the mixer starts at minute 5 and runs for 5 minutes through the end of soak.
           </div>
         </section>
         <div class="actions">
@@ -3109,6 +3208,9 @@ async function handleSettingsSubmit(event) {
       mixer_start_latest_minutes: parseMinutes("mixer_start_latest_minutes", "mixer start latest time"),
       mixer_run_min_minutes: parseMinutes("mixer_run_min_minutes", "mixer minimum runtime"),
       mixer_run_max_minutes: parseMinutes("mixer_run_max_minutes", "mixer maximum runtime"),
+      flush_mixer_start_before_end_minutes: parseMinutes("flush_mixer_start_before_end_minutes", "flush mixer start window"),
+      flush_mixer_run_min_minutes: parseMinutes("flush_mixer_run_min_minutes", "flush mixer minimum runtime"),
+      flush_mixer_run_max_minutes: parseMinutes("flush_mixer_run_max_minutes", "flush mixer maximum runtime"),
     };
   } catch (error) {
     showToast(error.message);
@@ -3120,6 +3222,10 @@ async function handleSettingsSubmit(event) {
   }
   if (payload.mixer_run_max_minutes < payload.mixer_run_min_minutes) {
     showToast("Mixer maximum runtime must be at or above the minimum runtime.");
+    return;
+  }
+  if (payload.flush_mixer_run_max_minutes < payload.flush_mixer_run_min_minutes) {
+    showToast("Flush mixer maximum runtime must be at or above the minimum runtime.");
     return;
   }
   state.loading = true;

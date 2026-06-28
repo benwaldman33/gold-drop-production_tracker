@@ -471,19 +471,33 @@
           <td>Target: 10 min</td>
           <td class="details">App button: Start Flush. Timing target is settings-driven and defaults to 10 minutes. The run also stores flush count and total flush weight.</td>
         </tr>
-        <tr class="manual-row">
+        <tr class="app-row">
           <td class="num">20</td>
-          <td><div class="process">Flush agitation / valve handling</div><span class="tag manual">Inferred</span></td>
+          <td><div class="process">Start flush mixer</div><span class="tag app">App</span></td>
           <td>Extractor / operator</td>
-          <td>During flush soak</td>
-          <td class="details">The SOP plan calls for flush soak with mixer/agitation, then burp and re-pressurization. The app currently captures the flush timer and surrounding checkpoints more clearly than each physical valve movement.</td>
+          <td>Last 5 min of flush soak</td>
+          <td class="details">App button: Start Flush Mixer. Default window opens at minute 5 of a 10-minute flush soak. A reason field appears when starting outside the configured window.</td>
         </tr>
         <tr class="app-row">
           <td class="num">21</td>
+          <td><div class="process">End flush mixer</div><span class="tag app">App</span></td>
+          <td>Extractor / operator</td>
+          <td>During flush soak</td>
+          <td class="details">App button: End Flush Mixer. Default target runtime is 5 minutes. End flush mixer before Stop Flush when the mixer was started.</td>
+        </tr>
+        <tr class="manual-row">
+          <td class="num">22</td>
+          <td><div class="process">Burp / re-pressurization valve handling</div><span class="tag manual">Inferred</span></td>
+          <td>Extractor / operator</td>
+          <td>During or after flush soak</td>
+          <td class="details">Physical burp and re-pressurization steps from the SOP are not yet separate app checkpoints; surrounding flush timing and flow-resumed decision capture the handoff.</td>
+        </tr>
+        <tr class="app-row">
+          <td class="num">23</td>
           <td><div class="process">Stop flush</div><span class="tag app">App</span></td>
           <td>Extractor / operator</td>
           <td>After flush target / when flush is complete</td>
-          <td class="details">App button: Stop Flush. This closes the flush timer and advances the process to the flow-resumed decision.</td>
+          <td class="details">App button: Stop Flush. This closes the flush soak timer and advances the process to the flow-resumed decision. Blocked while flush mixer is still running.</td>
         </tr>
         <tr class="section-band"><td colspan="5">Branch A/B - flow resumed decision</td></tr>
         <tr class="branch-row">

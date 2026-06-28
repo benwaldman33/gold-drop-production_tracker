@@ -24,32 +24,38 @@ The core sequence matches the implemented extraction progression in `services/ex
 
 1. Confirm under vacuum
 2. Record primary solvent charge
-3. Start primary soak
-4. Start mixer
-5. Stop mixer
-6. Confirm filter clear
-7. Start pressurization
-8. Begin recovery
-9. Begin flush cycle
-10. Verify flush temperatures
-11. Record flush solvent charge
-12. Start flush
-13. Stop flush
-14. Confirm flow resumed
-15. Start final purge
-16. Stop final purge
-17. Confirm final clarity
-18. Complete shutdown
-19. Mark run complete
-20. Start post-extraction
-21. Confirm initial wet THCA / HTE outputs
+3. Confirm reactor at 50 PSI
+4. Start primary soak
+5. Start mixer
+6. End mixer
+7. Confirm primary soak ended
+8. Confirm reactor bottom burped
+9. Confirm filter clear
+10. Start pressurization
+11. Begin recovery
+12. Begin flush cycle
+13. Verify flush temperatures
+14. Record flush solvent charge
+15. Start flush
+16. Start flush mixer (last minutes of flush soak)
+17. End flush mixer
+18. Stop flush
+19. Confirm flow resumed
+20. Start final purge
+21. Stop final purge
+22. Confirm final clarity
+23. Complete shutdown
+24. Mark run complete
+25. Start post-extraction
+26. Confirm initial wet THCA / HTE outputs
 
 The docs also correctly identify several operational steps that are important but not fully modeled as first-class app stages today:
 
 - reactor / tank readiness
 - solvent path preparation
 - loading biomass / baskets
-- flush agitation and valve handling
+- flush agitation during flush soak (now modeled as **Start Flush Mixer** / **End Flush Mixer** with a separate timer in the last minutes of soak)
+- other valve handling and burp/re-pressurization steps not yet first-class app stages
 - receiving container preparation
 - post-run cleaning / reset
 
@@ -115,7 +121,7 @@ Important manual/inferred steps to keep visible:
 - reactor / tank readiness
 - solvent tank / solvent path readiness
 - physical biomass loading
-- flush agitation / valve handling
+- other flush valve handling and burp/re-pressurization steps not yet first-class app stages
 - receiving containers and labels
 - cleaning / reset before next run
 
@@ -190,9 +196,12 @@ The laminated/process documents should use the same labels as the app buttons wh
 
 - Confirm Under Vacuum
 - Record Solvent Charge
+- Confirm 50 PSI
 - Start Primary Soak
 - Start Mixer
-- Stop Mixer
+- End Mixer
+- Confirm Primary Soak Ended
+- Confirm Reactor Bottom Burped
 - Confirm Filter Clear
 - Start Pressurization
 - Begin Recovery
@@ -200,6 +209,8 @@ The laminated/process documents should use the same labels as the app buttons wh
 - Verify Flush Temps
 - Record Flush Solvent Charge
 - Start Flush
+- Start Flush Mixer
+- End Flush Mixer
 - Stop Flush
 - Confirm Flow Resumed
 - Start Final Purge

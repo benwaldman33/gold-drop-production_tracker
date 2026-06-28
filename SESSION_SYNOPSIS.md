@@ -109,23 +109,23 @@ Implemented and live:
 Implemented and live:
 
 - the standalone run screen now shows the current stage and the next allowed actions
-- progression is now guided through:
+- progression is now guided through the full booth sequence, including:
   - `Confirm Under Vacuum`
   - `Record Solvent Charge`
+  - `Confirm 50 PSI`
   - `Start Primary Soak`
-  - `Start Mixer`
-  - `Stop Mixer`
+  - `Start Mixer` / `End Mixer`
+  - `Confirm Primary Soak Ended`
+  - `Confirm Reactor Bottom Burped`
   - `Confirm Filter Clear`
   - `Start Pressurization`
   - `Begin Recovery`
   - `Begin Flush Cycle`
   - `Verify Flush Temps`
   - `Record Flush Solvent Charge`
-  - `Start Flush`
-  - `Stop Flush`
+  - `Start Flush` / `Start Flush Mixer` / `End Flush Mixer` / `Stop Flush`
   - `Confirm Flow Resumed`
-  - `Start Final Purge`
-  - `Stop Final Purge`
+  - `Start Final Purge` / `Stop Final Purge`
   - `Confirm Final Clarity`
   - `Complete Shutdown`
   - `Mark Run Complete`
@@ -960,20 +960,20 @@ Current review conclusion:
 - the code-backed app progression remains:
   - `Confirm Under Vacuum`
   - `Record Solvent Charge`
+  - `Confirm 50 PSI`
   - `Start Primary Soak`
-  - `Start Mixer`
-  - `Stop Mixer`
+  - `Start Mixer` / `End Mixer`
+  - `Confirm Primary Soak Ended`
+  - `Confirm Reactor Bottom Burped`
   - `Confirm Filter Clear`
   - `Start Pressurization`
   - `Begin Recovery`
   - `Begin Flush Cycle`
   - `Verify Flush Temps`
   - `Record Flush Solvent Charge`
-  - `Start Flush`
-  - `Stop Flush`
+  - `Start Flush` / `Start Flush Mixer` / `End Flush Mixer` / `Stop Flush`
   - `Confirm Flow Resumed`
-  - `Start Final Purge`
-  - `Stop Final Purge`
+  - `Start Final Purge` / `Stop Final Purge`
   - `Confirm Final Clarity`
   - `Complete Shutdown`
   - `Mark Run Complete`

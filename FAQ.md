@@ -479,7 +479,7 @@ For run / fill time, mixer time, and flush time, use:
 
 The app stores the actual timestamps and shows live ticking clocks (`Elapsed`, plus `Remaining` or `Over target` when targets exist).
 
-On the **operator run dashboard**, all four booth timers — primary soak, mixer, flush soak, and final purge — stay visible while you work the current checkpoint, with large elapsed readouts and progress toward target when configured. The timer tied to the active step is highlighted. Supervisors still see the full timing-card layout on the supervisor run screen.
+On the **operator run dashboard**, booth timers — primary soak, mixer, flush soak, flush mixer, and final purge — stay visible while you work the current checkpoint, with large elapsed readouts and progress toward target when configured. The timer tied to the active step is highlighted. Supervisors still see the full timing-card layout on the supervisor run screen.
 
 ## Where can operators upload photos during extraction?
 
@@ -517,6 +517,8 @@ The normal progression is:
 - `Verify Flush Temps`
 - `Record Flush Solvent Charge`
 - `Start Flush`
+- `Start Flush Mixer`
+- `End Flush Mixer`
 - `Stop Flush`
 - `Confirm Flow Resumed`
 - `Start Final Purge`
@@ -531,6 +533,12 @@ Mixer timing safety behavior in this sequence (defaults shown; all four limits a
 - If the mixer has not started by the configured latest start time, a critical supervisor notification is created.
 - Once started, the mixer should run at least 5 minutes and no more than 7; if runtime exceeds the configured maximum, a critical supervisor notification is created.
 - If either critical mixer alert remains unacknowledged for 3 additional minutes, the system creates an emergency-class escalation notification for Slack emergency-channel delivery.
+
+Flush mixer timing during flush soak (defaults shown; limits are configurable in Settings):
+
+- After **Start Flush**, the flush mixer should start in the last 5 minutes of flush soak (defaults: at minute 5 of a 10-minute soak).
+- Once started, the flush mixer should run at least 5 minutes (through the end of the default 10-minute flush soak).
+- Starting outside the configured window or ending short of minimum runtime follows the same mixer timing policy (warning / override / hard stop) as primary extraction.
 
 Each action stamps the matching time/checkpoint field and advances the run to the next stage. The API also rejects future progression actions and ignores future-step booth fields submitted early from the operator app. At `Confirm Final Clarity`, the operator must first select `Clear enough` or `Not yet`; the selected choice stays active on the page and is submitted with the confirm action. When the run is marked complete, the screen shows that completed state and the linked extraction charge is also marked complete when that charge is still the active reactor event.
 

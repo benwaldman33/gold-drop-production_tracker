@@ -27,6 +27,10 @@ EXTRACTION_RUN_DEFAULTS = {
     "extraction_mixer_run_min_minutes": ("5", "Minimum minutes the primary mixer must run"),
     "extraction_mixer_run_max_minutes": ("7", "Maximum minutes the primary mixer should run"),
     "extraction_target_flush_minutes": ("10", "Target minutes for the flush soak window"),
+    "extraction_target_flush_mixer_minutes": ("5", "Target minutes for the flush mixer window"),
+    "extraction_flush_mixer_start_before_end_minutes": ("5", "Minutes before flush soak ends when the flush mixer may start"),
+    "extraction_flush_mixer_run_min_minutes": ("5", "Minimum minutes the flush mixer must run"),
+    "extraction_flush_mixer_run_max_minutes": ("5", "Maximum minutes the flush mixer should run"),
     "extraction_target_final_purge_minutes": ("", "Optional target minutes for the final purge window"),
 }
 
@@ -141,9 +145,17 @@ RUN_PROGRESSION = {
         "actions": [{"action_id": "start_flush", "label": "Start Flush"}],
     },
     "flushing": {
-        "label": "Flush running",
-        "description": "Flush timing is active. Stop it when the flush is done.",
-        "actions": [{"action_id": "stop_flush", "label": "Stop Flush"}],
+        "label": "Flush soak running",
+        "description": "Flush timing is active. Start the flush mixer in the last minutes of soak, then stop flush when done.",
+        "actions": [
+            {"action_id": "start_flush_mixer", "label": "Start Flush Mixer"},
+            {"action_id": "stop_flush", "label": "Stop Flush"},
+        ],
+    },
+    "flush_mixing": {
+        "label": "Flush mixer running",
+        "description": "Flush mixer timing is active during the last minutes of flush soak. End flush mixer when agitation is done.",
+        "actions": [{"action_id": "stop_flush_mixer", "label": "End Flush Mixer"}],
     },
     "ready_to_confirm_flow_resumed": {
         "label": "Confirm flow resumed",
@@ -308,6 +320,36 @@ def extraction_run_defaults(root) -> dict[str, float | int | str]:
     }
 
 
+def extraction_flush_mixer_constraints(root) -> dict[str, int]:
+    start_before_end = max(
+        0,
+        int(root.SystemSetting.get_float("extraction_flush_mixer_start_before_end_minutes", 5) or 5),
+    )
+    run_min = max(0, int(root.SystemSetting.get_float("extraction_flush_mixer_run_min_minutes", 5) or 5))
+    run_max = max(0, int(root.SystemSetting.get_float("extraction_flush_mixer_run_max_minutes", 5) or 5))
+    if run_max < run_min:
+        run_min, run_max = run_max, run_min
+    return {
+        "start_before_end_minutes": start_before_end,
+        "run_min_minutes": run_min,
+        "run_max_minutes": run_max,
+    }
+
+
+def flush_mixer_start_window(root) -> dict[str, int]:
+    constraints = extraction_flush_mixer_constraints(root)
+    flush_target = int(root.SystemSetting.get_float("extraction_target_flush_minutes", 10) or 10)
+    earliest = max(0, flush_target - constraints["start_before_end_minutes"])
+    latest = max(0, flush_target - constraints["run_min_minutes"])
+    if latest < earliest:
+        earliest, latest = latest, earliest
+    return {
+        **constraints,
+        "start_earliest_minutes": earliest,
+        "start_latest_minutes": latest,
+    }
+
+
 def extraction_mixer_constraints(root) -> dict[str, int]:
     earliest = max(0, int(root.SystemSetting.get_float("extraction_mixer_start_earliest_minutes", 3) or 3))
     latest = max(0, int(root.SystemSetting.get_float("extraction_mixer_start_latest_minutes", 6) or 6))
@@ -327,6 +369,8 @@ def extraction_mixer_constraints(root) -> dict[str, int]:
 
 def extraction_timing_targets(root) -> dict[str, int | None]:
     mixer_constraints = extraction_mixer_constraints(root)
+    flush_mixer_constraints = extraction_flush_mixer_constraints(root)
+    flush_mixer_window = flush_mixer_start_window(root)
     return {
         "primary_soak_minutes": int(root.SystemSetting.get_float("extraction_target_primary_soak_minutes", 30) or 30),
         "mixer_minutes": int(root.SystemSetting.get_float("extraction_target_mixer_minutes", 5) or 5),
@@ -335,6 +379,12 @@ def extraction_timing_targets(root) -> dict[str, int | None]:
         "mixer_run_min_minutes": mixer_constraints["run_min_minutes"],
         "mixer_run_max_minutes": mixer_constraints["run_max_minutes"],
         "flush_minutes": int(root.SystemSetting.get_float("extraction_target_flush_minutes", 10) or 10),
+        "flush_mixer_minutes": int(root.SystemSetting.get_float("extraction_target_flush_mixer_minutes", 5) or 5),
+        "flush_mixer_start_before_end_minutes": flush_mixer_constraints["start_before_end_minutes"],
+        "flush_mixer_start_earliest_minutes": flush_mixer_window["start_earliest_minutes"],
+        "flush_mixer_start_latest_minutes": flush_mixer_window["start_latest_minutes"],
+        "flush_mixer_run_min_minutes": flush_mixer_constraints["run_min_minutes"],
+        "flush_mixer_run_max_minutes": flush_mixer_constraints["run_max_minutes"],
         "final_purge_minutes": _opt_int(root.SystemSetting.get("extraction_target_final_purge_minutes", "") or "", field="Final purge target"),
     }
 
@@ -418,6 +468,46 @@ def _event_payload_dict(root, event) -> dict:
     return parsed if isinstance(parsed, dict) else {}
 
 
+def save_flush_mixer_constraint_settings(root, form, *, partial: bool = False) -> None:
+    """Persist flush mixer start/run window settings from an HTML form mapping."""
+    existing = extraction_flush_mixer_constraints(root)
+    specs = (
+        ("extraction_flush_mixer_start_before_end_minutes", existing["start_before_end_minutes"]),
+        ("extraction_flush_mixer_run_min_minutes", existing["run_min_minutes"]),
+        ("extraction_flush_mixer_run_max_minutes", existing["run_max_minutes"]),
+    )
+    parsed: dict[str, int] = {}
+    for key, fallback in specs:
+        if partial and key not in form:
+            parsed[key] = fallback
+            continue
+        raw = (form.get(key) or "").strip()
+        value = fallback
+        if raw:
+            try:
+                value = max(0, int(float(raw)))
+            except ValueError:
+                value = fallback
+        parsed[key] = value
+    run_min = parsed["extraction_flush_mixer_run_min_minutes"]
+    run_max = parsed["extraction_flush_mixer_run_max_minutes"]
+    if run_max < run_min:
+        run_min, run_max = run_max, run_min
+    normalized = {
+        "extraction_flush_mixer_start_before_end_minutes": parsed["extraction_flush_mixer_start_before_end_minutes"],
+        "extraction_flush_mixer_run_min_minutes": run_min,
+        "extraction_flush_mixer_run_max_minutes": run_max,
+    }
+    for key, value in normalized.items():
+        desc = EXTRACTION_RUN_DEFAULTS[key][1]
+        existing_row = root.db.session.get(root.SystemSetting, key)
+        stored = str(value)
+        if existing_row:
+            existing_row.value = stored
+        else:
+            root.db.session.add(root.SystemSetting(key=key, value=stored, description=desc))
+
+
 def save_mixer_constraint_settings(root, form, *, partial: bool = False) -> None:
     """Persist mixer start/run window settings from an HTML form mapping."""
     existing = extraction_mixer_constraints(root)
@@ -482,7 +572,8 @@ def save_extraction_operational_settings(root, payload: dict) -> None:
                     description="Chiller temperature threshold (°C) for extraction pre-check",
                 )
             )
-    form_mapping = {}
+    mixer_mapping = {}
+    flush_mixer_mapping = {}
     for api_key, setting_key in (
         ("mixer_start_earliest_minutes", "extraction_mixer_start_earliest_minutes"),
         ("mixer_start_latest_minutes", "extraction_mixer_start_latest_minutes"),
@@ -490,19 +581,35 @@ def save_extraction_operational_settings(root, payload: dict) -> None:
         ("mixer_run_max_minutes", "extraction_mixer_run_max_minutes"),
     ):
         if api_key in payload and payload[api_key] is not None:
-            form_mapping[setting_key] = str(payload[api_key])
-    if form_mapping:
-        save_mixer_constraint_settings(root, form_mapping, partial=True)
+            mixer_mapping[setting_key] = str(payload[api_key])
+    for api_key, setting_key in (
+        ("flush_mixer_start_before_end_minutes", "extraction_flush_mixer_start_before_end_minutes"),
+        ("flush_mixer_run_min_minutes", "extraction_flush_mixer_run_min_minutes"),
+        ("flush_mixer_run_max_minutes", "extraction_flush_mixer_run_max_minutes"),
+    ):
+        if api_key in payload and payload[api_key] is not None:
+            flush_mixer_mapping[setting_key] = str(payload[api_key])
+    if mixer_mapping:
+        save_mixer_constraint_settings(root, mixer_mapping, partial=True)
+    if flush_mixer_mapping:
+        save_flush_mixer_constraint_settings(root, flush_mixer_mapping, partial=True)
 
 
 def extraction_operational_settings_payload(root) -> dict:
     constraints = extraction_mixer_constraints(root)
+    flush_mixer = extraction_flush_mixer_constraints(root)
+    flush_mixer_window = flush_mixer_start_window(root)
     return {
         "chiller_temp_threshold_c": extraction_chiller_threshold_c(root),
         "mixer_start_earliest_minutes": constraints["start_earliest_minutes"],
         "mixer_start_latest_minutes": constraints["start_latest_minutes"],
         "mixer_run_min_minutes": constraints["run_min_minutes"],
         "mixer_run_max_minutes": constraints["run_max_minutes"],
+        "flush_mixer_start_before_end_minutes": flush_mixer["start_before_end_minutes"],
+        "flush_mixer_run_min_minutes": flush_mixer["run_min_minutes"],
+        "flush_mixer_run_max_minutes": flush_mixer["run_max_minutes"],
+        "flush_mixer_start_earliest_minutes": flush_mixer_window["start_earliest_minutes"],
+        "flush_mixer_start_latest_minutes": flush_mixer_window["start_latest_minutes"],
         "timing_targets": extraction_timing_targets(root),
     }
 
@@ -649,6 +756,24 @@ def _mixer_running_stage_description(root) -> str:
         "Mixer timing is active during primary extraction. "
         f"End mixer after at least {constraints['run_min_minutes']} minute(s) "
         f"and before {constraints['run_max_minutes']} minute(s) of runtime."
+    )
+
+
+def _flush_stage_description(root) -> str:
+    window = flush_mixer_start_window(root)
+    return (
+        "Flush soak is active. Start the flush mixer between "
+        f"{window['start_earliest_minutes']} and {window['start_latest_minutes']} minutes into flush soak "
+        f"and run it for {window['run_min_minutes']} to {window['run_max_minutes']} minutes."
+    )
+
+
+def _flush_mixer_running_stage_description(root) -> str:
+    window = flush_mixer_start_window(root)
+    return (
+        "Flush mixer timing is active during flush soak. "
+        f"End flush mixer after at least {window['run_min_minutes']} minute(s) "
+        f"and before {window['run_max_minutes']} minute(s) of runtime."
     )
 
 
@@ -892,6 +1017,8 @@ def _admin_step_back_allowed(root) -> bool:
 def _previous_stage_key(current_stage_key: str) -> str | None:
     if current_stage_key == "completed":
         return None
+    if current_stage_key == "flush_mixing":
+        return "flushing"
     for stage_key, next_stage_key in RUN_STAGE_SEQUENCE.items():
         if next_stage_key == current_stage_key:
             return stage_key
@@ -1075,6 +1202,21 @@ def run_timing_controls_payload(root, run) -> dict:
             start_at=getattr(run, "flush_started_at", None),
             end_at=getattr(run, "flush_ended_at", None),
         ),
+        "flush_mixer": {
+            **timing_control_payload(
+                label="Flush mixer",
+                target_minutes=timing_targets.get("flush_mixer_minutes"),
+                start_at=getattr(run, "flush_mixer_started_at", None),
+                end_at=getattr(run, "flush_mixer_ended_at", None),
+            ),
+            "constraints": {
+                "start_before_end_minutes": timing_targets.get("flush_mixer_start_before_end_minutes"),
+                "start_earliest_minutes": timing_targets.get("flush_mixer_start_earliest_minutes"),
+                "start_latest_minutes": timing_targets.get("flush_mixer_start_latest_minutes"),
+                "run_min_minutes": timing_targets.get("flush_mixer_run_min_minutes"),
+                "run_max_minutes": timing_targets.get("flush_mixer_run_max_minutes"),
+            },
+        },
         "final_purge": timing_control_payload(
             label="Final purge",
             target_minutes=timing_targets.get("final_purge_minutes"),
@@ -1083,7 +1225,8 @@ def run_timing_controls_payload(root, run) -> dict:
         ),
     }
     for key, item in payload.items():
-        item["policy"] = timing_policies.get(key, "warning")
+        policy_key = "mixer" if key == "flush_mixer" else key
+        item["policy"] = timing_policies.get(policy_key, "warning")
     return payload
 
 
@@ -1094,6 +1237,8 @@ def run_progression_payload(root, run) -> dict:
         stage_key = "completed"
     elif session is not None and (session.current_stage_key or "").strip() in RUN_PROGRESSION and (session.current_stage_key or "").strip() != "completed":
         stage_key = session.current_stage_key
+    elif run.flush_mixer_started_at and not run.flush_mixer_ended_at:
+        stage_key = "flush_mixing"
     elif run.flush_started_at and not run.flush_ended_at:
         stage_key = "flushing"
     elif run.flush_ended_at:
@@ -1114,6 +1259,15 @@ def run_progression_payload(root, run) -> dict:
         config["description"] = _mixer_stage_description(root)
     elif stage_key == "mixing":
         config["description"] = _mixer_running_stage_description(root)
+    elif stage_key == "flushing":
+        config["description"] = _flush_stage_description(root)
+        config["actions"] = [
+            action
+            for action in config["actions"]
+            if action["action_id"] != "start_flush_mixer" or getattr(run, "flush_mixer_ended_at", None) is None
+        ]
+    elif stage_key == "flush_mixing":
+        config["description"] = _flush_mixer_running_stage_description(root)
     block = None
     if root is not None and run is not None:
         if stage_key in {
@@ -1674,11 +1828,106 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
             raise ValueError("Record the flush solvent load before starting the flush.")
         if run.flush_started_at is None:
             run.flush_started_at = now
+            run.flush_mixer_started_at = None
+            run.flush_mixer_ended_at = None
+        session.current_stage_key = "flushing"
+        return
+    if action == "start_flush_mixer":
+        if run.flush_started_at is None:
+            raise ValueError("Start the flush soak before starting the flush mixer.")
+        if run.flush_ended_at is not None:
+            raise ValueError("Flush soak has already ended.")
+        if getattr(run, "flush_mixer_ended_at", None) is not None:
+            raise ValueError("Flush mixer has already completed for this soak.")
+        if getattr(run, "flush_mixer_started_at", None) is not None and getattr(run, "flush_mixer_ended_at", None) is None:
+            raise ValueError("Flush mixer is already running.")
+        flush_elapsed_minutes = _active_duration_minutes(run.flush_started_at)
+        if flush_elapsed_minutes is not None:
+            window = flush_mixer_start_window(root)
+            if flush_elapsed_minutes < window["start_earliest_minutes"]:
+                _apply_mixer_timing_violation(
+                    root,
+                    run,
+                    session,
+                    payload,
+                    label="Flush mixer started before allowed window",
+                    message=(
+                        f"Flush mixer cannot start until minute {window['start_earliest_minutes']} "
+                        f"of flush soak (currently {flush_elapsed_minutes} minute(s))."
+                    ),
+                    event_key="flush_mixer_start_before_window",
+                    dedupe_key="flush_mixer_start_before_window",
+                    reason_field="flush_mixer_start_timing_reason",
+                )
+            elif flush_elapsed_minutes > window["start_latest_minutes"]:
+                _apply_mixer_timing_violation(
+                    root,
+                    run,
+                    session,
+                    payload,
+                    label="Flush mixer started after allowed window",
+                    message=(
+                        f"Flush mixer should have started by minute {window['start_latest_minutes']} "
+                        f"of flush soak (currently {flush_elapsed_minutes} minute(s))."
+                    ),
+                    event_key="flush_mixer_start_after_window",
+                    dedupe_key="flush_mixer_start_after_window",
+                    reason_field="flush_mixer_start_timing_reason",
+                )
+        run.flush_mixer_started_at = now
+        if _booth_event(root, session, "flush_mixer_started") is None:
+            _record_booth_event(root, session, event_key="flush_mixer_started", event_label="Flush mixer started")
+        session.current_stage_key = "flush_mixing"
+        return
+    if action == "stop_flush_mixer":
+        if getattr(run, "flush_mixer_started_at", None) is None:
+            raise ValueError("Start the flush mixer before ending it.")
+        prospective_minutes = duration_minutes(run.flush_mixer_started_at, now)
+        window = flush_mixer_start_window(root)
+        run_min = window["run_min_minutes"]
+        mixer_policy = extraction_timing_policies(root).get("mixer", "warning")
+        if prospective_minutes is not None and prospective_minutes < run_min and mixer_policy == "hard_stop":
+            raise ValueError(
+                f"Flush mixer must run at least {run_min} minute(s). "
+                f"Current runtime is {prospective_minutes} minute(s)."
+            )
+        run.flush_mixer_ended_at = now
+        flush_mixer_minutes = duration_minutes(run.flush_mixer_started_at, run.flush_mixer_ended_at)
+        flush_mixer_short = flush_mixer_minutes is not None and flush_mixer_minutes < run_min
+        flush_mixer_reason = None
+        if flush_mixer_short:
+            flush_mixer_reason = _required_reason(
+                payload,
+                "flush_mixer_short_reason",
+                "Enter a reason when the flush mixer finishes short of target.",
+            )
+        if _booth_event(root, session, "flush_mixer_stopped") is None:
+            _record_booth_event(
+                root,
+                session,
+                event_key="flush_mixer_stopped",
+                event_label="Flush mixer stopped",
+                text_value=flush_mixer_reason,
+                payload={"reason": flush_mixer_reason} if flush_mixer_reason else None,
+            )
+        _notify_short_timing(
+            root,
+            run,
+            session,
+            event_key="timing_short_flush_mixer",
+            label="Flush mixer",
+            actual_minutes=flush_mixer_minutes,
+            target_minutes=run_min,
+            policy=mixer_policy,
+            operator_reason=flush_mixer_reason,
+        )
         session.current_stage_key = "flushing"
         return
     if action == "stop_flush":
         if run.flush_started_at is None:
             raise ValueError("Start the flush before stopping it.")
+        if getattr(run, "flush_mixer_started_at", None) is not None and getattr(run, "flush_mixer_ended_at", None) is None:
+            raise ValueError("End flush mixer before stopping the flush soak.")
         prospective_flush_minutes = duration_minutes(run.flush_started_at, now)
         flush_target = extraction_timing_targets(root).get("flush_minutes")
         flush_policy = extraction_timing_policies(root).get("flush", "warning")
@@ -2107,6 +2356,8 @@ def apply_execution_payload(run, payload: dict, allowed_fields: set[str] | None 
         ("mixer_ended_at", parse_local_datetime),
         ("flush_started_at", parse_local_datetime),
         ("flush_ended_at", parse_local_datetime),
+        ("flush_mixer_started_at", parse_local_datetime),
+        ("flush_mixer_ended_at", parse_local_datetime),
         ("run_completed_at", parse_local_datetime),
     )
     for key, parser in field_map:
@@ -2274,6 +2525,12 @@ def mobile_run_payload(root, run, charge) -> dict:
         "flush_started_at": display_local_datetime(run.flush_started_at),
         "flush_ended_at": display_local_datetime(run.flush_ended_at),
         "flush_duration_minutes": duration_minutes(run.flush_started_at, run.flush_ended_at),
+        "flush_mixer_started_at": display_local_datetime(getattr(run, "flush_mixer_started_at", None)),
+        "flush_mixer_ended_at": display_local_datetime(getattr(run, "flush_mixer_ended_at", None)),
+        "flush_mixer_duration_minutes": duration_minutes(
+            getattr(run, "flush_mixer_started_at", None),
+            getattr(run, "flush_mixer_ended_at", None),
+        ),
         "run_completed_at": display_local_datetime(run.run_completed_at),
         "progression": run_progression_payload(root, run),
         "booth": booth_payload,

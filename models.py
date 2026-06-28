@@ -481,6 +481,8 @@ class Run(db.Model):
     mixer_ended_at = db.Column(db.DateTime)
     flush_started_at = db.Column(db.DateTime)
     flush_ended_at = db.Column(db.DateTime)
+    flush_mixer_started_at = db.Column(db.DateTime)
+    flush_mixer_ended_at = db.Column(db.DateTime)
     run_completed_at = db.Column(db.DateTime)
     post_extraction_pathway = db.Column(db.String(30))  # pot_pour_100, minor_run_200
     post_extraction_started_at = db.Column(db.DateTime)

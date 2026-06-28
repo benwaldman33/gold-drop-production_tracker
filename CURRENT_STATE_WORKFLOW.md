@@ -329,14 +329,13 @@ The run screen already knows:
 
 ### Current progression model
 
-The standalone run screen now supports guided progression through:
+The standalone run screen now supports guided progression through the full booth sequence, including:
 
-- `Start Run`
-- `Start Mixer`
-- `Stop Mixer`
-- `Start Flush`
-- `Stop Flush`
-- `Mark Run Complete`
+- primary extraction checkpoints (`Confirm Under Vacuum` through `Begin Recovery`)
+- flush cycle checkpoints (`Begin Flush Cycle` through `Stop Flush`, including **Start Flush Mixer** / **End Flush Mixer** during flush soak)
+- final purge and shutdown (`Confirm Flow Resumed` through `Mark Run Complete`)
+
+Representative progression actions include `Start Mixer`, `End Mixer`, `Confirm Primary Soak Ended`, `Confirm Reactor Bottom Burped`, `Start Flush`, `Start Flush Mixer`, `End Flush Mixer`, `Stop Flush`, and `Mark Run Complete`.
 
 ### Current behavior
 

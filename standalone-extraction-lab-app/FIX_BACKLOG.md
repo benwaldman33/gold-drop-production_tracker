@@ -57,7 +57,7 @@ Post-extraction still mixes patterns: some fields use manual datetime entry, som
 
 - **Operator run dashboard (Phase 1)** shipped on `#/runs/charge/:chargeId` for floor-operator roles:
   - `renderRunStatusStrip()` — prep pills plus ambient run-reading chips
-  - `renderLiveTimersPanel()` — all four booth clocks always visible with live elapsed/progress
+  - `renderLiveTimersPanel()` — booth clocks (primary soak, mixer, flush soak, flush mixer, final purge) always visible with live elapsed/progress
   - two-column checkpoint + timers layout on wide tablets; stacked on phones
   - phase rail and prep/reset checklist removed from operator view (supervisor view unchanged)
 - Documented in `README.md`, `USER_MANUAL.md`, `FAQ.md`, `PRD.md`, `ENGINEERING.md`, and `CHANGELOG.md`.

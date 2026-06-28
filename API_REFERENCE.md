@@ -132,6 +132,8 @@ Behavior:
 - `POST /api/mobile/v1/extraction/charges/<charge_id>/run` accepts structured execution fields and an optional `progression_action`, but operator writes are filtered to the active booth stage so future-step booth fields submitted early are ignored
 - the first `POST` creates the linked run, applies lot allocation, and stores allowed structured execution fields such as blend, fill/flush totals, stringer baskets, CRC blend, notes, and active-stage booth values
 - progression actions are locked to the current `progression.stage_key`; invalid future actions return `400` until the current step is completed or bypassed
+- flush-phase progression includes `start_flush_mixer` and `stop_flush_mixer` during active flush soak; run payloads expose `flush_mixer_started_at`, `flush_mixer_ended_at`, `flush_mixer_duration_minutes`, and `timing_controls.flush_mixer` (with start-window constraints)
+- `GET/PATCH /api/mobile/v1/extraction/settings` exposes and persists flush-mixer window settings (`flush_mixer_start_before_end_minutes`, `flush_mixer_run_min_minutes`, `flush_mixer_run_max_minutes`) alongside primary mixer settings
 - `progression_action="request_stage_bypass"` requires `bypass_reason` and creates a supervisor notification; `progression_action="apply_stage_bypass"` advances one step only after that notification has `override_decision="approved_deviation"`
 
 ### Mobile Write Platform Rules

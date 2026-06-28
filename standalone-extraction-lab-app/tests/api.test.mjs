@@ -117,6 +117,16 @@ test("mock api login, board, charge, and transition flow", async () => {
   assert.equal(recordFlushCharge.run.progression.stage_key, "ready_to_flush");
   const startedFlush = await api.saveChargeRun(created.charge.id, { progression_action: "start_flush" });
   assert.equal(startedFlush.run.progression.stage_key, "flushing");
+  const startedFlushMixer = await api.saveChargeRun(created.charge.id, {
+    progression_action: "start_flush_mixer",
+    flush_mixer_start_timing_reason: "Mock test advances flush mixer immediately.",
+  });
+  assert.equal(startedFlushMixer.run.progression.stage_key, "flush_mixing");
+  const stoppedFlushMixer = await api.saveChargeRun(created.charge.id, {
+    progression_action: "stop_flush_mixer",
+    flush_mixer_short_reason: "Mock test advances flush mixer immediately.",
+  });
+  assert.equal(stoppedFlushMixer.run.progression.stage_key, "flushing");
   const stoppedFlush = await api.saveChargeRun(created.charge.id, { progression_action: "stop_flush" });
   assert.equal(stoppedFlush.run.progression.stage_key, "ready_to_confirm_flow_resumed");
   const flowResumed = await api.saveChargeRun(created.charge.id, {

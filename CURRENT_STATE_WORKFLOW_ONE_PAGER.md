@@ -134,13 +134,10 @@ This is the short-form version of the current shipped workflow from initial biom
 
 ### 9. Extractor advances the run through guided progression
 
-- Current guided actions:
-  - `Start Run`
-  - `Start Mixer`
-  - `Stop Mixer`
-  - `Start Flush`
-  - `Stop Flush`
-  - `Mark Run Complete`
+- Current guided actions include the full booth sequence; representative examples:
+  - `Start Mixer`, `End Mixer`, `Confirm Primary Soak Ended`, `Confirm Reactor Bottom Burped`
+  - `Start Flush`, `Start Flush Mixer`, `End Flush Mixer`, `Stop Flush`
+  - `Confirm Flow Resumed`, `Start Final Purge`, `Stop Final Purge`, `Confirm Final Clarity`, `Complete Shutdown`, `Mark Run Complete`
 - Current behavior:
   - writes timestamps automatically
   - shows current stage on the standalone run screen

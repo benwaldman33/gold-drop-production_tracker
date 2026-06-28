@@ -208,6 +208,10 @@ def ensure_sqlite_schema(root) -> None:
             root.db.session.execute(text("ALTER TABLE runs ADD COLUMN flush_started_at DATETIME"))
         if "flush_ended_at" not in cols:
             root.db.session.execute(text("ALTER TABLE runs ADD COLUMN flush_ended_at DATETIME"))
+        if "flush_mixer_started_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN flush_mixer_started_at DATETIME"))
+        if "flush_mixer_ended_at" not in cols:
+            root.db.session.execute(text("ALTER TABLE runs ADD COLUMN flush_mixer_ended_at DATETIME"))
         if "run_completed_at" not in cols:
             root.db.session.execute(text("ALTER TABLE runs ADD COLUMN run_completed_at DATETIME"))
         if "post_extraction_pathway" not in cols:
@@ -710,6 +714,8 @@ def ensure_postgres_run_execution_columns(root) -> None:
         "ALTER TABLE runs ADD COLUMN IF NOT EXISTS mixer_ended_at TIMESTAMP",
         "ALTER TABLE runs ADD COLUMN IF NOT EXISTS flush_started_at TIMESTAMP",
         "ALTER TABLE runs ADD COLUMN IF NOT EXISTS flush_ended_at TIMESTAMP",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS flush_mixer_started_at TIMESTAMP",
+        "ALTER TABLE runs ADD COLUMN IF NOT EXISTS flush_mixer_ended_at TIMESTAMP",
         "ALTER TABLE runs ADD COLUMN IF NOT EXISTS run_completed_at TIMESTAMP",
         "ALTER TABLE runs ADD COLUMN IF NOT EXISTS post_extraction_pathway VARCHAR(30)",
         "ALTER TABLE runs ADD COLUMN IF NOT EXISTS post_extraction_started_at TIMESTAMP",

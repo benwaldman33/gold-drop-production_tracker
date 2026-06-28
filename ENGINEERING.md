@@ -66,7 +66,7 @@ This is a review checklist, not a rule to make no-op edits. Update only the docu
   - **`gold_drop/mobile_module.py`** - user-authenticated mobile write API routes under `/api/mobile/v1`
   - **`services/mobile_write_api.py`** - shared standalone/mobile write helpers for workflow enablement, same-origin enforcement, capabilities, and audit metadata
   - **`services/extraction_charge.py`** - canonical extraction-charge creation, lifecycle validation, board visibility rules, and run-prefill helpers shared by the main app, Slack path, and standalone extraction app
-  - **`services/extraction_run.py`** - standalone extraction run defaults, booth-SOP progression actions, booth-session payload shaping, booth evidence counts/history, booth timing targets plus configurable mixer start/run window settings (`extraction_mixer_start_earliest_minutes`, `start_latest`, `run_min`, `run_max`), per-step timing-policy enforcement, booth-triggered supervisor notifications (including mixer start-window and runtime-max alerts with emergency escalation when unacknowledged), the post-extraction handoff gates (`post_extraction_pathway`, downstream start, initial wet-output confirmation), and the downstream state fields for pot-pour, THCA-path, and HTE-path tracking that the tablet workflow renders
+  - **`services/extraction_run.py`** - standalone extraction run defaults, booth-SOP progression actions, booth-session payload shaping, booth evidence counts/history, booth timing targets plus configurable primary mixer start/run window settings (`extraction_mixer_start_earliest_minutes`, `start_latest`, `run_min`, `run_max`) and flush-mixer window settings (`extraction_flush_mixer_start_before_end_minutes`, `run_min`, `run_max`), per-step timing-policy enforcement, booth-triggered supervisor notifications (including mixer start-window and runtime-max alerts with emergency escalation when unacknowledged), the post-extraction handoff gates (`post_extraction_pathway`, downstream start, initial wet-output confirmation), and the downstream state fields for pot-pour, THCA-path, and HTE-path tracking that the tablet workflow renders
   - **`services/supervisor_notifications.py`** - durable in-app supervisor notifications, operator-reason payload shaping, reminder automation for unresolved alerts, Slack outbound delivery logging, dashboard/run-form payload shaping, and notification acknowledge/override/resolve helpers
   - **`gold_drop/floor_module.py`** - operator floor activity page for recent scans, recent scale captures, floor-state rollups, extraction-readiness rollups, and reactor charge queues; the template now uses the same card treatment for top summaries and detail lists so the page scans consistently with the rest of the app
   - **`static/js/scan_camera.js`** - in-browser camera scanning client for `/scan`, with `BarcodeDetector` support plus manual/scanner fallback
@@ -261,7 +261,7 @@ Pilot-hardening additions:
 - the standalone receiving app also consumes mobile `capabilities` plus per-record `receiving_editable` / `locked_reason` fields so the UI can expose `Edit Receipt` only while no downstream lot usage exists
 - the standalone extraction app now consumes the same mobile surface for booth-SOP execution, including run progression state and booth evidence uploads
 - the standalone extraction frontend (`standalone-extraction-lab-app/src/app.js`) now renders two run-execution surfaces from the same mobile payload:
-  - **operator view** for extractor / assistant-extractor / `user` roles: checkpoint column plus ambient status dashboard — `renderRunStatusStrip()` (prep pills and key readings), `renderLiveTimersPanel()` (all four booth clocks with live elapsed/progress), one primary progression action, phase label, compact checkpoint inputs, always-available collapsible evidence panel, and downstream handoff CTA once the run is complete
+  - **operator view** for extractor / assistant-extractor / `user` roles: checkpoint column plus ambient status dashboard — `renderRunStatusStrip()` (prep pills and key readings), `renderLiveTimersPanel()` (booth clocks — primary soak, mixer, flush soak, flush mixer, final purge — with live elapsed/progress), one primary progression action, phase label, compact checkpoint inputs, always-available collapsible evidence panel, and downstream handoff CTA once the run is complete
   - **supervisor view** for manager / supervisor / admin / VP Operations roles: full timing cards, phase rail, prep/reset checklist, checkpoint inputs, progression actions, booth evidence, and the same downstream handoff behavior after run completion
 - operator run layout helpers live in `standalone-extraction-lab-app/src/app.js` (`getPrepCheckItems`, `renderLiveTimersPanel`, `renderRunStatusStrip`, `renderTimerDashboardRow`) with styles under `.operator-layout-dashboard`, `.run-status-strip`, and `.live-timers-panel` in `standalone-extraction-lab-app/styles.css`
 - standalone downstream queue routing is now explicit in the frontend:
@@ -309,6 +309,7 @@ Pilot-hardening additions:
   - `ready_to_record_flush_solvent_charge`
   - `ready_to_flush`
   - `flushing`
+  - `flush_mixing`
   - `flow_adjustment_required`
   - `ready_to_confirm_flow_resumed`
   - `ready_to_start_final_purge`
@@ -327,6 +328,12 @@ Pilot-hardening additions:
   - `ready_to_confirm_primary_soak_ended` stage exposes `Restart Mixer` (`start_mixer`) plus `Confirm Primary Soak Ended`, which sets `run_fill_ended_at` and records the `primary_soak_completed` booth event.
   - `ready_to_confirm_reactor_bottom_burped` records `reactor_bottom_burped_confirmed` immediately before filter clear.
   - `ready_to_confirm_filter_clear` stage exposes `Confirm Filter Clear` only; pressurization requires primary soak ended, bottom burp confirmed, and filter clear recorded.
+- Flush mixer control details:
+  - `flushing` stage exposes `Start Flush Mixer` and `Stop Flush`; `flush_mixing` exposes `End Flush Mixer`.
+  - Timestamps live on `Run.flush_mixer_started_at` / `Run.flush_mixer_ended_at`.
+  - Default window: start at minute 5 of a 10-minute flush soak, run 5 minutes (settings: `extraction_flush_mixer_start_before_end_minutes`, run min/max).
+  - `stop_flush` rejects while flush mixer is running; flush-mixer timing deviations reuse the mixer timing policy.
+  - System settings: `extraction_flush_mixer_start_before_end_minutes`, `extraction_flush_mixer_run_min_minutes`, `extraction_flush_mixer_run_max_minutes`, `extraction_target_flush_mixer_minutes`; exposed through mobile extraction settings API and standalone admin **Settings**.
 - Timer presentation:
   - `renderTimingControlCard(...)` in the standalone frontend now derives status/summary from live clock calculations, preventing stale `0 min elapsed` summaries while elapsed/over-target clocks are still ticking.
 - Form-safety hardening:

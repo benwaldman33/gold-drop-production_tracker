@@ -10,7 +10,7 @@ Touch-first operator app for the extraction lab workflow. It mirrors the main ap
 - chargeable lot search
 - touch-friendly extraction charge form with `100 lbs`, `Half lot`, `Full lot`, and `Last used` presets plus last-reactor recall
 - standalone run-execution screen with lockstep booth progression, active-checkpoint inputs, timer status, blend capture, fill / flush fields, CRC blend, baskets, and notes
-- operator run dashboard: always-visible live timers for all booth clocks, plus a compact status strip for prep checks and key run readings
+- operator run dashboard: always-visible live timers for all booth clocks (primary soak, mixer, flush soak, flush mixer, final purge), plus a compact status strip for prep checks and key run readings
 - visible four-phase rail on the **supervisor** run screen so reviewers can track Primary -> Flush -> Purge -> Post-Extraction at a glance
 - prep/reset visibility card on the **supervisor** run screen highlighting setup checks (biomass/chiller/vacuum) and cleaning handoff checks (shutdown/complete/outputs/reactor emptied)
 - role-based run layouts:
@@ -47,8 +47,8 @@ Start the main Gold Drop backend (`python app.py` from the repo root) before usi
 4. Open `Lots` when you need browser-style search by tracking id, supplier, strain, or batch id.
 5. On the charge form, use the default `100 lbs` preset or tap `Half lot`, `Full lot`, or `Last used`. The app also preselects the last reactor used when possible.
 6. Record the charge, then choose `Open Run`, `Open Run in Main App`, `Back to Reactors`, or `Charge Another Lot`.
-7. In `Open Run`, use the current checkpoint card and progression buttons in order (`Confirm Under Vacuum` through `Mark Run Complete`). After `Record Solvent Charge`, the next required checkpoint is `Confirm 50 PSI` before `Start Primary Soak`. During primary extraction, use `Start Mixer` and `End Mixer`; if needed before filter clear, `Restart Mixer` is available to re-enter the mixing stage. The tablet shows only the active booth-step inputs and the next allowed action; later checkpoint fields stay hidden until the predicate is satisfied.
-   - Floor operators see a **run status strip** (prep pills plus key readings) and an always-visible **live timers panel** for all four booth clocks while working the current step.
+7. In `Open Run`, use the current checkpoint card and progression buttons in order (`Confirm Under Vacuum` through `Mark Run Complete`). After `Record Solvent Charge`, the next required checkpoint is `Confirm 50 PSI` before `Start Primary Soak`. During primary extraction, use `Start Mixer` and `End Mixer`, then **Confirm Primary Soak Ended** and **Confirm Reactor Bottom Burped** before filter clear and pressurization. If needed before primary soak end confirmation, `Restart Mixer` is available. During flush soak, use **Start Flush Mixer** in the last minutes of soak and **End Flush Mixer** before **Stop Flush** when the mixer was started. The tablet shows only the active booth-step inputs and the next allowed action; later checkpoint fields stay hidden until the predicate is satisfied.
+   - Floor operators see a **run status strip** (prep pills plus key readings) and an always-visible **live timers panel** for all booth clocks (primary soak, mixer, flush soak, flush mixer, final purge) while working the current step.
    - On a wide tablet, the checkpoint column and live timers panel render side by side; on a phone they stack.
    - Supervisors/managers instead see the full **Workflow phases** rail and **Prep and reset visibility** card on the supervisor run layout.
 8. Use the collapsible **Evidence Photos** panel whenever you need proof capture. It stays available throughout run execution and supports camera/upload input for chiller, plate, and other booth photos.

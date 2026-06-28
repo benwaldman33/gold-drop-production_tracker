@@ -28,7 +28,7 @@ Current shipped support already exists for:
 - charge-to-run linkage
 - run execution draft fields on `Run`
 - additive booth session, event, and evidence records
-- lockstep tablet-guided booth progression through vacuum confirmation, solvent charge, soak, mixer, filter clear, pressurization, recovery, flush setup, temperature verification, flush solvent charge, flow-resumed decision, final purge, final clarity, shutdown, and run completion
+- lockstep tablet-guided booth progression through vacuum confirmation, solvent charge, soak, mixer, filter clear, pressurization, recovery, flush setup, temperature verification, flush solvent charge, flush soak with flush-mixer cycle in the last minutes of soak, flow-resumed decision, final purge, final clarity, shutdown, and run completion
 - active-stage API enforcement so future progression actions are rejected and future booth fields are ignored until their checkpoint is active
 - manager-approved one-step bypass requests through supervisor notifications
 - downstream handoff after run completion
@@ -40,7 +40,6 @@ Current shipped support is not sufficient for full booth-SOP alignment because t
 - explicit heat-exchanger on/off confirmations
 - reactor bottom outlet / stinger valve / recovery inlet closures outside the grouped shutdown path
 - gas-level wait timing before flush
-- flush mixer timing for the last five minutes of flush soak
 - required evidence-photo gating before flush solvent charge
 
 ## Product direction
@@ -432,33 +431,32 @@ Audit:
 
 #### Step 12 - Flush Soak
 
-System behavior:
+System behavior (shipped):
 
-- action `Start Flush Soak`
-- action `Start Mixer`
-- action `Stop Mixer`
-- action `End Flush Soak`
+- action `Start Flush` (`start_flush`) — starts flush soak timer
+- action `Start Flush Mixer` (`start_flush_mixer`) — starts flush-mixer timer in the last minutes of soak
+- action `End Flush Mixer` (`stop_flush_mixer`) — ends flush-mixer timer
+- action `Stop Flush` (`stop_flush`) — ends flush soak; blocked while flush mixer is running
 
-Recommended fields:
+Shipped fields on `Run`:
 
-- `flush_soak_started_at`
-- `flush_soak_completed_at`
-- `flush_mixer_started_at`
-- `flush_mixer_completed_at`
+- `flush_started_at` / `flush_ended_at` (flush soak)
+- `flush_mixer_started_at` / `flush_mixer_ended_at` (flush mixer)
 
 Validation:
 
 - requires flush solvent charge recorded
+- flush mixer start window enforced against configured limits (defaults: start at minute 5 of a 10-minute flush, run 5 minutes); deviations follow mixer timing policy
+- `stop_flush` requires flush mixer ended if it was started
 
-Recommended policy:
+Recommended policy (shipped defaults):
 
-- show target durations:
-  - flush soak target `10 minutes`
-  - mixer target `last 5 minutes`
+- flush soak target `10 minutes`
+- flush mixer starts in the last `5 minutes` of soak and runs `5 minutes`
 
 Audit:
 
-- event rows for each step
+- booth events: `flush_mixer_started`, `flush_mixer_stopped`, plus existing flush soak events
 
 #### Step 13 - Burp and Re-Pressurize
 
