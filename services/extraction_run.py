@@ -92,13 +92,23 @@ RUN_PROGRESSION = {
         "description": "Mixer timing is active during primary extraction. End mixer when agitation is done.",
         "actions": [{"action_id": "stop_mixer", "label": "End Mixer"}],
     },
-    "ready_to_confirm_filter_clear": {
-        "label": "Confirm filter clear",
-        "description": "Mixer timing is complete. Restart mixer if needed, then confirm the basket filter is cleared before pressurization.",
+    "ready_to_confirm_primary_soak_ended": {
+        "label": "Confirm primary soak ended",
+        "description": "Primary mixer agitation is complete. Confirm the primary soak has ended before burping the reactor bottom.",
         "actions": [
             {"action_id": "start_mixer", "label": "Restart Mixer"},
-            {"action_id": "confirm_filter_clear", "label": "Confirm Filter Clear"},
+            {"action_id": "confirm_primary_soak_ended", "label": "Confirm Primary Soak Ended"},
         ],
+    },
+    "ready_to_confirm_reactor_bottom_burped": {
+        "label": "Confirm reactor bottom burped",
+        "description": "Primary soak is complete. Confirm the bottom of the reactor has been burped before clearing the basket filter.",
+        "actions": [{"action_id": "confirm_reactor_bottom_burped", "label": "Confirm Reactor Bottom Burped"}],
+    },
+    "ready_to_confirm_filter_clear": {
+        "label": "Confirm filter clear",
+        "description": "Reactor bottom burp is confirmed. Confirm the basket filter is cleared before pressurization.",
+        "actions": [{"action_id": "confirm_filter_clear", "label": "Confirm Filter Clear"}],
     },
     "ready_to_start_pressurization": {
         "label": "Start pressurization",
@@ -190,7 +200,9 @@ RUN_STAGE_SEQUENCE = {
     "ready_to_confirm_pressurized_50psi": "ready_to_start_primary_soak",
     "ready_to_start_primary_soak": "ready_to_start_mixer",
     "ready_to_start_mixer": "mixing",
-    "mixing": "ready_to_confirm_filter_clear",
+    "mixing": "ready_to_confirm_primary_soak_ended",
+    "ready_to_confirm_primary_soak_ended": "ready_to_confirm_reactor_bottom_burped",
+    "ready_to_confirm_reactor_bottom_burped": "ready_to_confirm_filter_clear",
     "ready_to_confirm_filter_clear": "ready_to_start_pressurization",
     "ready_to_start_pressurization": "ready_to_begin_recovery",
     "ready_to_begin_recovery": "ready_to_begin_flush_cycle",
@@ -1089,7 +1101,12 @@ def run_progression_payload(root, run) -> dict:
     elif run.mixer_started_at and not run.mixer_ended_at:
         stage_key = "mixing"
     elif run.mixer_ended_at:
-        stage_key = "ready_to_confirm_filter_clear"
+        if run.run_fill_ended_at is None:
+            stage_key = "ready_to_confirm_primary_soak_ended"
+        elif session is not None and _booth_event(root, session, "reactor_bottom_burped_confirmed") is None:
+            stage_key = "ready_to_confirm_reactor_bottom_burped"
+        else:
+            stage_key = "ready_to_confirm_filter_clear"
     else:
         stage_key = "ready_to_confirm_biomass"
     config = dict(RUN_PROGRESSION[stage_key])
@@ -1099,11 +1116,24 @@ def run_progression_payload(root, run) -> dict:
         config["description"] = _mixer_running_stage_description(root)
     block = None
     if root is not None and run is not None:
-        if stage_key in {"ready_to_confirm_filter_clear", "ready_to_start_pressurization", "ready_to_begin_recovery", "ready_to_begin_flush_cycle"}:
+        if stage_key in {
+            "ready_to_confirm_reactor_bottom_burped",
+            "ready_to_confirm_filter_clear",
+            "ready_to_start_pressurization",
+            "ready_to_begin_recovery",
+            "ready_to_begin_flush_cycle",
+        }:
+            block = _policy_block_payload(root, run, "primary_soak", "timing_short_primary_soak", "Primary soak timing deviation")
+        if block is None and stage_key in {
+            "ready_to_confirm_filter_clear",
+            "ready_to_start_pressurization",
+            "ready_to_begin_recovery",
+            "ready_to_begin_flush_cycle",
+        }:
             block = _policy_block_payload(root, run, "mixer", "timing_short_mixer", "Mixer timing deviation")
-        elif stage_key in {"ready_to_confirm_flow_resumed", "flow_adjustment_required", "ready_to_start_final_purge"}:
+        elif block is None and stage_key in {"ready_to_confirm_flow_resumed", "flow_adjustment_required", "ready_to_start_final_purge"}:
             block = _policy_block_payload(root, run, "flush", "timing_short_flush", "Flush timing deviation")
-        elif stage_key in {"ready_to_confirm_clarity", "clarity_adjustment_required", "ready_to_complete_shutdown", "ready_to_complete"}:
+        elif block is None and stage_key in {"ready_to_confirm_clarity", "clarity_adjustment_required", "ready_to_complete_shutdown", "ready_to_complete"}:
             block = _policy_block_payload(root, run, "final_purge", "timing_short_final_purge", "Final purge timing deviation")
     if session is not None and stage_key == "ready_to_confirm_flow_resumed" and (session.flow_resumed_decision or "").strip().lower() == "no_adjusting":
         config["description"] = "Flow is still being adjusted. Re-check once recovery flow has resumed, then continue to final purge."
@@ -1300,7 +1330,8 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
         session.current_stage_key = step_back["to_stage_key"]
         return
     active_block = (
-        _policy_block_payload(root, run, "mixer", "timing_short_mixer", "Mixer timing deviation")
+        _policy_block_payload(root, run, "primary_soak", "timing_short_primary_soak", "Primary soak timing deviation")
+        or _policy_block_payload(root, run, "mixer", "timing_short_mixer", "Mixer timing deviation")
         or _policy_block_payload(root, run, "flush", "timing_short_flush", "Flush timing deviation")
         or _policy_block_payload(root, run, "final_purge", "timing_short_final_purge", "Final purge timing deviation")
     )
@@ -1475,16 +1506,93 @@ def apply_progression_action(root, run, action_id: str | None, payload: dict | N
             policy=mixer_policy,
             operator_reason=mixer_reason,
         )
+        session.current_stage_key = "ready_to_confirm_primary_soak_ended"
+        return
+    if action == "confirm_primary_soak_ended":
+        if run.mixer_ended_at is None:
+            raise ValueError("End mixer before confirming primary soak ended.")
+        if run.run_fill_started_at is None:
+            raise ValueError("Start primary soak before confirming it ended.")
+        if run.run_fill_ended_at is None:
+            run.run_fill_ended_at = now
+        soak_minutes = duration_minutes(run.run_fill_started_at, run.run_fill_ended_at)
+        primary_soak_target = extraction_timing_targets(root).get("primary_soak_minutes")
+        primary_soak_policy = extraction_timing_policies(root).get("primary_soak", "warning")
+        primary_soak_short = (
+            soak_minutes is not None
+            and primary_soak_target is not None
+            and soak_minutes < primary_soak_target
+        )
+        if primary_soak_short and primary_soak_policy == "hard_stop":
+            raise ValueError(_timing_policy_message("Primary soak", "hard_stop"))
+        if primary_soak_short and primary_soak_policy == "supervisor_override" and not _notification_override_approved(root, run, "timing_short_primary_soak"):
+            primary_reason = _required_reason(
+                payload,
+                "primary_soak_short_reason",
+                "Enter a reason when the primary soak finishes short of target.",
+            )
+            create_notification(
+                root,
+                run=run,
+                booth_session=session,
+                event_key="timing_short_primary_soak",
+                dedupe_key="timing_short_primary_soak",
+                notification_class="warnings",
+                severity="critical",
+                title="Primary soak finished short of target",
+                message=f"Primary soak reached {soak_minutes} minute(s) against a {primary_soak_target}-minute target and requires supervisor override.",
+                operator_reason=primary_reason,
+            )
+            raise ValueError(_timing_policy_message("Primary soak", "supervisor_override"))
+        if primary_soak_short and primary_soak_policy == "warning":
+            primary_reason = _required_reason(
+                payload,
+                "primary_soak_short_reason",
+                "Enter a reason when the primary soak finishes short of target.",
+            )
+            _notify_short_timing(
+                root,
+                run,
+                session,
+                event_key="timing_short_primary_soak",
+                label="Primary soak",
+                actual_minutes=soak_minutes,
+                target_minutes=primary_soak_target,
+                policy=primary_soak_policy,
+                operator_reason=primary_reason,
+            )
+        if _booth_event(root, session, "primary_soak_completed") is None:
+            _record_booth_event(root, session, event_key="primary_soak_completed", event_label="Primary soak completed")
+        session.current_stage_key = "ready_to_confirm_reactor_bottom_burped"
+        return
+    if action == "confirm_reactor_bottom_burped":
+        if run.run_fill_ended_at is None or _booth_event(root, session, "primary_soak_completed") is None:
+            raise ValueError("Confirm primary soak ended before burping the reactor bottom.")
+        if _booth_event(root, session, "reactor_bottom_burped_confirmed") is None:
+            _record_booth_event(
+                root,
+                session,
+                event_key="reactor_bottom_burped_confirmed",
+                event_label="Reactor bottom burped confirmed",
+            )
         session.current_stage_key = "ready_to_confirm_filter_clear"
         return
     if action == "confirm_filter_clear":
         if run.mixer_ended_at is None:
             raise ValueError("End mixer before confirming the filter-clear step.")
+        if run.run_fill_ended_at is None or _booth_event(root, session, "primary_soak_completed") is None:
+            raise ValueError("Confirm primary soak ended before confirming filter clear.")
+        if _booth_event(root, session, "reactor_bottom_burped_confirmed") is None:
+            raise ValueError("Confirm reactor bottom burped before confirming filter clear.")
         if _booth_event(root, session, "basket_filter_cleared") is None:
             _record_booth_event(root, session, event_key="basket_filter_cleared", event_label="Basket filter cleared")
         session.current_stage_key = "ready_to_start_pressurization"
         return
     if action == "start_pressurization":
+        if run.run_fill_ended_at is None or _booth_event(root, session, "primary_soak_completed") is None:
+            raise ValueError("Confirm primary soak ended before starting pressurization.")
+        if _booth_event(root, session, "reactor_bottom_burped_confirmed") is None:
+            raise ValueError("Confirm reactor bottom burped before starting pressurization.")
         if _booth_event(root, session, "basket_filter_cleared") is None:
             raise ValueError("Confirm filter clear before starting pressurization.")
         if _booth_event(root, session, "nitrogen_pressurization_started") is None:
@@ -1924,6 +2032,7 @@ BASE_EXECUTION_FIELDS = {
 STAGE_EXECUTION_FIELDS = {
     "ready_to_check_chiller_temp": {"chiller_check_actual_temp_c"},
     "ready_to_record_solvent_charge": {"primary_solvent_charge_lbs"},
+    "ready_to_confirm_primary_soak_ended": {"primary_soak_short_reason"},
     "ready_to_verify_flush_temps": {"flush_solvent_chiller_temp_f", "flush_plate_temp_f", "flush_temp_slack_post_confirmed"},
     "ready_to_record_flush_solvent_charge": {"flush_solvent_charge_lbs"},
     "ready_to_confirm_flow_resumed": {"flow_resumed_decision"},

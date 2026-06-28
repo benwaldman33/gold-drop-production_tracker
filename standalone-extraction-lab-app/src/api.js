@@ -256,13 +256,23 @@ function progressionForRun(run, settings = defaultOperationalSettings()) {
       description: "Mixer timing is active during primary extraction. End mixer when agitation is done.",
       actions: [{ action_id: "stop_mixer", label: "End Mixer" }],
     },
-    ready_to_confirm_filter_clear: {
-      stage_label: "Confirm filter clear",
-      description: "Mixer timing is complete. Restart mixer if needed, then confirm the basket filter is cleared before pressurization.",
+    ready_to_confirm_primary_soak_ended: {
+      stage_label: "Confirm primary soak ended",
+      description: "Primary mixer agitation is complete. Confirm the primary soak has ended before burping the reactor bottom.",
       actions: [
         { action_id: "start_mixer", label: "Restart Mixer" },
-        { action_id: "confirm_filter_clear", label: "Confirm Filter Clear" },
+        { action_id: "confirm_primary_soak_ended", label: "Confirm Primary Soak Ended" },
       ],
+    },
+    ready_to_confirm_reactor_bottom_burped: {
+      stage_label: "Confirm reactor bottom burped",
+      description: "Primary soak is complete. Confirm the bottom of the reactor has been burped before clearing the basket filter.",
+      actions: [{ action_id: "confirm_reactor_bottom_burped", label: "Confirm Reactor Bottom Burped" }],
+    },
+    ready_to_confirm_filter_clear: {
+      stage_label: "Confirm filter clear",
+      description: "Reactor bottom burp is confirmed. Confirm the basket filter is cleared before pressurization.",
+      actions: [{ action_id: "confirm_filter_clear", label: "Confirm Filter Clear" }],
     },
     ready_to_start_pressurization: {
       stage_label: "Start pressurization",
@@ -544,15 +554,39 @@ function applyMockProgressionAction(run, action, payload = {}, settings = loadOp
       }
     }
     run.mixer_ended_at = now;
+    run.booth_stage_key = "ready_to_confirm_primary_soak_ended";
+    return;
+  }
+  if (action === "confirm_primary_soak_ended") {
+    if (!run.mixer_ended_at) throw new Error("End mixer before confirming primary soak ended.");
+    if (!run.run_fill_started_at) throw new Error("Start primary soak before confirming it ended.");
+    if (!run.run_fill_ended_at) run.run_fill_ended_at = now;
+    const soakMinutes = minutesBetween(run.run_fill_started_at, run.run_fill_ended_at);
+    const soakTarget = MOCK_TIMING_TARGETS.primary_soak_minutes;
+    if (soakMinutes != null && soakTarget != null && soakMinutes < soakTarget) {
+      const reason = String(payload.primary_soak_short_reason || "").trim();
+      if (!reason) {
+        throw new Error("Enter a reason when the primary soak finishes short of target.");
+      }
+    }
+    run.booth_stage_key = "ready_to_confirm_reactor_bottom_burped";
+    run.booth_history = [{ event_label: "Primary soak completed", occurred_at: now }, ...(run.booth_history || [])];
+    return;
+  }
+  if (action === "confirm_reactor_bottom_burped") {
+    if (!run.run_fill_ended_at) throw new Error("Confirm primary soak ended before burping the reactor bottom.");
     run.booth_stage_key = "ready_to_confirm_filter_clear";
+    run.booth_history = [{ event_label: "Reactor bottom burped confirmed", occurred_at: now }, ...(run.booth_history || [])];
     return;
   }
   if (action === "confirm_filter_clear") {
     if (!run.mixer_ended_at) throw new Error("End mixer before confirming the filter-clear step.");
+    if (!run.run_fill_ended_at) throw new Error("Confirm primary soak ended before confirming filter clear.");
     run.booth_stage_key = "ready_to_start_pressurization";
     return;
   }
   if (action === "start_pressurization") {
+    if (!run.run_fill_ended_at) throw new Error("Confirm primary soak ended before starting pressurization.");
     run.booth_stage_key = "ready_to_begin_recovery";
     return;
   }

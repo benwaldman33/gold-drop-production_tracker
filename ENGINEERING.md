@@ -299,6 +299,8 @@ Pilot-hardening additions:
   - `ready_to_start_primary_soak`
   - `ready_to_start_mixer`
   - `mixing`
+  - `ready_to_confirm_primary_soak_ended`
+  - `ready_to_confirm_reactor_bottom_burped`
   - `ready_to_confirm_filter_clear`
   - `ready_to_start_pressurization`
   - `ready_to_begin_recovery`
@@ -322,7 +324,9 @@ Pilot-hardening additions:
   - `operator_allowed_execution_fields(...)` filters mobile operator writes so future booth fields cannot be saved before their checkpoint is active.
 - Mixer control details:
   - `mixing` stage exposes `End Mixer` (`stop_mixer` action).
-  - `ready_to_confirm_filter_clear` stage exposes `Restart Mixer` (`start_mixer`) plus `Confirm Filter Clear`, allowing controlled re-agitation before continuing.
+  - `ready_to_confirm_primary_soak_ended` stage exposes `Restart Mixer` (`start_mixer`) plus `Confirm Primary Soak Ended`, which sets `run_fill_ended_at` and records the `primary_soak_completed` booth event.
+  - `ready_to_confirm_reactor_bottom_burped` records `reactor_bottom_burped_confirmed` immediately before filter clear.
+  - `ready_to_confirm_filter_clear` stage exposes `Confirm Filter Clear` only; pressurization requires primary soak ended, bottom burp confirmed, and filter clear recorded.
 - Timer presentation:
   - `renderTimingControlCard(...)` in the standalone frontend now derives status/summary from live clock calculations, preventing stale `0 min elapsed` summaries while elapsed/over-target clocks are still ticking.
 - Form-safety hardening:

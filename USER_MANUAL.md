@@ -84,7 +84,7 @@ Journey revenue projections:
 - It mirrors the same charge and lifecycle workflow the main app uses on `Floor Ops`.
 - After recording a charge, it can now open a dedicated standalone run-execution screen for the extractor workflow, and it can still open the main run form when deeper admin editing is needed.
 - On the `Reactors` board, use the large `Open Run` button on the reactor card before `Mark Running` when the current policy requires a linked run.
-- Inside the standalone run screen, use the guided progression buttons to move through the booth procedure with minimal typing: confirm under vacuum, record solvent charge, confirm reactor at 50 PSI, start soak, run the mixer, confirm filter clear, start pressurization, begin recovery, move into flush, verify temperatures, record flush solvent charge, confirm flow resumed, run final purge, confirm final clarity, complete shutdown, then mark the run complete. The screen now shows only the current checkpoint inputs and the next allowed action; later booth steps remain hidden/locked until the current step is satisfied.
+- Inside the standalone run screen, use the guided progression buttons to move through the booth procedure with minimal typing: confirm under vacuum, record solvent charge, confirm reactor at 50 PSI, start soak, run the mixer, confirm primary soak ended, confirm reactor bottom burped, confirm filter clear, start pressurization, begin recovery, move into flush, verify temperatures, record flush solvent charge, confirm flow resumed, run final purge, confirm final clarity, complete shutdown, then mark the run complete. The screen now shows only the current checkpoint inputs and the next allowed action; later booth steps remain hidden/locked until the current step is satisfied.
 - The same screen now stores booth-specific proof fields such as primary solvent charge, flush chiller temperature, plate temperature, flush solvent charge, final purge timing, flow-resumed / clarity decisions, and the shutdown checklist. Typed values stay in the field while you work — finish entering a number, then tap the step action button to save and advance. Future-step values submitted early are ignored by the operator API until that checkpoint is active.
 - Use the `Booth evidence` section on the run screen to upload required proof photos at any checkpoint. The panel stays available throughout execution and can collapse when not needed.
 - The operator run screen keeps all booth timers visible while you work the current checkpoint, so you can see soak, mixer, flush, and purge progress without advancing steps. On a wide tablet layout, timers sit beside the checkpoint column; on a phone they stack below it.
@@ -447,7 +447,9 @@ The top of the run screen now shows the current stage and the next action button
 - **Start Primary Soak**
 - **Start Mixer**
 - **End Mixer**
-- **Restart Mixer** (only when additional agitation is needed before filter clear)
+- **Restart Mixer** (only before confirming primary soak ended, when additional agitation is needed)
+- **Confirm Primary Soak Ended** (stops and records the primary soak timer; required before pressurization)
+- **Confirm Reactor Bottom Burped**
 - **Confirm Filter Clear**
 - **Start Pressurization**
 - **Begin Recovery**
@@ -468,6 +470,8 @@ Those actions write the matching timestamps and booth checkpoints automatically.
 Mixer timing controls have explicit safety alerts during primary extraction. By default, start the mixer between 3 and 6 minutes after `Start Primary Soak`, run for at least 5 minutes and no more than 7, then end with `End Mixer`. Super Admins can change those four values under **Settings → Operational Parameters → Extraction run defaults** (main app) or **Settings → Primary Mixer Timing Window** (standalone extraction lab app, admin only). If the start window is missed or runtime exceeds the configured maximum, supervisors receive a critical alert. If that critical alert is still unacknowledged after another 3 minutes, the system raises an emergency-class escalation notification for Slack emergency-channel delivery.
 
 At **Start Mixer**, the operator screen shows a reason field only when starting outside the configured mixer start window (defaults: before 3 minutes or after 6 minutes into primary soak). If timing is already within that window, tap **Start Mixer** without entering a reason. The mixer runs during primary soak; primary soak target time is separate from the mixer start window.
+
+At **Confirm Primary Soak Ended**, the operator screen shows a reason field only when the soak finishes short of its configured target. Confirming this step records `run_fill_ended_at` and stops the primary soak timer. Pressurization remains locked until this checkpoint and **Confirm Reactor Bottom Burped** are complete.
 
 After **Mark Run Complete**, the reactor-focused run view now points operators to the standalone app **Downstream** tab. Open the run from that queue to continue the guided post-extraction steps.
 

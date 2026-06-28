@@ -507,7 +507,9 @@ The normal progression is:
 - `Start Primary Soak`
 - `Start Mixer`
 - `End Mixer`
-- `Restart Mixer` (optional, if additional agitation is needed before filter clear)
+- `Restart Mixer` (optional, only before confirming primary soak ended)
+- `Confirm Primary Soak Ended`
+- `Confirm Reactor Bottom Burped`
 - `Confirm Filter Clear`
 - `Start Pressurization`
 - `Begin Recovery`

@@ -4,6 +4,7 @@
 
 ### Added
 - **Configurable primary mixer timing window** — four admin settings control when the mixer may start during primary soak (earliest/latest, defaults 3–6 min) and how long it must run (minimum/maximum, defaults 5–7 min). Available in the main app **Operational Parameters** form and the standalone extraction lab **Settings** panel (admin). Alerts and enforcement use the configured values.
+- **Primary soak end and reactor bottom burp checkpoints** — after **End Mixer**, operators must **Confirm Primary Soak Ended** (stops and records the primary soak timer) and **Confirm Reactor Bottom Burped** before **Confirm Filter Clear** and **Start Pressurization**.
 
 ### Changed
 - The standalone extraction **operator run screen** now uses a status-first dashboard layout: a compact **run status strip** (prep pills plus key readings such as chiller, solvent, and clarity) and an always-visible **live timers panel** for primary soak, mixer, flush soak, and final purge while the operator works the current checkpoint.

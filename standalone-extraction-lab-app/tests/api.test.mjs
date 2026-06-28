@@ -62,9 +62,19 @@ test("mock api login, board, charge, and transition flow", async () => {
   assert.equal(startedRun.run.progression.stage_key, "ready_to_start_mixer");
   assert.ok(startedRun.run.run_fill_started_at);
 
+  const startedMixer = await api.saveChargeRun(created.charge.id, {
+    progression_action: "start_mixer",
+    mixer_start_timing_reason: "Mock flow advances the mixer timer immediately.",
+  });
+  assert.equal(startedMixer.run.progression.stage_key, "mixing");
+  const stoppedMixer = await api.saveChargeRun(created.charge.id, {
+    progression_action: "stop_mixer",
+    mixer_short_reason: "Mock flow advances the mixer timer immediately.",
+  });
+  assert.equal(stoppedMixer.run.progression.stage_key, "ready_to_confirm_primary_soak_ended");
+
   const savedRun = await api.saveChargeRun(created.charge.id, {
     run_fill_started_at: "2026-04-19T09:05",
-    run_fill_ended_at: "2026-04-19T09:40",
     mixer_started_at: "2026-04-19T09:10",
     mixer_ended_at: "2026-04-19T09:20",
     fill_count: 1,
@@ -73,8 +83,18 @@ test("mock api login, board, charge, and transition flow", async () => {
   });
   assert.equal(savedRun.run.fill_count, 1);
   assert.equal(savedRun.run.notes, "Execution notes");
-  assert.equal(savedRun.run.timing_controls.primary_soak.status, "on_target");
-  assert.equal(savedRun.run.timing_controls.mixer.status, "on_target");
+
+  const soakEnded = await api.saveChargeRun(created.charge.id, {
+    run_fill_ended_at: "2026-04-19T09:40",
+    progression_action: "confirm_primary_soak_ended",
+  });
+  assert.equal(soakEnded.run.progression.stage_key, "ready_to_confirm_reactor_bottom_burped");
+  assert.equal(soakEnded.run.run_fill_ended_at, "2026-04-19T09:40");
+  assert.equal(soakEnded.run.timing_controls.primary_soak.status, "on_target");
+  assert.equal(soakEnded.run.timing_controls.mixer.status, "on_target");
+
+  const bottomBurped = await api.saveChargeRun(created.charge.id, { progression_action: "confirm_reactor_bottom_burped" });
+  assert.equal(bottomBurped.run.progression.stage_key, "ready_to_confirm_filter_clear");
 
   const filterClear = await api.saveChargeRun(created.charge.id, { progression_action: "confirm_filter_clear" });
   assert.equal(filterClear.run.progression.stage_key, "ready_to_start_pressurization");
@@ -184,7 +204,10 @@ test("mock api supports extraction exception-handling loops", async () => {
     { primary_solvent_charge_lbs: 500, progression_action: "record_solvent_charge" },
     { progression_action: "confirm_pressurized_50psi" },
     { progression_action: "start_primary_soak" },
-    { mixer_started_at: "2026-04-19T09:10", mixer_ended_at: "2026-04-19T09:20" },
+    { progression_action: "start_mixer", mixer_start_timing_reason: "Mock exception loop advances the mixer timer immediately." },
+    { progression_action: "stop_mixer", mixer_short_reason: "Mock exception loop advances the mixer timer immediately." },
+    { progression_action: "confirm_primary_soak_ended", primary_soak_short_reason: "Mock exception loop advances the soak timer immediately." },
+    { progression_action: "confirm_reactor_bottom_burped" },
     { progression_action: "confirm_filter_clear" },
     { progression_action: "start_pressurization" },
     { progression_action: "begin_recovery" },

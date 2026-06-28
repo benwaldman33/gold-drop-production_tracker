@@ -1364,6 +1364,8 @@ const STAGE_SEQUENCE = [
   { key: "ready_to_start_primary_soak",      label: "Start primary soak",            phase: "primary", timer: null },
   { key: "ready_to_start_mixer",             label: "Start mixer",                   phase: "primary", timer: "primary_soak", targetMinutes: 30 },
   { key: "mixing",                           label: "Mixer running",                 phase: "primary", timer: "mixer",        targetMinutes: 5  },
+  { key: "ready_to_confirm_primary_soak_ended", label: "Confirm primary soak ended", phase: "primary", timer: "primary_soak", targetMinutes: 30 },
+  { key: "ready_to_confirm_reactor_bottom_burped", label: "Confirm reactor bottom burped", phase: "primary", timer: null },
   { key: "ready_to_confirm_filter_clear",    label: "Confirm filter clear",          phase: "primary", timer: null },
   { key: "ready_to_start_pressurization",    label: "Start pressurization",          phase: "primary", timer: null },
   { key: "ready_to_begin_recovery",          label: "Begin recovery",                phase: "primary", timer: null },
@@ -1415,6 +1417,9 @@ const BLOCKER_MAP = [
   { match: "mixer before stopping",                    stageKey: "mixing",                                label: "Start Mixer",                  actionId: "start_mixer" },
   { match: "mixer before ending",                      stageKey: "mixing",                                label: "Start Mixer",                  actionId: "start_mixer" },
   { match: "start the mixer before",                   stageKey: "ready_to_start_mixer",                  label: "Start Mixer",                  actionId: "start_mixer" },
+  { match: "confirm primary soak ended",             stageKey: "ready_to_confirm_primary_soak_ended",   label: "Confirm Primary Soak Ended",   actionId: "confirm_primary_soak_ended" },
+  { match: "confirm reactor bottom burped",          stageKey: "ready_to_confirm_reactor_bottom_burped", label: "Confirm Reactor Bottom Burped", actionId: "confirm_reactor_bottom_burped" },
+  { match: "confirm filter clear before",            stageKey: "ready_to_confirm_filter_clear",         label: "Confirm Filter Clear",         actionId: "confirm_filter_clear" },
   { match: "both flush temperatures",                  stageKey: "ready_to_verify_flush_temps",           label: "Verify Flush Temps",           actionId: "verify_flush_temps" },
   { match: "chiller temperature must be",              stageKey: "ready_to_verify_flush_temps",           label: "Verify Flush Temps",           actionId: "verify_flush_temps" },
   { match: "enter the flush solvent charge",           stageKey: "ready_to_record_flush_solvent_charge",  label: "Record Flush Solvent Load",    actionId: "record_flush_solvent_charge" },
@@ -1462,7 +1467,8 @@ const PRIMARY_STAGES = new Set([
   "pending", "vacuum_confirmed", "solvent_charged", "soaking",
   "ready_to_start_mixer", "mixing", "filter_cleared", "pressurizing",
   "recovering", "ready_to_record_solvent_charge", "ready_to_confirm_pressurized_50psi", "ready_to_confirm_vacuum",
-  "ready_to_start_primary_soak", "ready_to_confirm_filter_clear",
+  "ready_to_start_primary_soak", "ready_to_confirm_primary_soak_ended", "ready_to_confirm_reactor_bottom_burped",
+  "ready_to_confirm_filter_clear",
   "ready_to_start_pressurization", "ready_to_begin_recovery",
   "ready_to_begin_flush_cycle",
 ]);
@@ -1721,6 +1727,17 @@ function soakElapsedMinutes(run) {
   return Math.floor(elapsedMs / 60000);
 }
 
+function primarySoakEndReasonRequirements(run) {
+  if (run?.run_fill_ended_at) return { needsShortSoakReason: false, soakMinutes: null, soakTarget: null };
+  const soakMinutes = soakElapsedMinutes(run);
+  const targets = run?.booth?.timing_targets || {};
+  const soakTarget = Number(
+    targets.primary_soak_minutes ?? run?.timing_controls?.primary_soak?.target_minutes ?? 30,
+  );
+  const needsShortSoakReason = soakMinutes != null && soakMinutes < soakTarget;
+  return { soakMinutes, soakTarget, needsShortSoakReason };
+}
+
 function mixerStartReasonRequirements(run) {
   const soakMinutes = soakElapsedMinutes(run);
   const targets = run?.booth?.timing_targets || {};
@@ -1782,6 +1799,26 @@ function renderCheckpointInputs(run) {
           </div>`;
       return `${hint}${fields || `<div class="subtle">Mixer timing is within the configured window. Tap Start Mixer to continue.</div>`}`;
     })(),
+    ready_to_confirm_primary_soak_ended: (() => {
+      const soakReasons = primarySoakEndReasonRequirements(run);
+      const fields = renderReasonTextarea(
+        "primary_soak_short_reason",
+        "Reason if primary soak finished short of target",
+        run.primary_soak_short_reason,
+        { visible: soakReasons.needsShortSoakReason },
+      );
+      const hint = soakReasons.soakMinutes == null
+        ? `<div class="subtle" style="margin-bottom:8px;">Confirm primary soak ended to stop the soak timer before burping the reactor bottom.</div>`
+        : `<div class="subtle" style="margin-bottom:8px;">
+            Primary soak elapsed: ${soakReasons.soakMinutes} min
+            (target ${soakReasons.soakTarget} min). Tap Confirm Primary Soak Ended to record the stop time.
+          </div>`;
+      return `${hint}${fields}`;
+    })(),
+    ready_to_confirm_reactor_bottom_burped: `
+      <div class="subtle" style="margin-bottom:8px;">
+        Confirm the bottom of the reactor has been burped before clearing the basket filter.
+      </div>`,
     mixing: renderReasonTextarea(
       "mixer_short_reason",
       "Reason if ending mixer before minimum runtime",
@@ -1855,7 +1892,7 @@ function boothClockTimeZone() {
 const BOOTH_TIMER_SPECS = [
   {
     key: "primary_soak",
-    activeStages: new Set(["ready_to_start_primary_soak", "ready_to_start_mixer"]),
+    activeStages: new Set(["ready_to_start_primary_soak", "ready_to_start_mixer", "mixing", "ready_to_confirm_primary_soak_ended"]),
     liveClock(run) {
       return {
         label: "Primary soak",
@@ -2106,7 +2143,7 @@ function renderRelevantTimer(run) {
     purging: { label: "Final purge", startAt: finalPurgeStartedAt(run), endAt: finalPurgeCompletedAt(run), targetMinutes: timings.final_purge?.target_minutes ?? null },
     ready_to_confirm_clarity: { label: "Final purge", startAt: finalPurgeStartedAt(run), endAt: finalPurgeCompletedAt(run), targetMinutes: timings.final_purge?.target_minutes ?? null },
   };
-  if (stageKey === "mixing" || stageKey === "ready_to_confirm_filter_clear") {
+  if (stageKey === "mixing" || stageKey === "ready_to_confirm_filter_clear" || stageKey === "ready_to_confirm_primary_soak_ended") {
     return `
       <div class="current-timer current-timer-dual">
         ${renderTimingControlCard(timings.mixer, { label: "Mixer", startAt: run.mixer_started_at, endAt: run.mixer_ended_at, targetMinutes: timings.mixer?.target_minutes ?? null })}

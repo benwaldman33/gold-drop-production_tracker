@@ -742,6 +742,8 @@ def test_mobile_extraction_run_exception_handling_loops():
             {"progression_action": "start_primary_soak"},
             {"progression_action": "start_mixer"},
             {"progression_action": "stop_mixer", "mixer_short_reason": "Test sequence advances the mixer timer immediately."},
+            {"progression_action": "confirm_primary_soak_ended", "primary_soak_short_reason": "Test sequence advances the soak timer immediately."},
+            {"progression_action": "confirm_reactor_bottom_burped"},
             {"progression_action": "confirm_filter_clear"},
             {"progression_action": "start_pressurization"},
             {"progression_action": "begin_recovery"},
@@ -909,6 +911,8 @@ def test_mobile_extraction_timing_policy_can_require_supervisor_override():
             {"progression_action": "start_primary_soak", "primary_soak_short_reason": "Training override prep."},
             {"progression_action": "start_mixer"},
             {"progression_action": "stop_mixer", "mixer_short_reason": "Training override prep."},
+            {"progression_action": "confirm_primary_soak_ended", "primary_soak_short_reason": "Training override prep."},
+            {"progression_action": "confirm_reactor_bottom_burped"},
             {"progression_action": "confirm_filter_clear"},
             {"progression_action": "start_pressurization"},
             {"progression_action": "begin_recovery"},
@@ -1913,6 +1917,22 @@ def test_mobile_extraction_run_execution_flow():
                 json={"progression_action": "stop_mixer", "mixer_short_reason": "QA flow advances the timer immediately."},
             )
             assert stop_mixer.status_code == 200
+            assert stop_mixer.get_json()["data"]["run"]["progression"]["stage_key"] == "ready_to_confirm_primary_soak_ended"
+
+            soak_ended = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={"progression_action": "confirm_primary_soak_ended", "primary_soak_short_reason": "QA flow advances the timer immediately."},
+            )
+            assert soak_ended.status_code == 200
+            assert soak_ended.get_json()["data"]["run"]["progression"]["stage_key"] == "ready_to_confirm_reactor_bottom_burped"
+            assert soak_ended.get_json()["data"]["run"]["run_fill_ended_at"]
+
+            bottom_burped = client.post(
+                f"/api/mobile/v1/extraction/charges/{charge_id}/run",
+                json={"progression_action": "confirm_reactor_bottom_burped"},
+            )
+            assert bottom_burped.status_code == 200
+            assert bottom_burped.get_json()["data"]["run"]["progression"]["stage_key"] == "ready_to_confirm_filter_clear"
 
             filter_clear = client.post(
                 f"/api/mobile/v1/extraction/charges/{charge_id}/run",
